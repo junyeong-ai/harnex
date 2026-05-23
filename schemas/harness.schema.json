@@ -1,0 +1,664 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Config",
+  "type": "object",
+  "properties": {
+    "meta": {
+      "$ref": "#/$defs/MetaConfig"
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/KindDecl"
+      },
+      "default": []
+    },
+    "evidence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvidenceConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "telemetry": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TelemetryConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "codegen": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CodegenConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PolicyConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "validate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ValidateConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "lifecycle": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LifecycleConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "retirement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RetirementConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "guard": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GuardConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "meta"
+  ],
+  "$defs": {
+    "MetaConfig": {
+      "type": "object",
+      "properties": {
+        "harness_toolkit_version": {
+          "description": "SemVer requirement that the binary must satisfy.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "harness_toolkit_version"
+      ]
+    },
+    "KindDecl": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "glob": {
+          "type": "string"
+        },
+        "foundation": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "name",
+        "glob"
+      ]
+    },
+    "EvidenceConfig": {
+      "type": "object",
+      "properties": {
+        "default_provenance": {
+          "type": "string",
+          "default": "memory-only"
+        },
+        "block_on_memory_only": {
+          "type": "boolean",
+          "default": false
+        },
+        "verifiers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VerifierDecl"
+          },
+          "default": []
+        }
+      }
+    },
+    "VerifierDecl": {
+      "type": "object",
+      "properties": {
+        "provenance": {
+          "type": "string"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "library_allowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "max_age_days": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        }
+      },
+      "required": [
+        "provenance",
+        "strategy"
+      ]
+    },
+    "TelemetryConfig": {
+      "type": "object",
+      "properties": {
+        "storage": {
+          "type": "string",
+          "default": "jsonl"
+        },
+        "storage_dir": {
+          "type": "string"
+        },
+        "rotate_at_mb": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 10
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TelemetryKindDecl"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "storage_dir"
+      ]
+    },
+    "TelemetryKindDecl": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "payload_schema": true
+      },
+      "required": [
+        "name",
+        "payload_schema"
+      ]
+    },
+    "CodegenConfig": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CodegenGroupDecl"
+          },
+          "default": []
+        }
+      }
+    },
+    "CodegenGroupDecl": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "source_key": {
+          "type": "string"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SentinelTargetDecl"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "name",
+        "source",
+        "source_key"
+      ]
+    },
+    "SentinelTargetDecl": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "begin": {
+          "type": "string"
+        },
+        "end": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "path",
+        "begin",
+        "end",
+        "format"
+      ]
+    },
+    "PolicyConfig": {
+      "type": "object",
+      "properties": {
+        "permissions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PermissionsPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VersionPin"
+          },
+          "default": []
+        }
+      }
+    },
+    "PermissionsPolicy": {
+      "type": "object",
+      "properties": {
+        "profiles": {
+          "description": "Names of built-in profiles to compose, applied in declaration order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "extra_allow": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "extra_ask": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "extra_deny": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "VersionPin": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "strategy": {
+          "description": "`exact` | `minor` | `major` | `rolling`",
+          "type": "string"
+        },
+        "install_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "tool",
+        "version",
+        "strategy"
+      ]
+    },
+    "ValidateConfig": {
+      "type": "object",
+      "properties": {
+        "rules": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RulesPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "skills": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SkillsPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "commit_msg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommitMsgPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    },
+    "RulesPolicy": {
+      "type": "object",
+      "properties": {
+        "max_lines": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "default": 200
+        },
+        "always_loaded_slugs": {
+          "description": "Rule slugs that may omit `paths:` frontmatter (always-loaded).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "SkillsPolicy": {
+      "type": "object",
+      "properties": {
+        "max_skill_md_lines": {
+          "description": "5000-token compaction budget ≈ 500 lines.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "default": 500
+        },
+        "max_description_chars": {
+          "description": "Claude Code skill listing budget caps `description + when_to_use` at\n1536 chars; this is the project-level target (safe margin).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "default": 1536
+        }
+      }
+    },
+    "CommitMsgPolicy": {
+      "type": "object",
+      "properties": {
+        "trailers": {
+          "description": "Trailer declarations. Each lists the trailer key (e.g.,\n`Nodex-Event`) and either a closed `allowed_values` set or\n`required = true` for free-text presence-only checking.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CommitMsgTrailerDecl"
+          },
+          "default": []
+        }
+      }
+    },
+    "CommitMsgTrailerDecl": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "Trailer key as it appears before the colon (case-sensitive).",
+          "type": "string"
+        },
+        "allowed_values": {
+          "description": "Closed set of permitted values. When omitted, any non-empty value\nis accepted (presence-only validation).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "required": {
+          "description": "Whether the trailer must be present. Default: false (validate-if-present).",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "key"
+      ]
+    },
+    "LifecycleConfig": {
+      "type": "object",
+      "properties": {
+        "promotion_min_instances": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 3
+        },
+        "promotion_min_days": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 30
+        },
+        "stale_days": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 90
+        },
+        "silence_window_days": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 90
+        },
+        "grace_period_days": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 30
+        },
+        "observation_dir": {
+          "type": "string",
+          "default": ".harness/observations"
+        },
+        "decision_dir": {
+          "type": "string",
+          "default": ".harness/decisions"
+        },
+        "consumer_detectors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConsumerDetectorDecl"
+          },
+          "default": []
+        }
+      }
+    },
+    "ConsumerDetectorDecl": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "Kind name this detector applies to.",
+          "type": "string"
+        },
+        "strategy": {
+          "description": "`grep`",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "Template using `{slug}` placeholder.",
+          "type": "string"
+        },
+        "exclude_globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "kind",
+        "strategy",
+        "pattern"
+      ]
+    },
+    "RetirementConfig": {
+      "type": "object",
+      "properties": {
+        "exempt": {
+          "$ref": "#/$defs/RetirementExemptDecl",
+          "default": {
+            "kinds": [],
+            "slugs": []
+          }
+        }
+      }
+    },
+    "RetirementExemptDecl": {
+      "type": "object",
+      "properties": {
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "slugs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "GuardConfig": {
+      "type": "object",
+      "properties": {
+        "stop_audit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StopAuditConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      }
+    },
+    "StopAuditConfig": {
+      "type": "object",
+      "properties": {
+        "runtime": {
+          "description": "Runtime name. Only `claude-code` is supported in v0.1.",
+          "type": "string",
+          "default": "claude-code"
+        },
+        "critique_skill": {
+          "description": "Slash command of the critique skill to spawn (e.g. \"/aix-critique\").",
+          "type": "string"
+        },
+        "max_retries": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 3
+        },
+        "has_changes_check": {
+          "description": "Shell command + args that returns exit 0 when there are NO changes.\nStop-audit spawns critique only when this command exits non-zero.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "retry_ledger_dir": {
+          "description": "Directory for the per-session retry counter ledger.",
+          "type": "string",
+          "default": ".harness/_audit_retry"
+        }
+      },
+      "required": [
+        "critique_skill"
+      ]
+    }
+  }
+}

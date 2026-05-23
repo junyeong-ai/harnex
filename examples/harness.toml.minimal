@@ -1,0 +1,48 @@
+# Solo-developer baseline. Memory-only claims warn (not block); telemetry
+# stays small (1MB rotation).
+
+[meta]
+harness_toolkit_version = ">=0.1, <0.2"
+
+[evidence]
+default_provenance = "memory-only"
+block_on_memory_only = false
+
+[[evidence.verifiers]]
+provenance = "internal"
+strategy = "file-path-line"
+
+[[evidence.verifiers]]
+provenance = "memory-only"
+strategy = "memory-only"
+
+[[evidence.verifiers]]
+provenance = "context7"
+strategy = "context7"
+
+[[evidence.verifiers]]
+provenance = "fetched-url"
+strategy = "fetched-url"
+max_age_days = 180
+
+[telemetry]
+storage = "jsonl"
+storage_dir = ".harness/telemetry"
+rotate_at_mb = 1
+
+[[telemetry.kinds]]
+name = "skill-invoked"
+
+[telemetry.kinds.payload_schema]
+type = "object"
+required = ["skill", "outcome"]
+
+[telemetry.kinds.payload_schema.properties.skill]
+type = "string"
+
+[telemetry.kinds.payload_schema.properties.outcome]
+type = "string"
+enum = ["ok", "warn", "fail"]
+
+[telemetry.kinds.payload_schema.properties.duration_ms]
+type = "integer"
