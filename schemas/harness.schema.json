@@ -314,7 +314,7 @@
         "versions": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/VersionPin"
+            "$ref": "#/$defs/VersionPinDecl"
           },
           "default": []
         }
@@ -354,7 +354,7 @@
         }
       }
     },
-    "VersionPin": {
+    "VersionPinDecl": {
       "type": "object",
       "properties": {
         "tool": {
