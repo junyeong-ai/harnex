@@ -1,0 +1,163 @@
+# Team baseline (≥3 active developers). Exercises every module.
+
+[meta]
+harness_toolkit_version = ">=0.1, <0.2"
+
+[[kinds]]
+name = "rule"
+glob = ".claude/rules/*.md"
+foundation = false
+
+[[kinds]]
+name = "skill"
+glob = ".claude/skills/*/SKILL.md"
+foundation = false
+
+[[kinds]]
+name = "constitution"
+glob = ".claude/rules/constitution.md"
+foundation = true
+
+# ---------- evidence ----------
+
+[evidence]
+default_provenance = "memory-only"
+block_on_memory_only = true
+
+[[evidence.verifiers]]
+provenance = "internal"
+strategy = "file-path-line"
+
+[[evidence.verifiers]]
+provenance = "memory-only"
+strategy = "memory-only"
+
+[[evidence.verifiers]]
+provenance = "context7"
+strategy = "context7"
+library_allowlist = [
+  "@anthropic-ai/sdk",
+  "@anthropic-ai/claude-code",
+  "vercel/next.js",
+]
+
+[[evidence.verifiers]]
+provenance = "fetched-url"
+strategy = "fetched-url"
+max_age_days = 90
+
+# ---------- telemetry ----------
+
+[telemetry]
+storage = "jsonl"
+storage_dir = ".harness/telemetry"
+rotate_at_mb = 10
+
+[[telemetry.kinds]]
+name = "skill-invoked"
+[telemetry.kinds.payload_schema]
+type = "object"
+required = ["skill", "outcome"]
+[telemetry.kinds.payload_schema.properties.skill]
+type = "string"
+[telemetry.kinds.payload_schema.properties.outcome]
+type = "string"
+enum = ["ok", "warn", "fail"]
+[telemetry.kinds.payload_schema.properties.duration_ms]
+type = "integer"
+
+[[telemetry.kinds]]
+name = "hook-fired"
+[telemetry.kinds.payload_schema]
+type = "object"
+required = ["event", "outcome"]
+[telemetry.kinds.payload_schema.properties.event]
+type = "string"
+[telemetry.kinds.payload_schema.properties.outcome]
+type = "string"
+enum = ["ok", "warn", "fail", "blocked"]
+[telemetry.kinds.payload_schema.properties.tool]
+type = "string"
+
+# ---------- codegen ----------
+
+[[codegen.groups]]
+name = "kinds-enum"
+source = "examples/enums.toml"
+source_key = "kinds.allowed"
+
+[[codegen.groups.targets]]
+path = "nodex.toml"
+begin = "# BEGIN kinds-allowed"
+end = "# END kinds-allowed"
+format = "toml-array-assignment"
+name = "allowed"
+
+[[codegen.groups.targets]]
+path = "hooks/commit-msg"
+begin = "# BEGIN ALLOWED_KINDS"
+end = "# END ALLOWED_KINDS"
+format = "bash-array-assignment"
+name = "ALLOWED_KINDS"
+
+# ---------- policy ----------
+
+[policy.permissions]
+profiles = ["baseline", "git-strict", "gcp-strict"]
+extra_allow = ["Bash(pnpm gate:*)", "Bash(harness *)"]
+extra_deny = []
+
+[[policy.versions]]
+tool = "harness"
+version = "0.1.0"
+strategy = "minor"
+install_url = "https://github.com/junyeong-ai/harness-toolkit/releases"
+
+[[policy.versions]]
+tool = "nodex"
+version = "0.10.0"
+strategy = "minor"
+
+# ---------- validate ----------
+
+[validate.rules]
+max_lines = 200
+always_loaded_slugs = ["constitution", "harness", "learned-patterns"]
+
+[validate.skills]
+max_skill_md_lines = 500
+max_description_chars = 1536
+
+# ---------- lifecycle ----------
+
+[lifecycle]
+promotion_min_instances = 3
+promotion_min_days = 30
+stale_days = 90
+silence_window_days = 90
+grace_period_days = 30
+observation_dir = ".harness/observations"
+
+[[lifecycle.consumer_detectors]]
+kind = "rule"
+strategy = "grep"
+pattern = "{slug}"
+exclude_globs = [".claude/rules/{slug}.md", "docs/feedback/**"]
+
+[[lifecycle.consumer_detectors]]
+kind = "skill"
+strategy = "grep"
+pattern = "/{slug}"
+
+[retirement.exempt]
+kinds = ["constitution"]
+slugs = ["harness", "learned-patterns"]
+
+# ---------- guard ----------
+
+[guard.stop_audit]
+runtime = "claude-code"
+critique_skill = "/my-critique"
+max_retries = 3
+has_changes_check = ["git", "diff", "--quiet", "HEAD"]
+retry_ledger_dir = ".harness/_audit_retry"
