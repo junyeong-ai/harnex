@@ -14,7 +14,7 @@ use std::path::Path;
 use jiff::{Timestamp, Unit, civil::Date, tz::TimeZone};
 use url::Url;
 
-use super::{Claim, ClaimValue, VerifyOutcome, Verifier};
+use super::{Claim, ClaimValue, Verifier, VerifyOutcome};
 
 pub(crate) struct FetchedUrlVerifier {
     provenance: String,

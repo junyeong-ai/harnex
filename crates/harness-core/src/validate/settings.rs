@@ -143,20 +143,12 @@ impl SettingsValidator {
             let allow_strs: Vec<&str> = perms
                 .get("allow")
                 .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str())
-                        .collect::<Vec<_>>()
-                })
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
                 .unwrap_or_default();
             let deny_strs: Vec<&str> = perms
                 .get("deny")
                 .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str())
-                        .collect::<Vec<_>>()
-                })
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
                 .unwrap_or_default();
             for pattern in DANGEROUS_ALLOW_PATTERNS {
                 if allow_strs.iter().any(|a| a == pattern)
@@ -169,9 +161,7 @@ impl SettingsValidator {
                         message: format!(
                             "'{pattern}' in permissions.allow without a corresponding deny"
                         ),
-                        hint: Some(
-                            "move this pattern to deny or scope it more tightly".into(),
-                        ),
+                        hint: Some("move this pattern to deny or scope it more tightly".into()),
                         auto_fixable: false,
                         fix_command: None,
                     });
@@ -193,9 +183,7 @@ impl SettingsValidator {
                                  must be one of: {}",
                                 VALID_SKILL_OVERRIDE_VALUES.join(", ")
                             ),
-                            hint: Some(
-                                "set to on, name-only, user-invocable-only, or off".into(),
-                            ),
+                            hint: Some("set to on, name-only, user-invocable-only, or off".into()),
                             auto_fixable: false,
                             fix_command: None,
                         });
@@ -205,12 +193,8 @@ impl SettingsValidator {
                         slug: "settings-skill-override-invalid".into(),
                         severity: Severity::Major,
                         location: Location::file(path.to_path_buf()),
-                        message: format!(
-                            "skillOverrides['{skill_name}'] must be a string"
-                        ),
-                        hint: Some(
-                            "set to on, name-only, user-invocable-only, or off".into(),
-                        ),
+                        message: format!("skillOverrides['{skill_name}'] must be a string"),
+                        hint: Some("set to on, name-only, user-invocable-only, or off".into()),
                         auto_fixable: false,
                         fix_command: None,
                     });
@@ -225,9 +209,7 @@ impl SettingsValidator {
                 severity: Severity::Info,
                 location: Location::file(path.to_path_buf()),
                 message: "autoMemoryEnabled is explicitly configured".into(),
-                hint: Some(
-                    "this is an intentional team decision; no action needed".into(),
-                ),
+                hint: Some("this is an intentional team decision; no action needed".into()),
                 auto_fixable: false,
                 fix_command: None,
             });

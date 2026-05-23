@@ -151,11 +151,7 @@ impl TelemetryQuery {
 
     /// Aggregate per-Kind activity over the provided trailing-day windows.
     /// If `kind_filter` is Some, restrict to that single Kind.
-    pub fn report(
-        &self,
-        windows: &[u32],
-        kind_filter: Option<&str>,
-    ) -> Result<TelemetrySummary> {
+    pub fn report(&self, windows: &[u32], kind_filter: Option<&str>) -> Result<TelemetrySummary> {
         let now = Timestamp::now();
         let mut accumulator: HashMap<String, KindAccumulator> = HashMap::new();
 
@@ -165,9 +161,7 @@ impl TelemetryQuery {
             {
                 return;
             }
-            let acc = accumulator
-                .entry(event.kind.clone())
-                .or_insert_with(KindAccumulator::default);
+            let acc = accumulator.entry(event.kind.clone()).or_default();
             acc.total += 1;
             acc.first = match acc.first {
                 Some(t) if t <= event.timestamp => Some(t),

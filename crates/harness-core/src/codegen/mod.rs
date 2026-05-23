@@ -41,7 +41,10 @@ pub struct SentinelSyncer<'a> {
 
 impl<'a> SentinelSyncer<'a> {
     pub fn new(config: &'a CodegenConfig, working_dir: &'a Path) -> Self {
-        Self { config, working_dir }
+        Self {
+            config,
+            working_dir,
+        }
     }
 
     pub fn sync(&self) -> Result<Vec<SyncOutcome>> {
@@ -80,9 +83,10 @@ impl<'a> SentinelSyncer<'a> {
         values: &[String],
         apply: bool,
     ) -> Result<SyncOutcome> {
-        let renderer = renderer_for(&target.format).ok_or_else(|| Error::CodegenRendererUnknown {
-            name: target.format.clone(),
-        })?;
+        let renderer =
+            renderer_for(&target.format).ok_or_else(|| Error::CodegenRendererUnknown {
+                name: target.format.clone(),
+            })?;
         let rendered = renderer.render(target.name.as_deref(), values);
 
         let target_path = self.working_dir.join(&target.path);
@@ -149,7 +153,11 @@ fn extract_string_array(value: &toml::Value, dot_path: &str, source: &Path) -> R
 }
 
 fn detect_line_ending(content: &str) -> &'static str {
-    if content.contains("\r\n") { "\r\n" } else { "\n" }
+    if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
 }
 
 fn replace_block(content: &str, begin: &str, end: &str, new_inner: &str) -> Option<String> {

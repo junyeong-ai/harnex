@@ -24,23 +24,28 @@ pub struct Claim {
 
 #[derive(Debug, Clone)]
 pub enum ClaimValue {
-    FilePathLine { path: String, line: Option<u32> },
-    Url { url: String, fetched_date: Option<String> },
-    Context7Library { library: String },
+    FilePathLine {
+        path: String,
+        line: Option<u32>,
+    },
+    Url {
+        url: String,
+        fetched_date: Option<String>,
+    },
+    Context7Library {
+        library: String,
+    },
     Memory,
 }
 
 static FETCHED_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[fetched:\s*(\d{4}-\d{2}-\d{2})\]\s*(https?://\S+)")
-        .expect("FETCHED_URL regex")
+    Regex::new(r"\[fetched:\s*(\d{4}-\d{2}-\d{2})\]\s*(https?://\S+)").expect("FETCHED_URL regex")
 });
 
-static CONTEXT7: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[context7:\s*([A-Za-z0-9_@./\-]+)\]").expect("CONTEXT7 regex")
-});
+static CONTEXT7: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[context7:\s*([A-Za-z0-9_@./\-]+)\]").expect("CONTEXT7 regex"));
 
-static MEMORY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[memory\]").expect("MEMORY regex"));
+static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expect("MEMORY regex"));
 
 // A backtick-wrapped path that looks like `something/with.ext:42`.
 // Restricted to relative-looking paths (no leading `/`) and to file

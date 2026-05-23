@@ -59,9 +59,6 @@ mod tests {
     fn rejects_malformed_input() {
         let raw = r#"{not json"#;
         let err = HookEvent::from_stdin_json(raw).unwrap_err();
-        assert_eq!(
-            err.code(),
-            crate::error::ErrorCode::GuardHookInputInvalid
-        );
+        assert_eq!(err.code(), crate::error::ErrorCode::GuardHookInputInvalid);
     }
 }

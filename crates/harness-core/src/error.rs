@@ -98,10 +98,7 @@ pub enum Error {
     ConfigNotFound { path: PathBuf },
 
     #[error("config requires harness-toolkit {required}, this binary is {actual}")]
-    ConfigVersionMismatch {
-        required: String,
-        actual: String,
-    },
+    ConfigVersionMismatch { required: String, actual: String },
 
     #[error("path traversal refused: {path:?}")]
     PathTraversal { path: PathBuf },
@@ -232,9 +229,7 @@ impl Error {
             Self::ConfigVersionMismatch { .. } => {
                 Some("update harness.toml [meta] harness_toolkit_version or upgrade the binary")
             }
-            Self::PathTraversal { .. } => {
-                Some("paths must not contain '..' segments")
-            }
+            Self::PathTraversal { .. } => Some("paths must not contain '..' segments"),
             Self::PathSymlinkRefused { .. } => {
                 Some("delete the symlink or write to a non-symlink path")
             }
@@ -257,12 +252,10 @@ impl Error {
             Self::CodegenSentinelMissing { .. } => {
                 Some("add the BEGIN/END sentinel lines to the target file")
             }
-            Self::CodegenCycle { .. } => {
-                Some("targets must not be source files in any group")
-            }
-            Self::PolicyProfileUnknown { .. } => {
-                Some("use one of the built-in profiles or register a custom profile in harness.toml")
-            }
+            Self::CodegenCycle { .. } => Some("targets must not be source files in any group"),
+            Self::PolicyProfileUnknown { .. } => Some(
+                "use one of the built-in profiles or register a custom profile in harness.toml",
+            ),
             Self::ValidateFrontmatterMalformed { .. } => {
                 Some("frontmatter must be `---`-delimited YAML at the top of the file")
             }
@@ -272,18 +265,16 @@ impl Error {
             Self::GraphResponseInvalid { .. } => {
                 Some("check nodex output format — expected a JSON envelope")
             }
-            Self::GraphSpawnFailure { .. } => {
-                Some("ensure nodex is installed and on PATH")
-            }
+            Self::GraphSpawnFailure { .. } => Some("ensure nodex is installed and on PATH"),
             Self::CheckGitFailure { .. } => {
                 Some("ensure git is installed and the working directory is a repository")
             }
-            Self::LifecycleDemoteWithoutApproval { .. } => {
-                Some("demote applies only to previously Approved patterns; use reject for never-approved patterns")
-            }
-            Self::LifecycleDecisionTextEmpty => {
-                Some("pass a non-empty --decision-text; the toolkit refuses to invent promotion rationale")
-            }
+            Self::LifecycleDemoteWithoutApproval { .. } => Some(
+                "demote applies only to previously Approved patterns; use reject for never-approved patterns",
+            ),
+            Self::LifecycleDecisionTextEmpty => Some(
+                "pass a non-empty --decision-text; the toolkit refuses to invent promotion rationale",
+            ),
             _ => None,
         }
     }

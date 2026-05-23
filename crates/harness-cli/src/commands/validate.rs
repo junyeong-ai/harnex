@@ -31,9 +31,7 @@ pub enum ValidateCommand {
     },
     /// Validate a git commit message against `[validate.commit_msg]` trailers
     /// (e.g., `.git/COMMIT_EDITMSG` from a commit-msg hook)
-    CommitMsg {
-        path: PathBuf,
-    },
+    CommitMsg { path: PathBuf },
 }
 
 pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
@@ -87,9 +85,7 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
         }
     }
 
-    let has_blocker = findings
-        .iter()
-        .any(|f| f.severity == Severity::Blocker);
+    let has_blocker = findings.iter().any(|f| f.severity == Severity::Blocker);
     write_envelope_success(out, ListResponse::new(findings))?;
     Ok(if has_blocker {
         ExitCode::from(1)

@@ -48,9 +48,7 @@ fn verify<W: Write>(paths: Vec<PathBuf>, out: &mut W) -> Result<ExitCode> {
         findings.append(&mut fs);
     }
 
-    let has_blocker = findings
-        .iter()
-        .any(|f| f.severity == Severity::Blocker);
+    let has_blocker = findings.iter().any(|f| f.severity == Severity::Blocker);
 
     write_envelope_success(out, ListResponse::new(findings))?;
 

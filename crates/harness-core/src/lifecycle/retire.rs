@@ -124,12 +124,8 @@ impl<'a> RetirementSweeper<'a> {
                     .unwrap_or("")
                     .to_string();
                 let silent = self.is_slug_silent(&slug)?;
-                let verdict = classifier.classify(
-                    &kind_decl.name,
-                    &path,
-                    detector.as_ref(),
-                    silent,
-                )?;
+                let verdict =
+                    classifier.classify(&kind_decl.name, &path, detector.as_ref(), silent)?;
                 verdicts.push(verdict);
                 files_classified += 1;
             }
@@ -165,8 +161,8 @@ impl<'a> RetirementSweeper<'a> {
         if slug.is_empty() {
             return Ok(true);
         }
-        let cutoff = Timestamp::now()
-            - SignedDuration::from_hours((self.silence_window_days as i64) * 24);
+        let cutoff =
+            Timestamp::now() - SignedDuration::from_hours((self.silence_window_days as i64) * 24);
         let mut found = false;
         self.telemetry.scan_events(&mut |event| {
             if found || event.timestamp < cutoff {

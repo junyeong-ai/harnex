@@ -21,8 +21,8 @@
 
 pub mod consumer;
 pub mod decision;
-pub mod observation;
 pub mod decision_recorder;
+pub mod observation;
 pub mod retire;
 pub mod retirement;
 
@@ -31,7 +31,9 @@ pub use consumer::{
     consumer_detector_for,
 };
 pub use decision::{DecisionLedger, DecisionRecord, PromotionDecision};
+pub use decision_recorder::{
+    LifecycleDecisionRecorder, PromotionCandidate, PromotionCandidateFinder,
+};
 pub use observation::{Observation, ObservationLedger};
-pub use decision_recorder::{LifecycleDecisionRecorder, PromotionCandidate, PromotionCandidateFinder};
 pub use retire::{RetirementSweeper, SweepOutcome};
-pub use retirement::{RetirementClassifier, RetirementSignal, RetirementOutcome};
+pub use retirement::{RetirementClassifier, RetirementOutcome, RetirementSignal};

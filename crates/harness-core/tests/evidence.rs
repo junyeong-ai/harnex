@@ -97,7 +97,11 @@ fn memory_only_warns_when_not_blocking() {
     let markdown = "Unverified [memory] claim.";
     let verifier = EvidenceVerifier::new(&cfg).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
-    assert_eq!(findings.len(), 1, "expected one advisory finding: {findings:?}");
+    assert_eq!(
+        findings.len(),
+        1,
+        "expected one advisory finding: {findings:?}"
+    );
     assert_eq!(findings[0].severity, Severity::Minor);
     assert_eq!(findings[0].slug, "evidence-memory-only");
 }
@@ -129,7 +133,11 @@ fn context7_allowlist_rejects_unknown_library() {
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1);
-    assert!(findings[0].message.contains("not in the context7 allowlist"));
+    assert!(
+        findings[0]
+            .message
+            .contains("not in the context7 allowlist")
+    );
 }
 
 #[test]

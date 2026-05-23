@@ -122,7 +122,10 @@ impl<'a> ProjectInitializer<'a> {
             ("harness.toml", TEMPLATE_HARNESS_TOML.to_string()),
             ("CLAUDE.md", claude_md),
             ("README.md", readme_md),
-            (".claude/rules/constitution.md", TEMPLATE_CONSTITUTION_MD.to_string()),
+            (
+                ".claude/rules/constitution.md",
+                TEMPLATE_CONSTITUTION_MD.to_string(),
+            ),
             (".claude/settings.json", settings_json),
         ];
 
@@ -238,11 +241,12 @@ fn set_hook_permissions(target_dir: &Path) -> Result<()> {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-                    .map_err(|e| Error::IoFailure {
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).map_err(
+                    |e| Error::IoFailure {
                         path: path.clone(),
                         source: e,
-                    })?;
+                    },
+                )?;
             }
         }
     }
@@ -360,11 +364,7 @@ mod tests {
         let hook_outcomes: Vec<_> = outcome
             .files
             .iter()
-            .filter(|f| {
-                f.path
-                    .to_string_lossy()
-                    .contains("hooks/")
-            })
+            .filter(|f| f.path.to_string_lossy().contains("hooks/"))
             .collect();
         assert_eq!(hook_outcomes.len(), 5);
         for ho in &hook_outcomes {
@@ -397,11 +397,7 @@ mod tests {
         let hook_outcomes: Vec<_> = outcome
             .files
             .iter()
-            .filter(|f| {
-                f.path
-                    .to_string_lossy()
-                    .contains("hooks/")
-            })
+            .filter(|f| f.path.to_string_lossy().contains("hooks/"))
             .collect();
         assert!(hook_outcomes.is_empty());
 
@@ -427,8 +423,7 @@ mod tests {
             std::fs::read_to_string(tmp.path().join("hooks/_stop_runner.sh")).unwrap();
         assert!(stop_runner.contains("exit 0"));
 
-        let post_format =
-            std::fs::read_to_string(tmp.path().join("hooks/post-format.sh")).unwrap();
+        let post_format = std::fs::read_to_string(tmp.path().join("hooks/post-format.sh")).unwrap();
         assert!(post_format.contains("cargo fmt"));
 
         let session_start =

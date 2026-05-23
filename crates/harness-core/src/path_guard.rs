@@ -42,11 +42,9 @@ pub fn reject_traversal(path: &Path) -> Result<()> {
 /// Reject overwriting a symbolic link.
 pub fn reject_symlink_write(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            Err(Error::PathSymlinkRefused {
-                path: path.to_path_buf(),
-            })
-        }
+        Ok(meta) if meta.file_type().is_symlink() => Err(Error::PathSymlinkRefused {
+            path: path.to_path_buf(),
+        }),
         _ => Ok(()),
     }
 }

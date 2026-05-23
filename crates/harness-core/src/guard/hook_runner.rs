@@ -15,10 +15,14 @@ use crate::error::{Error, Result};
 #[derive(Debug, Clone, Copy, Serialize, schemars::JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum HookRunOutcome {
-    Completed { exit_code: i32 },
+    Completed {
+        exit_code: i32,
+    },
     SkippedFailOpen,
     /// Inner program ran; exit code observed but suppressed to 0 (Stop-hook contract).
-    StopForcedSuccess { observed_exit_code: i32 },
+    StopForcedSuccess {
+        observed_exit_code: i32,
+    },
 }
 
 pub struct HookRunner;

@@ -131,7 +131,9 @@ impl<'a> ProjectChecker<'a> {
         let before = self.run()?;
         let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for f in &before.findings {
-            if f.auto_fixable && let Some(cmd) = &f.fix_command {
+            if f.auto_fixable
+                && let Some(cmd) = &f.fix_command
+            {
                 grouped.entry(cmd.clone()).or_default().push(f.slug.clone());
             }
         }
@@ -297,12 +299,7 @@ impl<'a> ProjectChecker<'a> {
         skipped: &mut Vec<SkippedRule>,
         files_scanned: &mut usize,
     ) -> Result<()> {
-        let Some(policy) = self
-            .config
-            .validate
-            .as_ref()
-            .and_then(|v| v.rules.as_ref())
-        else {
+        let Some(policy) = self.config.validate.as_ref().and_then(|v| v.rules.as_ref()) else {
             skipped.push(SkippedRule {
                 slug: "validate.rules".into(),
                 reason: "no [validate.rules] section".into(),
@@ -434,7 +431,10 @@ impl<'a> ProjectChecker<'a> {
                     severity: Severity::Blocker,
                     location: Location::file(o.target.clone()),
                     message: format!("group '{}': target drifts from source", o.group),
-                    hint: Some(format!("run `{}` to regenerate", FixCommand::CodegenSync.as_str())),
+                    hint: Some(format!(
+                        "run `{}` to regenerate",
+                        FixCommand::CodegenSync.as_str()
+                    )),
                     auto_fixable: true,
                     fix_command: Some(FixCommand::CodegenSync.as_str().into()),
                 });
@@ -481,10 +481,11 @@ impl<'a> ProjectChecker<'a> {
             path: settings_path.clone(),
             source: e,
         })?;
-        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| Error::ConfigInvalid {
-            message: format!("settings.json parse: {e}"),
-            location: None,
-        })?;
+        let v: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| Error::ConfigInvalid {
+                message: format!("settings.json parse: {e}"),
+                location: None,
+            })?;
         let allow: Vec<String> = v
             .pointer("/permissions/allow")
             .and_then(|x| x.as_array())

@@ -19,10 +19,13 @@ pub enum CodegenCommand {
 
 pub fn run<W: Write>(cmd: CodegenCommand, out: &mut W) -> Result<ExitCode> {
     let (config, config_path, working_dir) = load_config()?;
-    let cg = config.codegen.as_ref().ok_or_else(|| Error::ConfigInvalid {
-        message: "no [codegen] section in harness.toml".into(),
-        location: None,
-    })?;
+    let cg = config
+        .codegen
+        .as_ref()
+        .ok_or_else(|| Error::ConfigInvalid {
+            message: "no [codegen] section in harness.toml".into(),
+            location: None,
+        })?;
     let root = config_dir(&config_path, &working_dir);
     let sync = SentinelSyncer::new(cg, &root);
 
@@ -31,7 +34,14 @@ pub fn run<W: Write>(cmd: CodegenCommand, out: &mut W) -> Result<ExitCode> {
         CodegenCommand::Check => {
             let oc = sync.check()?;
             let drifted = oc.iter().any(|o| o.changed);
-            (oc, if drifted { ExitCode::from(1) } else { ExitCode::SUCCESS })
+            (
+                oc,
+                if drifted {
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                },
+            )
         }
     };
 

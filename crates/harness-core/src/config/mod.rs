@@ -28,9 +28,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
-static KIND_NAME_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$").expect("KIND_NAME_PATTERN")
-});
+static KIND_NAME_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$").expect("KIND_NAME_PATTERN"));
 
 const CONFIG_FILE_NAME: &str = "harness.toml";
 
@@ -396,7 +395,9 @@ impl Config {
             });
         }
         let req = VersionReq::parse(raw).map_err(|e| Error::ConfigInvalid {
-            message: format!("[meta] harness_toolkit_version '{raw}' is not a SemVer requirement: {e}"),
+            message: format!(
+                "[meta] harness_toolkit_version '{raw}' is not a SemVer requirement: {e}"
+            ),
             location: None,
         })?;
         let actual_str = env!("CARGO_PKG_VERSION");
@@ -447,7 +448,10 @@ impl Config {
         for v in &ev.verifiers {
             if !seen.insert(&v.provenance) {
                 return Err(Error::ConfigInvalid {
-                    message: format!("duplicate [[evidence.verifiers]] provenance: {}", v.provenance),
+                    message: format!(
+                        "duplicate [[evidence.verifiers]] provenance: {}",
+                        v.provenance
+                    ),
                     location: None,
                 });
             }
@@ -516,13 +520,16 @@ impl Config {
                 });
             }
             // payload_schema must be a JSON object with type=object
-            let obj = k.payload_schema.as_object().ok_or_else(|| Error::ConfigInvalid {
-                message: format!(
-                    "[[telemetry.kinds]] '{}' payload_schema must be a JSON object",
-                    k.name
-                ),
-                location: None,
-            })?;
+            let obj = k
+                .payload_schema
+                .as_object()
+                .ok_or_else(|| Error::ConfigInvalid {
+                    message: format!(
+                        "[[telemetry.kinds]] '{}' payload_schema must be a JSON object",
+                        k.name
+                    ),
+                    location: None,
+                })?;
             if obj.get("type").and_then(|t| t.as_str()) != Some("object") {
                 return Err(Error::ConfigInvalid {
                     message: format!(
@@ -592,12 +599,18 @@ impl Config {
         let mut target_sentinels: HashSet<(PathBuf, String, String)> = HashSet::new();
         for group in &cg.groups {
             for target in &group.targets {
-                let key = (target.path.clone(), target.begin.clone(), target.end.clone());
+                let key = (
+                    target.path.clone(),
+                    target.begin.clone(),
+                    target.end.clone(),
+                );
                 if !target_sentinels.insert(key) {
                     return Err(Error::ConfigInvalid {
                         message: format!(
                             "duplicate codegen target sentinel: {} ({} / {})",
-                            target.path.display(), target.begin, target.end
+                            target.path.display(),
+                            target.begin,
+                            target.end
                         ),
                         location: None,
                     });
@@ -911,7 +924,10 @@ mod tests {
         "#;
         let err = parse(src).unwrap_err();
         assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("duplicate codegen target sentinel"));
+        assert!(
+            err.to_string()
+                .contains("duplicate codegen target sentinel")
+        );
     }
 
     #[test]

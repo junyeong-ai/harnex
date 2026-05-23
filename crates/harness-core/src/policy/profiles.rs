@@ -231,11 +231,7 @@ const COMMON_SHELL_ALLOW: &[&str] = &[
 /// Rust development toolchain: cargo, rustfmt, clippy, plus common
 /// shell commands.
 fn rust_dev() -> PermissionProfile {
-    let mut allow: Vec<&'static str> = vec![
-        "Bash(cargo:*)",
-        "Bash(rustfmt:*)",
-        "Bash(clippy:*)",
-    ];
+    let mut allow: Vec<&'static str> = vec!["Bash(cargo:*)", "Bash(rustfmt:*)", "Bash(clippy:*)"];
     allow.extend_from_slice(COMMON_SHELL_ALLOW);
     PermissionProfile {
         name: "rust-dev",
@@ -355,7 +351,10 @@ mod tests {
         assert!(p.deny.contains(&"Bash(gcloud storage rm *)"));
         assert!(p.deny.contains(&"Bash(gsutil rm *)"));
         assert!(p.deny.contains(&"Bash(gcloud * set-iam-policy *)"));
-        assert!(p.deny.contains(&"Bash(gcloud * remove-iam-policy-binding *)"));
+        assert!(
+            p.deny
+                .contains(&"Bash(gcloud * remove-iam-policy-binding *)")
+        );
         assert!(p.deny.contains(&"Bash(terraform destroy *)"));
         assert!(p.deny.contains(&"Bash(terraform state rm *)"));
         assert!(p.deny.contains(&"Bash(kubectl delete *)"));
@@ -384,7 +383,10 @@ mod tests {
     #[test]
     fn typescript_dev_allow_list_is_non_empty() {
         let p = typescript_dev();
-        assert!(!p.allow.is_empty(), "typescript-dev must have allow patterns");
+        assert!(
+            !p.allow.is_empty(),
+            "typescript-dev must have allow patterns"
+        );
         assert!(p.allow.contains(&"Bash(pnpm:*)"));
         assert!(p.allow.contains(&"Bash(npx:*)"));
         assert!(p.allow.contains(&"Bash(node:*)"));
@@ -397,10 +399,7 @@ mod tests {
     fn dev_profiles_include_common_shell_allows() {
         for name in &["rust-dev", "python-dev", "typescript-dev"] {
             let p = PermissionProfile::from_str(name).unwrap();
-            assert!(
-                p.allow.contains(&"Bash(ls:*)"),
-                "{name} must include ls"
-            );
+            assert!(p.allow.contains(&"Bash(ls:*)"), "{name} must include ls");
             assert!(
                 p.allow.contains(&"Bash(git status:*)"),
                 "{name} must include git status"
@@ -422,21 +421,19 @@ mod tests {
         use crate::policy::permissions::PermissionGenerator;
 
         let policy = PermissionsPolicy {
-            profiles: vec![
-                "baseline".into(),
-                "gcp-strict".into(),
-                "rust-dev".into(),
-            ],
+            profiles: vec!["baseline".into(), "gcp-strict".into(), "rust-dev".into()],
             ..Default::default()
         };
         let block = PermissionGenerator::new(&policy).unwrap().generate();
         // baseline deny must be present
         assert!(block.deny.iter().any(|d| d == "Bash(sudo *)"));
         // gcp-strict deny must be present
-        assert!(block
-            .deny
-            .iter()
-            .any(|d| d == "Bash(gcloud projects delete *)"));
+        assert!(
+            block
+                .deny
+                .iter()
+                .any(|d| d == "Bash(gcloud projects delete *)")
+        );
         // rust-dev allow must be present
         assert!(block.allow.iter().any(|a| a == "Bash(cargo:*)"));
         // gcp-strict ask must be present

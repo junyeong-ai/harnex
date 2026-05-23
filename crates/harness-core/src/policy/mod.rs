@@ -23,4 +23,4 @@ pub use permissions::{
     PermissionsBlock,
 };
 pub use profiles::PermissionProfile;
-pub use versions::{VersionChecker, VersionCheckOutcome};
+pub use versions::{VersionCheckOutcome, VersionChecker};

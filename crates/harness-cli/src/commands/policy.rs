@@ -95,17 +95,29 @@ fn run_permissions<W: Write>(
             let allow: Vec<String> = v
                 .pointer("/permissions/allow")
                 .and_then(|x| x.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let ask: Vec<String> = v
                 .pointer("/permissions/ask")
                 .and_then(|x| x.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let deny: Vec<String> = v
                 .pointer("/permissions/deny")
                 .and_then(|x| x.as_array())
-                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let findings = PermissionAuditor::new(perms_policy, &allow, &ask, &deny).audit();
             let has_issues = !findings.is_empty();

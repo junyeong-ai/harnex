@@ -26,10 +26,7 @@ pub enum GraphCommand {
     },
     /// Structural delta between two git refs (added/removed nodes,
     /// status transitions, field changes)
-    Diff {
-        ref_a: String,
-        ref_b: String,
-    },
+    Diff { ref_a: String, ref_b: String },
 }
 
 pub fn run<W: Write>(cmd: GraphCommand, out: &mut W) -> Result<ExitCode> {
@@ -44,7 +41,12 @@ pub fn run<W: Write>(cmd: GraphCommand, out: &mut W) -> Result<ExitCode> {
             struct V {
                 version: String,
             }
-            write_envelope_success(out, V { version: client.version()? })?;
+            write_envelope_success(
+                out,
+                V {
+                    version: client.version()?,
+                },
+            )?;
         }
         GraphCommand::Backlinks { node_id } => {
             let nodes: Vec<NodeRef> = client.backlinks(&node_id)?;

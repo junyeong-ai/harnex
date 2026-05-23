@@ -104,8 +104,7 @@ impl<'a> RuleValidator<'a> {
                             location: Location::line(path.to_path_buf(), fm.begin_line),
                             message: "frontmatter lacks `paths:` key".into(),
                             hint: Some(
-                                "add `paths: [...]` or list slug under always_loaded_slugs"
-                                    .into(),
+                                "add `paths: [...]` or list slug under always_loaded_slugs".into(),
                             ),
                             auto_fixable: false,
                             fix_command: None,

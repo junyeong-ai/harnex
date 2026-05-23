@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::{Claim, ClaimValue, VerifyOutcome, Verifier};
+use super::{Claim, ClaimValue, Verifier, VerifyOutcome};
 
 pub(crate) struct FilePathLineVerifier {
     provenance: String,

@@ -56,7 +56,9 @@ impl<'a> CommitMsgValidator<'a> {
                     severity: Severity::Major,
                     location: Location::line(path.to_path_buf(), *line_no),
                     message: format!("trailer '{key}:' has empty value"),
-                    hint: Some(format!("provide a non-empty value for the '{key}:' trailer")),
+                    hint: Some(format!(
+                        "provide a non-empty value for the '{key}:' trailer"
+                    )),
                     auto_fixable: false,
                     fix_command: None,
                 });
@@ -69,9 +71,7 @@ impl<'a> CommitMsgValidator<'a> {
                     slug: "commit-msg-unknown-trailer-value".into(),
                     severity: Severity::Major,
                     location: Location::line(path.to_path_buf(), *line_no),
-                    message: format!(
-                        "trailer '{key}: {value}' value not in allowed set"
-                    ),
+                    message: format!("trailer '{key}: {value}' value not in allowed set"),
                     hint: Some(format!("allowed: {}", allowed.join(", "))),
                     auto_fixable: false,
                     fix_command: None,
@@ -90,7 +90,10 @@ impl<'a> CommitMsgValidator<'a> {
                     slug: "commit-msg-missing-required-trailer".into(),
                     severity: Severity::Blocker,
                     location: Location::file(path.to_path_buf()),
-                    message: format!("required trailer '{}:' not found in commit message", decl.key),
+                    message: format!(
+                        "required trailer '{}:' not found in commit message",
+                        decl.key
+                    ),
                     hint: Some(format!(
                         "add a trailer line: '{}: <value>'{}",
                         decl.key,
@@ -152,8 +155,7 @@ fn collect_trailers(content: &str) -> Vec<(String, String, u32)> {
     };
 
     let mut out = Vec::new();
-    for idx in start..=end {
-        let line = lines[idx];
+    for (idx, line) in lines.iter().enumerate().take(end + 1).skip(start) {
         if line.starts_with(char::is_whitespace) {
             continue;
         }
@@ -293,7 +295,8 @@ mod tests {
             allowed_values: Some(vec!["only-this".into()]),
             required: false,
         }]);
-        let msg = "feat: x\n\nNote: this is body prose, not a trailer\n\nNodex-Event: rule-promoted\n";
+        let msg =
+            "feat: x\n\nNote: this is body prose, not a trailer\n\nNodex-Event: rule-promoted\n";
         let p2 = policy(vec![
             CommitMsgTrailerDecl {
                 key: "Note".into(),

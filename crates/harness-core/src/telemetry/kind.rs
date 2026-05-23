@@ -24,11 +24,7 @@ pub struct KindSchema {
 pub struct PropertySchema {
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub ty: Option<String>,
-    #[serde(
-        rename = "enum",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(rename = "enum", default, skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<Value>>,
 }
 
@@ -82,7 +78,10 @@ impl KindSchema {
             }
         }
 
-        Ok(Self { required, properties })
+        Ok(Self {
+            required,
+            properties,
+        })
     }
 
     pub fn validate(&self, payload: &Value) -> Result<()> {
@@ -127,12 +126,12 @@ impl KindSchema {
                 }
             }
 
-            if let Some(allowed) = &schema.enum_values {
-                if !allowed.iter().any(|a| a == value) {
-                    return Err(Error::TelemetryPayloadInvalid {
-                        message: format!("field '{name}' value not in declared enum"),
-                    });
-                }
+            if let Some(allowed) = &schema.enum_values
+                && !allowed.iter().any(|a| a == value)
+            {
+                return Err(Error::TelemetryPayloadInvalid {
+                    message: format!("field '{name}' value not in declared enum"),
+                });
             }
         }
 
