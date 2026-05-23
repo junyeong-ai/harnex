@@ -37,13 +37,11 @@ impl<'a> VersionChecker<'a> {
     }
 
     pub fn check_installed(&self, tool: &str, installed: &str) -> Result<VersionCheckOutcome> {
-        let pin = self
-            .pins
-            .iter()
-            .find(|p| p.tool == tool)
-            .ok_or_else(|| Error::PolicyVersionFailure {
+        let pin = self.pins.iter().find(|p| p.tool == tool).ok_or_else(|| {
+            Error::PolicyVersionFailure {
                 message: format!("tool '{tool}' not declared in [[policy.versions]]"),
-            })?;
+            }
+        })?;
         let ok = match pin.strategy.as_str() {
             "rolling" => true,
             "exact" => installed == pin.version,

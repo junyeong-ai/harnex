@@ -28,9 +28,7 @@ pub fn run<W: Write>(args: CheckArgs, out: &mut W) -> Result<ExitCode> {
         check = check.with_since(since);
     }
     let blocker_in = |findings: &[harness_core::envelope::Finding]| {
-        findings
-            .iter()
-            .any(|f| f.severity == Severity::Blocker)
+        findings.iter().any(|f| f.severity == Severity::Blocker)
     };
     if args.fix {
         let outcome = check.fix()?;

@@ -35,10 +35,18 @@ pub struct Location {
 
 impl Location {
     pub fn file(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into(), line: None, col: None }
+        Self {
+            path: path.into(),
+            line: None,
+            col: None,
+        }
     }
     pub fn line(path: impl Into<PathBuf>, line: u32) -> Self {
-        Self { path: path.into(), line: Some(line), col: None }
+        Self {
+            path: path.into(),
+            line: Some(line),
+            col: None,
+        }
     }
 }
 
@@ -116,7 +124,11 @@ pub struct ListResponse<T: schemars::JsonSchema> {
 impl<T: schemars::JsonSchema> ListResponse<T> {
     pub fn new(items: Vec<T>) -> Self {
         let total = items.len();
-        Self { items, total, skipped_rules: Vec::new() }
+        Self {
+            items,
+            total,
+            skipped_rules: Vec::new(),
+        }
     }
     pub fn with_skipped(mut self, skipped: Vec<SkippedRule>) -> Self {
         self.skipped_rules = skipped;
@@ -158,7 +170,11 @@ pub fn write_success<T: Serialize, W: Write>(
     data: T,
     warnings: &[Warning],
 ) -> io::Result<()> {
-    let env = SuccessEnvelope { ok: true, data, warnings };
+    let env = SuccessEnvelope {
+        ok: true,
+        data,
+        warnings,
+    };
     serde_json::to_writer(&mut *out, &env)?;
     out.write_all(b"\n")?;
     Ok(())
@@ -199,7 +215,10 @@ pub fn write_error<W: Write>(out: &mut W, error: &Error) -> io::Result<()> {
         hint: error.hint(),
         location: error.location(),
     };
-    let env = ErrorEnvelope { ok: false, error: body };
+    let env = ErrorEnvelope {
+        ok: false,
+        error: body,
+    };
     serde_json::to_writer(&mut *out, &env)?;
     out.write_all(b"\n")?;
     Ok(())

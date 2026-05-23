@@ -15,9 +15,11 @@ fn rule_validator_flags_missing_paths_frontmatter() {
     let v = RuleValidator::new(&policy);
     let md = "# Body without frontmatter\n";
     let findings = v.validate_text(md, Path::new("my-rule.md"));
-    assert!(findings
-        .iter()
-        .any(|f| f.slug == "rule-missing-paths-frontmatter"));
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "rule-missing-paths-frontmatter")
+    );
 }
 
 #[test]
@@ -40,7 +42,10 @@ fn rule_validator_flags_overlong_rule() {
     };
     let v = RuleValidator::new(&policy);
     let md = "---\npaths: [\"x\"]\n---\n".to_string()
-        + &(1..=10).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        + &(1..=10)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
     let findings = v.validate_text(&md, Path::new("rule.md"));
     assert!(findings.iter().any(|f| f.slug == "rule-too-long"));
 }
@@ -57,7 +62,11 @@ fn skill_validator_flags_missing_frontmatter() {
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
-    assert!(findings.iter().any(|f| f.slug == "skill-missing-frontmatter"));
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-missing-frontmatter")
+    );
 }
 
 #[test]
@@ -98,16 +107,16 @@ fn skill_validator_flags_description_over_budget() {
     };
     let v = SkillValidator::new(&policy);
     let long = "x".repeat(100);
-    let md = format!(
-        "---\nname: my-skill\ndescription: {long}\n---\nBody\n"
-    );
+    let md = format!("---\nname: my-skill\ndescription: {long}\n---\nBody\n");
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(&md, &path);
-    assert!(findings
-        .iter()
-        .any(|f| f.slug == "skill-description-over-budget"));
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-description-over-budget")
+    );
 }
 
 #[test]
@@ -117,14 +126,18 @@ fn skill_validator_recommends_disable_for_side_effect_verbs() {
         max_description_chars: 400,
     };
     let v = SkillValidator::new(&policy);
-    let md = "---\nname: deploy-app\ndescription: Deploy the application to production\n---\nBody\n";
+    let md =
+        "---\nname: deploy-app\ndescription: Deploy the application to production\n---\nBody\n";
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("deploy-app/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
-    assert!(findings
-        .iter()
-        .any(|f| f.slug == "skill-side-effect-no-disable" && matches!(f.severity, Severity::Minor)));
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-side-effect-no-disable"
+                && matches!(f.severity, Severity::Minor))
+    );
 }
 
 #[test]
@@ -139,7 +152,11 @@ fn skill_validator_accepts_disable_on_side_effect() {
     let path = tmp.path().join("deploy-app/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
-    assert!(!findings.iter().any(|f| f.slug == "skill-side-effect-no-disable"));
+    assert!(
+        !findings
+            .iter()
+            .any(|f| f.slug == "skill-side-effect-no-disable")
+    );
 }
 
 #[test]
@@ -149,16 +166,24 @@ fn skill_validator_ignores_substring_matches() {
         max_description_chars: 400,
     };
     let v = SkillValidator::new(&policy);
-    for word in &["committee", "sender", "publisher", "released", "deployed", "deleted", "submitted"] {
-        let md = format!(
-            "---\nname: my-skill\ndescription: The {word} handles data\n---\nBody\n"
-        );
+    for word in &[
+        "committee",
+        "sender",
+        "publisher",
+        "released",
+        "deployed",
+        "deleted",
+        "submitted",
+    ] {
+        let md = format!("---\nname: my-skill\ndescription: The {word} handles data\n---\nBody\n");
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("my-skill/SKILL.md");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let findings = v.validate_text(&md, &path);
         assert!(
-            !findings.iter().any(|f| f.slug == "skill-side-effect-no-disable"),
+            !findings
+                .iter()
+                .any(|f| f.slug == "skill-side-effect-no-disable"),
             "'{word}' should not trigger side-effect warning"
         );
     }
@@ -216,8 +241,9 @@ fn skill_validator_flags_invalid_context_value() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings.iter().any(|f| f.slug == "skill-context-invalid"
-            && matches!(f.severity, Severity::Major)),
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-context-invalid" && matches!(f.severity, Severity::Major)),
         "expected skill-context-invalid finding: {findings:?}"
     );
 }
@@ -253,8 +279,9 @@ fn skill_validator_flags_invalid_effort_value() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings.iter().any(|f| f.slug == "skill-effort-invalid"
-            && matches!(f.severity, Severity::Major)),
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-effort-invalid" && matches!(f.severity, Severity::Major)),
         "expected skill-effort-invalid finding: {findings:?}"
     );
 }
@@ -267,9 +294,7 @@ fn skill_validator_accepts_valid_effort_levels() {
     };
     let v = SkillValidator::new(&policy);
     for level in &["low", "medium", "high", "xhigh", "max"] {
-        let md = format!(
-            "---\nname: my-skill\ndescription: a skill\neffort: {level}\n---\nBody\n"
-        );
+        let md = format!("---\nname: my-skill\ndescription: a skill\neffort: {level}\n---\nBody\n");
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("my-skill/SKILL.md");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -294,8 +319,10 @@ fn skill_validator_flags_non_array_allowed_tools() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings.iter().any(|f| f.slug == "skill-allowed-tools-invalid"
-            && matches!(f.severity, Severity::Major)),
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-allowed-tools-invalid"
+                && matches!(f.severity, Severity::Major)),
         "expected skill-allowed-tools-invalid finding: {findings:?}"
     );
 }
@@ -313,7 +340,9 @@ fn skill_validator_accepts_array_allowed_tools() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        !findings.iter().any(|f| f.slug == "skill-allowed-tools-invalid"),
+        !findings
+            .iter()
+            .any(|f| f.slug == "skill-allowed-tools-invalid"),
         "array of strings should be accepted: {findings:?}"
     );
 }
@@ -331,7 +360,9 @@ fn skill_validator_flags_invalid_user_invocable() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings.iter().any(|f| f.slug == "skill-user-invocable-invalid"),
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-user-invocable-invalid"),
         "expected skill-user-invocable-invalid: {findings:?}"
     );
 }
@@ -349,8 +380,9 @@ fn skill_validator_emits_info_for_unknown_agent() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings.iter().any(|f| f.slug == "skill-agent-unknown"
-            && matches!(f.severity, Severity::Info)),
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-agent-unknown" && matches!(f.severity, Severity::Info)),
         "expected skill-agent-unknown Info: {findings:?}"
     );
 }
@@ -363,9 +395,7 @@ fn skill_validator_accepts_known_agent_types() {
     };
     let v = SkillValidator::new(&policy);
     for agent in &["Explore", "Plan", "general-purpose"] {
-        let md = format!(
-            "---\nname: my-skill\ndescription: a skill\nagent: {agent}\n---\nBody\n"
-        );
+        let md = format!("---\nname: my-skill\ndescription: a skill\nagent: {agent}\n---\nBody\n");
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("my-skill/SKILL.md");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -384,14 +414,16 @@ fn skill_validator_emits_info_for_model_override() {
         max_description_chars: 400,
     };
     let v = SkillValidator::new(&policy);
-    let md = "---\nname: my-skill\ndescription: a skill\nmodel: claude-opus-4-20250514\n---\nBody\n";
+    let md =
+        "---\nname: my-skill\ndescription: a skill\nmodel: claude-opus-4-20250514\n---\nBody\n";
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings.iter().any(|f| f.slug == "skill-model-override"
-            && matches!(f.severity, Severity::Info)),
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-model-override" && matches!(f.severity, Severity::Info)),
         "expected skill-model-override Info: {findings:?}"
     );
 }
@@ -409,12 +441,15 @@ fn skill_validator_flags_unknown_hook_event_in_skill() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings.iter().any(|f| f.slug == "skill-hooks-unknown-event"),
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-hooks-unknown-event"),
         "expected skill-hooks-unknown-event: {findings:?}"
     );
     assert!(
-        !findings.iter().any(|f| f.slug == "skill-hooks-unknown-event"
-            && f.message.contains("PreToolUse")),
+        !findings
+            .iter()
+            .any(|f| f.slug == "skill-hooks-unknown-event" && f.message.contains("PreToolUse")),
         "PreToolUse should be accepted"
     );
 }
@@ -472,7 +507,9 @@ fn settings_validator_accepts_valid_skill_overrides() {
     }"#;
     let findings = v.validate_text(json, Path::new(".claude/settings.json"));
     assert!(
-        !findings.iter().any(|f| f.slug == "settings-skill-override-invalid"),
+        !findings
+            .iter()
+            .any(|f| f.slug == "settings-skill-override-invalid"),
         "all valid overrides should be accepted: {findings:?}"
     );
 }
@@ -491,7 +528,11 @@ fn settings_validator_warns_overly_permissive_allow() {
         .iter()
         .filter(|f| f.slug == "settings-overly-permissive")
         .collect();
-    assert_eq!(permissive.len(), 1, "expected 1 overly-permissive: {findings:?}");
+    assert_eq!(
+        permissive.len(),
+        1,
+        "expected 1 overly-permissive: {findings:?}"
+    );
     assert!(permissive[0].message.contains("Bash(rm:*)"));
 }
 
@@ -506,7 +547,9 @@ fn settings_validator_accepts_scoped_allow() {
     }"#;
     let findings = v.validate_text(json, Path::new(".claude/settings.json"));
     assert!(
-        !findings.iter().any(|f| f.slug == "settings-overly-permissive"),
+        !findings
+            .iter()
+            .any(|f| f.slug == "settings-overly-permissive"),
         "scoped pattern should not trigger: {findings:?}"
     );
 }
@@ -520,8 +563,10 @@ fn settings_validator_notes_auto_memory_configured() {
     }"#;
     let findings = v.validate_text(json, Path::new(".claude/settings.json"));
     assert!(
-        findings.iter().any(|f| f.slug == "settings-auto-memory-configured"
-            && matches!(f.severity, Severity::Info)),
+        findings
+            .iter()
+            .any(|f| f.slug == "settings-auto-memory-configured"
+                && matches!(f.severity, Severity::Info)),
         "expected settings-auto-memory-configured Info: {findings:?}"
     );
 }
@@ -534,7 +579,9 @@ fn settings_validator_no_auto_memory_finding_when_absent() {
     }"#;
     let findings = v.validate_text(json, Path::new(".claude/settings.json"));
     assert!(
-        !findings.iter().any(|f| f.slug == "settings-auto-memory-configured"),
+        !findings
+            .iter()
+            .any(|f| f.slug == "settings-auto-memory-configured"),
         "no auto-memory finding when key absent: {findings:?}"
     );
 }

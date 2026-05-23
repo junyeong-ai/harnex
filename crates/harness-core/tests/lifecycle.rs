@@ -1,20 +1,23 @@
 //! Integration tests for the lifecycle module.
 
-use harness_core::config::{
-    ConsumerDetectorDecl, RetirementExemptDecl, KindDecl, LifecycleConfig, RetirementConfig,
-};
 use harness_core::config::{Config, TelemetryConfig, TelemetryKindDecl};
+use harness_core::config::{
+    ConsumerDetectorDecl, KindDecl, LifecycleConfig, RetirementConfig, RetirementExemptDecl,
+};
 use harness_core::lifecycle::{
-    ConsumerDetector, DecisionLedger, GrepConsumerDetector, LifecycleDecisionRecorder, ObservationLedger, PromotionCandidateFinder,
-    PromotionDecision, RetirementClassifier, RetirementSignal, RetirementSweeper,
-    consumer_detector_for,
+    ConsumerDetector, DecisionLedger, GrepConsumerDetector, LifecycleDecisionRecorder,
+    ObservationLedger, PromotionCandidateFinder, PromotionDecision, RetirementClassifier,
+    RetirementSignal, RetirementSweeper, consumer_detector_for,
 };
 use harness_core::telemetry::{JsonlStorage, TelemetryAppender, TelemetryQuery};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
 fn default_lifecycle(observation_dir: PathBuf) -> LifecycleConfig {
-    let parent = observation_dir.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let parent = observation_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default();
     LifecycleConfig {
         promotion_min_instances: 3,
         promotion_min_days: 0, // tests run within seconds
@@ -77,7 +80,9 @@ fn promoter_lists_threshold_crossing_groups() {
     let ledger = ObservationLedger::new(tmp.path().to_path_buf());
     let decisions = decisions_for(&tmp);
     seed_three_observations(&ledger);
-    ledger.append("naming", "different observation", "spec-d").unwrap();
+    ledger
+        .append("naming", "different observation", "spec-d")
+        .unwrap();
 
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
     let candidates = promoter.finder.list_candidates().unwrap();
@@ -220,10 +225,7 @@ fn consumer_factory_builds_graph_backlinks_when_nodex_present() {
     );
     match result {
         Ok(detector) => assert_eq!(detector.strategy(), "graph-backlinks"),
-        Err(e) => assert_eq!(
-            e.code(),
-            harness_core::error::ErrorCode::GuardSpawnFailure
-        ),
+        Err(e) => assert_eq!(e.code(), harness_core::error::ErrorCode::GuardSpawnFailure),
     }
 }
 
@@ -234,7 +236,10 @@ fn promote_rejects_empty_decision_text() {
     let ledger = ObservationLedger::new(tmp.path().to_path_buf());
     let decisions = decisions_for(&tmp);
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
-    let err = promoter.recorder.promote("naming", "use snake case", "   ").unwrap_err();
+    let err = promoter
+        .recorder
+        .promote("naming", "use snake case", "   ")
+        .unwrap_err();
     assert_eq!(
         err.code(),
         harness_core::error::ErrorCode::LifecycleDecisionTextEmpty
@@ -269,7 +274,11 @@ fn approve_excludes_from_future_listing() {
     assert_eq!(promoter.finder.list_candidates().unwrap().len(), 1);
     promoter
         .recorder
-        .promote("naming", "use snake case", "promoted to naming-conventions.md")
+        .promote(
+            "naming",
+            "use snake case",
+            "promoted to naming-conventions.md",
+        )
         .unwrap();
     assert!(promoter.finder.list_candidates().unwrap().is_empty());
 }
@@ -335,8 +344,14 @@ fn promote_after_demote_is_allowed_and_resuppresses() {
     seed_three_observations(&ledger);
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
 
-    promoter.recorder.promote("naming", "use snake case", "v1").unwrap();
-    promoter.recorder.demote("naming", "use snake case", "rolled back").unwrap();
+    promoter
+        .recorder
+        .promote("naming", "use snake case", "v1")
+        .unwrap();
+    promoter
+        .recorder
+        .demote("naming", "use snake case", "rolled back")
+        .unwrap();
     let re_promote = promoter
         .recorder
         .promote("naming", "use snake case", "v2 after rehab")
@@ -366,8 +381,14 @@ fn second_demote_without_re_approval_is_refused() {
     let decisions = decisions_for(&tmp);
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
 
-    promoter.recorder.promote("naming", "use snake case", "v1").unwrap();
-    promoter.recorder.demote("naming", "use snake case", "rolled back").unwrap();
+    promoter
+        .recorder
+        .promote("naming", "use snake case", "v1")
+        .unwrap();
+    promoter
+        .recorder
+        .demote("naming", "use snake case", "rolled back")
+        .unwrap();
     // Second demote with no intervening Approved must fail
     let err = promoter
         .recorder
@@ -391,9 +412,15 @@ fn demote_after_rehab_re_approval_is_allowed() {
 
     promoter.recorder.promote("naming", "v", "v1").unwrap();
     promoter.recorder.demote("naming", "v", "rollback").unwrap();
-    promoter.recorder.promote("naming", "v", "v2 rehab").unwrap();
+    promoter
+        .recorder
+        .promote("naming", "v", "v2 rehab")
+        .unwrap();
     // Now latest is Approved again — demote should succeed
-    let again = promoter.recorder.demote("naming", "v", "second rollback").unwrap();
+    let again = promoter
+        .recorder
+        .demote("naming", "v", "second rollback")
+        .unwrap();
     assert_eq!(again.decision, PromotionDecision::Demoted);
 }
 
@@ -411,7 +438,11 @@ fn demote_succeeds_after_approval_and_excludes_from_listing() {
         .unwrap();
     let demoted = promoter
         .recorder
-        .demote("naming", "use snake case", "rule proved narrow; rolled back")
+        .demote(
+            "naming",
+            "use snake case",
+            "rule proved narrow; rolled back",
+        )
         .unwrap();
     assert_eq!(demoted.decision, PromotionDecision::Demoted);
     // Both Approved AND Demoted live in the ledger; both suppress surfacing.
@@ -440,19 +471,34 @@ fn decision_ledger_round_trips_all_four_decisions() {
     promoter.recorder.reject("t2", "y", "rejected").unwrap();
     promoter.recorder.defer("t3", "z", "deferred").unwrap();
     // Need prior approval for demote
-    promoter.recorder.promote("t4", "w", "approved-first").unwrap();
+    promoter
+        .recorder
+        .promote("t4", "w", "approved-first")
+        .unwrap();
     promoter.recorder.demote("t4", "w", "then-demoted").unwrap();
 
     let records = ledger.load_all().unwrap();
     assert_eq!(records.len(), 5);
 
-    let approved: Vec<_> = records.iter().filter(|r| r.decision == PromotionDecision::Approved).collect();
+    let approved: Vec<_> = records
+        .iter()
+        .filter(|r| r.decision == PromotionDecision::Approved)
+        .collect();
     assert_eq!(approved.len(), 2);
-    let rejected: Vec<_> = records.iter().filter(|r| r.decision == PromotionDecision::Rejected).collect();
+    let rejected: Vec<_> = records
+        .iter()
+        .filter(|r| r.decision == PromotionDecision::Rejected)
+        .collect();
     assert_eq!(rejected.len(), 1);
-    let deferred: Vec<_> = records.iter().filter(|r| r.decision == PromotionDecision::Deferred).collect();
+    let deferred: Vec<_> = records
+        .iter()
+        .filter(|r| r.decision == PromotionDecision::Deferred)
+        .collect();
     assert_eq!(deferred.len(), 1);
-    let demoted: Vec<_> = records.iter().filter(|r| r.decision == PromotionDecision::Demoted).collect();
+    let demoted: Vec<_> = records
+        .iter()
+        .filter(|r| r.decision == PromotionDecision::Demoted)
+        .collect();
     assert_eq!(demoted.len(), 1);
 }
 
@@ -477,10 +523,7 @@ fn telemetry_cfg(dir: PathBuf) -> TelemetryConfig {
     }
 }
 
-fn build_sweep_config(
-    tmp_path: &std::path::Path,
-    extra_kinds: Vec<KindDecl>,
-) -> Config {
+fn build_sweep_config(tmp_path: &std::path::Path, extra_kinds: Vec<KindDecl>) -> Config {
     let cfg = harness_core::config::Config {
         meta: harness_core::config::MetaConfig {
             harness_toolkit_version: ">=0.1, <0.2".into(),
@@ -504,8 +547,16 @@ fn sweep_walks_every_kind_with_consumer_detector() {
     let tmp = TempDir::new().unwrap();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
-    std::fs::write(rule_dir.join("rule-a.md"), "---\npaths: [\"x\"]\n---\nbody\n").unwrap();
-    std::fs::write(rule_dir.join("rule-b.md"), "---\npaths: [\"y\"]\n---\nbody\n").unwrap();
+    std::fs::write(
+        rule_dir.join("rule-a.md"),
+        "---\npaths: [\"x\"]\n---\nbody\n",
+    )
+    .unwrap();
+    std::fs::write(
+        rule_dir.join("rule-b.md"),
+        "---\npaths: [\"y\"]\n---\nbody\n",
+    )
+    .unwrap();
 
     let cfg = build_sweep_config(
         tmp.path(),
@@ -554,7 +605,10 @@ fn sweep_skips_foundation_kinds() {
         .run()
         .unwrap();
     assert!(
-        outcome.kinds_skipped.iter().any(|s| s.slug == "constitution"),
+        outcome
+            .kinds_skipped
+            .iter()
+            .any(|s| s.slug == "constitution"),
         "foundation kind must be skipped"
     );
     assert!(outcome.kinds_processed.contains(&"rule".to_string()));
@@ -608,7 +662,8 @@ fn sweep_derives_silent_from_telemetry_payload() {
     // Seed telemetry: an event with "active-rule" in payload
     {
         let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
-        let mut appender = TelemetryAppender::new(cfg.telemetry.as_ref().unwrap(), storage).unwrap();
+        let mut appender =
+            TelemetryAppender::new(cfg.telemetry.as_ref().unwrap(), storage).unwrap();
         appender
             .append(
                 "skill-invoked",
@@ -623,10 +678,24 @@ fn sweep_derives_silent_from_telemetry_payload() {
         .run()
         .unwrap();
 
-    let active = outcome.verdicts.iter().find(|v| v.slug == "active-rule").unwrap();
-    let silent_rule = outcome.verdicts.iter().find(|v| v.slug == "silent-rule").unwrap();
-    assert!(!active.silent, "active-rule must not be Silent (event references it)");
-    assert!(silent_rule.silent, "silent-rule must be Silent (no event references)");
+    let active = outcome
+        .verdicts
+        .iter()
+        .find(|v| v.slug == "active-rule")
+        .unwrap();
+    let silent_rule = outcome
+        .verdicts
+        .iter()
+        .find(|v| v.slug == "silent-rule")
+        .unwrap();
+    assert!(
+        !active.silent,
+        "active-rule must not be Silent (event references it)"
+    );
+    assert!(
+        silent_rule.silent,
+        "silent-rule must be Silent (no event references)"
+    );
 }
 
 #[test]

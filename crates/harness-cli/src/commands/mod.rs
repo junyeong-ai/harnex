@@ -33,10 +33,7 @@ pub fn config_dir(config_path: &std::path::Path, working_dir: &std::path::Path) 
         .unwrap_or_else(|| working_dir.to_path_buf())
 }
 
-pub fn write_envelope_success<T: serde::Serialize, W: Write>(
-    out: &mut W,
-    data: T,
-) -> Result<()> {
+pub fn write_envelope_success<T: serde::Serialize, W: Write>(out: &mut W, data: T) -> Result<()> {
     harness_core::envelope::write_success(out, data, &[]).map_err(|e| Error::IoFailure {
         path: PathBuf::from("(stdout)"),
         source: e,

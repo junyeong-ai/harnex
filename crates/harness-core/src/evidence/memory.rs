@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use super::{Claim, VerifyOutcome, Verifier};
+use super::{Claim, Verifier, VerifyOutcome};
 
 pub(crate) struct MemoryOnlyVerifier {
     provenance: String,

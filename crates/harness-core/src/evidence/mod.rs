@@ -147,12 +147,7 @@ impl EvidenceVerifier {
 
     /// Verify all claims found in `markdown`. The `source` path appears in
     /// the location of any finding produced.
-    pub fn verify_text(
-        &self,
-        markdown: &str,
-        source: &Path,
-        working_dir: &Path,
-    ) -> Vec<Finding> {
+    pub fn verify_text(&self, markdown: &str, source: &Path, working_dir: &Path) -> Vec<Finding> {
         let mut findings = Vec::new();
         for claim in parse_claims(markdown) {
             let provenance = claim

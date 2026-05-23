@@ -140,9 +140,10 @@ struct ItemsPayload {
 
 /// Parse a nodex success envelope, expecting `data` shaped like [`GraphDiff`].
 fn parse_diff(raw: &str) -> Result<GraphDiff> {
-    let env: EnvelopeProbe = serde_json::from_str(raw).map_err(|e| Error::GraphResponseInvalid {
-        message: format!("nodex envelope parse: {e}"),
-    })?;
+    let env: EnvelopeProbe =
+        serde_json::from_str(raw).map_err(|e| Error::GraphResponseInvalid {
+            message: format!("nodex envelope parse: {e}"),
+        })?;
     if !env.ok {
         return Err(Error::GraphSpawnFailure {
             message: format!("nodex returned error: {}", env.error),
@@ -232,9 +233,7 @@ mod tests {
 
     #[test]
     fn supports_array_shaped_data() {
-        let runner = MockRunner::new(vec![
-            r#"{"ok":true,"data":[{"id":"x"},{"id":"y"}]}"#,
-        ]);
+        let runner = MockRunner::new(vec![r#"{"ok":true,"data":[{"id":"x"},{"id":"y"}]}"#]);
         let client = NodexClient::new(runner);
         let nodes = client.orphans().unwrap();
         assert_eq!(nodes.len(), 2);
@@ -242,9 +241,7 @@ mod tests {
 
     #[test]
     fn surfaces_error_envelope() {
-        let runner = MockRunner::new(vec![
-            r#"{"ok":false,"error":{"code":"X","message":"y"}}"#,
-        ]);
+        let runner = MockRunner::new(vec![r#"{"ok":false,"error":{"code":"X","message":"y"}}"#]);
         let client = NodexClient::new(runner);
         let err = client.stale().unwrap_err();
         assert_eq!(err.code(), crate::error::ErrorCode::GraphSpawnFailure);

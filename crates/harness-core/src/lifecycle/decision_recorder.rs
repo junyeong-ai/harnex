@@ -110,7 +110,7 @@ impl<'a> PromotionCandidateFinder<'a> {
                 sources,
             });
         }
-        out.sort_by(|a, b| b.instance_count.cmp(&a.instance_count));
+        out.sort_by_key(|c| std::cmp::Reverse(c.instance_count));
         Ok(out)
     }
 }

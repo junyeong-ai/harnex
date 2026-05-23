@@ -41,10 +41,11 @@ pub fn run<W: Write>(args: CompletionsArgs, out: &mut W) -> Result<ExitCode> {
     })?;
 
     if args.raw {
-        out.write_all(script.as_bytes()).map_err(|e| Error::IoFailure {
-            path: std::path::PathBuf::from("(stdout)"),
-            source: e,
-        })?;
+        out.write_all(script.as_bytes())
+            .map_err(|e| Error::IoFailure {
+                path: std::path::PathBuf::from("(stdout)"),
+                source: e,
+            })?;
     } else {
         write_envelope_success(
             out,

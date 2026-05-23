@@ -36,9 +36,13 @@ pub fn run<W: Write>(args: InitArgs, out: &mut W) -> Result<ExitCode> {
             .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
             .unwrap_or_else(|| "my-project".to_string())
     });
-    let init = ProjectInitializer::new(&args.dir, project_name, args.force)
-        .with_hooks(!args.no_hooks);
-    let outcome = if args.dry_run { init.plan()? } else { init.apply()? };
+    let init =
+        ProjectInitializer::new(&args.dir, project_name, args.force).with_hooks(!args.no_hooks);
+    let outcome = if args.dry_run {
+        init.plan()?
+    } else {
+        init.apply()?
+    };
     write_envelope_success(out, outcome)?;
     Ok(ExitCode::SUCCESS)
 }

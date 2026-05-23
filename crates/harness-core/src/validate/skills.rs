@@ -238,51 +238,51 @@ impl<'a> SkillValidator<'a> {
         }
 
         // user-invocable: must be boolean if present
-        if let Some(ref val) = parsed.user_invocable {
-            if !val.is_bool() {
-                findings.push(Finding {
-                    slug: "skill-user-invocable-invalid".into(),
-                    severity: Severity::Major,
-                    location: Location::line(path.to_path_buf(), fm.begin_line),
-                    message: "user-invocable must be a boolean (true or false)".into(),
-                    hint: Some("set `user-invocable: true` or `user-invocable: false`".into()),
-                    auto_fixable: false,
-                    fix_command: None,
-                });
-            }
+        if let Some(ref val) = parsed.user_invocable
+            && !val.is_bool()
+        {
+            findings.push(Finding {
+                slug: "skill-user-invocable-invalid".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), fm.begin_line),
+                message: "user-invocable must be a boolean (true or false)".into(),
+                hint: Some("set `user-invocable: true` or `user-invocable: false`".into()),
+                auto_fixable: false,
+                fix_command: None,
+            });
         }
 
         // context: only allowed value is "fork"
-        if let Some(ref ctx) = parsed.context {
-            if ctx != "fork" {
-                findings.push(Finding {
-                    slug: "skill-context-invalid".into(),
-                    severity: Severity::Major,
-                    location: Location::line(path.to_path_buf(), fm.begin_line),
-                    message: format!("context '{ctx}' is not valid; only 'fork' is allowed"),
-                    hint: Some("set `context: fork` or remove the field".into()),
-                    auto_fixable: false,
-                    fix_command: None,
-                });
-            }
+        if let Some(ref ctx) = parsed.context
+            && ctx != "fork"
+        {
+            findings.push(Finding {
+                slug: "skill-context-invalid".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), fm.begin_line),
+                message: format!("context '{ctx}' is not valid; only 'fork' is allowed"),
+                hint: Some("set `context: fork` or remove the field".into()),
+                auto_fixable: false,
+                fix_command: None,
+            });
         }
 
         // agent: known types get no finding; unknown emits Info
-        if let Some(ref agent) = parsed.agent {
-            if !KNOWN_AGENT_TYPES.contains(&agent.as_str()) {
-                findings.push(Finding {
-                    slug: "skill-agent-unknown".into(),
-                    severity: Severity::Info,
-                    location: Location::line(path.to_path_buf(), fm.begin_line),
-                    message: format!(
-                        "agent '{agent}' is not a known built-in type ({}); custom agent assumed",
-                        KNOWN_AGENT_TYPES.join(", ")
-                    ),
-                    hint: Some("verify this agent type is registered in your project".into()),
-                    auto_fixable: false,
-                    fix_command: None,
-                });
-            }
+        if let Some(ref agent) = parsed.agent
+            && !KNOWN_AGENT_TYPES.contains(&agent.as_str())
+        {
+            findings.push(Finding {
+                slug: "skill-agent-unknown".into(),
+                severity: Severity::Info,
+                location: Location::line(path.to_path_buf(), fm.begin_line),
+                message: format!(
+                    "agent '{agent}' is not a known built-in type ({}); custom agent assumed",
+                    KNOWN_AGENT_TYPES.join(", ")
+                ),
+                hint: Some("verify this agent type is registered in your project".into()),
+                auto_fixable: false,
+                fix_command: None,
+            });
         }
 
         // allowed-tools: must be an array of strings
@@ -295,9 +295,7 @@ impl<'a> SkillValidator<'a> {
                                 slug: "skill-allowed-tools-invalid".into(),
                                 severity: Severity::Major,
                                 location: Location::line(path.to_path_buf(), fm.begin_line),
-                                message: format!(
-                                    "allowed-tools[{i}] is not a string"
-                                ),
+                                message: format!("allowed-tools[{i}] is not a string"),
                                 hint: Some(
                                     "each entry in allowed-tools must be a tool name string".into(),
                                 ),
@@ -313,9 +311,7 @@ impl<'a> SkillValidator<'a> {
                         severity: Severity::Major,
                         location: Location::line(path.to_path_buf(), fm.begin_line),
                         message: "allowed-tools must be an array of strings".into(),
-                        hint: Some(
-                            "use `allowed-tools: [Bash, Read, Edit]` syntax".into(),
-                        ),
+                        hint: Some("use `allowed-tools: [Bash, Read, Edit]` syntax".into()),
                         auto_fixable: false,
                         fix_command: None,
                     });
@@ -348,9 +344,7 @@ impl<'a> SkillValidator<'a> {
                                 severity: Severity::Major,
                                 location: Location::line(path.to_path_buf(), fm.begin_line),
                                 message: format!("paths[{i}] is not a string"),
-                                hint: Some(
-                                    "each entry in paths must be a glob string".into(),
-                                ),
+                                hint: Some("each entry in paths must be a glob string".into()),
                                 auto_fixable: false,
                                 fix_command: None,
                             });
@@ -375,23 +369,20 @@ impl<'a> SkillValidator<'a> {
         if let Some(ref val) = parsed.hooks {
             if let Some(mapping) = val.as_mapping() {
                 for key in mapping.keys() {
-                    if let Some(event_name) = key.as_str() {
-                        if !KNOWN_HOOK_EVENTS.contains(&event_name) {
-                            findings.push(Finding {
-                                slug: "skill-hooks-unknown-event".into(),
-                                severity: Severity::Major,
-                                location: Location::line(path.to_path_buf(), fm.begin_line),
-                                message: format!(
-                                    "hook event '{event_name}' is not in the Claude Code spec /en/hooks"
-                                ),
-                                hint: Some(format!(
-                                    "known events: {}",
-                                    KNOWN_HOOK_EVENTS.join(", ")
-                                )),
-                                auto_fixable: false,
-                                fix_command: None,
-                            });
-                        }
+                    if let Some(event_name) = key.as_str()
+                        && !KNOWN_HOOK_EVENTS.contains(&event_name)
+                    {
+                        findings.push(Finding {
+                            slug: "skill-hooks-unknown-event".into(),
+                            severity: Severity::Major,
+                            location: Location::line(path.to_path_buf(), fm.begin_line),
+                            message: format!(
+                                "hook event '{event_name}' is not in the Claude Code spec /en/hooks"
+                            ),
+                            hint: Some(format!("known events: {}", KNOWN_HOOK_EVENTS.join(", "))),
+                            auto_fixable: false,
+                            fix_command: None,
+                        });
                     }
                 }
             } else {
@@ -413,9 +404,7 @@ impl<'a> SkillValidator<'a> {
                 slug: "skill-model-override".into(),
                 severity: Severity::Info,
                 location: Location::line(path.to_path_buf(), fm.begin_line),
-                message: format!(
-                    "skill overrides session model to '{model}'"
-                ),
+                message: format!("skill overrides session model to '{model}'"),
                 hint: Some(
                     "this is intentional if the skill requires a specific model; \
                      remove `model:` to use the session default"
@@ -427,23 +416,21 @@ impl<'a> SkillValidator<'a> {
         }
 
         // effort: must be one of the known levels
-        if let Some(ref effort) = parsed.effort {
-            if !KNOWN_EFFORT_LEVELS.contains(&effort.as_str()) {
-                findings.push(Finding {
-                    slug: "skill-effort-invalid".into(),
-                    severity: Severity::Major,
-                    location: Location::line(path.to_path_buf(), fm.begin_line),
-                    message: format!(
-                        "effort '{effort}' is not valid; must be one of: {}",
-                        KNOWN_EFFORT_LEVELS.join(", ")
-                    ),
-                    hint: Some(
-                        "set effort to low, medium, high, xhigh, or max".into(),
-                    ),
-                    auto_fixable: false,
-                    fix_command: None,
-                });
-            }
+        if let Some(ref effort) = parsed.effort
+            && !KNOWN_EFFORT_LEVELS.contains(&effort.as_str())
+        {
+            findings.push(Finding {
+                slug: "skill-effort-invalid".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), fm.begin_line),
+                message: format!(
+                    "effort '{effort}' is not valid; must be one of: {}",
+                    KNOWN_EFFORT_LEVELS.join(", ")
+                ),
+                hint: Some("set effort to low, medium, high, xhigh, or max".into()),
+                auto_fixable: false,
+                fix_command: None,
+            });
         }
 
         findings

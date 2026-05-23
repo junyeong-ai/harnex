@@ -105,10 +105,11 @@ impl ConsumerDetector for GrepConsumerDetector {
             }
             let path = entry.path();
             let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
-            if path
-                .components()
-                .any(|c| c.as_os_str().to_str().is_some_and(|s| SKIP_DIRS.contains(&s)))
-            {
+            if path.components().any(|c| {
+                c.as_os_str()
+                    .to_str()
+                    .is_some_and(|s| SKIP_DIRS.contains(&s))
+            }) {
                 continue;
             }
             if path
@@ -163,23 +164,6 @@ impl ConsumerDetector for GraphBacklinksConsumerDetector {
 /// Build the appropriate detector for the declared strategy, anchored
 /// to `working_dir`. Fails explicitly when `graph-backlinks` is selected
 /// but nodex is missing — never silently falls back to grep.
-#[cfg(test)]
-mod strategy_tests {
-    use super::ConsumerStrategy;
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for s in ConsumerStrategy::ALL {
-            assert_eq!(ConsumerStrategy::from_str(s.as_str()), Some(*s));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert_eq!(ConsumerStrategy::from_str("nope"), None);
-    }
-}
-
 pub fn consumer_detector_for(
     decl: ConsumerDetectorDecl,
     working_dir: &Path,
@@ -195,14 +179,30 @@ pub fn consumer_detector_for(
             working_dir.to_path_buf(),
         ))),
         ConsumerStrategy::GraphBacklinks => {
-            let client = NodexClient::anchored(working_dir).ok_or_else(|| {
-                Error::GraphSpawnFailure {
+            let client =
+                NodexClient::anchored(working_dir).ok_or_else(|| Error::GraphSpawnFailure {
                     message:
                         "nodex binary not found on PATH; graph-backlinks strategy requires nodex"
                             .into(),
-                }
-            })?;
+                })?;
             Ok(Box::new(GraphBacklinksConsumerDetector::new(decl, client)))
         }
+    }
+}
+
+#[cfg(test)]
+mod strategy_tests {
+    use super::ConsumerStrategy;
+
+    #[test]
+    fn from_str_round_trips_every_variant() {
+        for s in ConsumerStrategy::ALL {
+            assert_eq!(ConsumerStrategy::from_str(s.as_str()), Some(*s));
+        }
+    }
+
+    #[test]
+    fn from_str_rejects_unknown() {
+        assert_eq!(ConsumerStrategy::from_str("nope"), None);
     }
 }

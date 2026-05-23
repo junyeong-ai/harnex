@@ -96,10 +96,7 @@ pub fn run<W: Write>(cmd: TelemetryCommand, out: &mut W) -> Result<ExitCode> {
         TelemetryCommand::Report { kind, window } => {
             let storage = JsonlStorage::new(storage_dir, tcfg.rotate_at_mb);
             let query = TelemetryQuery::new(storage);
-            let windows = window
-                .as_deref()
-                .unwrap_or(DEFAULT_REPORT_WINDOWS)
-                .to_vec();
+            let windows = window.as_deref().unwrap_or(DEFAULT_REPORT_WINDOWS).to_vec();
             let summary = query.report(&windows, kind.as_deref())?;
             write_envelope_success(out, summary)?;
             Ok(ExitCode::SUCCESS)

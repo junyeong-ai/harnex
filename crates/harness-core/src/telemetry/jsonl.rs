@@ -64,9 +64,7 @@ impl JsonlStorage {
             Err(_) => 0,
         };
         if size >= self.rotate_at_bytes && size > 0 {
-            let ts = jiff::Timestamp::now()
-                .strftime("%Y%m%dT%H%M%S")
-                .to_string();
+            let ts = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%S").to_string();
             let parent = path.parent().unwrap_or(Path::new("."));
             let stem = path
                 .file_stem()

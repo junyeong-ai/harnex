@@ -48,8 +48,14 @@ fn check_runs_every_enabled_validator() {
     let tmp = TempDir::new().unwrap();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
 
-    write(&tmp.path().join(".claude/rules/constitution.md"), "# Constitution\n");
-    write(&tmp.path().join(".claude/rules/api.md"), "# Rule without paths frontmatter\n");
+    write(
+        &tmp.path().join(".claude/rules/constitution.md"),
+        "# Constitution\n",
+    );
+    write(
+        &tmp.path().join(".claude/rules/api.md"),
+        "# Rule without paths frontmatter\n",
+    );
     write(
         &tmp.path().join(".claude/skills/deploy/SKILL.md"),
         "---\nname: deploy\ndescription: Deploy the app to production\n---\nBody\n",
@@ -63,8 +69,17 @@ fn check_runs_every_enabled_validator() {
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
 
     // Every enabled validator ran
-    for v in ["validate.rules", "validate.skills", "validate.settings", "evidence", "policy.permissions"] {
-        assert!(outcome.run_validators.contains(&v.to_string()), "missing {v}");
+    for v in [
+        "validate.rules",
+        "validate.skills",
+        "validate.settings",
+        "evidence",
+        "policy.permissions",
+    ] {
+        assert!(
+            outcome.run_validators.contains(&v.to_string()),
+            "missing {v}"
+        );
     }
     // codegen skipped (no [codegen] section)
     assert!(outcome.skipped.iter().any(|s| s.slug == "codegen"));
@@ -106,11 +121,7 @@ fn check_emits_codegen_drift_as_blocker() {
     let src = tmp.path().join("enums.toml");
     fs::write(&src, "[k]\nallowed = [\"a\", \"b\"]\n").unwrap();
     let target = tmp.path().join("nodex.toml");
-    fs::write(
-        &target,
-        "# BEGIN x\nallowed = [\"stale\"]\n# END x\n",
-    )
-    .unwrap();
+    fs::write(&target, "# BEGIN x\nallowed = [\"stale\"]\n# END x\n").unwrap();
 
     let toml_body = r##"
 [meta]
@@ -135,10 +146,7 @@ name = "allowed"
         .filter(|f| f.slug == "codegen-drift")
         .collect();
     assert_eq!(drift.len(), 1);
-    assert_eq!(
-        drift[0].severity,
-        harness_core::envelope::Severity::Blocker
-    );
+    assert_eq!(drift[0].severity, harness_core::envelope::Severity::Blocker);
     assert!(drift[0].auto_fixable);
     assert_eq!(
         drift[0].fix_command.as_deref(),
@@ -214,10 +222,7 @@ fn since_filter_excludes_unchanged_files_when_git_unavailable() {
         Ok(_) => panic!("expected error from bogus --since ref"),
         Err(e) => e,
     };
-    assert_eq!(
-        err.code(),
-        harness_core::error::ErrorCode::CheckGitFailure
-    );
+    assert_eq!(err.code(), harness_core::error::ErrorCode::CheckGitFailure);
 }
 
 #[test]
@@ -281,10 +286,7 @@ fn fix_is_noop_when_no_auto_fixable_findings() {
     // No drift; rule/skill validators have no candidates to find issues with
     let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
     assert!(outcome.fixes_attempted.is_empty());
-    assert_eq!(
-        outcome.before.findings.len(),
-        outcome.after.findings.len()
-    );
+    assert_eq!(outcome.before.findings.len(), outcome.after.findings.len());
 }
 
 #[test]
@@ -307,8 +309,14 @@ fn fix_unrecognized_command_status() {
 fn files_scanned_counts_only_passing_filter() {
     let tmp = TempDir::new().unwrap();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
-    write(&tmp.path().join(".claude/rules/a.md"), "---\npaths: [\"x\"]\n---\n");
-    write(&tmp.path().join(".claude/rules/b.md"), "---\npaths: [\"y\"]\n---\n");
+    write(
+        &tmp.path().join(".claude/rules/a.md"),
+        "---\npaths: [\"x\"]\n---\n",
+    );
+    write(
+        &tmp.path().join(".claude/rules/b.md"),
+        "---\npaths: [\"y\"]\n---\n",
+    );
     write(
         &tmp.path().join(".claude/settings.json"),
         r#"{"permissions":{"deny":["Bash(sudo *)"]}}"#,
@@ -317,5 +325,9 @@ fn files_scanned_counts_only_passing_filter() {
 
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     // 2 rules (a, b) + 1 settings + 3 evidence (CLAUDE.md + a.md + b.md) = 6
-    assert!(outcome.files_scanned >= 5, "files_scanned = {}", outcome.files_scanned);
+    assert!(
+        outcome.files_scanned >= 5,
+        "files_scanned = {}",
+        outcome.files_scanned
+    );
 }

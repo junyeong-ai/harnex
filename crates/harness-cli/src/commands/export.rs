@@ -34,12 +34,11 @@ pub fn run<W: Write>(cmd: ExportCommand, out: &mut W) -> Result<ExitCode> {
             })?;
             let schema = schema_for(parsed);
             if raw {
-                let pretty = serde_json::to_string_pretty(&schema).map_err(|e| {
-                    Error::IoFailure {
+                let pretty =
+                    serde_json::to_string_pretty(&schema).map_err(|e| Error::IoFailure {
                         path: std::path::PathBuf::from("<stdout>"),
                         source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),
-                    }
-                })?;
+                    })?;
                 writeln!(out, "{pretty}").map_err(|e| Error::IoFailure {
                     path: std::path::PathBuf::from("<stdout>"),
                     source: e,

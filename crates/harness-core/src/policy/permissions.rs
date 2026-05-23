@@ -167,9 +167,11 @@ mod tests {
         let deny = vec![]; // intentionally empty
         let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny).audit();
         assert!(!findings.is_empty());
-        assert!(findings
-            .iter()
-            .any(|f| f.kind == PermissionFindingKind::MissingBaselineDeny));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.kind == PermissionFindingKind::MissingBaselineDeny)
+        );
     }
 
     #[test]
@@ -179,9 +181,11 @@ mod tests {
         let ask: Vec<String> = vec![];
         let deny = vec!["Bash(foo)".to_string()];
         let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny).audit();
-        assert!(findings
-            .iter()
-            .any(|f| f.kind == PermissionFindingKind::ContradictoryRule));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.kind == PermissionFindingKind::ContradictoryRule)
+        );
     }
 
     #[test]
@@ -191,11 +195,11 @@ mod tests {
         let ask = vec!["Bash(bar)".to_string()];
         let deny = vec!["Bash(bar)".to_string()];
         let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny).audit();
-        assert!(findings
-            .iter()
-            .any(|f| f.kind == PermissionFindingKind::ContradictoryRule));
-        assert!(findings
-            .iter()
-            .any(|f| f.message.contains("ask and deny")));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.kind == PermissionFindingKind::ContradictoryRule)
+        );
+        assert!(findings.iter().any(|f| f.message.contains("ask and deny")));
     }
 }

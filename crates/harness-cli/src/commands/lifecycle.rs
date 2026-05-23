@@ -164,7 +164,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                 })
                 .transpose()?;
             let mut records = decisions.load_all()?;
-            records.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            records.sort_by_key(|r| std::cmp::Reverse(r.timestamp));
             let filtered: Vec<_> = records
                 .into_iter()
                 .filter(|r| tag.as_deref().map(|t| r.tag == t).unwrap_or(true))
@@ -173,11 +173,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
             write_envelope_success(out, ListResponse::new(filtered))?;
             Ok(ExitCode::SUCCESS)
         }
-        LifecycleCommand::Classify {
-            kind,
-            path,
-            silent,
-        } => {
+        LifecycleCommand::Classify { kind, path, silent } => {
             let detector_decl = lc
                 .consumer_detectors
                 .iter()
@@ -196,8 +192,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
             } else {
                 root.join(path)
             };
-            let verdict =
-                classifier.classify(&kind, &target_path, detector.as_ref(), silent)?;
+            let verdict = classifier.classify(&kind, &target_path, detector.as_ref(), silent)?;
             write_envelope_success(out, verdict)?;
             Ok(ExitCode::SUCCESS)
         }
