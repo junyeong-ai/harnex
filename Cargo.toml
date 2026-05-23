@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/harness-core", "crates/harness-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/junyeong-ai/harness-toolkit"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1.1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+jiff = { version = "0.2", features = ["serde"] }
+url = "2"
+glob = "0.3"
+regex = "1"
+semver = "1"
+tempfile = "3"
+serde_yml = "0.0"
+walkdir = "2"
+schemars = { version = "1", features = ["preserve_order", "jiff02", "semver1"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
