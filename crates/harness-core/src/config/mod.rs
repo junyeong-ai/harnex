@@ -246,6 +246,14 @@ pub struct SkillsPolicy {
     /// silently ignores unknown keys, so typos go undetected by default.
     #[serde(default)]
     pub reject_unknown_keys: bool,
+    /// Opt-in: emit a Minor advisory when a skill description contains a
+    /// side-effect verb (`commit`, `deploy`, `delete`, `submit`, `send`,
+    /// `publish`, `release`) but lacks `disable-model-invocation: true`.
+    /// Default off — the check matches prose, not intent, and produces
+    /// false positives on read-only skills whose descriptions contain
+    /// those verbs (e.g., a skill that *reviews* commits).
+    #[serde(default)]
+    pub flag_side_effect_verbs: bool,
 }
 
 fn default_skill_max_lines() -> usize {
@@ -750,6 +758,19 @@ impl Config {
                     location: None,
                 });
             }
+            // Bound the retry ceiling: 0 would escalate before the critique
+            // ever runs, and a value at the integer ceiling would make the
+            // `attempt > max_retries` escalation (and the corrupt-ledger
+            // fail-safe) unreachable.
+            if sa.max_retries == 0 || sa.max_retries > 100 {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "[guard.stop_audit] max_retries must be in 1..=100 (got {})",
+                        sa.max_retries
+                    ),
+                    location: None,
+                });
+            }
         }
         Ok(())
     }
@@ -801,6 +822,38 @@ mod tests {
             harnex_version = "this-is-not-semver"
         "#;
         assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+    }
+
+    #[test]
+    fn rejects_out_of_range_stop_audit_max_retries() {
+        for bad in ["0", "101"] {
+            let src = format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+                [guard.stop_audit]
+                critique_skill = "/critique"
+                max_retries = {bad}
+                "#
+            );
+            assert_eq!(
+                parse(&src).unwrap_err().code(),
+                ErrorCode::ConfigInvalid,
+                "max_retries={bad} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_in_range_stop_audit_max_retries() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [guard.stop_audit]
+            critique_skill = "/critique"
+            max_retries = 3
+        "#;
+        assert!(parse(src).is_ok());
     }
 
     #[test]
