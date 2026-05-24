@@ -15,6 +15,8 @@
 //! - [`codegen`] — cross-file sentinel-block sync.
 //! - [`policy`] — permission profiles + version pins.
 //! - [`validate`] — rule / skill / settings / commit-msg checks.
+//! - [`audit`] — harness-engineering compliance gate (spec drift,
+//!   managed-region integrity).
 //! - [`lifecycle`] — observation aggregation + retirement classification.
 //! - [`guard`] — Claude Code runtime adapter (hook events / runners / Stop audit).
 //! - [`check`] — unified validation gate.
@@ -29,6 +31,7 @@
 //! - No string-matched errors — every failure surfaces as a typed
 //!   [`error::Error`] with a stable [`error::ErrorCode`].
 
+pub mod audit;
 pub mod check;
 pub mod codegen;
 pub mod config;
@@ -41,6 +44,7 @@ pub mod guard;
 pub mod lifecycle;
 pub mod path_guard;
 pub mod policy;
+pub mod sentinel;
 pub mod telemetry;
 pub mod validate;
 

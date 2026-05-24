@@ -145,11 +145,17 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
 
     fn bump_retry_counter(&self) -> Result<u32> {
         let path = self.retry_path();
-        let current = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok())
-            .unwrap_or(0);
-        let next = current + 1;
+        let current = match std::fs::read_to_string(&path) {
+            // No ledger yet: this is the first stop of the session.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+            // Ledger present but unreadable (IO error): fail safe by assuming
+            // the bound is reached, so the next bump escalates rather than
+            // silently resetting the loop guard to zero.
+            Err(_) => self.config.max_retries,
+            // Ledger present but corrupt (not a u32): same fail-safe.
+            Ok(s) => s.trim().parse::<u32>().unwrap_or(self.config.max_retries),
+        };
+        let next = current.saturating_add(1);
         path_guard::write_atomic(&path, next.to_string().as_bytes())?;
         Ok(next)
     }
@@ -348,6 +354,24 @@ mod tests {
             StopDecision::Allow => panic!("expected escalation Block"),
         }
         // The critique was never spawned — only the has_changes probe ran.
+        assert_eq!(auditor.runner.call_count(), 1);
+    }
+
+    #[test]
+    fn run_escalates_on_corrupt_retry_ledger_instead_of_resetting() {
+        let dir = TempDir::new().unwrap();
+        let config = audit_config(&dir);
+        let runner = MockCommandRunner::new(vec![MockCommandRunner::out(false, "")]);
+        let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
+        // A corrupt (non-numeric) ledger must NOT reset the loop guard to 0;
+        // it fails safe to max_retries so the next bump escalates.
+        path_guard::write_atomic(&auditor.retry_path(), b"not-a-number").unwrap();
+        match auditor.run().unwrap() {
+            StopDecision::Block { reason } => {
+                assert!(reason.contains("retry counter exceeded"), "got: {reason}");
+            }
+            StopDecision::Allow => panic!("corrupt ledger must fail safe, not reset"),
+        }
         assert_eq!(auditor.runner.call_count(), 1);
     }
 

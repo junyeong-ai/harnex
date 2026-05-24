@@ -1,0 +1,18 @@
+# Managed-region drift manifest.
+#
+# Each entry maps a template file (with `<!-- harnex-managed:start <slug> -->`
+# sentinels) to the project path it scaffolds into. The harness `audit`
+# command reads this file to know which artifacts to compare against the
+# canonical templates.
+#
+# Adding a new managed-region template = appending an entry here. The
+# auditor never hardcodes file paths — Constitution VII (no project
+# domain vocabulary in source).
+
+[[managed]]
+template = "common/CLAUDE.md"
+project = "CLAUDE.md"
+
+[[managed]]
+template = "common/constitution.md"
+project = ".claude/rules/constitution.md"

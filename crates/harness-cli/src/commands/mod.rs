@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod check;
 pub mod codegen;
 pub mod completions;
