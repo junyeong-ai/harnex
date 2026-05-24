@@ -12,16 +12,16 @@ knowledge lives in `reference/`, the safety-critical pieces in `templates/`;
 this skill composes them — it never free-generates a hook or a permission rule.
 
 Read these first (they are the contract, load on demand):
-- `${CLAUDE_PLUGIN_ROOT}/reference/spec-facts.md` — the Claude Code spec a
+- `${CLAUDE_SKILL_DIR}/reference/spec-facts.md` — the Claude Code spec a
   generated harness MUST obey. Re-verify against the live docs each run.
-- `${CLAUDE_PLUGIN_ROOT}/reference/enforced-vs-advisory.md` — where each
+- `${CLAUDE_SKILL_DIR}/reference/enforced-vs-advisory.md` — where each
   guardrail belongs.
-- `${CLAUDE_PLUGIN_ROOT}/reference/keep-soften-cut.md` — what never to impose.
-- `${CLAUDE_PLUGIN_ROOT}/reference/language-matrix.md` — stack detection +
+- `${CLAUDE_SKILL_DIR}/reference/keep-soften-cut.md` — what never to impose.
+- `${CLAUDE_SKILL_DIR}/reference/language-matrix.md` — stack detection +
   per-language parameters.
-- `${CLAUDE_PLUGIN_ROOT}/reference/exploration.md` — divide-and-conquer repo map.
+- `${CLAUDE_SKILL_DIR}/reference/exploration.md` — divide-and-conquer repo map.
 
-Templates live under `${CLAUDE_PLUGIN_ROOT}/templates/{common,typescript,python}/`.
+Templates live under `${CLAUDE_SKILL_DIR}/templates/{common,typescript,python}/`.
 Generated files are written to `${CLAUDE_PROJECT_DIR}` (the target repo).
 
 ## Invariants (every mode)

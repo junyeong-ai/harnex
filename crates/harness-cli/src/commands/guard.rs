@@ -32,7 +32,10 @@ pub enum GuardCommand {
         args: Vec<String>,
     },
     /// Run the fresh-context Stop audit. Reads session_id from --session
-    /// or from hook stdin JSON's `session_id` field if not given.
+    /// or from hook stdin JSON's `session_id` field if not given. Wire as a
+    /// Stop hook directly (NOT through `_stop_runner.sh`): Block exits 2 to
+    /// force continuation, which the bounded retry counter prevents from
+    /// looping. Allow exits 0.
     StopAudit {
         #[arg(long)]
         session: Option<String>,
@@ -117,9 +120,12 @@ fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode
 
     let auditor = StopAuditor::new(sa_cfg, &root, session_id);
     let decision = auditor.run()?;
+    // Stop-hook contract: exit 2 prevents the stop and forces continuation;
+    // exit 1 would be non-blocking (the Block would have no effect). The
+    // bounded retry counter inside StopAuditor keeps this from looping.
     let exit = match decision {
         StopDecision::Allow => ExitCode::SUCCESS,
-        StopDecision::Block { .. } => ExitCode::from(1),
+        StopDecision::Block { .. } => ExitCode::from(2),
     };
     write_envelope_success(out, decision)?;
     Ok(exit)
