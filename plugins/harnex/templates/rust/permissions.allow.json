@@ -1,5 +1,5 @@
 [
-  "Bash(biome *)",
+  "Bash(cargo *)",
   "Bash(cp *)",
   "Bash(git add *)",
   "Bash(git branch *)",
@@ -9,10 +9,7 @@
   "Bash(git switch *)",
   "Bash(mkdir -p *)",
   "Bash(mv *)",
-  "Bash(node *)",
-  "Bash(pnpm *)",
-  "Bash(tsc *)",
-  "Bash(tsx *)",
+  "Bash(rustfmt *)",
   "Edit",
   "Write"
 ]
