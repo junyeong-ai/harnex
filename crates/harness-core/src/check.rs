@@ -29,7 +29,7 @@ use crate::envelope::{Finding, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
-use crate::validate::{RuleValidator, SettingsValidator, SkillValidator};
+use crate::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
 
 /// Aggregate result of running every enabled validator.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
@@ -37,7 +37,7 @@ pub struct CheckOutcome {
     /// Findings sorted by (severity, slug, path) for deterministic output.
     pub findings: Vec<Finding>,
     /// Slugs of validators that actually ran.
-    pub run_validators: Vec<String>,
+    pub run: Vec<String>,
     /// Validators that were not run, with the reason.
     pub skipped: Vec<SkippedRule>,
     /// Count of unique files scanned across all validators.
@@ -244,7 +244,7 @@ impl<'a> ProjectChecker<'a> {
 
         Ok(CheckOutcome {
             findings,
-            run_validators: run,
+            run,
             skipped,
             files_scanned,
         })
@@ -372,8 +372,20 @@ impl<'a> ProjectChecker<'a> {
             run.push("validate.settings".into());
             return Ok(());
         }
-        findings.extend(SettingsValidator::new().validate_file(&path)?);
+        // ProjectChecker runs against a project root, so the scope is
+        // unambiguous: project. The local override (`settings.local.json`) is
+        // discovered separately if present.
+        findings.extend(
+            SettingsValidator::new().validate_file(&path, SettingsScope::Project)?,
+        );
         *files_scanned += 1;
+        let local = self.working_dir.join(".claude/settings.local.json");
+        if local.is_file() && self.passes_filter(&local, changed) {
+            findings.extend(
+                SettingsValidator::new().validate_file(&local, SettingsScope::Local)?,
+            );
+            *files_scanned += 1;
+        }
         run.push("validate.settings".into());
         Ok(())
     }

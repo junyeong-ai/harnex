@@ -4,8 +4,9 @@
 //! - [`rules`] — `.claude/rules/*.md`: `paths:` frontmatter + max-lines.
 //! - [`skills`] — `.claude/skills/*/SKILL.md`: full SKILL.md frontmatter
 //!   contract per <https://code.claude.com/docs/en/skills>.
-//! - [`settings`] — `.claude/settings.json`: hook event name validity
-//!   (29 events per spec /en/hooks), permission tier shape.
+//! - [`settings`] — `.claude/settings.json`: hook event name typo
+//!   detection (per /en/hooks), permission tier shape, project-scope
+//!   no-op key detection, `defaultMode` closed-enum check.
 //! - [`commit_msg`] — git commit messages: closed-enum trailer values
 //!   and required-trailer presence per `[validate.commit_msg]` config.
 //!
@@ -23,5 +24,8 @@ pub mod skills;
 
 pub use commit_msg::CommitMsgValidator;
 pub use rules::RuleValidator;
-pub use settings::{KNOWN_HOOK_EVENTS, SettingsValidator};
+pub use settings::{
+    KNOWN_DEFAULT_MODE_VALUES, KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS,
+    KNOWN_SKILL_OVERRIDE_VALUES, SettingsScope, SettingsValidator,
+};
 pub use skills::SkillValidator;

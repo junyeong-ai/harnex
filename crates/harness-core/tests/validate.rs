@@ -2,7 +2,7 @@
 
 use harness_core::config::{RulesPolicy, SkillsPolicy};
 use harness_core::envelope::Severity;
-use harness_core::validate::{RuleValidator, SettingsValidator, SkillValidator};
+use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
 use std::path::Path;
 use tempfile::TempDir;
 
@@ -56,6 +56,7 @@ fn skill_validator_flags_missing_frontmatter() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "# No frontmatter SKILL\n";
@@ -76,6 +77,7 @@ fn skill_validator_flags_bad_name_shape() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: Bad_Name\ndescription: short\n---\nBody\n";
@@ -92,6 +94,7 @@ fn skill_validator_flags_name_mismatch() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: other-name\ndescription: short\n---\nBody\n";
@@ -108,6 +111,7 @@ fn skill_validator_flags_description_over_budget() {
         max_skill_md_lines: 500,
         max_description_chars: 50,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let long = "x".repeat(100);
@@ -124,11 +128,39 @@ fn skill_validator_flags_description_over_budget() {
 }
 
 #[test]
-fn skill_validator_recommends_disable_for_side_effect_verbs() {
+fn skill_validator_silent_on_side_effect_verbs_by_default() {
+    // The heuristic is opt-in. With `flag_side_effect_verbs: false` (default),
+    // a description full of side-effect verbs produces no finding — matching
+    // prose to intent is the kind of advisory check the keep-soften-cut policy
+    // pushes to opt-in advisory.
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let md =
+        "---\nname: deploy-app\ndescription: Deploy the application to production\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("deploy-app/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let findings = v.validate_text(md, &path);
+    assert!(
+        !findings
+            .iter()
+            .any(|f| f.slug == "skill-side-effect-no-disable"),
+        "default-off must not flag side-effect verbs: {findings:?}"
+    );
+}
+
+#[test]
+fn skill_validator_recommends_disable_for_side_effect_verbs_when_opted_in() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: false,
+        flag_side_effect_verbs: true,
     };
     let v = SkillValidator::new(&policy);
     let md =
@@ -146,11 +178,12 @@ fn skill_validator_recommends_disable_for_side_effect_verbs() {
 }
 
 #[test]
-fn skill_validator_accepts_disable_on_side_effect() {
+fn skill_validator_accepts_disable_on_side_effect_when_opted_in() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: true,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: deploy-app\ndescription: Deploy the application\ndisable-model-invocation: true\n---\nBody\n";
@@ -166,11 +199,12 @@ fn skill_validator_accepts_disable_on_side_effect() {
 }
 
 #[test]
-fn skill_validator_ignores_substring_matches() {
+fn skill_validator_ignores_substring_matches_when_opted_in() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: true,
     };
     let v = SkillValidator::new(&policy);
     for word in &[
@@ -205,7 +239,7 @@ fn settings_validator_flags_unknown_hook_event() {
             "MadeUpEvent": []
         }
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     let unknowns: Vec<_> = findings
         .iter()
         .filter(|f| f.slug == "settings-unknown-hook-event")
@@ -218,7 +252,7 @@ fn settings_validator_flags_unknown_hook_event() {
 fn settings_validator_warns_on_empty_deny() {
     let v = SettingsValidator::new();
     let json = r#"{"permissions": {"allow": ["Bash(ls *)"]}}"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     assert!(findings.iter().any(|f| f.slug == "settings-no-deny-rules"));
 }
 
@@ -229,7 +263,7 @@ fn settings_validator_accepts_well_formed() {
         "hooks": {"SessionStart": [], "Stop": [], "PreCompact": []},
         "permissions": {"allow": [], "deny": ["Bash(sudo *)"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     assert!(findings.is_empty(), "unexpected: {findings:?}");
 }
 
@@ -241,6 +275,7 @@ fn skill_validator_flags_invalid_context_value() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\ncontext: inline\n---\nBody\n";
@@ -262,6 +297,7 @@ fn skill_validator_accepts_valid_context_fork() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\ncontext: fork\n---\nBody\n";
@@ -281,6 +317,7 @@ fn skill_validator_flags_invalid_effort_value() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\neffort: ultra\n---\nBody\n";
@@ -302,6 +339,7 @@ fn skill_validator_accepts_valid_effort_levels() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     for level in &["low", "medium", "high", "xhigh", "max"] {
@@ -323,6 +361,7 @@ fn skill_validator_flags_non_array_allowed_tools() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nallowed-tools: Bash\n---\nBody\n";
@@ -345,6 +384,7 @@ fn skill_validator_accepts_array_allowed_tools() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nallowed-tools:\n  - Bash\n  - Read\n---\nBody\n";
@@ -366,6 +406,7 @@ fn skill_validator_flags_invalid_user_invocable() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nuser-invocable: yes-please\n---\nBody\n";
@@ -390,6 +431,7 @@ fn skill_validator_accepts_any_agent_and_model_without_finding() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nagent: custom-bot\nmodel: claude-opus-4-20250514\n---\nBody\n";
@@ -411,6 +453,7 @@ fn skill_validator_flags_unknown_hook_event_in_skill() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nhooks:\n  MadeUpEvent: []\n  PreToolUse: []\n---\nBody\n";
@@ -438,6 +481,7 @@ fn skill_validator_flags_invalid_paths_glob() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\npaths:\n  - \"src/**/*.rs\"\n  - \"[invalid\"\n---\nBody\n";
@@ -457,6 +501,7 @@ fn skill_validator_ignores_unknown_keys_by_default() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nbogus_key: x\n---\nBody\n";
@@ -478,6 +523,7 @@ fn skill_validator_flags_unknown_key_when_enabled() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: true,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nbogus_key: x\n---\nBody\n";
@@ -500,6 +546,7 @@ fn skill_validator_accepts_unmodeled_spec_keys_when_strict() {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: true,
+        flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nargument-hint: \"<file>\"\narguments: \"$1\"\nshell: bash\n---\nBody\n";
@@ -527,7 +574,7 @@ fn settings_validator_flags_invalid_skill_override() {
         },
         "permissions": {"deny": ["x"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     let invalids: Vec<_> = findings
         .iter()
         .filter(|f| f.slug == "settings-skill-override-invalid")
@@ -548,7 +595,7 @@ fn settings_validator_accepts_valid_skill_overrides() {
         },
         "permissions": {"deny": ["x"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     assert!(
         !findings
             .iter()
@@ -563,7 +610,7 @@ fn settings_validator_flags_absent_permissions_as_no_deny() {
     // the no-deny advisory must fire, not silently skip.
     let v = SettingsValidator::new();
     let json = r#"{ "hooks": {} }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     assert!(
         findings.iter().any(|f| f.slug == "settings-no-deny-rules"),
         "absent permissions must surface settings-no-deny-rules: {findings:?}"
@@ -579,7 +626,7 @@ fn settings_validator_warns_overly_permissive_allow() {
             "deny": ["Bash(ls:*)"]
         }
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     let permissive: Vec<_> = findings
         .iter()
         .filter(|f| f.slug == "settings-overly-permissive")
@@ -601,13 +648,40 @@ fn settings_validator_accepts_scoped_allow() {
             "deny": ["Bash(sudo *)"]
         }
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     assert!(
         !findings
             .iter()
             .any(|f| f.slug == "settings-overly-permissive"),
         "scoped pattern should not trigger: {findings:?}"
     );
+}
+
+#[test]
+fn settings_validator_flags_space_wildcard_dangerous_allow() {
+    // The canonical spelling the permission dialog writes is the space form
+    // `Bash(rm -rf *)`, equivalent to `Bash(rm -rf:*)`. Detection must catch it
+    // regardless of wildcard style, and a colon-style deny must still excuse it.
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "permissions": {
+            "allow": ["Bash(rm -rf *)", "Bash(sudo *)"],
+            "deny": ["Bash(sudo:*)"]
+        }
+    }"#;
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let permissive: Vec<_> = findings
+        .iter()
+        .filter(|f| f.slug == "settings-overly-permissive")
+        .collect();
+    // `rm -rf *` is dangerous + undenied → flagged; `sudo *` is excused by the
+    // colon-style `sudo:*` deny.
+    assert_eq!(
+        permissive.len(),
+        1,
+        "expected only rm -rf flagged: {findings:?}"
+    );
+    assert!(permissive[0].message.contains("Bash(rm -rf *)"));
 }
 
 #[test]
@@ -619,11 +693,138 @@ fn settings_validator_no_finding_for_auto_memory() {
         "autoMemoryEnabled": false,
         "permissions": {"deny": ["x"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
     assert!(
         !findings
             .iter()
             .any(|f| f.slug == "settings-auto-memory-configured"),
         "autoMemoryEnabled must not produce a finding: {findings:?}"
     );
+}
+
+// ---------- Project-scope no-op key detection (Phase 3) ----------
+
+#[test]
+fn settings_validator_flags_project_scope_noop_keys() {
+    // Each key the live /en/settings doc documents as silently ignored in
+    // project / local scope produces a Major finding when present.
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "autoMemoryDirectory": "~/somewhere",
+        "autoMode": {"environment": []},
+        "skipDangerousModePermissionPrompt": true,
+        "permissions": {"deny": ["Bash(sudo *)"]}
+    }"#;
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
+    let noop_keys: Vec<_> = findings
+        .iter()
+        .filter(|f| f.slug == "settings-project-scope-noop-key")
+        .collect();
+    assert_eq!(noop_keys.len(), 3, "expected 3 noop-key findings: {findings:?}");
+    let messages: Vec<&str> = noop_keys.iter().map(|f| f.message.as_str()).collect();
+    for key in ["autoMemoryDirectory", "autoMode", "skipDangerousModePermissionPrompt"] {
+        assert!(
+            messages.iter().any(|m| m.contains(key)),
+            "missing finding for '{key}'"
+        );
+    }
+}
+
+#[test]
+fn settings_validator_flags_default_mode_auto_in_project_scope() {
+    // defaultMode = "auto" is valid wire syntax but silently no-ops outside
+    // user/managed scope. The slug differs from the noop-key slug because the
+    // KEY (`defaultMode`) is valid at every scope; only the VALUE is scope-restricted.
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "permissions": {"defaultMode": "auto", "deny": ["Bash(sudo *)"]}
+    }"#;
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "settings-project-scope-noop-value"
+                && f.message.contains("defaultMode")
+                && f.message.contains("\"auto\"")),
+        "expected defaultMode=auto noop value finding: {findings:?}"
+    );
+}
+
+#[test]
+fn settings_validator_accepts_default_mode_auto_at_user_scope() {
+    // defaultMode = "auto" is fully valid at user / managed scope — the
+    // scope-noop check must NOT fire there.
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "permissions": {"defaultMode": "auto", "deny": ["Bash(sudo *)"]}
+    }"#;
+    for scope in [SettingsScope::User, SettingsScope::Managed] {
+        let findings = v.validate_text(json, Path::new("settings.json"), scope);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "settings-project-scope-noop-value"),
+            "{scope:?}: defaultMode=auto must be accepted: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn settings_validator_flags_invalid_default_mode() {
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "permissions": {"defaultMode": "turbo", "deny": ["Bash(sudo *)"]}
+    }"#;
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "settings-default-mode-invalid" && f.message.contains("turbo")),
+        "expected settings-default-mode-invalid: {findings:?}"
+    );
+}
+
+#[test]
+fn settings_validator_accepts_valid_default_modes() {
+    let v = SettingsValidator::new();
+    for mode in &["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions"] {
+        let json = format!(
+            r#"{{ "permissions": {{ "defaultMode": "{mode}", "deny": ["Bash(sudo *)"] }} }}"#
+        );
+        let findings = v.validate_text(&json, Path::new(".claude/settings.json"), SettingsScope::Project);
+        assert!(
+            !findings.iter().any(|f| f.slug == "settings-default-mode-invalid"),
+            "defaultMode = {mode} should be accepted: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn settings_validator_excuses_noop_keys_at_user_and_managed_scope() {
+    // User and managed scopes honor the otherwise-no-op keys; the validator
+    // must remain silent on those scopes regardless of file path.
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "autoMemoryDirectory": "~/somewhere",
+        "autoMode": {"environment": []},
+        "skipDangerousModePermissionPrompt": true,
+        "permissions": {"deny": ["Bash(sudo *)"]}
+    }"#;
+    for scope in [SettingsScope::User, SettingsScope::Managed] {
+        let findings = v.validate_text(json, Path::new("settings.json"), scope);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "settings-project-scope-noop-key"),
+            "{scope:?}: noop keys must be honored, not flagged: {findings:?}"
+        );
+    }
 }
