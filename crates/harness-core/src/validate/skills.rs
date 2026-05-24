@@ -12,12 +12,12 @@
 //!   side-effect verbs (`commit`, `deploy`, `delete`, `submit`, `send`, …).
 //! - `user-invocable` must be boolean if present.
 //! - `context` must be `"fork"` if present.
-//! - `agent` checked against known agent types; unknown emits Info.
 //! - `allowed-tools` must be array of strings if present.
 //! - `paths` must be array of valid glob patterns if present.
 //! - `hooks` keys must be in `KNOWN_HOOK_EVENTS` if present.
-//! - `model` emits Info noting session model override.
 //! - `effort` must be one of `low|medium|high|xhigh|max` if present.
+//!
+//! `agent` and `model` are valid free-form fields — accepted, never flagged.
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -38,8 +38,6 @@ static SIDE_EFFECT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(commit|deploy|delete|submit|send|publish|release)\b")
         .expect("SIDE_EFFECT_PATTERN")
 });
-
-const KNOWN_AGENT_TYPES: &[&str] = &["Explore", "Plan", "general-purpose"];
 
 const KNOWN_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
@@ -88,16 +86,12 @@ struct SkillFrontmatter {
     user_invocable: Option<serde_yml::Value>,
     #[serde(default)]
     context: Option<String>,
-    #[serde(default)]
-    agent: Option<String>,
     #[serde(default, rename = "allowed-tools")]
     allowed_tools: Option<serde_yml::Value>,
     #[serde(default)]
     paths: Option<serde_yml::Value>,
     #[serde(default)]
     hooks: Option<serde_yml::Value>,
-    #[serde(default)]
-    model: Option<String>,
     #[serde(default)]
     effort: Option<String>,
 }
@@ -320,24 +314,6 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        // agent: known types get no finding; unknown emits Info
-        if let Some(ref agent) = parsed.agent
-            && !KNOWN_AGENT_TYPES.contains(&agent.as_str())
-        {
-            findings.push(Finding {
-                slug: "skill-agent-unknown".into(),
-                severity: Severity::Info,
-                location: Location::line(path.to_path_buf(), fm.begin_line),
-                message: format!(
-                    "agent '{agent}' is not a known built-in type ({}); custom agent assumed",
-                    KNOWN_AGENT_TYPES.join(", ")
-                ),
-                hint: Some("verify this agent type is registered in your project".into()),
-                auto_fixable: false,
-                fix_command: None,
-            });
-        }
-
         // allowed-tools: must be an array of strings
         if let Some(ref val) = parsed.allowed_tools {
             match val.as_sequence() {
@@ -449,23 +425,6 @@ impl<'a> SkillValidator<'a> {
                     fix_command: None,
                 });
             }
-        }
-
-        // model: informational — overrides session model
-        if let Some(ref model) = parsed.model {
-            findings.push(Finding {
-                slug: "skill-model-override".into(),
-                severity: Severity::Info,
-                location: Location::line(path.to_path_buf(), fm.begin_line),
-                message: format!("skill overrides session model to '{model}'"),
-                hint: Some(
-                    "this is intentional if the skill requires a specific model; \
-                     remove `model:` to use the session default"
-                        .into(),
-                ),
-                auto_fixable: false,
-                fix_command: None,
-            });
         }
 
         // effort: must be one of the known levels
