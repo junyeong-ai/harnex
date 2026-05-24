@@ -24,10 +24,13 @@ must couple to.
 
 ## The plugin
 
-A single-skill plugin (`SKILL.md` + `reference/` + `templates/`). Install via
-your marketplace, then drive it by mode:
+A single-skill plugin under `plugins/harnex/`, distributed by the marketplace
+at `.claude-plugin/marketplace.json`. Install, then drive it by mode:
 
 ```
+/plugin marketplace add junyeong-ai/harnex
+/plugin install harnex@harnex
+
 /harnex scaffold      # greenfield: compose a full harness from templates
 /harnex extend        # brownfield: add one guardrail in the incumbent idiom
 /harnex audit         # read-only: gap report (drift, over-constraint, prose-only musts)
