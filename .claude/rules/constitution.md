@@ -47,3 +47,13 @@ Every project-specific shape derives from `harness.toml`.
 Rule files (`.claude/rules/*.md`) use imperatives. Background and
 reasoning live in commit bodies and the lifecycle ledger, not in the
 rule body that Claude re-reads every session.
+
+## IX. Single source of truth, guarded by a test
+
+Every fact with more than one representation has exactly one owner; the
+others are generated or verified from it by a test that fails on drift.
+Permission rules live in `policy/profiles.rs`; the plugin templates are a
+tested projection (`policy_template_sync`). Schemas are emitted from the
+types. A fact maintained by hand in two places — or a duplication no test
+can catch — is forbidden. Prose that restates an enforced rule names the
+owner instead of re-listing it.
