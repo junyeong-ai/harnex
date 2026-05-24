@@ -77,7 +77,7 @@ pub fn load_source(path: &Path, format: SourceFormat) -> Result<serde_json::Valu
             })
         }
         SourceFormat::Yaml => {
-            serde_yml::from_str::<serde_json::Value>(&raw).map_err(|e| Error::ConfigInvalid {
+            yaml_serde::from_str::<serde_json::Value>(&raw).map_err(|e| Error::ConfigInvalid {
                 message: format!("codegen source parse (yaml): {e}"),
                 location: None,
             })

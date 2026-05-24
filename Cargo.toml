@@ -22,7 +22,7 @@ glob = "0.3"
 regex = "1"
 semver = "1"
 tempfile = "3"
-serde_yml = "0.0"
+yaml_serde = "0.10"
 walkdir = "2"
 schemars = { version = "1", features = ["preserve_order", "jiff02", "semver1"] }
 
