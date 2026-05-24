@@ -77,17 +77,20 @@ fn check_runs_every_enabled_validator() {
         "policy.permissions",
     ] {
         assert!(
-            outcome.run_validators.contains(&v.to_string()),
+            outcome.run.contains(&v.to_string()),
             "missing {v}"
         );
     }
     // codegen skipped (no [codegen] section)
     assert!(outcome.skipped.iter().any(|s| s.slug == "codegen"));
 
-    // Findings include rule-missing-paths-frontmatter (api.md) and skill-side-effect-no-disable
+    // The rule with no `paths:` frontmatter must surface — proof that the
+    // rule validator actually ran against the fixture. The presence of
+    // `validate.skills` in `outcome.run` (asserted above) is the proof
+    // the skill validator ran; we don't couple this test to optional
+    // skill-policy opt-ins like `flag_side_effect_verbs`.
     let slugs: Vec<&str> = outcome.findings.iter().map(|f| f.slug.as_str()).collect();
     assert!(slugs.contains(&"rule-missing-paths-frontmatter"));
-    assert!(slugs.contains(&"skill-side-effect-no-disable"));
 }
 
 #[test]
@@ -99,7 +102,7 @@ harnex_version = ">=0.1, <0.2"
 "#;
     let cfg = load_cfg(&tmp, minimal);
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
-    assert!(outcome.run_validators.is_empty());
+    assert!(outcome.run.is_empty());
     for expected in [
         "codegen",
         "evidence",

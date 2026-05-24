@@ -8,8 +8,11 @@
 //!   (Claude Code listing budget caps at 1536 chars).
 //! - SKILL.md body line count ≤ `max_skill_md_lines` (compaction budget
 //!   ≈ 5000 tokens ≈ 500 lines).
-//! - `disable-model-invocation: true` recommended when description mentions
-//!   side-effect verbs (`commit`, `deploy`, `delete`, `submit`, `send`, …).
+//! - Opt-in via `SkillsPolicy.flag_side_effect_verbs`: emit a Minor
+//!   advisory when description contains a side-effect verb
+//!   (`commit`, `deploy`, `delete`, `submit`, `send`, `publish`,
+//!   `release`) but lacks `disable-model-invocation: true`. Off by
+//!   default — the heuristic matches prose, not intent.
 //! - `user-invocable` must be boolean if present.
 //! - `context` must be `"fork"` if present.
 //! - `allowed-tools` must be array of strings if present.
@@ -71,7 +74,7 @@ pub struct SkillValidator<'a> {
 
 /// Strongly typed subset of skill frontmatter fields. Fields that need
 /// flexible type-checking (allowed-tools, paths, hooks) are parsed as
-/// `serde_yml::Value` to validate shape without requiring the strict type.
+/// `yaml_serde::Value` to validate shape without requiring the strict type.
 #[derive(Debug, Deserialize, Default)]
 struct SkillFrontmatter {
     #[serde(default)]
@@ -83,15 +86,15 @@ struct SkillFrontmatter {
     #[serde(default, rename = "disable-model-invocation")]
     disable_model_invocation: Option<bool>,
     #[serde(default, rename = "user-invocable")]
-    user_invocable: Option<serde_yml::Value>,
+    user_invocable: Option<yaml_serde::Value>,
     #[serde(default)]
     context: Option<String>,
     #[serde(default, rename = "allowed-tools")]
-    allowed_tools: Option<serde_yml::Value>,
+    allowed_tools: Option<yaml_serde::Value>,
     #[serde(default)]
-    paths: Option<serde_yml::Value>,
+    paths: Option<yaml_serde::Value>,
     #[serde(default)]
-    hooks: Option<serde_yml::Value>,
+    hooks: Option<yaml_serde::Value>,
     #[serde(default)]
     effort: Option<String>,
 }
@@ -165,7 +168,7 @@ impl<'a> SkillValidator<'a> {
             }
         };
 
-        let parsed: SkillFrontmatter = match serde_yml::from_str(&fm.yaml_text) {
+        let parsed: SkillFrontmatter = match yaml_serde::from_str(&fm.yaml_text) {
             Ok(p) => p,
             Err(e) => {
                 findings.push(Finding {
@@ -190,7 +193,7 @@ impl<'a> SkillValidator<'a> {
         // already succeeded, so a secondary parse failure is unexpected and is
         // skipped rather than re-reported (the primary path owns malformed YAML).
         if self.policy.reject_unknown_keys
-            && let Ok(mapping) = serde_yml::from_str::<serde_yml::Mapping>(&fm.yaml_text)
+            && let Ok(mapping) = yaml_serde::from_str::<yaml_serde::Mapping>(&fm.yaml_text)
         {
             for key in mapping.keys() {
                 if let Some(key) = key.as_str()
@@ -262,7 +265,9 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        if parsed.disable_model_invocation != Some(true) {
+        if self.policy.flag_side_effect_verbs
+            && parsed.disable_model_invocation != Some(true)
+        {
             let desc_lower = format!(
                 "{} {}",
                 parsed.description.as_deref().unwrap_or(""),
