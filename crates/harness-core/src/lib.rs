@@ -19,7 +19,6 @@
 //! - [`guard`] — Claude Code runtime adapter (hook events / runners / Stop audit).
 //! - [`check`] — unified validation gate.
 //! - [`export`] — JSON Schema emission.
-//! - [`init`] — project scaffolder + hook generation.
 //! - [`graph`] — read-only nodex CLI bridge.
 //!
 //! ## What this crate refuses to do
@@ -39,7 +38,6 @@ pub mod evidence;
 pub mod export;
 pub mod graph;
 pub mod guard;
-pub mod init;
 pub mod lifecycle;
 pub mod path_guard;
 pub mod policy;

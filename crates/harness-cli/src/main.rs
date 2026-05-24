@@ -67,8 +67,6 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::export::ExportCommand,
     },
-    /// Scaffold a new Claude Code project for harnex
-    Init(commands::init::InitArgs),
     /// Read-only queries over a nodex document graph
     Graph {
         #[command(subcommand)]
@@ -94,7 +92,6 @@ fn main() -> ExitCode {
         Command::Lifecycle { cmd } => commands::lifecycle::run(cmd, &mut out),
         Command::Guard { cmd } => commands::guard::run(cmd, &mut out),
         Command::Export { cmd } => commands::export::run(cmd, &mut out),
-        Command::Init(args) => commands::init::run(args, &mut out),
         Command::Graph { cmd } => commands::graph::run(cmd, &mut out),
         Command::Completions(args) => commands::completions::run(args, &mut out),
         Command::Check(args) => commands::check::run(args, &mut out),

@@ -19,7 +19,6 @@ JSON-envelope CLI, deterministic + no-network.
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
 | `harness-core::guard` | Claude Code hook adapter + Stop auditor |
 | `harness-core::export` | JSON Schema emission |
-| `harness-core::init` | project scaffolder + hook script generation |
 | `harness-core::graph` | read-only `nodex` CLI bridge |
 | `harness-core::check` | unified validation gate |
 | `harness-cli` | thin clap wrapper; each command emits one envelope |
