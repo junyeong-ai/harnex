@@ -253,6 +253,11 @@
         "source_key": {
           "type": "string"
         },
+        "source_format": {
+          "description": "Serialization format of the source file: `toml` | `json` | `yaml`.",
+          "type": "string",
+          "default": "toml"
+        },
         "targets": {
           "type": "array",
           "items": {
@@ -454,6 +459,11 @@
           "format": "uint",
           "minimum": 0,
           "default": 1536
+        },
+        "reject_unknown_keys": {
+          "description": "Opt-in: emit a Major finding for any frontmatter key outside the\nClaude Code skill spec surface (`KNOWN_SKILL_KEYS`). Claude Code\nsilently ignores unknown keys, so typos go undetected by default.",
+          "type": "boolean",
+          "default": false
         }
       }
     },
