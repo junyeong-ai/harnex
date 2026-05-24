@@ -76,6 +76,9 @@ pub struct StopAuditor<'a, R: CommandRunner = DefaultCommandRunner> {
 }
 
 impl<'a> StopAuditor<'a, DefaultCommandRunner> {
+    /// Construct with the real process runner. `new` (not `with_runner`)
+    /// carries the production constructor so the CLI stays runner-agnostic;
+    /// tests inject a mock via [`StopAuditor::with_runner`].
     pub fn new(config: &'a StopAuditConfig, working_dir: &'a Path, session_id: String) -> Self {
         Self::with_runner(config, working_dir, session_id, DefaultCommandRunner)
     }
@@ -239,6 +242,10 @@ mod tests {
         fn call_count(&self) -> usize {
             self.calls.lock().unwrap().len()
         }
+
+        fn calls(&self) -> Vec<Vec<String>> {
+            self.calls.lock().unwrap().clone()
+        }
     }
 
     impl CommandRunner for MockCommandRunner {
@@ -247,11 +254,13 @@ mod tests {
             record.extend(args.iter().map(|s| s.to_string()));
             self.calls.lock().unwrap().push(record);
             let mut resp = self.responses.lock().unwrap();
-            if resp.is_empty() {
-                Ok(Self::out(true, ""))
-            } else {
-                Ok(resp.remove(0))
-            }
+            // Exhaustion is a test bug: an unexpected extra spawn must fail
+            // loudly rather than be masked by a default success response.
+            assert!(
+                !resp.is_empty(),
+                "MockCommandRunner exhausted: unexpected spawn of '{program}'"
+            );
+            Ok(resp.remove(0))
         }
     }
 
@@ -294,7 +303,12 @@ mod tests {
         let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
         let decision = auditor.run().unwrap();
         assert!(matches!(decision, StopDecision::Block { .. }));
-        assert_eq!(auditor.runner.call_count(), 2);
+        // Verify the seam dispatched the exact configured commands in order:
+        // the has_changes probe first, then the critique skill spawn.
+        let calls = auditor.runner.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0], vec!["git", "diff", "--quiet"]);
+        assert_eq!(calls[1], vec!["claude", "--print", "/aix-critique"]);
     }
 
     #[test]
