@@ -1,0 +1,8 @@
+{
+  "name": "harnex",
+  "description": "Generate and maintain project-fit, project-native Claude Code harness tooling — hooks, settings, CLAUDE.md, path-scoped rules — from verified spec-correct templates, in the target project's own language.",
+  "author": { "name": "oy-junyeong" },
+  "license": "MIT",
+  "keywords": ["claude-code", "harness", "scaffolding", "hooks", "settings", "codegen"],
+  "repository": "https://github.com/junyeong-ai/harnex"
+}
