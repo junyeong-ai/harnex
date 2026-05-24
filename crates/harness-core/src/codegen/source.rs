@@ -206,4 +206,14 @@ items = ["a", "b"]
         let err = extract_string_array(&value, "x.absent", Path::new("src.json")).unwrap_err();
         assert_eq!(err.code(), crate::error::ErrorCode::CodegenSourceKeyMissing);
     }
+
+    #[test]
+    fn extract_rejects_traversal_into_non_object() {
+        // The dot-path is object-key-only: descending into an array (or any
+        // non-object) yields a key-missing error rather than panicking or
+        // interpreting a numeric segment as an array index.
+        let value = serde_json::json!({ "x": ["a", "b"] });
+        let err = extract_string_array(&value, "x.0", Path::new("src.json")).unwrap_err();
+        assert_eq!(err.code(), crate::error::ErrorCode::CodegenSourceKeyMissing);
+    }
 }
