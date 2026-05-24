@@ -55,6 +55,7 @@ fn skill_validator_flags_missing_frontmatter() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "# No frontmatter SKILL\n";
@@ -74,6 +75,7 @@ fn skill_validator_flags_bad_name_shape() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: Bad_Name\ndescription: short\n---\nBody\n";
@@ -89,6 +91,7 @@ fn skill_validator_flags_name_mismatch() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: other-name\ndescription: short\n---\nBody\n";
@@ -104,6 +107,7 @@ fn skill_validator_flags_description_over_budget() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 50,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let long = "x".repeat(100);
@@ -124,6 +128,7 @@ fn skill_validator_recommends_disable_for_side_effect_verbs() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md =
@@ -145,6 +150,7 @@ fn skill_validator_accepts_disable_on_side_effect() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: deploy-app\ndescription: Deploy the application\ndisable-model-invocation: true\n---\nBody\n";
@@ -164,6 +170,7 @@ fn skill_validator_ignores_substring_matches() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     for word in &[
@@ -233,6 +240,7 @@ fn skill_validator_flags_invalid_context_value() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\ncontext: inline\n---\nBody\n";
@@ -253,6 +261,7 @@ fn skill_validator_accepts_valid_context_fork() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\ncontext: fork\n---\nBody\n";
@@ -271,6 +280,7 @@ fn skill_validator_flags_invalid_effort_value() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\neffort: ultra\n---\nBody\n";
@@ -291,6 +301,7 @@ fn skill_validator_accepts_valid_effort_levels() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     for level in &["low", "medium", "high", "xhigh", "max"] {
@@ -311,6 +322,7 @@ fn skill_validator_flags_non_array_allowed_tools() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nallowed-tools: Bash\n---\nBody\n";
@@ -332,6 +344,7 @@ fn skill_validator_accepts_array_allowed_tools() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nallowed-tools:\n  - Bash\n  - Read\n---\nBody\n";
@@ -352,6 +365,7 @@ fn skill_validator_flags_invalid_user_invocable() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nuser-invocable: yes-please\n---\nBody\n";
@@ -372,6 +386,7 @@ fn skill_validator_emits_info_for_unknown_agent() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nagent: custom-bot\n---\nBody\n";
@@ -392,6 +407,7 @@ fn skill_validator_accepts_known_agent_types() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     for agent in &["Explore", "Plan", "general-purpose"] {
@@ -412,6 +428,7 @@ fn skill_validator_emits_info_for_model_override() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md =
@@ -433,6 +450,7 @@ fn skill_validator_flags_unknown_hook_event_in_skill() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\nhooks:\n  MadeUpEvent: []\n  PreToolUse: []\n---\nBody\n";
@@ -459,6 +477,7 @@ fn skill_validator_flags_invalid_paths_glob() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
+        reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
     let md = "---\nname: my-skill\ndescription: a skill\npaths:\n  - \"src/**/*.rs\"\n  - \"[invalid\"\n---\nBody\n";
@@ -469,6 +488,70 @@ fn skill_validator_flags_invalid_paths_glob() {
     assert!(
         findings.iter().any(|f| f.slug == "skill-paths-invalid"),
         "expected skill-paths-invalid for bad glob: {findings:?}"
+    );
+}
+
+#[test]
+fn skill_validator_ignores_unknown_keys_by_default() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let md = "---\nname: my-skill\ndescription: a skill\nbogus_key: x\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let findings = v.validate_text(md, &path);
+    assert!(
+        !findings
+            .iter()
+            .any(|f| f.slug == "skill-unknown-frontmatter-key"),
+        "unknown-key check is opt-in and must not fire by default: {findings:?}"
+    );
+}
+
+#[test]
+fn skill_validator_flags_unknown_key_when_enabled() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: true,
+    };
+    let v = SkillValidator::new(&policy);
+    let md = "---\nname: my-skill\ndescription: a skill\nbogus_key: x\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let findings = v.validate_text(md, &path);
+    let unknown: Vec<_> = findings
+        .iter()
+        .filter(|f| f.slug == "skill-unknown-frontmatter-key")
+        .collect();
+    assert_eq!(unknown.len(), 1, "expected exactly one: {findings:?}");
+    assert!(unknown[0].message.contains("bogus_key"));
+    assert!(matches!(unknown[0].severity, Severity::Major));
+}
+
+#[test]
+fn skill_validator_accepts_unmodeled_spec_keys_when_strict() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: true,
+    };
+    let v = SkillValidator::new(&policy);
+    let md = "---\nname: my-skill\ndescription: a skill\nargument-hint: \"<file>\"\narguments: \"$1\"\nshell: bash\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let findings = v.validate_text(md, &path);
+    assert!(
+        !findings
+            .iter()
+            .any(|f| f.slug == "skill-unknown-frontmatter-key"),
+        "valid-but-unmodeled spec keys must not be flagged: {findings:?}"
     );
 }
 

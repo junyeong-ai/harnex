@@ -241,6 +241,11 @@ pub struct SkillsPolicy {
     /// 1536 chars; this is the project-level target (safe margin).
     #[serde(default = "default_skill_description_max")]
     pub max_description_chars: usize,
+    /// Opt-in: emit a Major finding for any frontmatter key outside the
+    /// Claude Code skill spec surface (`KNOWN_SKILL_KEYS`). Claude Code
+    /// silently ignores unknown keys, so typos go undetected by default.
+    #[serde(default)]
+    pub reject_unknown_keys: bool,
 }
 
 fn default_skill_max_lines() -> usize {
