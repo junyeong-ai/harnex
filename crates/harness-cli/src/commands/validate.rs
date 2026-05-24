@@ -7,10 +7,18 @@ use clap::Subcommand;
 use harness_core::envelope::{ListResponse, Severity};
 use harness_core::error::{Error, Result};
 use harness_core::validate::{
-    CommitMsgValidator, RuleValidator, SettingsValidator, SkillValidator,
+    CommitMsgValidator, RuleValidator, SettingsScope, SettingsValidator, SkillValidator,
 };
 
 use super::{load_config, write_envelope_success};
+
+/// Closed-set value parser for clap, sourced from the enum's `ALL` (single
+/// source of truth — drift impossible).
+fn settings_scope_values() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(
+        SettingsScope::ALL.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+    )
+}
 
 #[derive(Subcommand)]
 pub enum ValidateCommand {
@@ -28,6 +36,10 @@ pub enum ValidateCommand {
     Settings {
         #[arg(default_value = ".claude/settings.json")]
         path: PathBuf,
+        /// Scope of the settings file. Affects scope-restricted checks
+        /// (`auto` defaultMode, `autoMemoryDirectory`, …). Default: project.
+        #[arg(long, value_parser = settings_scope_values(), default_value = "project")]
+        scope: String,
     },
     /// Validate a git commit message against `[validate.commit_msg]` trailers
     /// (e.g., `.git/COMMIT_EDITMSG` from a commit-msg hook)
@@ -67,9 +79,20 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                 findings.extend(v.validate_file(&p)?);
             }
         }
-        ValidateCommand::Settings { path } => {
+        ValidateCommand::Settings { path, scope } => {
+            let scope = SettingsScope::from_str(&scope).ok_or_else(|| Error::ConfigInvalid {
+                message: format!(
+                    "unknown settings scope '{scope}' (use: {})",
+                    SettingsScope::ALL
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                location: None,
+            })?;
             let v = SettingsValidator::new();
-            findings.extend(v.validate_file(&path)?);
+            findings.extend(v.validate_file(&path, scope)?);
         }
         ValidateCommand::CommitMsg { path } => {
             let policy = config
