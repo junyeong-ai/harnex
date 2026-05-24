@@ -3,6 +3,7 @@
 Foundation laws. Always loaded (this is the one rule file with no `paths:`).
 Imperatives only — rationale lives in commit bodies, not here.
 
+<!-- harnex-managed:start constitution-articles -->
 ## I. Enforced beats advisory
 
 What must always happen is a hook or a `permissions.deny` rule, never a
@@ -11,8 +12,9 @@ deny rules are guaranteed.
 
 ## II. Secrets never reach git
 
-Reads and writes of `.env*`, keys, and credentials are denied. Secret scanning
-runs before commit. A leaked secret is irreversible once pushed.
+Reads, writes, and edits of secret files (env, keys, credentials) are denied at
+the permission layer. Secret scanning runs before commit. A leaked secret is
+irreversible once pushed.
 
 ## III. Destructive operations are denied, not discouraged
 
@@ -35,3 +37,4 @@ A rule exists only if it enforces an invariant the model cannot self-verify, at
 a boundary where a violation is irreversible or invisible. No rule restates a
 habit a capable model already follows. No heuristic ships whose false-positive
 cost exceeds its catch rate.
+<!-- harnex-managed:end constitution-articles -->

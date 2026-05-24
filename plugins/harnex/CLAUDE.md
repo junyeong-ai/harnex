@@ -1,0 +1,39 @@
+# harnex plugin
+
+The single-skill plugin: `SKILL.md` (entry, 4 modes) + `reference/` (L1
+knowledge) + `templates/` (L2 safety-critical templates). Editing contract
+for this directory (the runtime content ships to installs; this file guides
+editing it, not using it):
+
+- **Compose templates; never free-generate** a hook, permission rule, or
+  timeout. The skill selects a language profile and fills declared params.
+- **Permission templates are a projection, not a source.** `permissions.deny.json`
+  and `<lang>/permissions.allow.json` are generated from the oracle's
+  `crates/harness-core/src/policy/profiles.rs` (`baseline` / `<lang>-dev`).
+  Edit the profile, regenerate with `harness policy permissions generate`,
+  copy the array across; the `policy_template_sync` test fails on drift
+  (constitution IX). Never hand-edit a template's rules.
+- **`reference/spec-facts.md` is perishable.** Re-verify each fact against the
+  live Claude Code docs every change — a frozen spec fact is the failure mode.
+  Closed-set vocabularies inside spec-facts (hook events, …) live in
+  `<!-- harnex-managed:start <slug> -->` blocks that the `spec_facts_sync`
+  integration test holds in lock-step with the Rust SSoT (constitution IX).
+- **Managed-region convention for generated artifacts.** Markdown templates
+  (`common/CLAUDE.md`, `common/constitution.md`) carry
+  `<!-- harnex-managed:start <slug> -->` / `<!-- harnex-managed:end <slug> -->`
+  sentinels bounding the harnex-owned region. `regenerate` overwrites only
+  inside sentinels; everything outside is project-authored. `.claude/settings.json`
+  is JSON (no comments), so its partition is by top-level key:
+  `permissions` and `hooks` are harnex-managed; every other key is
+  project-owned and must survive regenerate.
+- **Budgets:** `SKILL.md` body < 500 lines; `description` + `when_to_use`
+  ≤ 1536 chars, key use case first.
+- **Add a language** = a `templates/<lang>/` set (`_runner.sh`,
+  `post-format.sh`, `session-start.sh`, `permissions.allow.json`,
+  optionally `rules/<lang>-conventions.md`) plus a `<lang>-dev` profile in
+  the oracle. The drift test's reverse-gap check fails until the template
+  exists.
+- **Extend mode is a closed verb menu.** When adding a new extend verb,
+  add a `### Mode: extend <verb>` row to `SKILL.md`, add a tested
+  composition path in templates, and (if the verb mutates a SSoT) extend
+  the matching audit check. Free-form extension invites free-generation.

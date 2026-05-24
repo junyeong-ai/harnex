@@ -18,9 +18,9 @@ ruff; emitting the wrong formatter is the meta-failure to avoid).
 
 | Axis | TypeScript (pnpm) | Python (uv) | Rust (cargo) |
 |---|---|---|---|
-| Formatter (PostToolUse) | `biome check --write` | `ruff format` + `ruff check --fix` | `cargo fmt` |
+| Formatter (PostToolUse) | `biome check --write` | `ruff format` + `ruff check --fix` | `rustfmt <file>` |
 | Typecheck | `tsc` (via `turbo run type-check`) | `ty` | `cargo check` |
-| Hook runner inner cmd | native `node` on `.ts` | `uv run --frozen python -m <mod>` | direct binary |
+| Hook runner inner cmd | native `node` on `.ts` | `uv run --frozen python -m <mod>` | probe `cargo`, dispatch `.sh` (no per-hook `.rs` build); JSON hooks use `jq` |
 | Gate runner | `pnpm` (+ `turbo`) | `just` (hooks via `prek`) | `cargo` |
 | Secret scan | gitleaks | gitleaks | gitleaks |
 | PreToolUse default | non-blocking (advisory) | project choice (blocking convention-gate is valid) | non-blocking |
@@ -33,11 +33,23 @@ ruff; emitting the wrong formatter is the meta-failure to avoid).
 - Two hook wrappers: `_runner.sh` (anchor cwd at git root → probe runtime →
   fail-open on env drift → dispatch) and `_stop_runner.sh` (same, always exit
   0). Both reject `..` path-traversal in the script-name argument.
-- `permissions.deny` secret block: `.env*`, `*.key`, `*.pem`, `*credentials*`,
-  `*secret*` (Read + Write + `Bash(cat ...)`); destructive: `git push --force`,
-  `git reset --hard`, `git add .`/`-A`/`-u`, `rm -rf` of roots, `find -exec`,
-  arbitrary code exec (`node -e`, `python3 -c`), `sudo`, `chmod -R 777`. Cloud
-  profiles add their destroy verbs.
+- `permissions.deny` floor: do NOT hand-write or re-enumerate it — copy
+  `templates/common/permissions.deny.json` verbatim. That file is the single
+  source of truth (generated from the oracle's `baseline` profile, held in sync
+  by the `policy_template_sync` test). By category it covers: sensitive-file
+  reads plus writes/edits, destructive git, `rm -rf` of roots, destructive
+  `find`, arbitrary code execution, `sudo`, `chmod -R 777`. Sensitive-file
+  patterns are precise file shapes (extensions, the `secrets/` dir, credential
+  JSON, home credential paths), never broad substrings that would hard-block
+  source files. A Read deny already blocks `cat`/`head`/`tail`/`sed` of the
+  same path. Cloud profiles (`gcp-strict`, `aws-strict`) add their destroy
+  verbs. Listing the individual rules anywhere but the SSoT is how it drifts —
+  don't.
+- `<lang>/permissions.allow.json` grants only commands that actually prompt
+  (`Edit`/`Write`, mutating git, the language toolchain). Read-only built-ins
+  (`ls`, `grep`, `cat`, read-only `git`) never prompt, so an allow rule for them
+  is a no-op — never emit one. Broad env-runners (`npx *`) are excluded; scope
+  them per project (`npx <tool> *`).
 - `constitution.md` is the one `.claude/rules/*.md` that omits `paths:`
   (foundation, always-loaded). Every other rule carries `paths:`.
 - Hook config `timeout` in SECONDS (10–30 typical), `type: "command"`.

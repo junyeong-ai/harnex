@@ -17,6 +17,7 @@
 <!-- Only project-specific decisions a capable model would not default to.
      Do NOT restate language style the formatter/linter already enforces. -->
 
+<!-- harnex-managed:start enforcement-summary -->
 ## Enforcement
 
 Guardrails that must always hold live in `.claude/settings.json` (hooks +
@@ -27,3 +28,4 @@ Guardrails that must always hold live in `.claude/settings.json` (hooks +
 
 See `.claude/rules/constitution.md` for the foundation laws and
 `.claude/rules/*.md` (path-scoped) for topic guidance.
+<!-- harnex-managed:end enforcement-summary -->
