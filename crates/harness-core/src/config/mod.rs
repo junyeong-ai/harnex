@@ -131,8 +131,15 @@ pub struct CodegenGroupDecl {
     pub name: String,
     pub source: PathBuf,
     pub source_key: String,
+    /// Serialization format of the source file: `toml` | `json` | `yaml`.
+    #[serde(default = "default_source_format")]
+    pub source_format: String,
     #[serde(default)]
     pub targets: Vec<SentinelTargetDecl>,
+}
+
+fn default_source_format() -> String {
+    "toml".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -556,6 +563,21 @@ impl Config {
                     location: None,
                 });
             }
+            if crate::codegen::SourceFormat::from_str(&group.source_format).is_none() {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "codegen group '{}' has unknown source_format '{}' (known: {})",
+                        group.name,
+                        group.source_format,
+                        crate::codegen::SourceFormat::ALL
+                            .iter()
+                            .map(|f| f.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    location: None,
+                });
+            }
             sources.insert(group.source.clone());
             for target in &group.targets {
                 if crate::codegen::RendererStrategy::from_str(&target.format).is_none() {
@@ -928,6 +950,29 @@ mod tests {
             err.to_string()
                 .contains("duplicate codegen target sentinel")
         );
+    }
+
+    #[test]
+    fn rejects_unknown_codegen_source_format() {
+        let src = r#"
+            [meta]
+            harness_toolkit_version = ">=0.1, <0.2"
+
+            [codegen]
+            [[codegen.groups]]
+            name = "group-a"
+            source = "source.xml"
+            source_key = "values"
+            source_format = "xml"
+            [[codegen.groups.targets]]
+            path = "target.md"
+            begin = "<!-- BEGIN:x -->"
+            end = "<!-- END:x -->"
+            format = "markdown-bullet-list"
+        "#;
+        let err = parse(src).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
+        assert!(err.to_string().contains("unknown source_format"));
     }
 
     #[test]
