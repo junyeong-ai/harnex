@@ -12,9 +12,10 @@ lives under `plugins/harnex/`:
 
 | Path | Responsibility |
 |---|---|
-| `plugins/harnex/SKILL.md` | single-skill plugin entry; 4 modes (scaffold / extend / audit / regenerate) |
+| `plugins/harnex/SKILL.md` | single-skill plugin entry; modes: scaffold / extend / audit / regenerate |
 | `plugins/harnex/reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
-| `plugins/harnex/templates/` | L2 deterministic safety-critical templates (`common` + `typescript` + `python`) |
+| `plugins/harnex/templates/` | L2 deterministic safety-critical templates (`common` + per-language) |
+| `plugins/harnex/templates/managed-files.toml` | manifest mapping template files to project paths (audit + regenerate input) |
 | `plugins/harnex/.claude-plugin/plugin.json` | manifest; `version` omitted (commit SHA drives updates) |
 
 Generated files land in `${CLAUDE_PROJECT_DIR}`; bundled assets are referenced
@@ -25,15 +26,17 @@ skill composes templates — it never free-generates safety-critical code.
 
 | Module (crate path) | Responsibility |
 |---|---|
-| `harness-core::config` | `harness.toml` load + cross-section validate (`MetaConfig`, `CodegenGroupDecl`, `RetirementExemptDecl`, …) |
-| `harness-core::envelope` | `Finding`, `Severity`, `Location`, list response |
-| `harness-core::error` | `Error` + `ErrorCode` (stable wire codes) |
-| `harness-core::path_guard` | safe write paths: `write_atomic` (full replace) + `append_line` (ledgers) |
-| `harness-core::evidence` | provenance verifier (4 strategies) |
-| `harness-core::telemetry` | JSONL ledger with closed payload schema; `StorageKind` strategy enum |
-| `harness-core::codegen` | sentinel-block source → target sync (3 renderers) |
-| `harness-core::policy` | permission profiles (baseline, git-strict, gcp-strict, aws-strict, rust-dev, python-dev, typescript-dev) + version pins |
-| `harness-core::validate` | rule / skill / settings / commit-msg checks |
+| `harness-core::config` | `harness.toml` load + cross-section validate |
+| `harness-core::envelope` | JSON envelope contract every command emits |
+| `harness-core::error` | typed `Error` + stable `ErrorCode` wire codes |
+| `harness-core::path_guard` | safe write paths: `write_atomic` + `append_line` |
+| `harness-core::sentinel` | managed-region marker extraction (`<!-- harnex-managed:start/end -->`) |
+| `harness-core::evidence` | provenance verifier (strategy enum per claim shape) |
+| `harness-core::telemetry` | append-only JSONL ledger with closed payload schema |
+| `harness-core::codegen` | sentinel-block source → target sync |
+| `harness-core::policy` | permission profiles + version pins |
+| `harness-core::validate` | rule / skill / settings / commit-msg checks + `SettingsScope` enum |
+| `harness-core::audit` | harness-engineering compliance gate (spec drift, managed-region integrity) |
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
 | `harness-core::guard` | Claude Code hook adapter + Stop auditor |
 | `harness-core::export` | JSON Schema emission |
@@ -46,9 +49,10 @@ skill composes templates — it never free-generates safety-critical code.
 - `plugins/harnex/` (`SKILL.md` + `reference/` + `templates/`) — the harnex
   plugin, distributed via `.claude-plugin/marketplace.json`; consumed by Claude
   Code when the plugin is installed, not by this repo's own sessions.
+  `plugins/harnex/CLAUDE.md` is the editing contract, loaded when you work there.
 - `README.md` — the only human-facing surface (the two surfaces, install,
   oracle quickstart, what the oracle covers).
-- `.claude/rules/constitution.md` — always-loaded project laws (Articles I–VIII).
+- `.claude/rules/constitution.md` — always-loaded project laws.
 - `.claude/rules/<topic>.md` — path-scoped guidance; loaded automatically
   when you read files matching that rule's `paths:` frontmatter.
 - `crates/<crate>/CLAUDE.md` — crate-scoped guidance; loaded when you

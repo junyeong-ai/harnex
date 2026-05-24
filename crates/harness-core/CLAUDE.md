@@ -5,14 +5,14 @@ wrapper over these types.
 
 ## Recurring patterns
 
-### Strategy enum (single source of truth)
+### Closed-set discriminator enum (single source of truth)
 
-Each closed set of named strategies follows the same shape:
+Each closed vocabulary follows the same shape:
 
 ```rust
-pub enum FooStrategy { Bar, Baz }
+pub enum FooKind { Bar, Baz }
 
-impl FooStrategy {
+impl FooKind {
     pub const ALL: &'static [Self] = &[Self::Bar, Self::Baz];
     pub fn from_str(s: &str) -> Option<Self> { /* exhaustive match */ }
     pub fn as_str(self) -> &'static str { /* exhaustive match */ }
@@ -20,14 +20,39 @@ impl FooStrategy {
 ```
 
 Both `Config::validate_*` (string → enum) and the factory function
-(enum → trait object) consume the enum. Adding a variant forces both
-sites to update via the compiler's exhaustive-match check. There is no
-parallel `KNOWN_*` const — that pattern was deleted because it drifts.
+(enum → trait object) consume the enum. Adding a variant forces every
+consuming site to update via the compiler's exhaustive-match check. No
+parallel `KNOWN_*` const — that pattern is forbidden because it drifts.
 
-Instances of this pattern:
-`VerifierStrategy`, `RendererStrategy`, `ConsumerStrategy`,
-`PromotionDecision`, `FixCommand`, `SchemaTarget`, `PermissionProfile`,
-`StorageKind`.
+**Suffix is chosen for what the enum names**, not for the pattern:
+`Strategy` for swappable algorithms (`VerifierStrategy`, `RendererStrategy`,
+`ConsumerStrategy`); `Format` for serialization (`SourceFormat`); `Kind`
+for storage / shape (`StorageKind`, `PermissionFindingKind`); `Profile`
+for composable policy (`PermissionProfile`); `Decision` for ledger
+verdicts (`PromotionDecision`); `Command` for executable identity
+(`FixCommand`); `Target` for output destination (`SchemaTarget`);
+`Outcome` for terminal state (`HookRunOutcome`, `SyncOutcome`);
+`Severity` for finding rank. The pattern is the SSoT + exhaustive
+match, not the suffix.
+
+### Finding-producer naming convention
+
+Every class that ingests input and emits `Vec<Finding>` follows this
+domain-suffix convention:
+
+| Suffix | Means | Examples |
+|---|---|---|
+| `Validator` | frontmatter / structural shape check on a single file | `RuleValidator`, `SkillValidator`, `SettingsValidator`, `CommitMsgValidator` |
+| `Auditor` | cross-input semantic / policy compliance check | `PermissionAuditor`, `ProjectAuditor`, `StopAuditor` |
+| `Verifier` | provenance / claim verification | `EvidenceVerifier` |
+| `Classifier` | enrichment that assigns a category | `RetirementClassifier` |
+| `Sweeper` | top-level driver that fans out classifiers over kinds | `RetirementSweeper` |
+| `Syncer` | drift detection between SSoT and projection | `SentinelSyncer` |
+| `Recorder` | append-only ledger writer | `LifecycleDecisionRecorder` |
+| `Generator` | composes config-declared inputs into one artifact | `PermissionGenerator` |
+
+When introducing a new finding-producer, pick the suffix from this
+table — never invent a new one without extending this table first.
 
 ### Adding an `ErrorCode` variant
 
@@ -50,9 +75,9 @@ string), because `ProjectChecker::try_fix` dispatches via the enum.
 
 | Trait | Reason it exists (not speculation) |
 |---|---|
-| `Verifier` | 4 verifier impls dispatched at runtime per claim shape |
-| `Renderer` | 3 sentinel-block renderers per output format |
-| `ConsumerDetector` | 2 strategies (grep / graph-backlinks), each anchored at construction |
+| `Verifier` | runtime dispatch per claim shape |
+| `Renderer` | one impl per sentinel-block output format |
+| `ConsumerDetector` | grep + graph-backlinks, each anchored at construction |
 | `NodexRunner` | external-process boundary + test mock seam (see `graph::client`) |
 
 No 1-impl trait exists outside of a documented process/test boundary.

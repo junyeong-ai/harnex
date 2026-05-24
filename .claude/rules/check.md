@@ -17,7 +17,7 @@ When adding a new validator:
    and follows the same skipped-vs-ran contract.
 2. Call it from `ProjectChecker::run` between existing validators.
 3. Include the validator's slug in the test
-   `check_runs_every_enabled_validator` `run_validators` assertion list.
+   `check_runs_every_enabled_validator` `run` assertion list.
 4. Document the slug in this rule.
 
 Validator slugs (current):
