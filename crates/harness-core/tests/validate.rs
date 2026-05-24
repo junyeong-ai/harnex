@@ -382,66 +382,26 @@ fn skill_validator_flags_invalid_user_invocable() {
 }
 
 #[test]
-fn skill_validator_emits_info_for_unknown_agent() {
+fn skill_validator_accepts_any_agent_and_model_without_finding() {
+    // agent and model are valid free-form fields; flagging them is CUT-tier
+    // noise (a finding that implies no action). A custom agent and an explicit
+    // model produce no agent/model finding.
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
         reject_unknown_keys: false,
     };
     let v = SkillValidator::new(&policy);
-    let md = "---\nname: my-skill\ndescription: a skill\nagent: custom-bot\n---\nBody\n";
+    let md = "---\nname: my-skill\ndescription: a skill\nagent: custom-bot\nmodel: claude-opus-4-20250514\n---\nBody\n";
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
     assert!(
-        findings
+        !findings
             .iter()
-            .any(|f| f.slug == "skill-agent-unknown" && matches!(f.severity, Severity::Info)),
-        "expected skill-agent-unknown Info: {findings:?}"
-    );
-}
-
-#[test]
-fn skill_validator_accepts_known_agent_types() {
-    let policy = SkillsPolicy {
-        max_skill_md_lines: 500,
-        max_description_chars: 400,
-        reject_unknown_keys: false,
-    };
-    let v = SkillValidator::new(&policy);
-    for agent in &["Explore", "Plan", "general-purpose"] {
-        let md = format!("---\nname: my-skill\ndescription: a skill\nagent: {agent}\n---\nBody\n");
-        let tmp = TempDir::new().unwrap();
-        let path = tmp.path().join("my-skill/SKILL.md");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let findings = v.validate_text(&md, &path);
-        assert!(
-            !findings.iter().any(|f| f.slug == "skill-agent-unknown"),
-            "agent {agent} should be accepted: {findings:?}"
-        );
-    }
-}
-
-#[test]
-fn skill_validator_emits_info_for_model_override() {
-    let policy = SkillsPolicy {
-        max_skill_md_lines: 500,
-        max_description_chars: 400,
-        reject_unknown_keys: false,
-    };
-    let v = SkillValidator::new(&policy);
-    let md =
-        "---\nname: my-skill\ndescription: a skill\nmodel: claude-opus-4-20250514\n---\nBody\n";
-    let tmp = TempDir::new().unwrap();
-    let path = tmp.path().join("my-skill/SKILL.md");
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let findings = v.validate_text(md, &path);
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.slug == "skill-model-override" && matches!(f.severity, Severity::Info)),
-        "expected skill-model-override Info: {findings:?}"
+            .any(|f| f.slug == "skill-agent-unknown" || f.slug == "skill-model-override"),
+        "agent/model must not produce a finding: {findings:?}"
     );
 }
 
@@ -638,26 +598,12 @@ fn settings_validator_accepts_scoped_allow() {
 }
 
 #[test]
-fn settings_validator_notes_auto_memory_configured() {
+fn settings_validator_no_finding_for_auto_memory() {
+    // autoMemoryEnabled is a valid, intentional config; acknowledging it with
+    // an Info finding is CUT-tier noise. Present or absent, it produces nothing.
     let v = SettingsValidator::new();
     let json = r#"{
-        "autoMemoryEnabled": true,
-        "permissions": {"deny": ["x"]}
-    }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.slug == "settings-auto-memory-configured"
-                && matches!(f.severity, Severity::Info)),
-        "expected settings-auto-memory-configured Info: {findings:?}"
-    );
-}
-
-#[test]
-fn settings_validator_no_auto_memory_finding_when_absent() {
-    let v = SettingsValidator::new();
-    let json = r#"{
+        "autoMemoryEnabled": false,
         "permissions": {"deny": ["x"]}
     }"#;
     let findings = v.validate_text(json, Path::new(".claude/settings.json"));
@@ -665,6 +611,6 @@ fn settings_validator_no_auto_memory_finding_when_absent() {
         !findings
             .iter()
             .any(|f| f.slug == "settings-auto-memory-configured"),
-        "no auto-memory finding when key absent: {findings:?}"
+        "autoMemoryEnabled must not produce a finding: {findings:?}"
     );
 }

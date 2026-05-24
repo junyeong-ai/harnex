@@ -10,7 +10,6 @@
 //!   may legitimately have no denies, but the absence is worth surfacing).
 //! - `skillOverrides` values are valid trigger modes.
 //! - Overly permissive `permissions.allow` patterns without a corresponding deny.
-//! - `autoMemoryEnabled` presence noted as intentional configuration.
 
 use std::path::Path;
 
@@ -205,19 +204,6 @@ impl SettingsValidator {
                     });
                 }
             }
-        }
-
-        // autoMemoryEnabled: informational acknowledgement
-        if parsed.get("autoMemoryEnabled").is_some() {
-            findings.push(Finding {
-                slug: "settings-auto-memory-configured".into(),
-                severity: Severity::Info,
-                location: Location::file(path.to_path_buf()),
-                message: "autoMemoryEnabled is explicitly configured".into(),
-                hint: Some("this is an intentional team decision; no action needed".into()),
-                auto_fixable: false,
-                fix_command: None,
-            });
         }
 
         findings

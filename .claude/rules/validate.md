@@ -20,12 +20,12 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
   raise a Minor finding per spec recommendation.
 - `user-invocable` must be boolean if present (Major).
 - `context` must be `"fork"` if present (Major).
-- `agent` checked against known types; unknown emits Info.
 - `allowed-tools` must be array of strings (Major).
 - `paths` must be array of valid glob patterns (Major).
 - `hooks` keys validated against `KNOWN_HOOK_EVENTS` (Major).
-- `model` emits Info noting session model override.
 - `effort` must be one of `low|medium|high|xhigh|max` (Major).
+- `agent` / `model` are valid free-form fields — accepted, never flagged
+  (a finding for a correct config is CUT-tier noise).
 - `reject_unknown_keys` (opt-in, default off): flag any top-level
   frontmatter key outside `KNOWN_SKILL_KEYS` as Major (Claude Code
   silently ignores unknown keys). Skills-only — rule frontmatter is
@@ -40,7 +40,6 @@ Settings validator:
 - `skillOverrides` values must be `on|name-only|user-invocable-only|off` (Major).
 - Overly permissive allow patterns (`rm:*`, `curl:*`, `sudo:*`, `rm -rf:*`)
   without corresponding deny raise a Minor advisory.
-- `autoMemoryEnabled` presence emits an Info acknowledgement.
 
 When the spec changes, update `KNOWN_HOOK_EVENTS` and add a test that
 asserts the new event is accepted.
