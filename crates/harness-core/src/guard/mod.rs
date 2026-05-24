@@ -1,8 +1,8 @@
 //! # guard — Claude Code runtime adapter
 //!
 //! Three surfaces:
-//! - [`HookEvent`] — typed parser for hook stdin JSON (29 documented events
-//!   per <https://code.claude.com/docs/en/hooks>).
+//! - [`HookEvent`] — typed parser for hook stdin JSON (event surface per
+//!   <https://code.claude.com/docs/en/hooks>).
 //! - [`HookRunner`] — replacement for fragile `_runner.sh` / `_stop_runner.sh`
 //!   patterns. [`HookRunner::run`] propagates the inner exit code (for
 //!   PreToolUse/PostToolUse). [`HookRunner::run_stop`] suppresses non-zero

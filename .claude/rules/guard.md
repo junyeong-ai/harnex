@@ -7,7 +7,7 @@ paths:
 
 HookEvent parses stdin JSON for Claude Code hook events. The toolkit
 does not model event-specific fields as typed Rust structs — the
-29-event surface evolves upstream. Common fields are extracted; the
+hook-event surface evolves upstream. Common fields are extracted; the
 rest is accessible via `HookEvent::field(key)`.
 
 HookRunner replaces fragile `_runner.sh` / `_stop_runner.sh` patterns.

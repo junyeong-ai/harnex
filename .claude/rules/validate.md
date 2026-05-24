@@ -33,8 +33,9 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
   a key.
 
 Settings validator:
-- Every hook event in `hooks` keys must be one of the 29 documented
-  events in `KNOWN_HOOK_EVENTS` (sourced from /en/hooks).
+- Every hook event in `hooks` keys must be in `KNOWN_HOOK_EVENTS`
+  (sourced from /en/hooks). The set is a permissive superset for typo
+  detection — it errs toward accepting, never asserts an exact count.
 - `permissions.deny` empty raises a Minor advisory.
 - `skillOverrides` values must be `on|name-only|user-invocable-only|off` (Major).
 - Overly permissive allow patterns (`rm:*`, `curl:*`, `sudo:*`, `rm -rf:*`)
