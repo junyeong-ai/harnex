@@ -43,6 +43,30 @@ const KNOWN_AGENT_TYPES: &[&str] = &["Explore", "Plan", "general-purpose"];
 
 const KNOWN_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
+/// Complete Claude Code skill frontmatter key surface (wire names).
+/// Broader than `SkillFrontmatter`'s modeled fields — includes spec keys
+/// the validator does not type-check (argument-hint, arguments, shell) so
+/// `reject_unknown_keys` never false-positives on a valid-but-unmodeled key.
+/// Update when the upstream skills spec adds a key (same contract as
+/// KNOWN_HOOK_EVENTS).
+const KNOWN_SKILL_KEYS: &[&str] = &[
+    "name",
+    "description",
+    "when_to_use",
+    "argument-hint",
+    "arguments",
+    "disable-model-invocation",
+    "user-invocable",
+    "allowed-tools",
+    "model",
+    "effort",
+    "context",
+    "agent",
+    "hooks",
+    "paths",
+    "shell",
+];
+
 pub struct SkillValidator<'a> {
     policy: &'a SkillsPolicy,
 }
@@ -166,6 +190,35 @@ impl<'a> SkillValidator<'a> {
                 return findings;
             }
         };
+
+        // reject_unknown_keys (opt-in): re-parse the block as a raw mapping and
+        // flag any top-level key outside the spec surface. The typed parse above
+        // already succeeded, so a secondary parse failure is unexpected and is
+        // skipped rather than re-reported (the primary path owns malformed YAML).
+        if self.policy.reject_unknown_keys
+            && let Ok(mapping) = serde_yml::from_str::<serde_yml::Mapping>(&fm.yaml_text)
+        {
+            for key in mapping.keys() {
+                if let Some(key) = key.as_str()
+                    && !KNOWN_SKILL_KEYS.contains(&key)
+                {
+                    findings.push(Finding {
+                        slug: "skill-unknown-frontmatter-key".into(),
+                        severity: Severity::Major,
+                        location: Location::line(path.to_path_buf(), fm.begin_line),
+                        message: format!(
+                            "unknown frontmatter key '{key}' is not in the Claude Code skill spec; Claude Code silently ignores it"
+                        ),
+                        hint: Some(format!(
+                            "remove it or fix the typo — known keys: {}",
+                            KNOWN_SKILL_KEYS.join(", ")
+                        )),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                }
+            }
+        }
 
         let effective_name = parsed.name.clone().unwrap_or_else(|| dir_name.clone());
         if !NAME_PATTERN.is_match(&effective_name) {

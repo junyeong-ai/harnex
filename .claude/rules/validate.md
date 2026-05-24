@@ -26,6 +26,11 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
 - `hooks` keys validated against `KNOWN_HOOK_EVENTS` (Major).
 - `model` emits Info noting session model override.
 - `effort` must be one of `low|medium|high|xhigh|max` (Major).
+- `reject_unknown_keys` (opt-in, default off): flag any top-level
+  frontmatter key outside `KNOWN_SKILL_KEYS` as Major (Claude Code
+  silently ignores unknown keys). Skills-only — rule frontmatter is
+  intentionally extensible. Extend `KNOWN_SKILL_KEYS` when the spec adds
+  a key.
 
 Settings validator:
 - Every hook event in `hooks` keys must be one of the 29 documented
