@@ -22,7 +22,7 @@ pub struct RuleValidator<'a> {
 #[derive(Debug, Deserialize)]
 struct RuleFrontmatter {
     #[serde(default)]
-    paths: Option<serde_yml::Value>,
+    paths: Option<yaml_serde::Value>,
 }
 
 impl<'a> RuleValidator<'a> {
@@ -95,7 +95,7 @@ impl<'a> RuleValidator<'a> {
                     });
                 }
             }
-            Some(fm) => match serde_yml::from_str::<RuleFrontmatter>(&fm.yaml_text) {
+            Some(fm) => match yaml_serde::from_str::<RuleFrontmatter>(&fm.yaml_text) {
                 Ok(parsed) => {
                     if parsed.paths.is_none() && !always_loaded {
                         findings.push(Finding {

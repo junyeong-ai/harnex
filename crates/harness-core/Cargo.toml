@@ -18,7 +18,7 @@ glob.workspace = true
 regex.workspace = true
 semver.workspace = true
 tempfile.workspace = true
-serde_yml.workspace = true
+yaml_serde.workspace = true
 walkdir.workspace = true
 schemars.workspace = true
 
