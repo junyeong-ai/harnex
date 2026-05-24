@@ -123,27 +123,30 @@ impl SettingsValidator {
             }
         }
 
-        if let Some(perms) = parsed.get("permissions").and_then(|v| v.as_object()) {
-            let deny_empty = perms
-                .get("deny")
-                .and_then(|v| v.as_array())
-                .map(|a| a.is_empty())
-                .unwrap_or(true);
-            if deny_empty {
-                findings.push(Finding {
-                    slug: "settings-no-deny-rules".into(),
-                    severity: Severity::Minor,
-                    location: Location::file(path.to_path_buf()),
-                    message: "permissions.deny is missing or empty".into(),
-                    hint: Some("seed it via `harness policy permissions generate`".into()),
-                    auto_fixable: false,
-                    fix_command: Some(
-                        "harness policy permissions generate --profile baseline".into(),
-                    ),
-                });
-            }
+        // No-deny advisory: fires whether `permissions` is absent entirely
+        // (no guardrails at all — the riskiest case) or present with an
+        // empty/missing deny array.
+        let perms = parsed.get("permissions").and_then(|v| v.as_object());
+        let deny_empty = perms
+            .and_then(|p| p.get("deny"))
+            .and_then(|v| v.as_array())
+            .map(|a| a.is_empty())
+            .unwrap_or(true);
+        if deny_empty {
+            findings.push(Finding {
+                slug: "settings-no-deny-rules".into(),
+                severity: Severity::Minor,
+                location: Location::file(path.to_path_buf()),
+                message: "permissions.deny is missing or empty".into(),
+                hint: Some("seed it via `harness policy permissions generate`".into()),
+                auto_fixable: false,
+                fix_command: Some("harness policy permissions generate --profile baseline".into()),
+            });
+        }
 
-            // Overly permissive allow patterns without corresponding deny
+        // Overly permissive allow patterns are only meaningful when a
+        // permissions block exists.
+        if let Some(perms) = perms {
             let allow_strs: Vec<&str> = perms
                 .get("allow")
                 .and_then(|v| v.as_array())

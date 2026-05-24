@@ -39,25 +39,30 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   agent. `command` is the safe deterministic default for a no-network harness.
 - **stdin** carries session_id, transcript_path, cwd, permission_mode,
   hook_event_name (PreToolUse adds tool_name, tool_input, tool_use_id).
-- **`additionalContext`** is honored only on SessionStart, Setup, SubagentStart,
-  UserPromptSubmit, UserPromptExpansion. Write it as factual statements, not
-  imperatives (imperative phrasing trips prompt-injection defenses).
+- **`additionalContext`** injects context on SessionStart, Setup,
+  SubagentStart, UserPromptSubmit, UserPromptExpansion, and the tool events
+  (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch) — on tool events
+  via `hookSpecificOutput.additionalContext`. It is NOT honored on Stop (use
+  `systemMessage` there). Write it as factual statements, not imperatives
+  (imperative phrasing trips prompt-injection defenses).
 
 ## Settings (/en/settings)
 
 - **Precedence (high→low):** managed → CLI args → local (.claude/settings.local.json)
   → project (.claude/settings.json) → user (~/.claude/settings.json).
-- **Permissions evaluate deny > ask > allow, first-match-wins, then
-  default-deny. Arrays MERGE (concat + dedupe) across scopes — they do not
-  override.** An `allow` cannot loosen a higher-scope `deny`.
+- **Permissions evaluate deny > ask > allow, first-match-wins. Arrays MERGE
+  (concat + dedupe) across scopes — they do not override.** An `allow` cannot
+  loosen a higher-scope `deny`. With no matching rule, `default` mode PROMPTS
+  (asks) — it is not a hard-deny; hard-deny is the opt-in `dontAsk` mode.
 - **Silently ignored in project/local settings** (set only in user/managed):
   `defaultMode: "auto"`, `autoMemoryDirectory`, `autoMode`,
   `skipDangerousModePermissionPrompt`. Never emit these into a generated
   `.claude/settings.json` — they become no-ops.
 - **Pattern syntax:** `Bash(npm run *)`, `Read(./.env)`, `Read(./secrets/**)`,
-  `Edit(...)`, `Write(...)`, `WebFetch(domain:github.com)`, `MCP(server)`,
-  `Skill(name)`. `*` = one segment, `**` = recursive; `/` project-relative,
-  `//` absolute, `~/` home.
+  `Edit(...)`, `Write(...)`, `WebFetch(domain:github.com)`, `Skill(name)`.
+  MCP uses double-underscore, NOT a parenthesized form: `mcp__<server>` (all
+  its tools) or `mcp__<server>__<tool>`. `*` = one segment, `**` = recursive;
+  `/` project-relative, `//` absolute, `~/` home.
 - **`skillOverrides` values:** `on` | `name-only` | `user-invocable-only` |
   `off` (absent = `on`). `autoMemoryEnabled`: bool, default true.
 - Managed-only enforcement floors: `allowManagedPermissionRulesOnly`,
@@ -70,9 +75,11 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   (`[a-z0-9-]{1,64}`), description, when_to_use, argument-hint, arguments,
   disable-model-invocation, user-invocable, allowed-tools, model, effort
   (`low|medium|high|xhigh|max`), context (`fork`), agent, hooks, paths, shell.
-- **Location:** `<plugin-root>/skills/<name>/SKILL.md` (plugin) or
-  `.claude/skills/<name>/SKILL.md` (project). Plugin skills are namespaced
-  `plugin:skill`.
+- **Location:** `.claude/skills/<name>/SKILL.md` (project/personal),
+  `<plugin-root>/skills/<name>/SKILL.md` (plugin), or — since v2.1.142 — a bare
+  `SKILL.md` at the plugin root with no `skills/` dir and no `skills` manifest
+  field, which loads as a single-skill plugin (invocation name from frontmatter
+  `name`, else directory basename). Plugin skills are namespaced `plugin:skill`.
 - **`disable-model-invocation: true`** is the field that blocks programmatic
   (Claude-triggered) invocation and hides the description from context — use it
   for side-effect skills (generate/write/deploy). `user-invocable: false` only
@@ -81,11 +88,13 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   does NOT restrict.** To restrict, use `permissions.deny`.
 - Budgets: description + when_to_use ≤ 1536 chars; SKILL.md ≤ 500 lines (move
   reference to supporting files, loaded on demand).
-- **Bundled-asset variables:** `${CLAUDE_PLUGIN_ROOT}` (plugin install dir —
-  reference templates/scripts), `${CLAUDE_PROJECT_DIR}` (target repo root —
-  where generated files are written), `${CLAUDE_PLUGIN_DATA}` (persistent
-  state). `${CLAUDE_SKILL_DIR}` is not documented for plugins; use
-  `${CLAUDE_PLUGIN_ROOT}`.
+- **Bundled-asset variables:** `${CLAUDE_SKILL_DIR}` — the directory holding
+  this skill's `SKILL.md`; the documented, install-level-portable anchor for
+  skill-bundled reference docs and templates (works whether installed
+  personal / project / plugin). `${CLAUDE_PROJECT_DIR}` — the target repo root,
+  where generated files are written. `${CLAUDE_PLUGIN_ROOT}` is the plugin-root
+  anchor (equal to the skill dir for a single-skill-at-root plugin); prefer
+  `${CLAUDE_SKILL_DIR}` for skill-owned files.
 
 ## Memory (/en/memory)
 

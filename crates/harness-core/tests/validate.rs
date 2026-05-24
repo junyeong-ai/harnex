@@ -558,6 +558,19 @@ fn settings_validator_accepts_valid_skill_overrides() {
 }
 
 #[test]
+fn settings_validator_flags_absent_permissions_as_no_deny() {
+    // A settings.json with no permissions block at all has zero guardrails —
+    // the no-deny advisory must fire, not silently skip.
+    let v = SettingsValidator::new();
+    let json = r#"{ "hooks": {} }"#;
+    let findings = v.validate_text(json, Path::new(".claude/settings.json"));
+    assert!(
+        findings.iter().any(|f| f.slug == "settings-no-deny-rules"),
+        "absent permissions must surface settings-no-deny-rules: {findings:?}"
+    );
+}
+
+#[test]
 fn settings_validator_warns_overly_permissive_allow() {
     let v = SettingsValidator::new();
     let json = r#"{

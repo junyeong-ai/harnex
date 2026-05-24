@@ -18,8 +18,8 @@ lives under `plugins/harnex/`:
 | `plugins/harnex/.claude-plugin/plugin.json` | manifest; `version` omitted (commit SHA drives updates) |
 
 Generated files land in `${CLAUDE_PROJECT_DIR}`; bundled assets are referenced
-via `${CLAUDE_PLUGIN_ROOT}` (= `plugins/harnex/`). The skill composes templates
-— it never free-generates safety-critical code.
+via `${CLAUDE_SKILL_DIR}` (the documented, install-level-portable anchor). The
+skill composes templates — it never free-generates safety-critical code.
 
 ## Where things live (oracle binary)
 
