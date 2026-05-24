@@ -76,6 +76,8 @@ enum Command {
     Completions(commands::completions::CompletionsArgs),
     /// Unified validation gate — runs every enabled validator
     Check(commands::check::CheckArgs),
+    /// Harness-engineering compliance gate — spec drift + managed-region integrity
+    Audit(commands::audit::AuditArgs),
 }
 
 fn main() -> ExitCode {
@@ -95,6 +97,7 @@ fn main() -> ExitCode {
         Command::Graph { cmd } => commands::graph::run(cmd, &mut out),
         Command::Completions(args) => commands::completions::run(args, &mut out),
         Command::Check(args) => commands::check::run(args, &mut out),
+        Command::Audit(args) => commands::audit::run(args, &mut out),
     };
 
     match result {
