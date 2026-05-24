@@ -2,8 +2,10 @@
 //!
 //! Checks:
 //! - JSON parses.
-//! - Every key under `hooks` is one of the 29 documented event names
-//!   per <https://code.claude.com/docs/en/hooks>.
+//! - Every key under `hooks` is a documented event name per
+//!   <https://code.claude.com/docs/en/hooks>. The known set is a
+//!   permissive superset whose job is catching typo'd event names —
+//!   not asserting an exact spec count (the surface evolves upstream).
 //! - `permissions.deny` is present and non-empty (warn-only — small projects
 //!   may legitimately have no denies, but the absence is worth surfacing).
 //! - `skillOverrides` values are valid trigger modes.
@@ -29,8 +31,11 @@ const DANGEROUS_ALLOW_PATTERNS: &[&str] = &[
     "Bash(rm -rf:*)",
 ];
 
-/// All hook event names per Claude Code spec /en/hooks (29 total).
-/// Source-of-truth. Used by SettingsValidator and exposed for tests.
+/// Documented hook event names per Claude Code spec /en/hooks.
+/// A permissive superset for typo detection — membership errs toward
+/// accepting, so a newly-added upstream event is never falsely flagged;
+/// the check exists only to catch misspelled event keys that silently
+/// no-op. Source-of-truth for SettingsValidator and skill `hooks` keys.
 pub const KNOWN_HOOK_EVENTS: &[&str] = &[
     "SessionStart",
     "SessionEnd",

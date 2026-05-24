@@ -214,18 +214,18 @@ fn render_settings_json(include_hooks: bool) -> Result<String> {
             "SessionStart": [
                 {
                     "matcher": "startup|resume",
-                    "hooks": [{"type": "command", "command": "hooks/_runner.sh session-start.sh", "timeout": 10000}]
+                    "hooks": [{"type": "command", "command": "hooks/_runner.sh session-start.sh", "timeout": 10}]
                 }
             ],
             "PostToolUse": [
                 {
                     "matcher": "Edit|Write",
-                    "hooks": [{"type": "command", "command": "hooks/_runner.sh post-format.sh", "timeout": 15000}]
+                    "hooks": [{"type": "command", "command": "hooks/_runner.sh post-format.sh", "timeout": 15}]
                 }
             ],
             "Stop": [
                 {
-                    "hooks": [{"type": "command", "command": "hooks/_stop_runner.sh check-on-stop.sh", "timeout": 30000}]
+                    "hooks": [{"type": "command", "command": "hooks/_stop_runner.sh check-on-stop.sh", "timeout": 30}]
                 }
             ]
         });

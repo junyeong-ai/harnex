@@ -1,7 +1,7 @@
 //! Typed parsing of Claude Code hook stdin JSON.
 //!
 //! The toolkit does not model event-specific fields as Rust types — the
-//! 29-event surface is too wide and evolves upstream. Common fields are
+//! hook-event surface is wide and evolves upstream. Common fields are
 //! extracted; the rest stays accessible via [`HookEvent::field`].
 
 use serde::{Deserialize, Serialize};
