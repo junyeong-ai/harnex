@@ -239,7 +239,11 @@ fn settings_validator_flags_unknown_hook_event() {
             "MadeUpEvent": []
         }
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     let unknowns: Vec<_> = findings
         .iter()
         .filter(|f| f.slug == "settings-unknown-hook-event")
@@ -252,7 +256,11 @@ fn settings_validator_flags_unknown_hook_event() {
 fn settings_validator_warns_on_empty_deny() {
     let v = SettingsValidator::new();
     let json = r#"{"permissions": {"allow": ["Bash(ls *)"]}}"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     assert!(findings.iter().any(|f| f.slug == "settings-no-deny-rules"));
 }
 
@@ -263,7 +271,11 @@ fn settings_validator_accepts_well_formed() {
         "hooks": {"SessionStart": [], "Stop": [], "PreCompact": []},
         "permissions": {"allow": [], "deny": ["Bash(sudo *)"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     assert!(findings.is_empty(), "unexpected: {findings:?}");
 }
 
@@ -574,7 +586,11 @@ fn settings_validator_flags_invalid_skill_override() {
         },
         "permissions": {"deny": ["x"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     let invalids: Vec<_> = findings
         .iter()
         .filter(|f| f.slug == "settings-skill-override-invalid")
@@ -595,7 +611,11 @@ fn settings_validator_accepts_valid_skill_overrides() {
         },
         "permissions": {"deny": ["x"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     assert!(
         !findings
             .iter()
@@ -610,7 +630,11 @@ fn settings_validator_flags_absent_permissions_as_no_deny() {
     // the no-deny advisory must fire, not silently skip.
     let v = SettingsValidator::new();
     let json = r#"{ "hooks": {} }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     assert!(
         findings.iter().any(|f| f.slug == "settings-no-deny-rules"),
         "absent permissions must surface settings-no-deny-rules: {findings:?}"
@@ -626,7 +650,11 @@ fn settings_validator_warns_overly_permissive_allow() {
             "deny": ["Bash(ls:*)"]
         }
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     let permissive: Vec<_> = findings
         .iter()
         .filter(|f| f.slug == "settings-overly-permissive")
@@ -648,7 +676,11 @@ fn settings_validator_accepts_scoped_allow() {
             "deny": ["Bash(sudo *)"]
         }
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     assert!(
         !findings
             .iter()
@@ -669,7 +701,11 @@ fn settings_validator_flags_space_wildcard_dangerous_allow() {
             "deny": ["Bash(sudo:*)"]
         }
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     let permissive: Vec<_> = findings
         .iter()
         .filter(|f| f.slug == "settings-overly-permissive")
@@ -693,7 +729,11 @@ fn settings_validator_no_finding_for_auto_memory() {
         "autoMemoryEnabled": false,
         "permissions": {"deny": ["x"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     assert!(
         !findings
             .iter()
@@ -724,9 +764,17 @@ fn settings_validator_flags_project_scope_noop_keys() {
         .iter()
         .filter(|f| f.slug == "settings-project-scope-noop-key")
         .collect();
-    assert_eq!(noop_keys.len(), 3, "expected 3 noop-key findings: {findings:?}");
+    assert_eq!(
+        noop_keys.len(),
+        3,
+        "expected 3 noop-key findings: {findings:?}"
+    );
     let messages: Vec<&str> = noop_keys.iter().map(|f| f.message.as_str()).collect();
-    for key in ["autoMemoryDirectory", "autoMode", "skipDangerousModePermissionPrompt"] {
+    for key in [
+        "autoMemoryDirectory",
+        "autoMode",
+        "skipDangerousModePermissionPrompt",
+    ] {
         assert!(
             messages.iter().any(|m| m.contains(key)),
             "missing finding for '{key}'"
@@ -783,7 +831,11 @@ fn settings_validator_flags_invalid_default_mode() {
     let json = r#"{
         "permissions": {"defaultMode": "turbo", "deny": ["Bash(sudo *)"]}
     }"#;
-    let findings = v.validate_text(json, Path::new(".claude/settings.json"), SettingsScope::Project);
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
     assert!(
         findings
             .iter()
@@ -795,13 +847,25 @@ fn settings_validator_flags_invalid_default_mode() {
 #[test]
 fn settings_validator_accepts_valid_default_modes() {
     let v = SettingsValidator::new();
-    for mode in &["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions"] {
+    for mode in &[
+        "default",
+        "acceptEdits",
+        "plan",
+        "dontAsk",
+        "bypassPermissions",
+    ] {
         let json = format!(
             r#"{{ "permissions": {{ "defaultMode": "{mode}", "deny": ["Bash(sudo *)"] }} }}"#
         );
-        let findings = v.validate_text(&json, Path::new(".claude/settings.json"), SettingsScope::Project);
+        let findings = v.validate_text(
+            &json,
+            Path::new(".claude/settings.json"),
+            SettingsScope::Project,
+        );
         assert!(
-            !findings.iter().any(|f| f.slug == "settings-default-mode-invalid"),
+            !findings
+                .iter()
+                .any(|f| f.slug == "settings-default-mode-invalid"),
             "defaultMode = {mode} should be accepted: {findings:?}"
         );
     }

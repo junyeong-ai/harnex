@@ -375,15 +375,11 @@ impl<'a> ProjectChecker<'a> {
         // ProjectChecker runs against a project root, so the scope is
         // unambiguous: project. The local override (`settings.local.json`) is
         // discovered separately if present.
-        findings.extend(
-            SettingsValidator::new().validate_file(&path, SettingsScope::Project)?,
-        );
+        findings.extend(SettingsValidator::new().validate_file(&path, SettingsScope::Project)?);
         *files_scanned += 1;
         let local = self.working_dir.join(".claude/settings.local.json");
         if local.is_file() && self.passes_filter(&local, changed) {
-            findings.extend(
-                SettingsValidator::new().validate_file(&local, SettingsScope::Local)?,
-            );
+            findings.extend(SettingsValidator::new().validate_file(&local, SettingsScope::Local)?);
             *files_scanned += 1;
         }
         run.push("validate.settings".into());

@@ -25,8 +25,7 @@ use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 
 /// Valid values for `skillOverrides` per Claude Code spec.
-pub const KNOWN_SKILL_OVERRIDE_VALUES: &[&str] =
-    &["on", "name-only", "user-invocable-only", "off"];
+pub const KNOWN_SKILL_OVERRIDE_VALUES: &[&str] = &["on", "name-only", "user-invocable-only", "off"];
 
 /// Closed enum of `permissions.defaultMode` values per /en/settings.
 /// `auto` is technically a valid wire value but silently no-ops outside
@@ -85,8 +84,7 @@ pub enum SettingsScope {
 }
 
 impl SettingsScope {
-    pub const ALL: &'static [Self] =
-        &[Self::Project, Self::Local, Self::User, Self::Managed];
+    pub const ALL: &'static [Self] = &[Self::Project, Self::Local, Self::User, Self::Managed];
 
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s {

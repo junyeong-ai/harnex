@@ -110,18 +110,16 @@ impl<'a> ManagedRegionAuditor<'a> {
         project_path: &Path,
         findings: &mut Vec<Finding>,
     ) -> Result<()> {
-        let project_content = std::fs::read_to_string(project_path).map_err(|e| {
-            Error::IoFailure {
+        let project_content =
+            std::fs::read_to_string(project_path).map_err(|e| Error::IoFailure {
                 path: project_path.to_path_buf(),
                 source: e,
-            }
-        })?;
-        let template_content = std::fs::read_to_string(template_path).map_err(|e| {
-            Error::IoFailure {
+            })?;
+        let template_content =
+            std::fs::read_to_string(template_path).map_err(|e| Error::IoFailure {
                 path: template_path.to_path_buf(),
                 source: e,
-            }
-        })?;
+            })?;
         let project_regions = sentinel::extract_regions(&project_content);
         // A file with zero harnex-managed sentinels is fully project-authored.
         // Possibly never scaffolded by harnex. The "missing region" finding
@@ -367,7 +365,11 @@ project = ".claude/rules/constitution.md"
     fn empty_manifest_is_rejected() {
         let plugin = TempDir::new().unwrap();
         let proj = TempDir::new().unwrap();
-        write(plugin.path(), "templates/managed-files.toml", "managed = []\n");
+        write(
+            plugin.path(),
+            "templates/managed-files.toml",
+            "managed = []\n",
+        );
         let err = ManagedRegionAuditor::new(plugin.path())
             .audit(proj.path())
             .unwrap_err();

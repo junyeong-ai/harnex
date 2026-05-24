@@ -401,7 +401,11 @@ mod tests {
         // Scaffolding shapes must NOT be in the deny list — agents must be
         // able to create `.env.example` / `.env.sample` / `.env.template`
         // without a project-level override.
-        for safe in ["Write(.env.example)", "Write(.env.sample)", "Write(.env.template)"] {
+        for safe in [
+            "Write(.env.example)",
+            "Write(.env.sample)",
+            "Write(.env.template)",
+        ] {
             assert!(
                 !p.deny.contains(&safe),
                 "scaffolding shape '{safe}' must not be denied by baseline"

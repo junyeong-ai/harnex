@@ -20,12 +20,11 @@ pub struct AuditArgs {
 }
 
 pub fn run<W: Write>(args: AuditArgs, out: &mut W) -> Result<ExitCode> {
-    let working_dir = std::env::current_dir().map_err(|e| {
-        harness_core::error::Error::IoFailure {
+    let working_dir =
+        std::env::current_dir().map_err(|e| harness_core::error::Error::IoFailure {
             path: PathBuf::from("."),
             source: e,
-        }
-    })?;
+        })?;
     let mut auditor = ProjectAuditor::new(&working_dir);
     if let Some(plugin_root) = args.plugin_root {
         auditor = auditor.with_plugin_root(plugin_root);

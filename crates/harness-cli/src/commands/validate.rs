@@ -16,7 +16,10 @@ use super::{load_config, write_envelope_success};
 /// source of truth — drift impossible).
 fn settings_scope_values() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new(
-        SettingsScope::ALL.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        SettingsScope::ALL
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>(),
     )
 }
 

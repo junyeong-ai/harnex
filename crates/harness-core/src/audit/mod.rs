@@ -144,8 +144,7 @@ impl<'a> ProjectAuditor<'a> {
                         });
                         continue;
                     };
-                    let outcome =
-                        ManagedRegionAuditor::new(plugin_root).audit(self.working_dir)?;
+                    let outcome = ManagedRegionAuditor::new(plugin_root).audit(self.working_dir)?;
                     files_scanned += outcome.files_scanned;
                     findings.extend(outcome.findings);
                     run.push(kind.as_str().to_string());

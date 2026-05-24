@@ -265,9 +265,7 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        if self.policy.flag_side_effect_verbs
-            && parsed.disable_model_invocation != Some(true)
-        {
+        if self.policy.flag_side_effect_verbs && parsed.disable_model_invocation != Some(true) {
             let desc_lower = format!(
                 "{} {}",
                 parsed.description.as_deref().unwrap_or(""),

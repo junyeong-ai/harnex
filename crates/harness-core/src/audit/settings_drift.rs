@@ -143,11 +143,11 @@ impl SettingsDriftAuditor {
                     fix_command: None,
                 });
             }
-            if event_name == "Stop"
-                || event_name == "SubagentStop"
-                || event_name == "StopFailure"
-            {
-                let command = handler.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            if event_name == "Stop" || event_name == "SubagentStop" || event_name == "StopFailure" {
+                let command = handler
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if !command.contains(STOP_RUNNER_TOKEN) {
                     findings.push(Finding {
                         slug: "audit-stop-blocking-suspect".into(),
@@ -193,11 +193,9 @@ mod tests {
         }"#;
         let findings = run_on(json);
         assert!(
-            findings
-                .iter()
-                .any(|f| f.slug == "audit-ms-timeout"
-                    && matches!(f.severity, Severity::Minor)
-                    && f.message.contains("30000")),
+            findings.iter().any(|f| f.slug == "audit-ms-timeout"
+                && matches!(f.severity, Severity::Minor)
+                && f.message.contains("30000")),
             "expected audit-ms-timeout (Minor — keep-soften-cut): {findings:?}"
         );
     }
@@ -231,7 +229,9 @@ mod tests {
         }"#;
         let findings = run_on(json);
         assert!(
-            findings.iter().any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+            findings
+                .iter()
+                .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
             "expected audit-mcp-matcher-incomplete: {findings:?}"
         );
     }
@@ -248,7 +248,9 @@ mod tests {
         }"#;
         let findings = run_on(json);
         assert!(
-            !findings.iter().any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+            !findings
+                .iter()
+                .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
             "mcp__server__.* is valid: {findings:?}"
         );
     }
@@ -265,7 +267,9 @@ mod tests {
         }"#;
         let findings = run_on(json);
         assert!(
-            !findings.iter().any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+            !findings
+                .iter()
+                .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
             "mcp__server__tool is valid: {findings:?}"
         );
     }
@@ -281,7 +285,9 @@ mod tests {
         }"#;
         let findings = run_on(json);
         assert!(
-            findings.iter().any(|f| f.slug == "audit-stop-blocking-suspect"),
+            findings
+                .iter()
+                .any(|f| f.slug == "audit-stop-blocking-suspect"),
             "expected audit-stop-blocking-suspect: {findings:?}"
         );
     }
@@ -297,7 +303,9 @@ mod tests {
         }"#;
         let findings = run_on(json);
         assert!(
-            !findings.iter().any(|f| f.slug == "audit-stop-blocking-suspect"),
+            !findings
+                .iter()
+                .any(|f| f.slug == "audit-stop-blocking-suspect"),
             "Stop via _stop_runner is correct: {findings:?}"
         );
     }
