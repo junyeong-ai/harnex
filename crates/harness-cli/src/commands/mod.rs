@@ -5,7 +5,6 @@ pub mod evidence;
 pub mod export;
 pub mod graph;
 pub mod guard;
-pub mod init;
 pub mod lifecycle;
 pub mod policy;
 pub mod telemetry;
