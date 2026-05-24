@@ -109,13 +109,13 @@
     "MetaConfig": {
       "type": "object",
       "properties": {
-        "harness_toolkit_version": {
+        "harnex_version": {
           "description": "SemVer requirement that the binary must satisfy.",
           "type": "string"
         }
       },
       "required": [
-        "harness_toolkit_version"
+        "harnex_version"
       ]
     },
     "KindDecl": {

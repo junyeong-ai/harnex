@@ -1,4 +1,4 @@
-//! # init — scaffold a Claude Code project for harness-toolkit
+//! # init — scaffold a Claude Code project for harnex
 //!
 //! Creates `harness.toml`, `CLAUDE.md`, `README.md`, `.claude/rules/constitution.md`,
 //! `.claude/settings.json`, and (optionally) a `hooks/` directory with

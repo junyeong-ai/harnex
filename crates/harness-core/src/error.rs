@@ -97,7 +97,7 @@ pub enum Error {
     #[error("harness.toml not found from {path:?} upward")]
     ConfigNotFound { path: PathBuf },
 
-    #[error("config requires harness-toolkit {required}, this binary is {actual}")]
+    #[error("config requires harnex {required}, this binary is {actual}")]
     ConfigVersionMismatch { required: String, actual: String },
 
     #[error("path traversal refused: {path:?}")]
@@ -227,7 +227,7 @@ impl Error {
                 Some("create harness.toml at the project root (see examples/)")
             }
             Self::ConfigVersionMismatch { .. } => {
-                Some("update harness.toml [meta] harness_toolkit_version or upgrade the binary")
+                Some("update harness.toml [meta] harnex_version or upgrade the binary")
             }
             Self::PathTraversal { .. } => Some("paths must not contain '..' segments"),
             Self::PathSymlinkRefused { .. } => {

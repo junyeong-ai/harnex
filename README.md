@@ -1,6 +1,6 @@
-# harness-toolkit
+# harnex
 
-Harness engineering toolkit for Claude Code projects. Pure-Rust, JSON-first
+Harness engineering for Claude Code projects. Pure-Rust, JSON-first
 CLI that enforces deterministic harness invariants — provenance verification,
 closed-schema telemetry, lifecycle promotion / retirement, runtime guards,
 unified validation gate — without taxing modern models with obsolete

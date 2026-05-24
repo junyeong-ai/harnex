@@ -15,7 +15,7 @@ fn write(p: &Path, contents: &str) {
 fn minimal_config_toml() -> String {
     r#"
 [meta]
-harness_toolkit_version = ">=0.1, <0.2"
+harnex_version = ">=0.1, <0.2"
 
 [evidence]
 default_provenance = "memory-only"
@@ -95,7 +95,7 @@ fn check_skips_validators_with_no_config_section() {
     let tmp = TempDir::new().unwrap();
     let minimal = r#"
 [meta]
-harness_toolkit_version = ">=0.1, <0.2"
+harnex_version = ">=0.1, <0.2"
 "#;
     let cfg = load_cfg(&tmp, minimal);
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
@@ -125,7 +125,7 @@ fn check_emits_codegen_drift_as_blocker() {
 
     let toml_body = r##"
 [meta]
-harness_toolkit_version = ">=0.1, <0.2"
+harnex_version = ">=0.1, <0.2"
 
 [[codegen.groups]]
 name = "g"
@@ -240,7 +240,7 @@ fn fix_resolves_codegen_drift_and_re_check_clean() {
     .unwrap();
     let toml_body = r##"
 [meta]
-harness_toolkit_version = ">=0.1, <0.2"
+harnex_version = ">=0.1, <0.2"
 
 [[codegen.groups]]
 name = "g"
