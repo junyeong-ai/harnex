@@ -85,6 +85,8 @@ type = "string"
 name = "kinds-enum"
 source = "examples/enums.toml"
 source_key = "kinds.allowed"
+# Source serialization: toml (default) | json | yaml.
+source_format = "toml"
 
 [[codegen.groups.targets]]
 path = "nodex.toml"

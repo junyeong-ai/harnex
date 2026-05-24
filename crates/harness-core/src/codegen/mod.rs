@@ -1,19 +1,21 @@
 //! # codegen — cross-file sentinel-block sync
 //!
-//! Synchronizes TOML-string-array values from a source-of-truth into N
-//! target files between BEGIN/END sentinel comments. Used to keep enum
-//! vocabularies coherent across `.claude/rules/`, `nodex.toml`, shell
-//! hook scripts, etc., without hand-syncing each mirror site.
+//! Synchronizes a source-of-truth string array (declared in TOML, JSON, or
+//! YAML per group via `source_format`) into N target files between
+//! BEGIN/END sentinel comments. Used to keep enum vocabularies coherent
+//! across `.claude/rules/`, `nodex.toml`, shell hook scripts, etc., without
+//! hand-syncing each mirror site.
 //!
 //! ## What this module refuses to do
 //!
-//! - Never sync any value that is not a TOML array of strings (closed shape).
+//! - Never sync any value that is not an array of strings (closed shape).
 //! - Never modify content outside the sentinel block.
 //! - Never write if rendered content equals current content (no churn).
 //! - Never follow cyclic references — `Config::validate` rejects target
 //!   files that are also sources of any group.
 
 pub mod renderer;
+pub mod source;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,6 +27,7 @@ use crate::error::{Error, Result};
 use crate::path_guard;
 
 pub use renderer::{Renderer, RendererStrategy, renderer_for};
+pub use source::{SourceFormat, extract_string_array, load_source};
 
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct SyncOutcome {
@@ -57,13 +60,28 @@ impl<'a> SentinelSyncer<'a> {
 
     fn run(&self, apply: bool) -> Result<Vec<SyncOutcome>> {
         let mut outcomes = Vec::new();
-        let mut source_cache: HashMap<PathBuf, toml::Value> = HashMap::new();
+        let mut source_cache: HashMap<PathBuf, serde_json::Value> = HashMap::new();
         for group in &self.config.groups {
             let source_path = self.working_dir.join(&group.source);
+            let format = SourceFormat::from_str(&group.source_format).ok_or_else(|| {
+                Error::ConfigInvalid {
+                    message: format!(
+                        "codegen group '{}' has unknown source_format '{}' (known: {})",
+                        group.name,
+                        group.source_format,
+                        SourceFormat::ALL
+                            .iter()
+                            .map(|f| f.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    location: None,
+                }
+            })?;
             let source = match source_cache.get(&source_path) {
                 Some(v) => v.clone(),
                 None => {
-                    let v = load_source(&source_path)?;
+                    let v = load_source(&source_path, format)?;
                     source_cache.insert(source_path.clone(), v.clone());
                     v
                 }
@@ -111,45 +129,6 @@ impl<'a> SentinelSyncer<'a> {
             rendered_bytes: rendered.len(),
         })
     }
-}
-
-fn load_source(path: &Path) -> Result<toml::Value> {
-    let raw = std::fs::read_to_string(path).map_err(|_| Error::CodegenSourceMissing {
-        path: path.to_path_buf(),
-    })?;
-    toml::from_str(&raw).map_err(|e| Error::ConfigInvalid {
-        message: format!("codegen source TOML parse: {e}"),
-        location: None,
-    })
-}
-
-fn extract_string_array(value: &toml::Value, dot_path: &str, source: &Path) -> Result<Vec<String>> {
-    let mut current = value;
-    for segment in dot_path.split('.') {
-        current = current
-            .get(segment)
-            .ok_or_else(|| Error::CodegenSourceKeyMissing {
-                key: dot_path.to_string(),
-                path: source.to_path_buf(),
-            })?;
-    }
-    let arr = current
-        .as_array()
-        .ok_or_else(|| Error::CodegenSourceShapeInvalid {
-            key: dot_path.to_string(),
-            path: source.to_path_buf(),
-        })?;
-    let mut out = Vec::with_capacity(arr.len());
-    for item in arr {
-        let s = item
-            .as_str()
-            .ok_or_else(|| Error::CodegenSourceShapeInvalid {
-                key: dot_path.to_string(),
-                path: source.to_path_buf(),
-            })?;
-        out.push(s.to_string());
-    }
-    Ok(out)
 }
 
 fn detect_line_ending(content: &str) -> &'static str {

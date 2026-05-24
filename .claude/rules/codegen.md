@@ -5,9 +5,20 @@ paths:
 
 # codegen — sentinel-block sync
 
-Source is a TOML file with a string array at a dot-path. Targets are
+Source is a TOML, JSON, or YAML file with a string array at a dot-path,
+selected per group via `source_format` (default `toml`). Targets are
 files with `BEGIN <slug>` / `END <slug>` sentinel lines. Renderers replace
 content strictly between sentinels.
+
+When adding a new source format:
+1. Add a `SourceFormat` variant (single source of truth — its
+   `from_str`/`as_str`/`ALL` are the strings both `Config::validate`
+   and `SentinelSyncer::run` consume).
+2. Add a match arm in `source::load_source` parsing into
+   `serde_json::Value` — exhaustive match on the enum enforces this at
+   compile time.
+3. Add a `load_source` unit test in `codegen::source::tests` for the
+   new format.
 
 When adding a new renderer:
 1. Add a `RendererStrategy` variant (single source of truth — its

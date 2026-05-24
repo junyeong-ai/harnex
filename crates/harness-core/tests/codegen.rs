@@ -30,6 +30,46 @@ allowed = ["old"]
 }
 
 #[test]
+fn sync_applies_changes_from_json_source() {
+    let tmp = TempDir::new().unwrap();
+    let source = tmp.path().join("src.json");
+    std::fs::write(&source, r#"{ "kinds": { "allowed": ["rule", "skill"] } }"#).unwrap();
+    let target = tmp.path().join("nodex.toml");
+    std::fs::write(
+        &target,
+        r#"# top
+# BEGIN kinds-allowed
+allowed = ["old"]
+# END kinds-allowed
+# bottom
+"#,
+    )
+    .unwrap();
+    let cfg = CodegenConfig {
+        groups: vec![CodegenGroupDecl {
+            name: "kinds".into(),
+            source: source.strip_prefix(tmp.path()).unwrap().to_path_buf(),
+            source_key: "kinds.allowed".into(),
+            source_format: "json".into(),
+            targets: vec![SentinelTargetDecl {
+                path: target.strip_prefix(tmp.path()).unwrap().to_path_buf(),
+                begin: "# BEGIN kinds-allowed".into(),
+                end: "# END kinds-allowed".into(),
+                format: "toml-array-assignment".into(),
+                name: Some("allowed".into()),
+            }],
+        }],
+    };
+    let outcomes = SentinelSyncer::new(&cfg, tmp.path()).sync().unwrap();
+    assert_eq!(outcomes.len(), 1);
+    assert!(outcomes[0].changed);
+    let new_content = std::fs::read_to_string(&target).unwrap();
+    assert!(new_content.contains("allowed = [\"rule\", \"skill\"]"));
+    assert!(new_content.contains("# top"));
+    assert!(new_content.contains("# bottom"));
+}
+
+#[test]
 fn sync_applies_changes_atomically() {
     let tmp = TempDir::new().unwrap();
     let (source, target) = setup(&tmp);
@@ -38,6 +78,7 @@ fn sync_applies_changes_atomically() {
             name: "kinds".into(),
             source: source.strip_prefix(tmp.path()).unwrap().to_path_buf(),
             source_key: "kinds.allowed".into(),
+            source_format: "toml".into(),
             targets: vec![SentinelTargetDecl {
                 path: target.strip_prefix(tmp.path()).unwrap().to_path_buf(),
                 begin: "# BEGIN kinds-allowed".into(),
@@ -66,6 +107,7 @@ fn check_reports_drift_without_writing() {
             name: "kinds".into(),
             source: source.strip_prefix(tmp.path()).unwrap().to_path_buf(),
             source_key: "kinds.allowed".into(),
+            source_format: "toml".into(),
             targets: vec![SentinelTargetDecl {
                 path: target.strip_prefix(tmp.path()).unwrap().to_path_buf(),
                 begin: "# BEGIN kinds-allowed".into(),
@@ -89,6 +131,7 @@ fn idempotent_no_change_on_second_sync() {
             name: "kinds".into(),
             source: source.strip_prefix(tmp.path()).unwrap().to_path_buf(),
             source_key: "kinds.allowed".into(),
+            source_format: "toml".into(),
             targets: vec![SentinelTargetDecl {
                 path: target.strip_prefix(tmp.path()).unwrap().to_path_buf(),
                 begin: "# BEGIN kinds-allowed".into(),
@@ -112,6 +155,7 @@ fn missing_sentinel_errors() {
             name: "kinds".into(),
             source: source.strip_prefix(tmp.path()).unwrap().to_path_buf(),
             source_key: "kinds.allowed".into(),
+            source_format: "toml".into(),
             targets: vec![SentinelTargetDecl {
                 path: target.strip_prefix(tmp.path()).unwrap().to_path_buf(),
                 begin: "# BEGIN does-not-exist".into(),
@@ -137,6 +181,7 @@ fn missing_source_key_errors() {
             name: "kinds".into(),
             source: source.strip_prefix(tmp.path()).unwrap().to_path_buf(),
             source_key: "kinds.does_not_exist".into(),
+            source_format: "toml".into(),
             targets: vec![SentinelTargetDecl {
                 path: target.strip_prefix(tmp.path()).unwrap().to_path_buf(),
                 begin: "# BEGIN kinds-allowed".into(),
