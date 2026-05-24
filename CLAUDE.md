@@ -1,9 +1,24 @@
 # harnex
 
-Harness engineering for Claude Code projects. Pure-Rust workspace,
-JSON-envelope CLI, deterministic + no-network.
+Harness engineering for Claude Code projects. Two surfaces: the **harnex
+plugin** (a skill that generates project-native harness tooling) and the
+**`harness` binary** (the Pure-Rust, deterministic, no-network oracle the
+plugin's templates are verified against).
 
-## Where things live
+## The plugin (primary surface)
+
+| Path | Responsibility |
+|---|---|
+| `SKILL.md` | single-skill plugin entry; 4 modes (scaffold / extend / audit / regenerate) |
+| `reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
+| `templates/` | L2 deterministic safety-critical templates (`common` + `typescript` + `python`) |
+| `.claude-plugin/plugin.json` | manifest; `version` omitted (commit SHA drives updates) |
+
+Generated files land in `${CLAUDE_PROJECT_DIR}`; bundled assets are referenced
+via `${CLAUDE_PLUGIN_ROOT}`. The skill composes templates — it never
+free-generates safety-critical code.
+
+## Where things live (oracle binary)
 
 | Module (crate path) | Responsibility |
 |---|---|
@@ -25,8 +40,10 @@ JSON-envelope CLI, deterministic + no-network.
 
 ## Documentation map
 
-- `README.md` — the only human-facing surface (install, quickstart, IDE
-  integration, porting tables).
+- `SKILL.md` + `reference/` + `templates/` — the harnex plugin (consumed by
+  Claude Code when the plugin is installed, not by this repo's own sessions).
+- `README.md` — the only human-facing surface (the two surfaces, install,
+  oracle quickstart, what the oracle covers).
 - `.claude/rules/constitution.md` — always-loaded project laws (Articles I–VIII).
 - `.claude/rules/<topic>.md` — path-scoped guidance; loaded automatically
   when you read files matching that rule's `paths:` frontmatter.
