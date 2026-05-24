@@ -7,16 +7,19 @@ plugin's templates are verified against).
 
 ## The plugin (primary surface)
 
+`.claude-plugin/marketplace.json` (repo root) is the marketplace; the plugin
+lives under `plugins/harnex/`:
+
 | Path | Responsibility |
 |---|---|
-| `SKILL.md` | single-skill plugin entry; 4 modes (scaffold / extend / audit / regenerate) |
-| `reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
-| `templates/` | L2 deterministic safety-critical templates (`common` + `typescript` + `python`) |
-| `.claude-plugin/plugin.json` | manifest; `version` omitted (commit SHA drives updates) |
+| `plugins/harnex/SKILL.md` | single-skill plugin entry; 4 modes (scaffold / extend / audit / regenerate) |
+| `plugins/harnex/reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
+| `plugins/harnex/templates/` | L2 deterministic safety-critical templates (`common` + `typescript` + `python`) |
+| `plugins/harnex/.claude-plugin/plugin.json` | manifest; `version` omitted (commit SHA drives updates) |
 
 Generated files land in `${CLAUDE_PROJECT_DIR}`; bundled assets are referenced
-via `${CLAUDE_PLUGIN_ROOT}`. The skill composes templates — it never
-free-generates safety-critical code.
+via `${CLAUDE_PLUGIN_ROOT}` (= `plugins/harnex/`). The skill composes templates
+— it never free-generates safety-critical code.
 
 ## Where things live (oracle binary)
 
@@ -40,8 +43,9 @@ free-generates safety-critical code.
 
 ## Documentation map
 
-- `SKILL.md` + `reference/` + `templates/` — the harnex plugin (consumed by
-  Claude Code when the plugin is installed, not by this repo's own sessions).
+- `plugins/harnex/` (`SKILL.md` + `reference/` + `templates/`) — the harnex
+  plugin, distributed via `.claude-plugin/marketplace.json`; consumed by Claude
+  Code when the plugin is installed, not by this repo's own sessions.
 - `README.md` — the only human-facing surface (the two surfaces, install,
   oracle quickstart, what the oracle covers).
 - `.claude/rules/constitution.md` — always-loaded project laws (Articles I–VIII).

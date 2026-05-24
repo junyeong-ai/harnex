@@ -1,0 +1,12 @@
+{
+  "name": "harnex",
+  "owner": { "name": "oy-junyeong" },
+  "metadata": { "pluginRoot": "./plugins" },
+  "plugins": [
+    {
+      "name": "harnex",
+      "source": "harnex",
+      "description": "Generate and maintain project-fit, project-native Claude Code harness tooling — hooks, settings, CLAUDE.md, path-scoped rules — in the target project's own language, from verified spec-correct templates."
+    }
+  ]
+}
