@@ -583,6 +583,12 @@ impl Config {
                     location: None,
                 });
             }
+            if group.source_key.trim().is_empty() {
+                return Err(Error::ConfigInvalid {
+                    message: format!("codegen group '{}' has empty source_key", group.name),
+                    location: None,
+                });
+            }
             sources.insert(group.source.clone());
             for target in &group.targets {
                 if crate::codegen::RendererStrategy::from_str(&target.format).is_none() {
@@ -978,6 +984,28 @@ mod tests {
         let err = parse(src).unwrap_err();
         assert_eq!(err.code(), ErrorCode::ConfigInvalid);
         assert!(err.to_string().contains("unknown source_format"));
+    }
+
+    #[test]
+    fn rejects_empty_codegen_source_key() {
+        let src = r#"
+            [meta]
+            harness_toolkit_version = ">=0.1, <0.2"
+
+            [codegen]
+            [[codegen.groups]]
+            name = "group-a"
+            source = "source.toml"
+            source_key = ""
+            [[codegen.groups.targets]]
+            path = "target.md"
+            begin = "<!-- BEGIN:x -->"
+            end = "<!-- END:x -->"
+            format = "markdown-bullet-list"
+        "#;
+        let err = parse(src).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
+        assert!(err.to_string().contains("empty source_key"));
     }
 
     #[test]
