@@ -464,6 +464,11 @@
           "description": "Opt-in: emit a Major finding for any frontmatter key outside the\nClaude Code skill spec surface (`KNOWN_SKILL_KEYS`). Claude Code\nsilently ignores unknown keys, so typos go undetected by default.",
           "type": "boolean",
           "default": false
+        },
+        "flag_side_effect_verbs": {
+          "description": "Opt-in: emit a Minor advisory when a skill description contains a\nside-effect verb (`commit`, `deploy`, `delete`, `submit`, `send`,\n`publish`, `release`) but lacks `disable-model-invocation: true`.\nDefault off — the check matches prose, not intent, and produces\nfalse positives on read-only skills whose descriptions contain\nthose verbs (e.g., a skill that *reviews* commits).",
+          "type": "boolean",
+          "default": false
         }
       }
     },

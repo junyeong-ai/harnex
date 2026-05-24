@@ -76,10 +76,7 @@ fn check_runs_every_enabled_validator() {
         "evidence",
         "policy.permissions",
     ] {
-        assert!(
-            outcome.run.contains(&v.to_string()),
-            "missing {v}"
-        );
+        assert!(outcome.run.contains(&v.to_string()), "missing {v}");
     }
     // codegen skipped (no [codegen] section)
     assert!(outcome.skipped.iter().any(|s| s.slug == "codegen"));

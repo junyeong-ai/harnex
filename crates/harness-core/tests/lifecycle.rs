@@ -225,7 +225,7 @@ fn consumer_factory_builds_graph_backlinks_when_nodex_present() {
     );
     match result {
         Ok(detector) => assert_eq!(detector.strategy(), "graph-backlinks"),
-        Err(e) => assert_eq!(e.code(), harness_core::error::ErrorCode::GuardSpawnFailure),
+        Err(e) => assert_eq!(e.code(), harness_core::error::ErrorCode::GraphSpawnFailure),
     }
 }
 

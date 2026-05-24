@@ -164,7 +164,8 @@ second
 
     #[test]
     fn slug_is_trimmed() {
-        let content = "<!-- harnex-managed:start   foo   -->\nbody\n<!-- harnex-managed:end foo -->\n";
+        let content =
+            "<!-- harnex-managed:start   foo   -->\nbody\n<!-- harnex-managed:end foo -->\n";
         let regions = extract_regions(content);
         assert!(regions.contains_key("foo"));
     }

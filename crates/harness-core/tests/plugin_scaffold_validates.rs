@@ -16,9 +16,7 @@ use std::path::{Path, PathBuf};
 use harness_core::audit::{AuditCheckKind, ProjectAuditor};
 use harness_core::config::{RulesPolicy, SkillsPolicy};
 use harness_core::envelope::Finding;
-use harness_core::validate::{
-    RuleValidator, SettingsScope, SettingsValidator, SkillValidator,
-};
+use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
 use tempfile::TempDir;
 
 fn plugin_templates() -> PathBuf {
@@ -53,11 +51,7 @@ fn assemble_settings_json(templates: &Path, lang: &str, project_root: &Path) -> 
     });
     let path = project_root.join(".claude/settings.json");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(
-        &path,
-        serde_json::to_string_pretty(&settings).unwrap(),
-    )
-    .unwrap();
+    fs::write(&path, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
     path
 }
 
@@ -106,7 +100,11 @@ fn run_scaffold_validation(lang: &str) {
         .with_plugin_root(plugin_root)
         .run()
         .unwrap();
-    assert_no_findings(lang, "audit (settings-drift + managed-region)", &audit_outcome.findings);
+    assert_no_findings(
+        lang,
+        "audit (settings-drift + managed-region)",
+        &audit_outcome.findings,
+    );
     // Every audit kind must have actually run — a silent skip means the
     // meta-test checks nothing. Sourced from the enum SSoT so adding a
     // variant forces this assertion to cover it.
@@ -140,8 +138,8 @@ fn run_scaffold_validation(lang: &str) {
     // canonical location (mirroring how an installed plugin's skill would be
     // discovered) and run SkillValidator. This exercises the full closed-set
     // surface against the plugin's own contract.
-    let plugin_skill = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../plugins/harnex/SKILL.md");
+    let plugin_skill =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/SKILL.md");
     if plugin_skill.exists() {
         let dst = proj_root.join(".claude/skills/harnex/SKILL.md");
         copy_file(&plugin_skill, &dst);
