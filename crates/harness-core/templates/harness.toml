@@ -3,7 +3,7 @@
 # autocomplete + validation. Point it at the local repo path or a published URL.
 
 [meta]
-harness_toolkit_version = ">=0.1, <0.2"
+harnex_version = ">=0.1, <0.2"
 
 # ---------- evidence ----------
 # Provenance verification for claims in markdown.

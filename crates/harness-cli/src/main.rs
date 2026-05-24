@@ -67,7 +67,7 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::export::ExportCommand,
     },
-    /// Scaffold a new Claude Code project for harness-toolkit
+    /// Scaffold a new Claude Code project for harnex
     Init(commands::init::InitArgs),
     /// Read-only queries over a nodex document graph
     Graph {

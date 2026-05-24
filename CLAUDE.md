@@ -1,6 +1,6 @@
-# harness-toolkit
+# harnex
 
-Harness engineering toolkit for Claude Code projects. Pure-Rust workspace,
+Harness engineering for Claude Code projects. Pure-Rust workspace,
 JSON-envelope CLI, deterministic + no-network.
 
 ## Where things live

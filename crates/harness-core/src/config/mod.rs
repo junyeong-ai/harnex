@@ -59,7 +59,7 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MetaConfig {
     /// SemVer requirement that the binary must satisfy.
-    pub harness_toolkit_version: String,
+    pub harnex_version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -399,17 +399,15 @@ impl Config {
     }
 
     fn validate_version(&self) -> Result<()> {
-        let raw = self.meta.harness_toolkit_version.trim();
+        let raw = self.meta.harnex_version.trim();
         if raw.is_empty() {
             return Err(Error::ConfigInvalid {
-                message: "[meta] harness_toolkit_version is empty".into(),
+                message: "[meta] harnex_version is empty".into(),
                 location: None,
             });
         }
         let req = VersionReq::parse(raw).map_err(|e| Error::ConfigInvalid {
-            message: format!(
-                "[meta] harness_toolkit_version '{raw}' is not a SemVer requirement: {e}"
-            ),
+            message: format!("[meta] harnex_version '{raw}' is not a SemVer requirement: {e}"),
             location: None,
         })?;
         let actual_str = env!("CARGO_PKG_VERSION");
@@ -788,7 +786,7 @@ mod tests {
     fn loads_minimal_valid_config() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
         "#;
         let cfg = parse(src).unwrap();
         assert!(cfg.kinds.is_empty());
@@ -800,7 +798,7 @@ mod tests {
     fn rejects_unparseable_version() {
         let src = r#"
             [meta]
-            harness_toolkit_version = "this-is-not-semver"
+            harnex_version = "this-is-not-semver"
         "#;
         assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
     }
@@ -809,7 +807,7 @@ mod tests {
     fn rejects_version_outside_range() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=9.0, <10.0"
+            harnex_version = ">=9.0, <10.0"
         "#;
         assert_eq!(
             parse(src).unwrap_err().code(),
@@ -821,7 +819,7 @@ mod tests {
     fn rejects_duplicate_kind() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
             [[kinds]]
             name = "rule"
             glob = "*.md"
@@ -838,7 +836,7 @@ mod tests {
     fn rejects_unknown_verifier_strategy() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
             [evidence]
             default_provenance = "memory-only"
             [[evidence.verifiers]]
@@ -854,7 +852,7 @@ mod tests {
     fn rejects_default_provenance_unregistered() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
             [evidence]
             default_provenance = "nope"
             [[evidence.verifiers]]
@@ -870,7 +868,7 @@ mod tests {
     fn rejects_telemetry_kind_with_non_object_schema() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
             [telemetry]
             storage = "jsonl"
             storage_dir = ".harness/telemetry"
@@ -886,7 +884,7 @@ mod tests {
     fn accepts_full_valid_config() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
 
             [[kinds]]
             name = "rule"
@@ -932,7 +930,7 @@ mod tests {
     fn rejects_duplicate_codegen_target_sentinel() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
 
             [codegen]
             [[codegen.groups]]
@@ -967,7 +965,7 @@ mod tests {
     fn rejects_unknown_codegen_source_format() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
 
             [codegen]
             [[codegen.groups]]
@@ -990,7 +988,7 @@ mod tests {
     fn rejects_empty_codegen_source_key() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
 
             [codegen]
             [[codegen.groups]]
@@ -1012,7 +1010,7 @@ mod tests {
     fn rejects_unicode_kind_name() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
             [[kinds]]
             name = "日本語"
             glob = "*.md"
@@ -1025,7 +1023,7 @@ mod tests {
     fn accepts_valid_kind_names() {
         let src = r#"
             [meta]
-            harness_toolkit_version = ">=0.1, <0.2"
+            harnex_version = ">=0.1, <0.2"
             [[kinds]]
             name = "my-kind-2"
             glob = "*.md"

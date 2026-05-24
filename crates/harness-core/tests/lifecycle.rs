@@ -526,7 +526,7 @@ fn telemetry_cfg(dir: PathBuf) -> TelemetryConfig {
 fn build_sweep_config(tmp_path: &std::path::Path, extra_kinds: Vec<KindDecl>) -> Config {
     let cfg = harness_core::config::Config {
         meta: harness_core::config::MetaConfig {
-            harness_toolkit_version: ">=0.1, <0.2".into(),
+            harnex_version: ">=0.1, <0.2".into(),
         },
         kinds: extra_kinds,
         evidence: None,

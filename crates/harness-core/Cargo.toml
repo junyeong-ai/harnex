@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Embeddable library for harness-toolkit — deterministic harness engineering for Claude Code projects."
+description = "Embeddable library for harnex — deterministic harness engineering for Claude Code projects."
 
 [dependencies]
 serde.workspace = true
