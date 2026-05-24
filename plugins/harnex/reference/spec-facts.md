@@ -9,13 +9,18 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
 
 - **Event surface is a permissive superset, not a fixed count.** Treat the
   known-event list as a typo-catcher, never assert an exact number — the
-  surface adds events upstream. Current named events include: SessionStart,
-  Setup, UserPromptSubmit, UserPromptExpansion, PreToolUse, PermissionRequest,
-  PermissionDenied, PostToolUse, PostToolUseFailure, PostToolBatch,
-  Notification, SubagentStart, SubagentStop, TaskCreated, TaskCompleted, Stop,
-  StopFailure, TeammateIdle, InstructionsLoaded, ConfigChange, CwdChanged,
-  FileChanged, WorktreeCreate, WorktreeRemove, PreCompact, PostCompact,
-  Elicitation, ElicitationResult (SessionEnd appears in some tables).
+  surface adds events upstream. Canonical SSoT is
+  `crates/harness-core/src/validate/settings.rs::KNOWN_HOOK_EVENTS`; the
+  mirror below is held in sync by the `spec_facts_hook_events_match`
+  integration test (drift fails the build).
+  <!-- harnex-managed:start spec-facts-hook-events -->
+  SessionStart, SessionEnd, Setup, UserPromptSubmit, UserPromptExpansion,
+  PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch,
+  PermissionRequest, PermissionDenied, Stop, StopFailure, SubagentStart,
+  SubagentStop, Notification, PreCompact, PostCompact, InstructionsLoaded,
+  ConfigChange, CwdChanged, FileChanged, WorktreeCreate, WorktreeRemove,
+  TaskCreated, TaskCompleted, TeammateIdle, Elicitation, ElicitationResult.
+  <!-- harnex-managed:end spec-facts-hook-events -->
 - **Exit codes.** 0 = success, stdout JSON parsed for control fields (stdout
   reaches Claude as context only for UserPromptSubmit, UserPromptExpansion,
   SessionStart). 1 = non-blocking error, action proceeds. 2 = blocking; stderr
@@ -54,15 +59,39 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   (concat + dedupe) across scopes — they do not override.** An `allow` cannot
   loosen a higher-scope `deny`. With no matching rule, `default` mode PROMPTS
   (asks) — it is not a hard-deny; hard-deny is the opt-in `dontAsk` mode.
-- **Silently ignored in project/local settings** (set only in user/managed):
-  `defaultMode: "auto"`, `autoMemoryDirectory`, `autoMode`,
-  `skipDangerousModePermissionPrompt`. Never emit these into a generated
-  `.claude/settings.json` — they become no-ops.
-- **Pattern syntax:** `Bash(npm run *)`, `Read(./.env)`, `Read(./secrets/**)`,
-  `Edit(...)`, `Write(...)`, `WebFetch(domain:github.com)`, `Skill(name)`.
-  MCP uses double-underscore, NOT a parenthesized form: `mcp__<server>` (all
-  its tools) or `mcp__<server>__<tool>`. `*` = one segment, `**` = recursive;
-  `/` project-relative, `//` absolute, `~/` home.
+- **Silently ignored in project/local settings** (set only in user/managed).
+  Canonical SSoT is `KNOWN_PROJECT_SCOPE_NOOP_KEYS` in
+  `crates/harness-core/src/validate/settings.rs`; the mirror below is held
+  in sync by the `spec_facts_noop_keys_match` integration test.
+  <!-- harnex-managed:start spec-facts-project-scope-noop-keys -->
+  autoMemoryDirectory, autoMode, skipDangerousModePermissionPrompt.
+  <!-- harnex-managed:end spec-facts-project-scope-noop-keys -->
+  (`defaultMode: "auto"` is a VALUE restriction, not a key restriction —
+  handled separately by the `SettingsScope` check.) Never emit these into a
+  generated `.claude/settings.json` — they become no-ops.
+- **Pattern syntax:** `Bash(npm run *)`, `Read(.env)`, `Read(./secrets/**)`,
+  `Edit(...)`, `Write(...)`, `WebFetch(domain:github.com)`, `Skill(name)`,
+  `Agent(Explore)`. MCP uses double-underscore, NOT a parenthesized form:
+  `mcp__<server>` (all its tools), `mcp__<server>__<tool>`, or `mcp__<server>__*`.
+- **Bash matching:** a single `*` matches any run of characters *including
+  spaces*, so one wildcard spans multiple args. The canonical wildcard is a
+  space then `*` (`Bash(ls *)` matches `ls -la` but NOT `lsof` — word boundary);
+  `Bash(ls*)` (no space) also matches `lsof`. The `:*` suffix is an *equivalent*
+  trailing wildcard (`Bash(ls:*)` ≡ `Bash(ls *)`) recognized ONLY at the end —
+  mid-pattern `:` is literal. Wildcards may appear at any position
+  (`Bash(* --version)`). Wrappers `timeout/time/nice/nohup/stdbuf` (and bare
+  `xargs`) are stripped before matching; env-runners (`npx`, `docker exec`,
+  `devbox run`) are NOT — write `Bash(npx <tool> *)`, never bare `Bash(npx *)`.
+- **Read-only built-ins never prompt** (`ls cat echo pwd head tail grep find wc
+  which diff stat du cd` + read-only `git`): an allow rule for them is a no-op —
+  never emit one. To force a prompt, add an `ask`/`deny` rule.
+- **Read/Edit denies extend to Bash file commands** `cat`/`head`/`tail`/`sed`,
+  so `Read(.env)` deny already blocks `cat .env` — no `Bash(cat …)` mirror
+  needed. They do NOT reach arbitrary subprocesses (a Python/Node script).
+- **Read/Edit path anchors (gitignore semantics):** bare `path` or `./path` =
+  cwd-relative; `/path` = project-root; `//path` = filesystem-absolute; `~/path`
+  = home. A bare filename matches at any depth — `Read(.env)` ≡ `Read(**/.env)`,
+  so the `**/` mirror is redundant. `*` = one path segment, `**` = recursive.
 - **`skillOverrides` values:** `on` | `name-only` | `user-invocable-only` |
   `off` (absent = `on`). `autoMemoryEnabled`: bool, default true.
 - Managed-only enforcement floors: `allowManagedPermissionRulesOnly`,
