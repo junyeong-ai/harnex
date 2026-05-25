@@ -6,7 +6,7 @@
 //! string value within the configured `silence_window_days`. This is
 //! the deterministic alternative to operators passing `--silent` by hand.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use jiff::{SignedDuration, Timestamp};
 use serde::Serialize;
@@ -106,8 +106,8 @@ impl<'a> RetirementSweeper<'a> {
                 });
                 continue;
             };
-            let entries: Vec<_> = match glob::glob(pat_str) {
-                Ok(it) => it.filter_map(std::result::Result::ok).collect(),
+            let glob_iter = match glob::glob(pat_str) {
+                Ok(it) => it,
                 Err(e) => {
                     skipped.push(SkippedRule {
                         slug: kind_decl.name.clone(),
@@ -116,6 +116,25 @@ impl<'a> RetirementSweeper<'a> {
                     continue;
                 }
             };
+            // An unreadable match (e.g. permission-denied during traversal)
+            // must NOT be dropped: a silently skipped artifact could escape
+            // classification and be treated as if it does not exist. Record
+            // each unreadable entry as a skip so the gap is visible.
+            let mut entries: Vec<PathBuf> = Vec::new();
+            for entry in glob_iter {
+                match entry {
+                    Ok(p) => entries.push(p),
+                    Err(e) => skipped.push(SkippedRule {
+                        slug: kind_decl.name.clone(),
+                        reason: format!(
+                            "kind '{}' match unreadable ({}): {}",
+                            kind_decl.name,
+                            e.path().display(),
+                            e.error()
+                        ),
+                    }),
+                }
+            }
 
             for path in entries {
                 let slug = path

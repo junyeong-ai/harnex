@@ -264,7 +264,9 @@ mod tests {
             );
             let findings = run_on(&json);
             assert!(
-                findings.iter().any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+                findings
+                    .iter()
+                    .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
                 "matcher '{bad}' (empty segment) must be flagged: {findings:?}"
             );
         }
@@ -283,7 +285,9 @@ mod tests {
         }"#;
         let findings = run_on(json);
         assert!(
-            !findings.iter().any(|f| f.slug == "audit-stop-blocking-suspect"),
+            !findings
+                .iter()
+                .any(|f| f.slug == "audit-stop-blocking-suspect"),
             "StopFailure must not be flagged as Stop-loop-prone: {findings:?}"
         );
     }

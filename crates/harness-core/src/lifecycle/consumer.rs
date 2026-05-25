@@ -96,10 +96,20 @@ impl ConsumerDetector for GrepConsumerDetector {
             .filter_map(|g| glob::Pattern::new(&g.replace("{slug}", slug)).ok())
             .collect();
         let mut out = Vec::new();
-        for entry in WalkDir::new(&self.working_dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(&self.working_dir) {
+            // A walk error (e.g. an unreadable directory) must surface, NOT
+            // be dropped: silently skipping a subtree could miss a file that
+            // references the slug, producing a false `NoConsumers` signal and
+            // retiring a still-referenced artifact. Fail loudly instead.
+            let entry = entry.map_err(|e| Error::IoFailure {
+                path: e
+                    .path()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| self.working_dir.clone()),
+                source: e
+                    .into_io_error()
+                    .unwrap_or_else(|| std::io::Error::other("directory walk failed")),
+            })?;
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -157,7 +167,14 @@ impl ConsumerDetector for GraphBacklinksConsumerDetector {
     fn find_consumers(&self, slug: &str) -> Result<Vec<PathBuf>> {
         let node_id = self.decl.pattern.replace("{slug}", slug);
         let backlinks = self.client.backlinks(&node_id)?;
-        Ok(backlinks.into_iter().filter_map(|n| n.path).collect())
+        // Every backlink IS a consumer. A node that references the slug but
+        // carries no `path` must still count — dropping it would undercount
+        // consumers into a false `NoConsumers` signal. Identify pathless
+        // backlinks by their node id instead of discarding them.
+        Ok(backlinks
+            .into_iter()
+            .map(|n| n.path.unwrap_or_else(|| PathBuf::from(n.id)))
+            .collect())
     }
 }
 

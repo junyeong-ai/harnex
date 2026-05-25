@@ -31,6 +31,11 @@ Validator slugs (current):
 Each validator that has no config section is added to `skipped` with the
 reason "no [section] section" — never silently absent.
 
+The `codegen` validator ignores `--since` by design: a sentinel source
+edit can drift any target, so it always checks every configured group in
+full. `validate.settings` filters `settings.json` and `settings.local.json`
+independently — a change to one is never masked by the other.
+
 `--since <ref>` filtering uses `git diff --name-only <ref>`. When `git`
 fails to resolve the ref, the entire check surfaces `CheckGitFailure`
 — never silently degrades to scanning everything.

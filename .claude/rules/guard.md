@@ -36,3 +36,9 @@ StopAuditor handles the Stop event in three phases:
 
 The retry counter is the deterministic antidote to single-loop
 self-grade inflation. Never bypass — bounded retries are the cure.
+
+`harness guard stop-audit` maps a `StopDecision::Block` to exit 2 — the
+sole sanctioned exception to Article II (where exit 2 = runtime failure).
+Per the Claude Code Stop-hook contract, exit 2 prevents the stop and
+forces continuation; exit 1 would be non-blocking. This is intentional;
+do not "normalize" it to exit 1. The envelope is still emitted on stdout.
