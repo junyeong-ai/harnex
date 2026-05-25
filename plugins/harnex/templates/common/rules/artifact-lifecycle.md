@@ -17,19 +17,25 @@ and erode the signal-to-noise ratio of the harness.
 observation → validated pattern → rule / skill / lens
 ```
 
-- **Observation**: a repeated issue noticed during work. Record in
-  auto-memory or a commit body. No promotion yet.
+- **Observation**: a repeated issue noticed during work. Record in a commit
+  body, or `harness lifecycle observe --tag <topic> --text "<obs>"` when the
+  oracle is adopted. Never in always-loaded memory. No promotion yet.
 - **Validated pattern**: the same observation confirmed across two+
-  independent contexts. Propose as a rule via the governance rubric.
+  independent contexts (surface with `harness lifecycle candidates`). Propose
+  as a rule via the governance rubric.
 - **Rule / skill / lens**: accepted by governance; committed; enforced
   or advisory per the enforced-vs-advisory principle.
 
 ## Retirement criteria
 
-An artifact is a retirement candidate when ALL of the following hold:
-- No finding, decision, or reference attributed to it in 90+ days.
+An artifact is a retirement candidate when ALL of the following hold
+(`harness lifecycle retire` computes these deterministically when the oracle
+is adopted; otherwise verify them by hand at a retro):
+- No finding, decision, or reference attributed to it in 90+ days
+  (Silent / Stale signals).
 - Not listed as a foundation artifact (constitution, governance, this file).
-- No active consumer (grep the codebase for the slug; check backlinks).
+- No active consumer (NoConsumers — grep the codebase for the slug; check
+  backlinks).
 
 ## Retirement procedure
 

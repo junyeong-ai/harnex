@@ -23,9 +23,17 @@ struct Manifest {
 struct Pattern {
     slug: String,
     #[serde(default)]
-    files: Vec<String>,
+    files: Vec<FileEntry>,
     #[serde(default)]
     analyze: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FileEntry {
+    /// Source path relative to `templates/patterns/<slug>/`.
+    template: String,
+    /// Project-relative path the file is installed to.
+    destination: String,
 }
 
 fn patterns_dir() -> PathBuf {
@@ -73,13 +81,33 @@ fn manifest_declared_files_exist() {
             pattern.slug
         );
         for file in &pattern.files {
-            let path = dir.join(file);
+            let path = dir.join(&file.template);
             assert!(
                 path.is_file(),
                 "pattern '{}' declares '{}' but {} is missing",
                 pattern.slug,
-                file,
+                file.template,
                 path.display()
+            );
+        }
+    }
+}
+
+/// Every install destination is project-relative and free of traversal — a
+/// pattern must never write outside the target project.
+#[test]
+fn manifest_destinations_are_project_relative() {
+    let manifest = load_manifest();
+    for pattern in &manifest.pattern {
+        for file in &pattern.files {
+            let dest = std::path::Path::new(&file.destination);
+            assert!(
+                dest.is_relative()
+                    && !file.destination.contains("..")
+                    && !file.destination.is_empty(),
+                "pattern '{}' destination '{}' must be a project-relative path without `..`",
+                pattern.slug,
+                file.destination
             );
         }
     }
@@ -107,7 +135,7 @@ fn no_undeclared_files_in_pattern_directories() {
     let manifest = load_manifest();
     for pattern in &manifest.pattern {
         let dir = patterns_dir().join(&pattern.slug);
-        let declared: BTreeSet<&str> = pattern.files.iter().map(String::as_str).collect();
+        let declared: BTreeSet<&str> = pattern.files.iter().map(|f| f.template.as_str()).collect();
         for path in walk_files(&dir) {
             let rel = path
                 .strip_prefix(&dir)

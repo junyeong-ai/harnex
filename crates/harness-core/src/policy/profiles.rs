@@ -251,8 +251,6 @@ const COMMON_DEV_ALLOW: &[&str] = &[
     "Edit",
     "Write",
     "Bash(mkdir -p *)",
-    "Bash(cp *)",
-    "Bash(mv *)",
     "Bash(git add *)",
     "Bash(git commit *)",
     "Bash(git branch *)",
@@ -260,6 +258,11 @@ const COMMON_DEV_ALLOW: &[&str] = &[
     "Bash(git checkout -b *)",
     "Bash(git switch *)",
 ];
+// `cp`/`mv` are deliberately NOT pre-approved. A `Read(.env)`-class deny only
+// reaches `cat`/`head`/`tail`/`sed` (per the spec), so `cp .env /tmp/x` then
+// reading the copy would slip a secret past the deny. Leaving cp/mv to prompt
+// keeps that move visible to the operator; legitimate moves still succeed on
+// approval. `mkdir -p` stays — creating a directory cannot exfiltrate.
 
 /// Rust development toolchain: cargo (covers `cargo clippy`/`cargo fmt`)
 /// plus standalone rustfmt, on top of the common dev allows.

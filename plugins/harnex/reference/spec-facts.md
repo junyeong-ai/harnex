@@ -40,8 +40,13 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   server wildcard MUST be `mcp__<server>__.*` — bare `mcp__<server>` matches
   nothing.
 - **Config shape:** `hooks → <EventName>[] → { matcher?, hooks[] → { type,
-  command, timeout?, ... } }`. Five `type`s: command, http, mcp_tool, prompt,
-  agent. `command` is the safe deterministic default for a no-network harness.
+  command, args?, timeout?, ... } }`. Five `type`s: command, http, mcp_tool,
+  prompt, agent. `command` is the safe deterministic default for a no-network
+  harness. **Reference scripts by `${CLAUDE_PROJECT_DIR}/...` in exec form**
+  (`command` = the script, `args` = an array) — a cwd-relative path breaks when
+  Claude runs the hook from a subdirectory, and exec form passes each arg
+  without shell tokenization (no quoting of spaces). `${CLAUDE_PROJECT_DIR}` /
+  `${CLAUDE_PLUGIN_ROOT}` are exported to the spawned process.
 - **stdin** carries session_id, transcript_path, cwd, permission_mode,
   hook_event_name (PreToolUse adds tool_name, tool_input, tool_use_id).
 - **`additionalContext`** injects context on SessionStart, Setup,
