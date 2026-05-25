@@ -31,8 +31,15 @@ editing it, not using it):
 - **Add a language** = a `templates/<lang>/` set (`_runner.sh`,
   `post-format.sh`, `session-start.sh`, `permissions.allow.json`,
   optionally `rules/<lang>-conventions.md`) plus a `<lang>-dev` profile in
-  the oracle. The drift test's reverse-gap check fails until the template
-  exists.
+  the oracle AND a row in `reference/language-matrix.md` (detection
+  fingerprint + parameters). The `policy_template_sync` reverse-gap check
+  fails until the template exists.
+- **Add a pattern** = a `templates/patterns/<slug>/` directory with the
+  skeleton files + a `[[pattern]]` entry in `templates/patterns/manifest.toml`
+  (slug, files, analyze steps). The `pattern_manifest_sync` test fails on
+  drift between manifest and directories. Pattern files ship CONCRETE proven
+  defaults, never blank fill-ins — every `<!-- Fill in -->` is replaced at
+  install time by the skill from project analysis.
 - **Extend mode is a closed verb menu.** When adding a new extend verb,
   add a `### Mode: extend <verb>` row to `SKILL.md`, add a tested
   composition path in templates, and (if the verb mutates a SSoT) extend

@@ -5,30 +5,31 @@ paths:
 
 # Rust conventions
 
-Project-specific decisions that rustfmt and clippy do not enforce.
-Style lives in rustfmt — never restate here.
-
-## Module shape
-
-- Every `mod.rs` ships a `//!` doc block with WHAT + WHAT-REFUSED.
-  The negative-space section is non-optional; without it future
-  contributors fill the vacuum with scope creep.
+Project-specific decisions that rustfmt and clippy do not enforce. Style
+lives in rustfmt — never restate here. Scaffold fills each section from the
+codebase it observes; the entries below are common defaults to keep only if
+they match the project's actual practice.
 
 ## Errors
 
-- Every failure is a `thiserror::Error` variant with a stable code.
-  No `String` errors. No `Box<dyn Error>` at module boundaries.
-- IO failures carry the exact path that triggered them.
+- Observed: <error type in use — `thiserror`, `anyhow`, `snafu`, custom>.
+- Common default: a typed error enum per module boundary; IO failures carry
+  the path that triggered them. Replace if the project uses `anyhow` end to
+  end.
 
-## Closed-set enums
+## Module shape
 
-- Vocabularies (strategies, kinds, formats, decisions) are typed enums
-  with `const ALL`, `from_str`, `as_str`. The exhaustive match enforces
-  every consuming site updates at compile time. No parallel `KNOWN_*`
-  const — drift is forbidden by Constitution IX.
+- Observed: <doc-comment discipline in existing `mod.rs` files, if any>.
+- Common default: each `mod.rs` ships a `//!` doc block stating purpose and
+  what the module deliberately excludes.
 
 ## Concurrency
 
-- No async runtime by default. Reach for `rayon` when CPU-parallel work
-  emerges; never `tokio` without a recorded decision in the lifecycle
-  ledger.
+- Observed: <async runtime in `Cargo.toml` — tokio, async-std, smol, none>.
+- Common default: prefer `rayon` for CPU-parallel work; introduce an async
+  runtime only when IO concurrency genuinely requires it. Replace with the
+  project's actual runtime if one is already chosen.
+
+<!-- Scaffold: detect the real conventions from existing code and replace the
+     "Observed:" lines. If a section has no signal yet, keep the default and
+     note "none observed yet". -->

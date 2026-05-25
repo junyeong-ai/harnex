@@ -7,8 +7,11 @@ anchors:
 
 # Logic
 
-- No off-by-one errors in loops, slices, or boundary conditions.
-- Concurrent access is guarded where shared state is mutated.
-- Null/None/undefined paths are handled or documented as preconditions.
-- State transitions are valid — no impossible states reachable.
-- Arithmetic doesn't overflow, divide by zero, or lose precision silently.
+Is the behavior correct on the paths tests did not exercise?
+
+- Concurrent access to shared mutable state is guarded.
+- State machines reject impossible transitions rather than silently accepting.
+- Boundary inputs (empty, max, absent) reach a defined outcome.
+
+(Focus on what testing missed, not a generic bug checklist — the model and
+the test suite catch the obvious cases.)
