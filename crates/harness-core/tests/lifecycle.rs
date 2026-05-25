@@ -172,6 +172,37 @@ fn consumer_detector_finds_references() {
 }
 
 #[test]
+fn consumer_detector_prunes_skip_dirs() {
+    // A match inside a build/binary skip dir (e.g. `target/`) must not count
+    // as a consumer — and the prune happens before descent, so an unreadable
+    // skip dir would never abort the sweep either.
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("target/debug");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("build.log"), "references my-rule here").unwrap();
+    let real = tmp.path().join("docs/spec.md");
+    std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+    std::fs::write(&real, "see my-rule").unwrap();
+
+    let detector = GrepConsumerDetector::new(
+        ConsumerDetectorDecl {
+            kind: "rule".into(),
+            strategy: "grep".into(),
+            pattern: "{slug}".into(),
+            exclude_globs: vec![],
+        },
+        tmp.path().to_path_buf(),
+    );
+    let consumers = detector.find_consumers("my-rule").unwrap();
+    assert_eq!(
+        consumers.len(),
+        1,
+        "target/ match must be pruned: {consumers:?}"
+    );
+    assert!(consumers[0].to_string_lossy().ends_with("spec.md"));
+}
+
+#[test]
 fn retirement_classifier_marks_no_consumers_silent() {
     let tmp = TempDir::new().unwrap();
     let rule_dir = tmp.path().join(".claude/rules");

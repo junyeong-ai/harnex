@@ -105,6 +105,11 @@ impl JsonlStorage {
         })?;
 
         let path = self.current_file(&event.kind);
+        // The filename is derived from `event.kind`; guard the COMPUTED path
+        // (not just `self.dir`) so a malformed kind can never escape the
+        // storage dir. Config validates kind names at load; this is the
+        // belt-and-suspenders for any direct caller of `JsonlStorage`.
+        path_guard::reject_traversal(&path)?;
         path_guard::reject_symlink_write(&path)?;
 
         // Serialise the rotate-and-append critical section across processes.
