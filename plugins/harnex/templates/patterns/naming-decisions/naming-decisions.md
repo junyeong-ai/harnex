@@ -9,35 +9,51 @@ paths:
 # Naming decisions
 
 Team-level naming conventions that the formatter does not enforce and the
-model cannot infer from context alone. Record decisions here so all
-developers (human and AI) produce consistent names.
+model cannot infer from context alone. Defaults below are drawn from two
+independently-converged production harnesses; override where they conflict
+with your team's existing practice.
 
 ## File naming
 
-<!-- Fill in: kebab-case? snake_case? PascalCase for components? -->
+- Source files: `kebab-case` (TypeScript/web) or `snake_case` (Python/Rust).
+- Test files: co-located as `<name>.test.ts` or `test_<name>.py`.
+- Config files: `<purpose>.config.{ts,json,toml}` (never bare `config`).
 
 ## Tool / script suffixes
 
-<!-- Fill in: e.g., *-lint, *-audit, *-build, *-sync, *-check.
-     A closed suffix enum prevents ad-hoc names. -->
+A closed suffix set prevents ad-hoc naming across the toolchain:
 
-## Parameter bag suffixes
-
-<!-- Fill in: when to use Config vs Options vs Params vs Settings.
-     Example: Config = immutable after init, Options = per-call overrides. -->
+| Suffix | Meaning | Example |
+|---|---|---|
+| `-lint` | Static analysis, no mutation | `harness-lint` |
+| `-audit` | Cross-input semantic check, no mutation | `dep-audit` |
+| `-check` | Structural validation, may exit non-zero | `type-check` |
+| `-build` | Produces an artifact | `docker-build` |
+| `-sync` | Synchronizes two representations | `schema-sync` |
+| `-format` | Rewrites files for style | `code-format` |
 
 ## Factory / constructor verbs
 
-<!-- Fill in: create* = allocates, define* = registers, from* = converts.
-     Consistent verb choices prevent "make vs build vs create" drift. -->
+| Verb | Meaning |
+|---|---|
+| `create*` | Allocates a new resource (may have side effects) |
+| `build*` | Assembles from parts (pure, returns value) |
+| `from*` | Converts from another representation |
+| `parse*` | Deserializes from string/bytes |
+| `define*` | Registers a definition (declarative, not imperative) |
+
+## Parameter bag suffixes
+
+| Suffix | Semantics |
+|---|---|
+| `Config` | Immutable after initialization; read-only at runtime |
+| `Options` | Per-call overrides; merged with defaults |
+| `Params` | Positional/required arguments (not optional) |
 
 ## Domain vocabulary
 
-<!-- Fill in: the project's ubiquitous language. Example:
-     - "tenant" (not "organization" or "workspace")
-     - "pipeline" (not "workflow" or "flow")
-     - "source" (not "provider" or "connector") -->
-
-<!-- Every section is a team decision. If a section doesn't apply,
-     delete it. The value is having the decision RECORDED, not the
-     specific choice. -->
+<!-- Fill in: your project's ubiquitous language. Example:
+     - "tenant" (not "organization", "workspace", or "account")
+     - "pipeline" (not "workflow", "flow", or "chain")
+     Consistent vocabulary prevents the same concept having three names
+     across the codebase. -->

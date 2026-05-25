@@ -8,38 +8,49 @@ paths:
 
 # Copy and communication conventions
 
-Written communication standards across code, docs, and UI. Record
-team decisions here so all contributors produce consistent prose.
+Written communication standards across code, docs, and UI. Defaults below
+are minimal and language-neutral; override with your project's locale and
+tone.
 
 ## Register
 
-<!-- Fill in: formal (합니다체 / formal English) or informal (해요체 /
-     casual English)? Different surfaces may use different registers
-     (UI = informal, docs = formal). -->
-
-## Number formatting
-
-<!-- Fill in: when to use digits (1, 2, 3) vs words (one, two, three).
-     Table/data contexts → digits. Prose → words for small numbers. -->
-
-## Terminology namespace
-
-<!-- Fill in: canonical terms for domain concepts. Example:
-     - "사용자" (not "유저" or "이용자")
-     - "대시보드" (not "관리화면")
-     One canonical term per concept; aliases redirect. -->
+- **Code comments / commit messages**: concise, imperative ("Add handler",
+  not "Added handler" or "Adding handler").
+- **User-facing text**: match the product's voice — decide once, document
+  here, apply everywhere.
+- **Documentation**: declarative present tense ("The handler validates
+  input", not "The handler will validate input").
 
 ## Error messages
 
-<!-- Fill in: error message format. Example:
-     - Start with what went wrong, not what to do.
-     - Include the failing value when safe (no PII).
-     - End with a remediation hint. -->
+Format: **what went wrong → failing value → remediation hint**.
+
+```
+"connection refused: host={host} port={port} — check that the service
+ is running and the firewall allows the port"
+```
+
+- Start with the symptom, not the action ("connection refused", not
+  "failed to connect").
+- Include the failing value when safe (no PII, no credentials).
+- End with a remediation hint when possible.
+- Never expose internal stack traces in user-facing errors.
+
+## Number formatting
+
+- Data contexts (tables, metrics, dashboards): digits (`3`, `1,024`).
+- Prose: words for 1-9 ("three items"), digits for 10+ ("12 items").
+- Units: space between number and unit (`100 ms`, `2.5 GB`).
+
+## Terminology namespace
+
+<!-- Fill in: one canonical term per concept. Example:
+     - "사용자" / "user"   (not "유저", "이용자", "계정")
+     - "대시보드" / "dashboard"  (not "관리화면", "admin panel")
+     Aliases redirect to the canonical term. -->
 
 ## Localization
 
-<!-- Fill in: i18n framework, message key naming, pluralization rules.
-     Skip if single-language. -->
-
-<!-- Delete sections that don't apply. The value is having communication
-     decisions RECORDED so AI and humans produce consistent copy. -->
+<!-- Fill in if multi-language: i18n framework, message key naming
+     convention, pluralization rules. Delete this section if
+     single-language. -->
