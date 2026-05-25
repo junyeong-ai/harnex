@@ -14,5 +14,5 @@ template = "common/CLAUDE.md"
 project = "CLAUDE.md"
 
 [[managed]]
-template = "common/constitution.md"
+template = "common/rules/constitution.md"
 project = ".claude/rules/constitution.md"

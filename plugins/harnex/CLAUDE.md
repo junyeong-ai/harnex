@@ -19,7 +19,7 @@ editing it, not using it):
   `<!-- harnex-managed:start <slug> -->` blocks that the `spec_facts_sync`
   integration test holds in lock-step with the Rust SSoT (constitution IX).
 - **Managed-region convention for generated artifacts.** Markdown templates
-  (`common/CLAUDE.md`, `common/constitution.md`) carry
+  (`common/CLAUDE.md`, `common/rules/constitution.md`) carry
   `<!-- harnex-managed:start <slug> -->` / `<!-- harnex-managed:end <slug> -->`
   sentinels bounding the harnex-owned region. `regenerate` overwrites only
   inside sentinels; everything outside is project-authored. `.claude/settings.json`

@@ -74,13 +74,13 @@ fn run_scaffold_validation(lang: &str) {
     // settings.json (assembled from JSON projections)
     let settings_path = assemble_settings_json(&templates, lang, proj_root);
 
-    // Foundation rules + CLAUDE.md (markdown templates, dropped verbatim)
-    for rule in ["constitution.md", "rules/governance.md", "rules/artifact-lifecycle.md"] {
-        let src = templates.join("common").join(rule);
-        let dst = proj_root
-            .join(".claude/rules")
-            .join(PathBuf::from(rule).file_name().unwrap());
-        copy_file(&src, &dst);
+    // Foundation rules + CLAUDE.md (markdown templates, dropped verbatim).
+    // All three foundation rules live in common/rules/ → .claude/rules/.
+    for rule in ["constitution.md", "governance.md", "artifact-lifecycle.md"] {
+        copy_file(
+            &templates.join("common/rules").join(rule),
+            &proj_root.join(".claude/rules").join(rule),
+        );
     }
     copy_file(
         &templates.join("common/CLAUDE.md"),
