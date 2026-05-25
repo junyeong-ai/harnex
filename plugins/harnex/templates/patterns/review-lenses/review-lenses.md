@@ -20,11 +20,12 @@ and re-walks the (possibly grown) scope until convergence or a stall limit.
 
 ## Default lenses
 
-Six lenses ship as the baseline review vocabulary. Each is a high-signal
-review question — not a checklist of linter-owned or model-default checks
-(those belong to the formatter, type checker, and the model's own defaults,
-per keep-soften-cut). Add, remove, or customize lenses to match your
-project's priorities.
+Six lenses ship as the baseline review vocabulary. Each leads with a
+high-signal review question and may add a few clarifying facets — never a
+linter-style exhaustive checklist or a list of model-default checks (those
+belong to the formatter, type checker, and the model's own defaults, per
+keep-soften-cut). Add, remove, or customize lenses to match your project's
+priorities.
 
 | Lens | High-signal question |
 |---|---|
@@ -49,9 +50,11 @@ anchors:
 ---
 ```
 
-Body: a high-signal question, not a checklist. Findings reference an anchor
-(rule slug) as the authority — no finding without a citation. On install,
-re-point or add anchors to the project's actual rules where they exist.
+Body: a high-signal question, optionally with a few clarifying facets —
+never a linter-style exhaustive checklist. Findings reference an anchor
+(rule slug, not a file path) as the authority — no finding without a
+citation. On install, re-point or add anchors to the project's actual
+rules where they exist.
 
 ## Severity routing
 
