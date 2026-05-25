@@ -368,7 +368,9 @@ fn skill_validator_accepts_valid_effort_levels() {
 }
 
 #[test]
-fn skill_validator_flags_non_array_allowed_tools() {
+fn skill_validator_accepts_string_and_array_allowed_tools() {
+    // The spec accepts allowed-tools as a space-separated STRING or a YAML
+    // list — neither form is a finding.
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
@@ -376,7 +378,33 @@ fn skill_validator_flags_non_array_allowed_tools() {
         flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
-    let md = "---\nname: my-skill\ndescription: a skill\nallowed-tools: Bash\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    for at in ["Bash(gh *) Read", "[Bash, Read, Edit]"] {
+        let md =
+            format!("---\nname: my-skill\ndescription: a skill\nallowed-tools: {at}\n---\nBody\n");
+        let findings = v.validate_text(&md, &path);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "skill-allowed-tools-invalid"),
+            "allowed-tools {at:?} is valid, should not be flagged: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn skill_validator_flags_non_string_non_array_allowed_tools() {
+    // A scalar that is neither a string nor a list (here a number) is invalid.
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let md = "---\nname: my-skill\ndescription: a skill\nallowed-tools: 42\n---\nBody\n";
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -386,7 +414,7 @@ fn skill_validator_flags_non_array_allowed_tools() {
             .iter()
             .any(|f| f.slug == "skill-allowed-tools-invalid"
                 && matches!(f.severity, Severity::Major)),
-        "expected skill-allowed-tools-invalid finding: {findings:?}"
+        "expected skill-allowed-tools-invalid for a numeric value: {findings:?}"
     );
 }
 

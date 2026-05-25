@@ -88,11 +88,13 @@ cp <harnex>/examples/harness.toml.minimal harness.toml
 ./harness check --fix      # auto-fix what can be fixed (currently: codegen sync)
 ```
 
-The example `harness.toml` enables: evidence (provenance verifier),
-telemetry (event ledger), validate.rules/skills, policy.permissions
-(baseline deny), lifecycle (promotion/retirement). Extend with
-`[[kinds]]`, `[[lifecycle.consumer_detectors]]`, `[[codegen.groups]]`,
-`[[policy.versions]]`, `[validate.commit_msg]` as your project grows.
+`examples/harness.toml.minimal` enables just evidence (provenance verifier)
+and telemetry (event ledger) — the smallest useful surface.
+`examples/harness.toml.team` is the full-surface config (adds
+validate.rules/skills, policy.permissions, lifecycle, codegen, …). Start
+from one and extend with `[[kinds]]`, `[[lifecycle.consumer_detectors]]`,
+`[[codegen.groups]]`, `[[policy.versions]]`, `[validate.commit_msg]` as your
+project grows.
 
 ## Command surface
 
@@ -137,8 +139,10 @@ harness export schema {config|envelope|finding|event|permissions|error-codes|all
 harness completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```
 
-Every command emits one JSON envelope on stdout. Exit code: 0 = success,
-1 = blocking finding, 2 = runtime failure.
+By default every command emits one JSON envelope on stdout; the explicit raw
+modes (`export schema --raw`, `completions --raw`) emit the bare artifact for
+committing to disk. Exit code: 0 = success, 1 = gating finding (blocker or
+major), 2 = runtime failure.
 
 ## What the oracle covers
 
@@ -172,9 +176,12 @@ and individual repos cannot weaken them. The integration points:
   `blockedMarketplaces`, this prevents adoption of unreviewed plugins
   while still allowing harnex.
 - **Pin enforced floors.** Set `permissions.allowManagedPermissionRulesOnly: true`
-  in managed settings to make user / project / local permission rules
-  additive only — the `baseline` deny set in `templates/common/permissions.deny.json`
-  becomes a non-removable floor across every consuming repo.
+  in managed settings so ONLY managed-scope permission rules are honored —
+  user / project / local permission rules are then ignored, not merged. To make
+  the `baseline` deny a non-removable floor under this policy, DEPLOY that deny
+  set in the managed settings itself; a deny shipped only in a project's
+  `permissions.deny.json` would be ignored. (Without this policy, rules from all
+  scopes merge and the project deny applies.)
 - **Pin behavioral guidance.** The managed `claudeMd` key carries the
   organization-wide instructions delivered before any project CLAUDE.md
   ("Always run `make lint` before committing", compliance reminders).
@@ -186,9 +193,9 @@ and individual repos cannot weaken them. The integration points:
   plugin; everything else routes through the marketplace.
 - **Disable skill shell injection.** Set `disableSkillShellExecution:
   true` in managed settings to neutralise `` !`<command>` `` substitution
-  in user / project / additional-directory skills. harnex's templates do
-  not rely on shell-injection, so it remains fully functional under this
-  policy.
+  in user / project / plugin / additional-directory skills (bundled and
+  managed skills are exempt). harnex's templates do not rely on
+  shell-injection, so it remains fully functional under this policy.
 
 See `https://code.claude.com/docs/en/settings` for the complete managed
 settings surface and OS-specific deployment paths (`managed-settings.d/`,

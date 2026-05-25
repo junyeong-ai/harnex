@@ -54,7 +54,8 @@ record in the decision ledger sorted by timestamp descending. Operators
 audit the promote / reject / defer / demote history without reading
 raw jsonl.
 
-ConsumerDetector is a trait. Two built-in strategies:
+ConsumerDetector is a trait; built-in strategies are the `ConsumerStrategy`
+variants (that enum is the source of truth — do not count them here):
 - `grep` — walks working tree, matches `{slug}`-substituted pattern.
 - `graph-backlinks` — calls `nodex query backlinks <node_id>` via the
   graph module. Fails explicitly if nodex is absent (never silent

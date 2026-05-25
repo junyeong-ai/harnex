@@ -1,6 +1,7 @@
 # harnex plugin
 
-The single-skill plugin: `SKILL.md` (entry, 4 modes) + `reference/` (L1
+The single-skill plugin: `SKILL.md` (entry; the mode menu lives in SKILL.md) +
+`reference/` (L1
 knowledge) + `templates/` (L2 safety-critical templates). Editing contract
 for this directory (the runtime content ships to installs; this file guides
 editing it, not using it):

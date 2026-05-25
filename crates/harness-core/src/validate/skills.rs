@@ -15,8 +15,8 @@
 //!   default — the heuristic matches prose, not intent.
 //! - `user-invocable` must be boolean if present.
 //! - `context` must be `"fork"` if present.
-//! - `allowed-tools` must be array of strings if present.
-//! - `paths` must be array of valid glob patterns if present.
+//! - `allowed-tools` is a string OR an array of strings (spec accepts both).
+//! - `paths` is a string OR an array of valid glob patterns (spec accepts both).
 //! - `hooks` keys must be in `KNOWN_HOOK_EVENTS` if present.
 //! - `effort` must be one of `low|medium|high|xhigh|max` if present.
 //!
@@ -317,83 +317,90 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        // allowed-tools: must be an array of strings
+        // allowed-tools: a space-separated STRING or a YAML list of strings
+        // (the spec accepts both). Only a non-string, non-sequence value (a
+        // number / bool / mapping) is invalid.
         if let Some(ref val) = parsed.allowed_tools {
-            match val.as_sequence() {
-                Some(seq) => {
-                    for (i, item) in seq.iter().enumerate() {
-                        if !item.is_string() {
-                            findings.push(Finding {
-                                slug: "skill-allowed-tools-invalid".into(),
-                                severity: Severity::Major,
-                                location: Location::line(path.to_path_buf(), fm.begin_line),
-                                message: format!("allowed-tools[{i}] is not a string"),
-                                hint: Some(
-                                    "each entry in allowed-tools must be a tool name string".into(),
-                                ),
-                                auto_fixable: false,
-                                fix_command: None,
-                            });
-                        }
+            if let Some(seq) = val.as_sequence() {
+                for (i, item) in seq.iter().enumerate() {
+                    if !item.is_string() {
+                        findings.push(Finding {
+                            slug: "skill-allowed-tools-invalid".into(),
+                            severity: Severity::Major,
+                            location: Location::line(path.to_path_buf(), fm.begin_line),
+                            message: format!("allowed-tools[{i}] is not a string"),
+                            hint: Some(
+                                "each entry in allowed-tools must be a tool name string".into(),
+                            ),
+                            auto_fixable: false,
+                            fix_command: None,
+                        });
                     }
                 }
-                None => {
-                    findings.push(Finding {
-                        slug: "skill-allowed-tools-invalid".into(),
-                        severity: Severity::Major,
-                        location: Location::line(path.to_path_buf(), fm.begin_line),
-                        message: "allowed-tools must be an array of strings".into(),
-                        hint: Some("use `allowed-tools: [Bash, Read, Edit]` syntax".into()),
-                        auto_fixable: false,
-                        fix_command: None,
-                    });
-                }
+            } else if !val.is_string() {
+                findings.push(Finding {
+                    slug: "skill-allowed-tools-invalid".into(),
+                    severity: Severity::Major,
+                    location: Location::line(path.to_path_buf(), fm.begin_line),
+                    message: "allowed-tools must be a string or an array of strings".into(),
+                    hint: Some(
+                        "use `allowed-tools: Bash(gh *) Read` (string) or `[Bash, Read]` (list)"
+                            .into(),
+                    ),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
             }
         }
 
-        // paths: must be an array of valid glob patterns
+        // paths: a comma-separated STRING or a YAML list of glob patterns
+        // (the spec accepts both). Validate each glob; flag only a non-string,
+        // non-sequence value.
         if let Some(ref val) = parsed.paths {
-            match val.as_sequence() {
-                Some(seq) => {
-                    for (i, item) in seq.iter().enumerate() {
-                        if let Some(s) = item.as_str() {
-                            if glob::Pattern::new(s).is_err() {
-                                findings.push(Finding {
-                                    slug: "skill-paths-invalid".into(),
-                                    severity: Severity::Major,
-                                    location: Location::line(path.to_path_buf(), fm.begin_line),
-                                    message: format!(
-                                        "paths[{i}] '{s}' is not a valid glob pattern"
-                                    ),
-                                    hint: Some("fix the glob syntax".into()),
-                                    auto_fixable: false,
-                                    fix_command: None,
-                                });
-                            }
-                        } else {
-                            findings.push(Finding {
-                                slug: "skill-paths-invalid".into(),
-                                severity: Severity::Major,
-                                location: Location::line(path.to_path_buf(), fm.begin_line),
-                                message: format!("paths[{i}] is not a string"),
-                                hint: Some("each entry in paths must be a glob string".into()),
-                                auto_fixable: false,
-                                fix_command: None,
-                            });
-                        }
+            let invalid_glob = |s: &str, label: String| -> Option<Finding> {
+                glob::Pattern::new(s).err().map(|_| Finding {
+                    slug: "skill-paths-invalid".into(),
+                    severity: Severity::Major,
+                    location: Location::line(path.to_path_buf(), fm.begin_line),
+                    message: format!("paths {label} '{s}' is not a valid glob pattern"),
+                    hint: Some("fix the glob syntax".into()),
+                    auto_fixable: false,
+                    fix_command: None,
+                })
+            };
+            if let Some(seq) = val.as_sequence() {
+                for (i, item) in seq.iter().enumerate() {
+                    match item.as_str() {
+                        Some(s) => findings.extend(invalid_glob(s, format!("[{i}]"))),
+                        None => findings.push(Finding {
+                            slug: "skill-paths-invalid".into(),
+                            severity: Severity::Major,
+                            location: Location::line(path.to_path_buf(), fm.begin_line),
+                            message: format!("paths[{i}] is not a string"),
+                            hint: Some("each entry in paths must be a glob string".into()),
+                            auto_fixable: false,
+                            fix_command: None,
+                        }),
                     }
                 }
-                None => {
-                    findings.push(Finding {
-                        slug: "skill-paths-invalid".into(),
-                        severity: Severity::Major,
-                        location: Location::line(path.to_path_buf(), fm.begin_line),
-                        message: "paths must be an array of glob strings".into(),
-                        hint: Some("use `paths: [\"src/**/*.rs\"]` syntax".into()),
-                        auto_fixable: false,
-                        fix_command: None,
-                    });
-                }
+            } else if let Some(s) = val.as_str() {
+                let segs: Vec<Finding> = s
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|p| !p.is_empty())
+                    .filter_map(|seg| invalid_glob(seg, format!("segment '{seg}'")))
+                    .collect();
+                findings.extend(segs);
+            } else {
+                findings.push(Finding {
+                    slug: "skill-paths-invalid".into(),
+                    severity: Severity::Major,
+                    location: Location::line(path.to_path_buf(), fm.begin_line),
+                    message: "paths must be a string or an array of glob strings".into(),
+                    hint: Some("use `paths: \"src/**/*.rs\"` or `paths: [\"src/**/*.rs\"]`".into()),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
             }
         }
 

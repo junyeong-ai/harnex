@@ -18,8 +18,10 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
 - Body ≤ `max_skill_md_lines` (compaction budget ≈ 5000 tokens).
 - `user-invocable` must be boolean if present (Major).
 - `context` must be `"fork"` if present (Major).
-- `allowed-tools` must be array of strings (Major).
-- `paths` must be array of valid glob patterns (Major).
+- `allowed-tools` is a string OR an array of strings — spec accepts both;
+  flag only a non-string/non-array value (Major).
+- `paths` is a string (comma-separated) OR an array of glob patterns — spec
+  accepts both; each glob must compile (Major).
 - `hooks` keys validated against `KNOWN_HOOK_EVENTS` (Major).
 - `effort` must be one of `low|medium|high|xhigh|max` (Major).
 - `agent` / `model` are valid free-form fields — accepted, never flagged

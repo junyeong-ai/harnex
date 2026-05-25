@@ -15,7 +15,7 @@ Resolves project root via `git rev-parse --show-toplevel`. If unresolved,
 returns `SkippedFailOpen` and emits `[harness-skipped: …]` to stderr —
 never penalizes the user for env drift.
 
-Two variants:
+Variants:
 - [`HookRunner::run`] (`harness guard hook-run`) — propagates the inner
   exit code. Used for PreToolUse / PostToolUse / UserPromptSubmit / etc.
   where a non-zero exit blocks the agent action.
@@ -31,8 +31,10 @@ StopAuditor handles the Stop event in three phases:
 2. Bump per-session retry counter via `path_guard::write_atomic`.
    Exceeding `max_retries` escalates with a Block reason.
 3. Spawn the configured critique skill via `claude --print`. Parse the
-   returned JSON envelope; any finding with severity in
-   {blocker} blocks the stop.
+   returned JSON envelope; any finding that fails the gate
+   (`Severity::fails_gate` — blocker or major) blocks the stop. Malformed
+   critique output fails OPEN (allow stop) — Article V, the bounded retry
+   counter is the loop's safety net, not a fail-closed gate.
 
 The retry counter is the deterministic antidote to single-loop
 self-grade inflation. Never bypass — bounded retries are the cure.
