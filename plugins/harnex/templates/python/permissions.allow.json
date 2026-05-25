@@ -9,6 +9,7 @@
   "Bash(mypy *)",
   "Bash(pytest *)",
   "Bash(python *)",
+  "Bash(python3 *)",
   "Bash(ruff *)",
   "Bash(uv *)",
   "Edit",
