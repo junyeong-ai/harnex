@@ -2,8 +2,8 @@
 
 use harness_core::config::{TelemetryConfig, TelemetryKindDecl};
 use harness_core::error::Error;
-use harness_core::telemetry::{JsonlStorage, TelemetryAppender, TelemetryQuery};
-use jiff::ToSpan;
+use harness_core::telemetry::{Event, JsonlStorage, TelemetryAppender, TelemetryQuery};
+use jiff::{Timestamp, ToSpan};
 use tempfile::TempDir;
 
 fn config_with_skill_invoked(dir: std::path::PathBuf) -> TelemetryConfig {
@@ -152,6 +152,27 @@ fn report_aggregates_per_kind_and_window() {
     assert_eq!(k.last_n_days.get(&1), Some(&5));
     assert_eq!(k.last_n_days.get(&90), Some(&5));
     assert_eq!(summary.windows, vec![1, 7, 30, 90]);
+}
+
+#[test]
+fn storage_append_rejects_kind_that_escapes_dir() {
+    // Defense-in-depth at the write boundary: a direct JsonlStorage caller
+    // (bypassing the appender's config-declared kind check) must not be able
+    // to use a kind that escapes the storage dir — absolute or separator-bearing.
+    let tmp = TempDir::new().unwrap();
+    let mut storage = JsonlStorage::new(tmp.path().to_path_buf(), 10);
+    for bad in ["/tmp/escape", "../escape", "a/b", ".."] {
+        let event = Event {
+            kind: bad.to_string(),
+            timestamp: Timestamp::now(),
+            payload: serde_json::json!({}),
+        };
+        let err = storage.append(&event).unwrap_err();
+        assert!(
+            matches!(err, Error::PathTraversal { .. }),
+            "kind {bad:?} must be rejected, got: {err:?}"
+        );
+    }
 }
 
 #[test]

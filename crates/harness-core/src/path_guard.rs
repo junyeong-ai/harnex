@@ -39,31 +39,36 @@ pub fn reject_traversal(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Reject writing through a symlink at two checked components: the leaf
-/// (don't clobber a symlinked file) and its immediate parent directory
-/// (`link` → `/etc`, then write `link/file` redirects the write out of the
-/// tree). `symlink_metadata` does not follow the final component, so each
-/// check sees the component's own type.
+/// Reject overwriting a symlink at the leaf — never clobber a symlinked
+/// file. `symlink_metadata` does not follow the final component, so this
+/// sees the leaf's own type.
 ///
-/// SCOPE: arbitrarily-deep symlinked ancestors (a symlink two or more levels
-/// above the leaf) are deliberately NOT policed here. Catching those soundly
-/// requires a trusted-root anchor — `symlink_metadata` silently follows
-/// intermediate symlinks, and without a root we cannot distinguish a planted
-/// redirect from a legitimate system mount symlink (macOS `/var ->
-/// /private/var`) that sits above every path. Within this toolkit every write
-/// parent is a config-declared directory the tool itself creates with
-/// `create_dir_all` (which makes real directories), so the realistic injection
-/// point is the immediate parent, which is checked. Traversal (`..`) is
-/// rejected separately by [`reject_traversal`].
+/// SCOPE (deliberate): this guards the leaf only. Symlinked *ancestor*
+/// directories (`link/file`, or a planted `.harness -> /outside` above the
+/// leaf) are NOT policed here. Two earlier attempts to extend coverage were
+/// both unsound: a full root-down walk false-rejects legitimate paths under
+/// system mount symlinks (macOS `/var -> /private/var`), and an
+/// immediate-parent check both false-rejects those AND misses the realistic
+/// case — the toolkit writes to `<root>/.harness/<sub>/<file>`, so a planted
+/// symlink at `.harness` sits two levels above the leaf. Covering ancestors
+/// soundly requires a trusted-root anchor (canonicalize-and-compare, or
+/// no-follow component opens) threaded from each caller.
+///
+/// That is out of this tool's threat model: `harness` is a local,
+/// single-user, no-network CLI operating on the user's own repository. An
+/// attacker who can plant a symlink inside the working tree already has write
+/// access to it — at which point the repository is compromised regardless of
+/// where the tool's own (benign, tool-authored) ledger writes land. The
+/// meaningful, in-contract guarantee is leaf-overwrite refusal plus `..`
+/// rejection ([`reject_traversal`]); callers that derive a filename from
+/// input additionally pin it to a single component (see telemetry append).
 pub fn reject_symlink_write(path: &Path) -> Result<()> {
-    for component in [Some(path), path.parent()].into_iter().flatten() {
-        if let Ok(meta) = fs::symlink_metadata(component)
-            && meta.file_type().is_symlink()
-        {
-            return Err(Error::PathSymlinkRefused {
-                path: component.to_path_buf(),
-            });
-        }
+    if let Ok(meta) = fs::symlink_metadata(path)
+        && meta.file_type().is_symlink()
+    {
+        return Err(Error::PathSymlinkRefused {
+            path: path.to_path_buf(),
+        });
     }
     Ok(())
 }
@@ -257,10 +262,11 @@ mod tests {
     }
 
     #[test]
-    fn write_atomic_refuses_symlinked_parent_dir() {
-        // A symlinked *ancestor* must be refused too: `link -> /victim`, then
-        // `write_atomic(link/file)` would otherwise land the write inside the
-        // symlink target. The guard walks every component, not just the leaf.
+    fn write_atomic_allows_leaf_under_system_symlink_parent() {
+        // A leaf whose immediate parent is a (legitimate) symlinked directory
+        // must NOT be refused — only the leaf's own symlink-ness matters.
+        // This is the false-positive the prior immediate-parent check caused
+        // for paths like `/tmp/x` / `/var/x` on macOS.
         let tmp = TempDir::new().unwrap();
         let real_dir = tmp.path().join("real_dir");
         fs::create_dir(&real_dir).unwrap();
@@ -269,11 +275,9 @@ mod tests {
         std::os::unix::fs::symlink(&real_dir, &link_dir).unwrap();
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&real_dir, &link_dir).unwrap();
-        let through_link = link_dir.join("file.txt");
-        assert!(matches!(
-            write_atomic(&through_link, b"x").unwrap_err(),
-            Error::PathSymlinkRefused { .. }
-        ));
+        // Writing a NEW file under the symlinked parent is allowed.
+        write_atomic(&link_dir.join("file.txt"), b"x").unwrap();
+        assert_eq!(fs::read_to_string(real_dir.join("file.txt")).unwrap(), "x");
     }
 
     #[test]
