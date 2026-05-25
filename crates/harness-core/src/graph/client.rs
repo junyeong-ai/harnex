@@ -134,7 +134,12 @@ struct EnvelopeProbe {
 
 #[derive(Debug, Deserialize)]
 struct ItemsPayload {
-    #[serde(default)]
+    // `items` is REQUIRED (no serde default): a success envelope whose
+    // object `data` lacks `items` is malformed and must surface as
+    // GraphResponseInvalid, not silently parse as zero results — which would
+    // hide a graph failure as "0 backlinks/orphans" and corrupt retirement
+    // decisions. The direct-array compat path wraps as {items: [...]}, so it
+    // always satisfies this.
     items: Vec<NodeRef>,
 }
 
@@ -245,6 +250,17 @@ mod tests {
         let client = NodexClient::new(runner);
         let err = client.stale().unwrap_err();
         assert_eq!(err.code(), crate::error::ErrorCode::GraphSpawnFailure);
+    }
+
+    #[test]
+    fn object_data_without_items_is_invalid_not_empty() {
+        // A success envelope whose object `data` lacks `items` is malformed —
+        // it must surface GraphResponseInvalid, never parse as zero results
+        // (which would hide a graph failure as "0 backlinks").
+        let runner = MockRunner::new(vec![r#"{"ok":true,"data":{"count":0}}"#]);
+        let client = NodexClient::new(runner);
+        let err = client.backlinks("x").unwrap_err();
+        assert_eq!(err.code(), crate::error::ErrorCode::GraphResponseInvalid);
     }
 
     #[test]

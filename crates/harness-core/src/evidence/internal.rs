@@ -35,6 +35,20 @@ impl Verifier for FilePathLineVerifier {
             }
         };
 
+        // A claim path must stay inside the project — reject `..` traversal
+        // and absolute paths so a claim cannot verify (or read) a file
+        // outside `working_dir`.
+        if crate::path_guard::reject_traversal(Path::new(path)).is_err()
+            || Path::new(path).is_absolute()
+        {
+            return VerifyOutcome::Violation {
+                message: format!("claim path '{path}' escapes the project root"),
+                hint: Some(
+                    "use a project-relative path without `..` or a leading `/`".into(),
+                ),
+            };
+        }
+
         let full = working_dir.join(path);
         if !full.is_file() {
             return VerifyOutcome::Violation {

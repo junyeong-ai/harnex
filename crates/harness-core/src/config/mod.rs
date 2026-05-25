@@ -537,26 +537,16 @@ impl Config {
                     location: None,
                 });
             }
-            // payload_schema must be a JSON object with type=object
-            let obj = k
-                .payload_schema
-                .as_object()
-                .ok_or_else(|| Error::ConfigInvalid {
-                    message: format!(
-                        "[[telemetry.kinds]] '{}' payload_schema must be a JSON object",
-                        k.name
-                    ),
+            // Fully validate the payload_schema at load via the same parser
+            // the appender uses — type=object, well-formed `required` (array
+            // of strings), and well-formed `properties` (known types). One
+            // validation path, no partial inline duplicate.
+            crate::telemetry::KindSchema::from_value(&k.payload_schema).map_err(|e| {
+                Error::ConfigInvalid {
+                    message: format!("[[telemetry.kinds]] '{}': {e}", k.name),
                     location: None,
-                })?;
-            if obj.get("type").and_then(|t| t.as_str()) != Some("object") {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "[[telemetry.kinds]] '{}' payload_schema.type must be \"object\"",
-                        k.name
-                    ),
-                    location: None,
-                });
-            }
+                }
+            })?;
         }
         Ok(())
     }
@@ -566,6 +556,9 @@ impl Config {
             return Ok(());
         };
         let mut group_names = HashSet::new();
+        // Cycle detection compares LEXICALLY-NORMALIZED paths so equivalent
+        // spellings (`./nodex.toml` vs `nodex.toml`) cannot evade the
+        // source-is-target guard.
         let mut sources: HashSet<PathBuf> = HashSet::new();
         for group in &cg.groups {
             if !group_names.insert(&group.name) {
@@ -595,7 +588,7 @@ impl Config {
                     location: None,
                 });
             }
-            sources.insert(group.source.clone());
+            sources.insert(normalize_lexical(&group.source));
             for target in &group.targets {
                 if crate::codegen::RendererStrategy::from_str(&target.format).is_none() {
                     return Err(Error::ConfigInvalid {
@@ -627,7 +620,7 @@ impl Config {
         // Cycle: a target file must not be the source of any group.
         for group in &cg.groups {
             for target in &group.targets {
-                if sources.contains(&target.path) {
+                if sources.contains(&normalize_lexical(&target.path)) {
                     return Err(Error::CodegenCycle {
                         path: target.path.clone(),
                     });
@@ -784,6 +777,27 @@ impl Config {
         }
         Ok(())
     }
+}
+
+/// Lexically normalize a relative path for equality comparison: drop `.`
+/// components and redundant separators without touching the filesystem.
+/// `./nodex.toml`, `nodex.toml`, and `dir/../nodex.toml` are NOT all
+/// collapsed (no `..` resolution — that needs the real tree); this only
+/// removes `CurDir` segments, which is the spelling difference that evades
+/// the codegen cycle guard.
+fn normalize_lexical(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            other => out.push(other.as_os_str()),
+        }
+    }
+    if out.as_os_str().is_empty() {
+        out.push(".");
+    }
+    out
 }
 
 fn find_config_file(working_dir: &Path) -> Option<PathBuf> {
@@ -1022,6 +1036,65 @@ mod tests {
             err.to_string()
                 .contains("duplicate codegen target sentinel")
         );
+    }
+
+    #[test]
+    fn detects_codegen_cycle_across_path_spellings() {
+        // `./nodex.toml` (target) vs `nodex.toml` (source) are the same file;
+        // lexical normalization must catch the cycle despite the spelling.
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+
+            [codegen]
+            [[codegen.groups]]
+            name = "group-a"
+            source = "nodex.toml"
+            source_key = "values"
+            [[codegen.groups.targets]]
+            path = "./nodex.toml"
+            begin = "<!-- BEGIN:x -->"
+            end = "<!-- END:x -->"
+            format = "markdown-bullet-list"
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::CodegenCycle);
+    }
+
+    #[test]
+    fn rejects_telemetry_required_non_string() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [telemetry]
+            storage = "jsonl"
+            storage_dir = ".harness/telemetry"
+            [[telemetry.kinds]]
+            name = "k"
+            [telemetry.kinds.payload_schema]
+            type = "object"
+            required = ["ok", 123]
+            [telemetry.kinds.payload_schema.properties.ok]
+            type = "string"
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+    }
+
+    #[test]
+    fn rejects_telemetry_unknown_property_type() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [telemetry]
+            storage = "jsonl"
+            storage_dir = ".harness/telemetry"
+            [[telemetry.kinds]]
+            name = "k"
+            [telemetry.kinds.payload_schema]
+            type = "object"
+            [telemetry.kinds.payload_schema.properties.f]
+            type = "garbage"
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
     }
 
     #[test]
