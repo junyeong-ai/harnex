@@ -132,9 +132,15 @@ and sequential; code changes are stateful, so do not parallelize them.
 
 ## Brownfield respect (extend / audit)
 
-When `existing_harness` is present, match the incumbent idiom (its hook-runner
-pattern, its rule mechanism, its gate sequence). Produce additive artifacts
-only; never regenerate `settings.json`, the gate order, permissions, telemetry
-schema, or per-module CLAUDE.md. `audit` writes nothing — it emits a gap report
+When `existing_harness` is present, match the incumbent idiom. Extract these
+fields first so two operators reach the SAME decision (not one appends, one
+wraps): per hook — `event`, `matcher`, `command`/`runner` shape, `args`,
+`timeout`; per permission — the `deny`/`ask`/`allow` rule and its order; plus
+the gate sequence and rule mechanism. Then apply ONE deterministic rule:
+**preserve every incumbent entry, append new ones in the incumbent's own shape,
+never overwrite; on an unavoidable conflict, surface it for the operator rather
+than pick a side.** Produce additive artifacts only; never regenerate
+`settings.json` wholesale, the gate order, permissions, telemetry schema, or
+per-module CLAUDE.md. `audit` writes nothing — it emits a gap report
 (enforced-vs-advisory coverage, keep-soften-cut violations, spec drift such as
 a millisecond `timeout`).

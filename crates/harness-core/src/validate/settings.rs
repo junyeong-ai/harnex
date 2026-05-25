@@ -52,6 +52,7 @@ pub const KNOWN_PROJECT_SCOPE_NOOP_KEYS: &[&str] = &[
     "autoMode",
     "useAutoModeDuringPlan",
     "skipDangerousModePermissionPrompt",
+    "claudeMd",
 ];
 
 /// Closed-set of `settings.json` scopes per Claude Code spec /en/settings.
