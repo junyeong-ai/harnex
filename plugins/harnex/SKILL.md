@@ -160,10 +160,11 @@ operator to re-phrase using a verb from this list.
   Refuse when `<pattern>` is a read-only built-in (`ls`, `grep`, `cat`,
   read-only `git`) — its allow rule is a no-op.
 - **`extend language <lang>`** — bootstrap a new language directory:
-  `templates/<lang>/{_runner.sh, post-format.sh, session-start.sh,
-  permissions.allow.json}` + the matching `<lang>-dev` profile stub in
-  `profiles.rs`. Operator fills the toolchain commands; the
-  `policy_template_sync` reverse-gap test enforces both sides exist.
+  `templates/<lang>/{_runner.sh, post-format.sh, permissions.allow.json}`
+  + the matching `<lang>-dev` profile stub in `profiles.rs`
+  (`session-start.sh` is common, not per-language). Operator fills the
+  toolchain commands; the `policy_template_sync` reverse-gap test enforces
+  both sides exist.
 - **`extend pattern <name>`** — install a proven engineering pattern,
   **customized to the target project**. The pattern set and each pattern's
   files + analysis steps are declared in

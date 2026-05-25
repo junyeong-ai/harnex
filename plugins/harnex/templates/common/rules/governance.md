@@ -17,9 +17,9 @@ the session without spending always-loaded context:
 
 - **Commit body** — always available; `git log` is the durable trail.
 - **Oracle ledger** (if the project runs the `harness` oracle) —
-  `harness lifecycle observe --tag <topic> --text "<observation>"` appends to
-  the per-tag ledger that surfacing reads. Preferred when adopted: thresholds
-  are enforced deterministically.
+  `harness lifecycle observe --tag <topic> --text "<observation>" --source <where>`
+  appends to the per-tag ledger that surfacing reads. Preferred when adopted:
+  thresholds are enforced deterministically.
 
 Do not record observations in always-loaded memory — that pays context cost
 every session for a candidate that has not earned a rule yet.
@@ -61,9 +61,10 @@ deterministic, never inventing text:
   retirement candidate.
 - `harness lifecycle retire` — Stale / NoConsumers / Silent verdicts.
 
-Record each promote/reject/defer/demote decision (commit body, or
-`harness lifecycle promote|reject|defer|demote`). The text is the operator's,
-never the model's.
+Record each decision in a commit body, or with the oracle:
+`harness lifecycle {promote|reject|defer|demote} --tag <t> --text <text>
+--decision-text "<rationale>"`. The decision text is the operator's, never
+the model's.
 
 ## Rejection reasons
 

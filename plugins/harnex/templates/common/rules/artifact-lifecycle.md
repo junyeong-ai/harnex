@@ -18,8 +18,9 @@ observation → validated pattern → rule / skill / lens
 ```
 
 - **Observation**: a repeated issue noticed during work. Record in a commit
-  body, or `harness lifecycle observe --tag <topic> --text "<obs>"` when the
-  oracle is adopted. Never in always-loaded memory. No promotion yet.
+  body, or `harness lifecycle observe --tag <topic> --text "<obs>" --source
+  <where>` when the oracle is adopted. Never in always-loaded memory. No
+  promotion yet.
 - **Validated pattern**: the same observation confirmed across two+
   independent contexts (surface with `harness lifecycle candidates`). Propose
   as a rule via the governance rubric.
