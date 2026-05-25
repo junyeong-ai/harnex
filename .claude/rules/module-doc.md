@@ -1,12 +1,12 @@
 ---
 paths:
   - "crates/harness-core/src/**/mod.rs"
-  - "crates/harness-core/src/lib.rs"
 ---
 
 # Module documentation
 
-Every `mod.rs` and `lib.rs` ships a `//!` doc block with:
+Every `mod.rs` ships a `//!` doc block with (`lib.rs` is exempt — it only
+declares modules, with no behavior to document):
 
 1. **WHAT** — one-sentence module purpose.
 2. **HOW** — key types and their responsibility (concise).

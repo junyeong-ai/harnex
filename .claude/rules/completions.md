@@ -15,9 +15,9 @@ harness completions bash --raw > ~/.bashrc.d/harness
 harness completions zsh  --raw > ~/.zsh/completions/_harness
 ```
 
-This is the only command that may emit non-envelope output, and only
-behind `--raw`. Other commands MUST always emit envelopes (constitution
-Article II).
+`--raw` is one of the sanctioned non-envelope exceptions (the full list and
+the Article II contract live in `.claude/rules/envelope.md` — do not restate
+it here). Without `--raw`, this command emits an envelope like every other.
 
-Supported shells delegate to `clap_complete::Shell::value_variants()` —
-bash, zsh, fish, powershell, elvish.
+Supported shells delegate to `clap_complete::Shell::value_variants()` — never
+hand-maintain the shell list here.
