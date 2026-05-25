@@ -155,6 +155,40 @@ fn report_aggregates_per_kind_and_window() {
 }
 
 #[test]
+fn report_surfaces_unreadable_line_instead_of_truncating() {
+    // A line-read error (here: invalid UTF-8) mid-file must surface, not
+    // silently truncate every subsequent event. Truncation would undercount
+    // and risk a false Silent signal that feeds retirement.
+    let tmp = TempDir::new().unwrap();
+    let cfg = config_with_skill_invoked(tmp.path().to_path_buf());
+    {
+        let storage = JsonlStorage::new(tmp.path().to_path_buf(), 10);
+        let mut appender = TelemetryAppender::new(&cfg, storage).unwrap();
+        appender
+            .append(
+                "skill-invoked",
+                serde_json::json!({"skill": "a", "outcome": "ok"}),
+            )
+            .unwrap();
+    }
+    // Append a raw invalid-UTF-8 byte sequence as a second line.
+    let file = std::fs::read_dir(tmp.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|x| x.to_str()) == Some("jsonl"))
+        .expect("a telemetry jsonl file exists");
+    let mut bytes = std::fs::read(&file).unwrap();
+    bytes.extend_from_slice(&[0xff, 0xfe, b'\n']);
+    std::fs::write(&file, bytes).unwrap();
+
+    let storage = JsonlStorage::new(tmp.path().to_path_buf(), 10);
+    let query = TelemetryQuery::new(storage);
+    let err = query.report(&[90], None).unwrap_err();
+    assert!(matches!(err, Error::IoFailure { .. }));
+}
+
+#[test]
 fn report_kind_filter_restricts_output() {
     let tmp = TempDir::new().unwrap();
     let mut cfg = config_with_skill_invoked(tmp.path().to_path_buf());
