@@ -82,10 +82,12 @@ Per-module delegation template:
 > (path, kind, language, toolchain, depends_on, has_harness). Read its manifest
 > and entrypoints; do not read sibling modules; do not propose changes.
 
-Aggregate by having each subagent write its entry to the **module-map
-artifact**, not by funneling transcripts back through the orchestrator —
-detailed results flooding the lead is the aggregation-loss / context-blowup
-pitfall.
+Aggregate by having each subagent RETURN its compact `modules[]` entry (the
+fields above, nothing more) and the orchestrator append it to the **module-map
+artifact**. Explore agents are read-only, so they cannot write the artifact —
+returning only the structured entry (never the full transcript) is also what
+keeps the lead from drowning in detail: the aggregation-loss / context-blowup
+pitfall is funneling transcripts back, not returning one small row each.
 
 ## Module-map artifact (the structured aggregation point)
 

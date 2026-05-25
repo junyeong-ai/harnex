@@ -91,15 +91,16 @@ flattens real per-package differences.
   If CI config reveals additional tools the project uses (docker, terraform,
   gcloud), suggest composing with `gcp-strict` or `aws-strict` profiles.
 - `hooks/` — Claude Code hook scripts (`<lang>/_runner.sh`, common
-  `_stop_runner.sh`, `<lang>/post-format.sh`, `<lang>/session-start.sh`,
+  `_stop_runner.sh`, `<lang>/post-format.sh`, common `session-start.sh`,
   common `check-on-stop.sh`) AND the git pre-commit hook (common
   `git-hooks/pre-commit` → `hooks/pre-commit`, runs gitleaks). The two
   hook kinds coexist: git runs only files named after git events
   (`pre-commit`), Claude Code runs the `_runner.sh`-dispatched scripts.
 - `.claude/rules/constitution.md` (common, managed region wraps the
   articles — the path-scoped rules added later sit beside it untouched).
-- `.claude/rules/governance.md` (common — self-improvement gatekeeper;
-  4-question rubric for when to add/reject/retire rules).
+- `.claude/rules/governance.md` (common — self-improvement gatekeeper:
+  observation sink, promotion gate split advisory rule vs enforced guardrail,
+  and the oracle loop commands for surfacing candidates).
 - `.claude/rules/artifact-lifecycle.md` (common — promotion path from
   observation → validated pattern → rule; retirement criteria).
 - `CLAUDE.md` — **LLM fills from analysis, not blank placeholders**:
@@ -136,10 +137,11 @@ operator to re-phrase using a verb from this list.
 - **`extend hook <event-name>`** — add a hook for `<event-name>` (must be in
   spec-facts hook events). The runner selection is safety-critical and
   template-driven: `Stop` and `SubagentStop` dispatch through
-  `_stop_runner.sh` (forces exit 0 — their non-zero exit forces continuation,
-  the re-stop loop). Every other event — including `StopFailure`, whose exit 2
-  is genuinely ignored — dispatches through `_runner.sh` (propagates exit
-  code). The verifier script's BODY is
+  `_stop_runner.sh` (forces exit 0 — for these events exit 2 specifically
+  prevents the stop and forces continuation, the re-stop loop; other non-zero
+  codes are non-blocking errors). Every other event — including `StopFailure`,
+  whose exit 2 is genuinely ignored — dispatches through `_runner.sh`
+  (propagates exit code). The verifier script's BODY is
   project-specific check logic the operator authors — that is not free-
   generated safety-critical control flow, which lives entirely in the two
   runner templates. Add the event entry to `.claude/settings.json` `hooks`
@@ -170,7 +172,8 @@ operator to re-phrase using a verb from this list.
   1. Read the manifest entry + skeleton from `templates/patterns/<name>/`.
   2. Explore the project (Phase-1 fingerprint + the entry's `analyze` steps).
   3. Customize the skeleton's defaults based on what you observe.
-  4. Write the entry's declared `files` to `${CLAUDE_PROJECT_DIR}`.
+  4. Write each `files` entry's `template` to its declared `destination`
+     under `${CLAUDE_PROJECT_DIR}` (the manifest owns destinations).
   The template provides proven structure + defaults; the LLM replaces
   generic defaults with project-specific observations. Every `<!-- Fill in
   -->` / `<!-- Customize -->` marker MUST be replaced — with an observed
@@ -188,8 +191,8 @@ operator to re-phrase using a verb from this list.
     from dependencies (next-intl, react-i18n, gettext, fluent). Pre-fill
     register and terminology with observations.
   - `review-lenses` — auto-link lens `anchors:` to the project's existing
-    `.claude/rules/` files. Copy 6 default lens files to `.claude/lenses/`.
-    Customize `applies_to:` based on what file types the project has.
+    `.claude/rules/` files. Customize each lens's `applies_to:` based on what
+    file types the project has.
   - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
     If found, adapt template structure to match existing layout instead of
     overwriting. Map CI stages to gates if CI config exists.
@@ -246,8 +249,8 @@ frozen binary cannot serve). For each file with sentinel markers:
 3. Write the file back with project-authored regions preserved verbatim.
 
 For `.claude/settings.json`: rewrite only the top-level `permissions` and
-`hooks` keys; preserve every other key (managed CLAUDE.md content,
-`autoMemoryEnabled`, `skillOverrides`, etc.).
+`hooks` keys; preserve every other key (`autoMemoryEnabled`,
+`skillOverrides`, `env`, etc.).
 
 Report what changed and why.
 

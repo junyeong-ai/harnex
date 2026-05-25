@@ -29,8 +29,8 @@ editing it, not using it):
 - **Budgets:** `SKILL.md` body < 500 lines; `description` + `when_to_use`
   ≤ 1536 chars, key use case first.
 - **Add a language** = a `templates/<lang>/` set (`_runner.sh`,
-  `post-format.sh`, `session-start.sh`, `permissions.allow.json`,
-  optionally `rules/<lang>-conventions.md`) plus a `<lang>-dev` profile in
+  `post-format.sh`, `permissions.allow.json`, optionally
+  `rules/<lang>-conventions.md`) plus a `<lang>-dev` profile in
   the oracle AND a row in `reference/language-matrix.md` (detection
   fingerprint + parameters). The `policy_template_sync` reverse-gap check
   fails until the template exists.
@@ -41,6 +41,6 @@ editing it, not using it):
   defaults, never blank fill-ins — every `<!-- Fill in -->` is replaced at
   install time by the skill from project analysis.
 - **Extend mode is a closed verb menu.** When adding a new extend verb,
-  add a `### Mode: extend <verb>` row to `SKILL.md`, add a tested
+  add its bullet to the `## Mode: extend` menu in `SKILL.md`, add a tested
   composition path in templates, and (if the verb mutates a SSoT) extend
   the matching audit check. Free-form extension invites free-generation.

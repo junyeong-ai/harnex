@@ -30,8 +30,9 @@ linter's job, never a rule the model must remember.
 
 ## V. The session never traps
 
-Stop-class hooks exit 0. A non-zero Stop exit forces continuation; findings are
-surfaced as advisory context, never as a blocking signal.
+Stop-class hooks exit 0. For Stop/SubagentStop, exit 2 specifically prevents the
+stop and forces continuation (a re-stop loop); findings are surfaced as advisory
+context, never as a blocking exit.
 
 ## VI. Constraints earn their place
 

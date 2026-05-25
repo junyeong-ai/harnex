@@ -1,43 +1,66 @@
 # Pattern library manifest — single source of truth for `extend pattern`.
 #
-# Each [[pattern]] declares a slug, the files it installs into the project,
-# and the concern areas the skill analyzes before customizing. The
-# `pattern_manifest_sync` integration test verifies this manifest matches
-# the `templates/patterns/<slug>/` directories on disk — adding a pattern
-# directory without a manifest entry (or vice versa) fails the build.
+# Each [[pattern]] declares a slug, the files it installs (each with the
+# template source under `templates/patterns/<slug>/` and the project-relative
+# destination it lands at), and the concern areas the skill analyzes before
+# customizing. The `pattern_manifest_sync` integration test verifies this
+# manifest agrees with the `templates/patterns/<slug>/` directories on disk and
+# that every destination is project-relative — adding a pattern directory
+# without a manifest entry (or vice versa) fails the build.
 # (Constitution IX: no hand-maintained fact in two places without a guard.)
 
 [[pattern]]
 slug = "review-lenses"
-files = ["review-lenses.md", "lenses/completeness.md", "lenses/best-practice.md", "lenses/extensibility.md", "lenses/logic.md", "lenses/naming.md", "lenses/root-cause.md"]
 analyze = ["existing .claude/rules/ for anchors", "file types present for applies_to"]
+files = [
+  { template = "review-lenses.md", destination = ".claude/rules/review-lenses.md" },
+  { template = "lenses/completeness.md", destination = ".claude/lenses/completeness.md" },
+  { template = "lenses/best-practice.md", destination = ".claude/lenses/best-practice.md" },
+  { template = "lenses/extensibility.md", destination = ".claude/lenses/extensibility.md" },
+  { template = "lenses/logic.md", destination = ".claude/lenses/logic.md" },
+  { template = "lenses/naming.md", destination = ".claude/lenses/naming.md" },
+  { template = "lenses/root-cause.md", destination = ".claude/lenses/root-cause.md" },
+]
 
 [[pattern]]
 slug = "spec-workflow"
-files = ["spec-workflow.md"]
 analyze = ["existing specs/ or docs/adr/ layout", "CI stages → gates"]
+files = [
+  { template = "spec-workflow.md", destination = ".claude/rules/spec-workflow.md" },
+]
 
 [[pattern]]
 slug = "observability"
-files = ["observability.md"]
 analyze = ["logging/tracing framework", "project name → namespace"]
+files = [
+  { template = "observability.md", destination = ".claude/rules/observability.md" },
+]
 
 [[pattern]]
 slug = "deprecation"
-files = ["deprecation.md"]
 analyze = ["native deprecation markers in the language"]
+files = [
+  { template = "deprecation.md", destination = ".claude/rules/deprecation.md" },
+]
 
 [[pattern]]
 slug = "pr-conventions"
-files = ["pr-conventions.md", "pull_request_template.md"]
 analyze = ["existing .github/pull_request_template.md to merge with"]
+files = [
+  { template = "pr-conventions.md", destination = ".claude/rules/pr-conventions.md" },
+  { template = "pull_request_template.md", destination = ".github/pull_request_template.md" },
+]
 
 [[pattern]]
 slug = "naming-decisions"
-files = ["naming-decisions.md"]
 analyze = ["file-name casing", "import/factory verbs", "type suffixes", "tool-script suffixes"]
+files = [
+  { template = "naming-decisions.md", destination = ".claude/rules/naming-decisions.md" },
+]
 
 [[pattern]]
 slug = "copy-conventions"
-files = ["copy-conventions.md"]
 analyze = ["locale from string literals", "error message format", "i18n framework in deps"]
+files = [
+  { template = "copy-conventions.md", destination = ".claude/rules/copy-conventions.md" },
+]

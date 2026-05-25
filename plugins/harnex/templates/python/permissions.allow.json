@@ -1,5 +1,4 @@
 [
-  "Bash(cp *)",
   "Bash(git add *)",
   "Bash(git branch *)",
   "Bash(git checkout -b *)",
@@ -7,7 +6,6 @@
   "Bash(git stash *)",
   "Bash(git switch *)",
   "Bash(mkdir -p *)",
-  "Bash(mv *)",
   "Bash(mypy *)",
   "Bash(pytest *)",
   "Bash(python *)",
