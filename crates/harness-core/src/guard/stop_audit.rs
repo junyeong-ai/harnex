@@ -14,6 +14,7 @@ use std::process::Command;
 use serde::Serialize;
 
 use crate::config::StopAuditConfig;
+use crate::envelope::Severity;
 use crate::error::{Error, Result};
 use crate::path_guard;
 
@@ -113,7 +114,7 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
             });
         }
         let critique_output = self.spawn_critique()?;
-        if has_blocker(&critique_output) {
+        if has_gating_finding(&critique_output) {
             Ok(StopDecision::Block {
                 reason: format!(
                     "critique skill '{}' returned blocker-severity findings",
@@ -196,9 +197,13 @@ fn safe_session_id(raw: &str) -> String {
     }
 }
 
-/// Inspect a JSON envelope payload for any finding with severity in
-/// {blocker}. Returns false on parse failure (fail-open).
-fn has_blocker(critique_output: &str) -> bool {
+/// Inspect a critique envelope for any finding that fails the gate
+/// ([`Severity::fails_gate`] — `blocker` or `major`), the same threshold the
+/// CLI gate uses. Returns false on parse failure (fail-OPEN by design:
+/// Constitution V — the session never traps; a broken critique tool must not
+/// imprison the agent in a re-stop loop. The bounded retry counter, not a
+/// fail-closed gate, is the loop's safety net).
+fn has_gating_finding(critique_output: &str) -> bool {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(critique_output) else {
         return false;
     };
@@ -211,8 +216,8 @@ fn has_blocker(critique_output: &str) -> bool {
     };
     items.iter().any(|item| {
         item.get("severity")
-            .and_then(|s| s.as_str())
-            .is_some_and(|s| s == "blocker")
+            .and_then(|s| serde_json::from_value::<Severity>(s.clone()).ok())
+            .is_some_and(Severity::fails_gate)
     })
 }
 
@@ -376,30 +381,41 @@ mod tests {
     }
 
     #[test]
-    fn has_blocker_detects_blocker_finding() {
+    fn gating_finding_detects_blocker() {
         let json = r#"{"ok":true,"data":{"items":[
             {"slug":"x","severity":"blocker","location":{"path":"a"},"message":"oops"}
         ],"total":1}}"#;
-        assert!(has_blocker(json));
+        assert!(has_gating_finding(json));
     }
 
     #[test]
-    fn has_blocker_ignores_minor_findings() {
+    fn gating_finding_detects_major() {
+        // Major also fails the gate (Severity::fails_gate) — a Major critique
+        // finding must block the stop, matching the CLI gate threshold.
+        let json = r#"{"ok":true,"data":{"items":[
+            {"slug":"x","severity":"major","location":{"path":"a"},"message":"defect"}
+        ],"total":1}}"#;
+        assert!(has_gating_finding(json));
+    }
+
+    #[test]
+    fn gating_finding_ignores_minor_findings() {
         let json = r#"{"ok":true,"data":{"items":[
             {"slug":"x","severity":"minor","location":{"path":"a"},"message":"meh"}
         ],"total":1}}"#;
-        assert!(!has_blocker(json));
+        assert!(!has_gating_finding(json));
     }
 
     #[test]
-    fn has_blocker_handles_empty_findings() {
+    fn gating_finding_handles_empty_findings() {
         let json = r#"{"ok":true,"data":{"items":[],"total":0}}"#;
-        assert!(!has_blocker(json));
+        assert!(!has_gating_finding(json));
     }
 
     #[test]
-    fn has_blocker_handles_parse_failure() {
-        assert!(!has_blocker("not json"));
+    fn gating_finding_handles_parse_failure() {
+        // Fail-open: a malformed critique must not trap the session (Const. V).
+        assert!(!has_gating_finding("not json"));
     }
 
     #[test]

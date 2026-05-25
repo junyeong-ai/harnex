@@ -281,14 +281,29 @@ impl<'a> ProjectChecker<'a> {
         }
     }
 
-    fn discover_glob(&self, pattern: &str) -> Vec<PathBuf> {
+    fn discover_glob(&self, pattern: &str) -> Result<Vec<PathBuf>> {
         let full = self.working_dir.join(pattern);
-        let Some(s) = full.to_str() else {
-            return Vec::new();
-        };
-        glob::glob(s)
-            .map(|iter| iter.filter_map(std::result::Result::ok).collect())
-            .unwrap_or_default()
+        let s = full.to_str().ok_or_else(|| Error::IoFailure {
+            path: full.clone(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "glob path is not valid UTF-8",
+            ),
+        })?;
+        // Surface glob failures rather than truncating to an empty list — a
+        // dropped traversal error (permissions, symlink loop) would make a
+        // validator falsely report clean on files it never scanned.
+        let mut out = Vec::new();
+        for entry in glob::glob(s).map_err(|e| Error::IoFailure {
+            path: full.clone(),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("glob: {e}")),
+        })? {
+            out.push(entry.map_err(|e| Error::IoFailure {
+                path: e.path().to_path_buf(),
+                source: e.into_error(),
+            })?);
+        }
+        Ok(out)
     }
 
     fn run_rule_validator(
@@ -307,7 +322,7 @@ impl<'a> ProjectChecker<'a> {
             return Ok(());
         };
         let validator = RuleValidator::new(policy);
-        let candidates = self.discover_glob(".claude/rules/*.md");
+        let candidates = self.discover_glob(".claude/rules/*.md")?;
         for path in &candidates {
             if !self.passes_filter(path, changed) {
                 continue;
@@ -340,7 +355,7 @@ impl<'a> ProjectChecker<'a> {
             return Ok(());
         };
         let validator = SkillValidator::new(policy);
-        let candidates = self.discover_glob(".claude/skills/*/SKILL.md");
+        let candidates = self.discover_glob(".claude/skills/*/SKILL.md")?;
         for path in &candidates {
             if !self.passes_filter(path, changed) {
                 continue;
@@ -412,7 +427,7 @@ impl<'a> ProjectChecker<'a> {
         };
         let verifier = EvidenceVerifier::new(cfg)?;
         let mut candidates: Vec<PathBuf> = vec![self.working_dir.join("CLAUDE.md")];
-        candidates.extend(self.discover_glob(".claude/rules/*.md"));
+        candidates.extend(self.discover_glob(".claude/rules/*.md")?);
         for path in &candidates {
             if !path.is_file() {
                 continue;

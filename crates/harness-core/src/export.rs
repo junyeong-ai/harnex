@@ -113,9 +113,12 @@ fn all_schemas() -> Value {
     })
 }
 
-/// Every known ErrorCode string, derived from the single source
-/// [`ErrorCode::ALL`]. No parallel hand-maintained list (Constitution IX);
-/// the exhaustive `ErrorCode::as_str` match keeps `ALL` complete.
+/// Every known ErrorCode string, derived from the single list the schema
+/// uses — [`ErrorCode::ALL`] — so the exported vocabulary never diverges from
+/// a second hand-maintained copy (Constitution IX). `ALL` is itself
+/// hand-listed; the exhaustive `ErrorCode::as_str` match forces a new variant
+/// to touch that file, and the add-variant checklist (crates/harness-core/
+/// CLAUDE.md) names the `ALL` step.
 fn error_code_strings() -> Vec<&'static str> {
     ErrorCode::ALL.iter().map(|c| c.as_str()).collect()
 }
