@@ -25,9 +25,11 @@ frontier models (context rot).
 - Non-bypassable runtime guards: hooks, `permissions.deny` of destructive ops
   (`rm -rf` roots, force-push, `reset --hard`, cloud-destroy verbs), atomic /
   traversal-safe write paths, bounded Stop-audit retry counter.
-- Closed-set / exact-match membership: hook event names (as a typo-catcher),
-  permission-profile names, commit-msg closed-enum trailers (parsed as the
-  last blank-line-delimited block, never the subject/body).
+- Closed-set / exact-match membership (zero false-positive — a value is in
+  the set or not): hook event names (as a typo-catcher), permission-profile
+  names, commit-msg closed-enum trailers (opt-in, project-configured via
+  `[validate.commit_msg]`; parsed as the last blank-line-delimited block,
+  never the subject/body — so the friction is the project's deliberate choice).
 - Referential integrity: a cited path/symbol/glossary key resolves; an import
   stays within the allowed dependency boundary (AST, not substring).
 - Secret scanning at commit (gitleaks) — irreversible once pushed.
