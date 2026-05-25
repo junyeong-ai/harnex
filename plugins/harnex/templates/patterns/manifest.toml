@@ -1,0 +1,43 @@
+# Pattern library manifest — single source of truth for `extend pattern`.
+#
+# Each [[pattern]] declares a slug, the files it installs into the project,
+# and the concern areas the skill analyzes before customizing. The
+# `pattern_manifest_sync` integration test verifies this manifest matches
+# the `templates/patterns/<slug>/` directories on disk — adding a pattern
+# directory without a manifest entry (or vice versa) fails the build.
+# (Constitution IX: no hand-maintained fact in two places without a guard.)
+
+[[pattern]]
+slug = "review-lenses"
+files = ["review-lenses.md", "lenses/completeness.md", "lenses/best-practice.md", "lenses/extensibility.md", "lenses/logic.md", "lenses/naming.md", "lenses/root-cause.md"]
+analyze = ["existing .claude/rules/ for anchors", "file types present for applies_to"]
+
+[[pattern]]
+slug = "spec-workflow"
+files = ["spec-workflow.md"]
+analyze = ["existing specs/ or docs/adr/ layout", "CI stages → gates"]
+
+[[pattern]]
+slug = "observability"
+files = ["observability.md"]
+analyze = ["logging/tracing framework", "project name → namespace"]
+
+[[pattern]]
+slug = "deprecation"
+files = ["deprecation.md"]
+analyze = ["native deprecation markers in the language"]
+
+[[pattern]]
+slug = "pr-conventions"
+files = ["pr-conventions.md", "pull_request_template.md"]
+analyze = ["existing .github/pull_request_template.md to merge with"]
+
+[[pattern]]
+slug = "naming-decisions"
+files = ["naming-decisions.md"]
+analyze = ["file-name casing", "import/factory verbs", "type suffixes", "tool-script suffixes"]
+
+[[pattern]]
+slug = "copy-conventions"
+files = ["copy-conventions.md"]
+analyze = ["locale from string literals", "error message format", "i18n framework in deps"]

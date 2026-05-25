@@ -7,8 +7,11 @@ anchors:
 
 # Completeness
 
-- Every requirement in the spec has a corresponding implementation.
-- Error paths are handled — not just the happy path.
-- Edge cases identified in the plan are tested or explicitly deferred.
-- Public API surfaces have documentation (doc-comments or README).
-- Missing imports, unused variables, and dead code are flagged.
+Does the change address the WHOLE requirement, not just the demonstrated path?
+
+- Error and failure paths are handled, not only the happy path.
+- Edge cases named in the spec are tested or explicitly deferred with reason.
+- A new public surface has the contract documented where consumers look.
+
+(Linter-owned checks — unused imports, dead code — are out of scope; the
+formatter and type checker own them.)

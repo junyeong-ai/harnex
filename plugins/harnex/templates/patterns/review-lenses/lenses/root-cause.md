@@ -7,10 +7,10 @@ anchors:
 
 # Root cause
 
-- The fix addresses the underlying cause, not just the symptom.
-- No band-aid patterns: null guards hiding a design flaw, retry loops
-  masking a resource leak, catch-all exceptions swallowing real errors.
-- If the root cause is in a different module/package, the fix goes there
-  (not a workaround in the caller).
-- Regression risk is addressed — similar code paths that might have the
-  same issue are checked.
+Does the fix remove the cause, or hide the symptom?
+
+- No band-aid masking a design flaw: a null guard over a should-never-be-null,
+  a retry over a resource leak, a broad catch swallowing a real error.
+- If the cause lives in another module, the fix goes there — not a workaround
+  at the call site.
+- Sibling code paths with the same latent cause are checked.

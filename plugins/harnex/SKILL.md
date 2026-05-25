@@ -76,6 +76,11 @@ with project-fit content, not blank placeholders.
 | Formatter / linter / type checker | biome.json, .eslintrc, ruff in pyproject.toml, rustfmt.toml, tsconfig.json | CLAUDE.md `## Conventions`, post-format hook config |
 | Existing CI pipeline | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile` | hook event selection, gate sequence |
 | Existing test framework | vitest.config, pytest.ini, Cargo test | `<lang>-conventions.md` testing section |
+| Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners (in deps or CI) | suggest `gcp-strict`/`aws-strict` profile; secret-scan recommendation |
+
+For a monorepo, analyze per workspace member when packages differ in
+toolchain or test framework (exploration Phase 3) — a single root profile
+flattens real per-package differences.
 
 ### Step 2 — Compose artifacts from templates + analysis
 
@@ -141,14 +146,20 @@ operator to re-phrase using a verb from this list.
   `profiles.rs`. Operator fills the toolchain commands; the
   `policy_template_sync` reverse-gap test enforces both sides exist.
 - **`extend pattern <name>`** — install a proven engineering pattern,
-  **customized to the target project**. Flow:
-  1. Read the skeleton from `${CLAUDE_SKILL_DIR}/templates/patterns/<name>/`.
-  2. Explore the project (Phase-1 fingerprint + pattern-specific analysis).
+  **customized to the target project**. The pattern set and each pattern's
+  files + analysis steps are declared in
+  `${CLAUDE_SKILL_DIR}/templates/patterns/manifest.toml` (the SSoT; a drift
+  test keeps it in sync with the directories). Flow:
+  1. Read the manifest entry + skeleton from `templates/patterns/<name>/`.
+  2. Explore the project (Phase-1 fingerprint + the entry's `analyze` steps).
   3. Customize the skeleton's defaults based on what you observe.
-  4. Write to `${CLAUDE_PROJECT_DIR}`.
+  4. Write the entry's declared `files` to `${CLAUDE_PROJECT_DIR}`.
   The template provides proven structure + defaults; the LLM replaces
-  generic defaults with project-specific observations. Sections where the
-  project has no clear convention yet keep the default with a note.
+  generic defaults with project-specific observations. Every `<!-- Fill in
+  -->` / `<!-- Customize -->` marker MUST be replaced — with an observed
+  value, or an explicit "none observed yet — <default behavior>" note.
+  Never leave a raw fill-in marker in a generated file; a placeholder that
+  ships is the blank-page problem in disguise.
 
   **Per-pattern analysis instructions:**
   - `naming-decisions` — scan file names (dominant casing), imports

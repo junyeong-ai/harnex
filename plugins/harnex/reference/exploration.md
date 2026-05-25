@@ -1,14 +1,21 @@
 # Exploration (divide-and-conquer)
 
 How harnex builds a map of a repo before generating or auditing a harness.
-The brownfield modes (`extend`, `audit`) run all three phases; `scaffold` runs
-only Phase 1 to pick the language profile.
+Two orthogonal axes: **what concern areas to analyze** (phases 1–2) and
+**how to scale that analysis across a monorepo** (phase 3 fan-out).
+
+| Mode | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
+|---|---|---|---|---|
+| `scaffold` | ✓ fingerprint | ✓ project profile | if ≳4 modules | ✓ synthesis |
+| `extend` | ✓ | ✓ (the touched area) | rarely | ✓ |
+| `audit` | ✓ | — | if ≳4 modules | ✓ |
+| `regenerate` | ✓ | — | — | ✓ |
 
 Principle: read manifests first, never the whole repo. Every frontier model
 degrades as irrelevant context accumulates (context rot), well below the
 window limit — so exploration is a graph traversal, not a sweep.
 
-## Phase 1 — deterministic fingerprint (no LLM judgment)
+## Phase 1 — structural fingerprint (deterministic, no LLM judgment)
 
 Read only these, in order, and extract structural facts:
 
@@ -23,10 +30,37 @@ Read only these, in order, and extract structural facts:
    (hooks + permissions), `.claude/rules/`, `.claude/skills/`, `hooks/`,
    `CLAUDE.md` (root + count), `autoMemoryEnabled`.
 
-Output: the repo-level facts of the module-map artifact (below). If no
-workspace globs → single-package repo; skip Phase 2, generate the lean profile.
+Output: the `repo` facts of the module-map artifact. If no workspace globs →
+single-package repo; skip the Phase-3 fan-out, generate the lean profile.
 
-## Phase 2 — module exploration (fan out ONLY when it pays)
+## Phase 2 — project profile (concern-area analysis for generated content)
+
+Phase 1 picks the template; Phase 2 fills it. Each concern area is read from
+its canonical source so generated artifacts are project-fit, not blank
+placeholders. Read the source, not the whole tree.
+
+| Concern | Source | Feeds |
+|---|---|---|
+| Build / test / lint commands | Makefile, Justfile, `package.json` scripts, `[project.scripts]`, CI config | CLAUDE.md `## Build & test`; gate sequence |
+| Directory layout | top-level listing + workspace member dirs | CLAUDE.md `## Layout` |
+| Project description | README first paragraph, manifest `description` | CLAUDE.md header |
+| Code conventions | formatter/linter/type-checker config + a sample of source | CLAUDE.md `## Conventions`; `<lang>-conventions.md` |
+| CI pipeline + gates | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `turbo.json` | hook event selection; suggested `extend pattern` |
+| Test framework | `vitest.config`, `pytest.ini`, Cargo test layout | `<lang>-conventions.md` testing section |
+| Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners in deps/CI | suggested `gcp-strict`/`aws-strict` profile; secret-scan recommendation |
+
+A concern with no signal keeps its template default and is noted "none
+observed yet" — never a guessed value. `extend` runs only the rows its verb
+touches (e.g., `extend pattern naming-decisions` reads file-name casing +
+import verbs).
+
+For a monorepo, run Phase 2 per workspace member when packages differ in
+toolchain or test framework — a single root profile flattens real
+per-package differences. The Phase-3 fan-out (below) supplies the
+per-module facts; synthesis writes per-package `<lang>-conventions.md` only
+where a package genuinely diverges from the repo default.
+
+## Phase 3 — module exploration (fan out ONLY when it pays)
 
 Enumerate modules from the workspace globs. Fan out a read-only Explore
 subagent per module **only when** modules are independent (clean boundaries,
@@ -64,6 +98,11 @@ A single JSON file the synthesis step reads (not the transcripts):
     "package_manager": "pnpm",
     "workspace_tool": "turborepo",
     "language_primary": "typescript",
+    "profile": {
+      "build_commands": ["pnpm build", "pnpm test", "pnpm type-check"],
+      "formatter": "biome", "test_framework": "vitest",
+      "ci_gates": ["lint", "test", "build"], "description": "…"
+    },
     "existing_harness": {
       "settings": true, "hooks": ["SessionStart","PostToolUse","Stop"],
       "rules_count": 21, "claude_md_count": 16,
@@ -81,13 +120,13 @@ A single JSON file the synthesis step reads (not the transcripts):
 }
 ```
 
-## Phase 3 — synthesis (single agent)
+## Phase 4 — synthesis (single agent)
 
 Read the artifact (never the raw exploration transcripts). Decide the harness
-plan: which language profile, which template files to emit, and — in brownfield
-— which incumbent artifacts to respect and never overwrite. Generation is
-single-agent and sequential; code changes are stateful, so do not parallelize
-them.
+plan: which language profile, which template files to emit, the project-fit
+content for each from the `profile` block, and — in brownfield — which
+incumbent artifacts to respect and never overwrite. Generation is single-agent
+and sequential; code changes are stateful, so do not parallelize them.
 
 ## Brownfield respect (extend / audit)
 
