@@ -44,18 +44,26 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
    `deny>ask>allow`, no project-ignored settings keys. When in doubt, re-read
    the live doc — freezing the spec is the failure.
 5. **Right language.** Detect from lockfile+manifest; never cross-wire (biome
-   for TS, ruff for Python, rustfmt for Rust). Never emit `node -e` /
-   `python3 -c` into permissions. Never grant built-in read-only commands
-   (`ls`, `grep`, `cat`, read-only `git`) — they never prompt, so an allow is a
-   no-op; grant only commands that actually prompt.
+   for TS, ruff for Python, rustfmt for Rust). If detection matches no
+   supported stack (language-matrix has only typescript/python/rust), REFUSE —
+   write nothing and report the unsupported stack; never emit a half-built
+   scaffold with no language profile. Never emit `node -e` / `python3 -c` into
+   permissions. Never grant built-in read-only commands (`ls`, `grep`, `cat`,
+   read-only `git`) — they never prompt, so an allow is a no-op; grant only
+   commands that actually prompt.
 6. **Managed-region contract.** A generated artifact is partitioned into
    harnex-managed regions (delimited by
    `<!-- harnex-managed:start <slug> --> ... <!-- harnex-managed:end <slug> -->`)
    and project-authored regions (everything else). `regenerate` only touches
    the managed regions; `extend` only adds new regions in the incumbent
    idiom; an audit flags edits inside managed regions for operator review.
-   For `.claude/settings.json` (JSON, no comments), the partition is by
-   top-level key: `permissions`, `hooks` are harnex-managed; every other
+   For `.claude/settings.json` (JSON, no comments), ownership is **item-level
+   within** `permissions` and `hooks`, NOT whole-key: harnex owns only the
+   entries it generated — the baseline + `<lang>-dev` permission rules and the
+   base hook entries (SessionStart `startup|resume`, PostToolUse `Edit|Write`,
+   Stop), each identified by its template shape (event + matcher + runner
+   script). Entries an operator added via `extend`, and any incumbent
+   hand-rolled entries, are project-owned and survive regenerate. Every other
    top-level key is project-owned.
 
 ## Mode: scaffold (greenfield)
@@ -103,13 +111,19 @@ flattens real per-package differences.
   and the oracle loop commands for surfacing candidates).
 - `.claude/rules/artifact-lifecycle.md` (common — promotion path from
   observation → validated pattern → rule; retirement criteria).
-- `CLAUDE.md` — **LLM fills from analysis, not blank placeholders**:
-  - `# <project-name>` — from manifest `name` or README title.
+- `CLAUDE.md` — **LLM fills from analysis, not blank placeholders.** Use a
+  fixed source precedence so two operators on the same repo converge:
+  - `# <project-name>` — manifest `name` first; README title only if the
+    manifest has none.
+  - description line — manifest `description` first; else README's first
+    paragraph.
   - `## Layout` — from directory scan. One line per top-level area;
     let the agent read manifests for detail rather than enumerating
     every file. Include workspace member directories if monorepo.
-  - `## Build & test` — exact commands from Makefile/Justfile/package.json
-    scripts. Format: `<command>` — `<what it does>`.
+  - `## Build & test` — exact commands from the canonical task source, in this
+    order: Makefile/Justfile > `package.json` scripts / `[project.scripts]` >
+    CI config. List the project's declared gate sequence in its declared order
+    (do not reinvent ordering). Format: `<command>` — `<what it does>`.
   - `## Conventions` — only decisions the formatter doesn't enforce.
     State the formatter/linter/type-checker in use (observed from config)
     and any project-specific patterns found in the codebase.
@@ -259,9 +273,13 @@ frozen binary cannot serve). For each file with sentinel markers:
    profile.
 3. Write the file back with project-authored regions preserved verbatim.
 
-For `.claude/settings.json`: rewrite only the top-level `permissions` and
-`hooks` keys; preserve every other key (`autoMemoryEnabled`,
-`skillOverrides`, `env`, etc.).
+For `.claude/settings.json`: re-derive only the harnex-owned ENTRIES (the
+baseline + `<lang>-dev` permission rules; the base SessionStart/PostToolUse/Stop
+hook entries) and MERGE — never drop a permission rule or hook entry harnex did
+not author (operator `extend` additions and incumbent hand-rolled entries must
+survive). On a conflict (an incumbent entry occupies a base slot with different
+content), surface it for operator review rather than overwrite. Preserve every
+other top-level key (`autoMemoryEnabled`, `skillOverrides`, `env`, etc.).
 
 Report what changed and why.
 

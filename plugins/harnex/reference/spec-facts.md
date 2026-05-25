@@ -70,7 +70,7 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   in sync by the `spec_facts_noop_keys_match` integration test.
   <!-- harnex-managed:start spec-facts-project-scope-noop-keys -->
   autoMemoryDirectory, autoMode, useAutoModeDuringPlan,
-  skipDangerousModePermissionPrompt.
+  skipDangerousModePermissionPrompt, claudeMd.
   <!-- harnex-managed:end spec-facts-project-scope-noop-keys -->
   (`defaultMode: "auto"` is a VALUE restriction, not a key restriction —
   handled separately by the `SettingsScope` check.) Never emit these into a
@@ -100,9 +100,14 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   so the `**/` mirror is redundant. `*` = one path segment, `**` = recursive.
 - **`skillOverrides` values:** `on` | `name-only` | `user-invocable-only` |
   `off` (absent = `on`). `autoMemoryEnabled`: bool, default true.
-- Managed-only enforcement floors: `allowManagedPermissionRulesOnly`,
-  `allowManagedHooksOnly`, `disableAllHooks`, `disableSkillShellExecution`,
-  `strictPluginOnlyCustomization`, `claudeMd`, `sandbox`.
+- Managed-scope enforcement: two distinct tiers, do not conflate.
+  *Managed-ONLY floors* (only the managed value is honored):
+  `allowManagedPermissionRulesOnly`, `allowManagedHooksOnly`,
+  `strictPluginOnlyCustomization`. *Strongest-from-managed* (settable at other
+  scopes too, but managed wins / cannot be overridden there):
+  `disableAllHooks`, `disableSkillShellExecution`, `sandbox` (per-subkey).
+  `claudeMd` is managed/policy-only memory content (not an enforcement floor) —
+  it no-ops at project/local (see the no-op-keys list above).
 
 ## Skills (/en/skills)
 
@@ -135,7 +140,10 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
 
 - **CLAUDE.md** loads broad→specific, concatenated (not overriding): managed →
   user → project (`./CLAUDE.md` or `./.claude/CLAUDE.md`) → local
-  (`CLAUDE.local.md`). Subdir CLAUDE.md loads on demand.
+  (`CLAUDE.local.md`). Within the project tree it walks ancestors from cwd
+  upward and orders them root→cwd (so the deepest, closest file is read last);
+  within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`.
+  Subdir CLAUDE.md (below cwd) loads lazily when Claude reads files there.
 - **Target ≤ 200 lines** per file; longer reduces adherence.
 - **Path-scoped rules:** `.claude/rules/*.md`; with `paths:` frontmatter (glob,
   brace expansion) they load only on matching files; without `paths:` they load

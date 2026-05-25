@@ -7,16 +7,24 @@ paths:
 # Review lens framework
 
 A convergent review loop walks every registered lens over a change set,
-partitions findings by severity, auto-fixes Critical and Blocker findings,
-and re-walks the (possibly grown) scope until convergence or a stall limit.
+ranks findings by severity, proposes fixes for the high-severity ones, and
+re-walks the (possibly grown) scope until convergence or a stall limit.
+
+Lens findings are advisory JUDGMENTS, not mechanically-verifiable checks — a
+lens calls "premature abstraction" or "wrong name" by reasoning, not by a
+deterministic rule. Per keep-soften-cut, a prose judgment must never drive a
+silent auto-edit: severity here is PRIORITY, not auto-fixability. The loop
+proposes; the operator (or the agent, with the change visible and approved)
+applies. Reserve unattended auto-fix for the formatter / linter, never a lens.
 
 ## Loop semantics
 
 1. Walk every lens in `.claude/lenses/` over the input scope.
-2. Partition findings: Critical/Blocker → auto-fix; Major/Minor → report.
-3. Re-walk the scope (may have grown from auto-fix edits).
-4. Stop when 0 Critical + 0 Blocker remain, OR stall limit reached
-   (default 3 iterations).
+2. Rank findings by severity; for Critical/Blocker, propose a concrete fix
+   with its citing anchor for operator approval. Major/Minor → report.
+3. Apply approved fixes, then re-walk the (possibly grown) scope.
+4. Stop when no approved-and-unaddressed Critical/Blocker remain, OR the
+   stall limit is reached (default 3 iterations).
 
 ## Default lenses
 
@@ -58,9 +66,11 @@ rules where they exist.
 
 ## Severity routing
 
+Severity is review PRIORITY, never a license to auto-edit a subjective finding.
+
 | Severity | Action | Owner |
 |---|---|---|
-| Critical | Auto-fix immediately | Review skill |
-| Blocker | Auto-fix immediately | Review skill |
+| Critical | Propose fix, apply on approval | Operator approves |
+| Blocker | Propose fix, apply on approval | Operator approves |
 | Major | Report, operator decides | Operator |
 | Minor | Report as advisory | Informational |

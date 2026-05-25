@@ -7,12 +7,25 @@ ruff; emitting the wrong formatter is the meta-failure to avoid).
 
 ## Detection fingerprint (read manifests + lockfiles first)
 
+Match the FIRST supported-language row. Whether the matched language is a
+monorepo or single-package is a sub-distinction (workspace globs present →
+monorepo + Phase-3 fan-out; absent → lean single-package scaffold), NOT a
+fallback that swallows an unrecognized stack.
+
 | Signal | Stack |
 |---|---|
 | `pnpm-lock.yaml` + `package.json` (`pnpm-workspace.yaml`) | TypeScript / pnpm (+ Turborepo if `turbo.json`) |
 | `uv.lock` + `pyproject.toml` (`[tool.uv.workspace]`) | Python / uv (+ Just if `Justfile`, prek if `.pre-commit-config.yaml`) |
 | `Cargo.toml` (`[workspace]`) + `Cargo.lock` | Rust / cargo |
-| manifest present, no workspace globs | single-package (non-monorepo) → lean scaffold |
+| none of the above (e.g. `go.mod`, `pom.xml`, `build.gradle`, `Gemfile`, `composer.json`) | **UNSUPPORTED** — refuse |
+
+**Unsupported stack is a first-class outcome, not undefined behavior.** When no
+supported-language row matches, harnex must NOT emit a half-built lean scaffold
+with no language profile. Refuse explicitly: write nothing, and tell the
+operator "harnex supports typescript / python / rust; detected <stack> is not
+supported — add a language (`extend language <lang>`) or scaffold the
+language-agnostic `common/` pieces by hand." A wrong-or-empty profile is worse
+than an honest refusal.
 
 ## Per-language template parameters
 
