@@ -277,12 +277,14 @@ fn rust_dev() -> PermissionProfile {
     }
 }
 
-/// Python development toolchain: uv, python, pytest, ruff, mypy, on top of
-/// the common dev allows. `python -c` stays denied by `baseline`.
+/// Python development toolchain: uv, python/python3, pytest, ruff, mypy, on
+/// top of the common dev allows. `python -c` and `python3 -c` stay denied by
+/// `baseline`.
 fn python_dev() -> PermissionProfile {
     let mut allow: Vec<&'static str> = vec![
         "Bash(uv *)",
         "Bash(python *)",
+        "Bash(python3 *)",
         "Bash(pytest *)",
         "Bash(ruff *)",
         "Bash(mypy *)",
@@ -497,6 +499,7 @@ mod tests {
         assert!(!p.allow.is_empty(), "python-dev must have allow patterns");
         assert!(p.allow.contains(&"Bash(uv *)"));
         assert!(p.allow.contains(&"Bash(python *)"));
+        assert!(p.allow.contains(&"Bash(python3 *)"));
         assert!(p.allow.contains(&"Bash(pytest *)"));
         assert!(p.allow.contains(&"Bash(ruff *)"));
         assert!(p.allow.contains(&"Bash(mypy *)"));
