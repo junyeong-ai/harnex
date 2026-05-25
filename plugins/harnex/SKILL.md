@@ -151,6 +151,16 @@ operator to re-phrase using a verb from this list.
 - **`extend rule <slug> <paths-glob>`** — drop a path-scoped rule at
   `.claude/rules/<slug>.md` with the given `paths:` frontmatter. Body is a
   short imperatives skeleton (heading + 3-5 bullets) — the operator fills.
+- **`extend skill <name>`** — scaffold a spec-correct domain skill at
+  `.claude/skills/<name>/SKILL.md` from `common/skill-template.md`. Frontmatter
+  is composed correct-by-spec (description+when_to_use ≤ 1536 chars, body
+  ≤ 500 lines, `disable-model-invocation: true` so an unfinished or
+  side-effecting skill never auto-fires); the operator fills the procedure and,
+  for a knowledge skill Claude should auto-apply, removes
+  `disable-model-invocation`. `name` is omitted (defaults to the directory) so
+  it cannot drift from the folder. `harness validate skills` verifies the
+  result — and the new skill is a first-class promotion/retirement target the
+  lifecycle + governance loop already recognizes (`.claude/skills/**`).
 - **`extend permission deny <pattern>`** — append `<pattern>` to the
   `permissions.deny` array in `.claude/settings.json`. The pattern must
   follow the spec grammar (`Bash(cmd *)`, `Read(path)`, `Edit(path)`,

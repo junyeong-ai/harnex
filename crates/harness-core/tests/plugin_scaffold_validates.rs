@@ -177,6 +177,24 @@ fn run_scaffold_validation(lang: &str) {
         let findings = sv.validate_file(&dst).unwrap();
         assert_no_findings(lang, "validate.skills(harnex SKILL.md)", &findings);
     }
+
+    // --- The `extend skill` scaffold template must itself validate clean ---
+    // The skeleton `extend skill <name>` writes (before the operator fills the
+    // body) must pass SkillValidator as-is, so a freshly scaffolded skill is
+    // spec-correct from the first commit.
+    let skill_template = plugin_templates().join("common/skill-template.md");
+    let dst = proj_root.join(".claude/skills/example-skill/SKILL.md");
+    copy_file(&skill_template, &dst);
+    let skill_policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 1536,
+        reject_unknown_keys: true,
+        flag_side_effect_verbs: true,
+    };
+    let findings = SkillValidator::new(&skill_policy)
+        .validate_file(&dst)
+        .unwrap();
+    assert_no_findings(lang, "validate.skills(skill-template.md)", &findings);
 }
 
 fn glob_under(dir: &Path, pattern: &str) -> Vec<PathBuf> {
