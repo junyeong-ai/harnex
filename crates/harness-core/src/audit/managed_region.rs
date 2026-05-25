@@ -240,7 +240,7 @@ outside
         );
         write(
             plugin_root,
-            "templates/common/constitution.md",
+            "templates/common/rules/constitution.md",
             "<!-- harnex-managed:start constitution-articles -->\nbody\n<!-- harnex-managed:end constitution-articles -->\n",
         );
         write(
@@ -252,7 +252,7 @@ template = "common/CLAUDE.md"
 project = "CLAUDE.md"
 
 [[managed]]
-template = "common/constitution.md"
+template = "common/rules/constitution.md"
 project = ".claude/rules/constitution.md"
 "#,
         );
