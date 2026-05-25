@@ -58,11 +58,21 @@ impl ObservationLedger {
             path: self.dir.clone(),
             source: e,
         })?;
-        let mut paths: Vec<PathBuf> = entries
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl"))
-            .collect();
+        // A dir-entry read error must surface, not be dropped: silently
+        // skipping a ledger file would undercount observations and corrupt
+        // promotion grouping. The rest of this function already fails loudly
+        // (corrupt line, unreadable file) — the directory scan matches.
+        let mut paths: Vec<PathBuf> = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|e| Error::IoFailure {
+                path: self.dir.clone(),
+                source: e,
+            })?;
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                paths.push(p);
+            }
+        }
         paths.sort();
         for path in paths {
             let content = std::fs::read_to_string(&path).map_err(|e| Error::IoFailure {

@@ -141,11 +141,19 @@ impl JsonlStorage {
             path: self.dir.clone(),
             source: e,
         })?;
-        let mut paths: Vec<PathBuf> = entries
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl"))
-            .collect();
+        // Dir-entry errors surface: a dropped telemetry file would undercount
+        // events and risk a false Silent signal (which feeds retirement).
+        let mut paths: Vec<PathBuf> = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|e| Error::IoFailure {
+                path: self.dir.clone(),
+                source: e,
+            })?;
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                paths.push(p);
+            }
+        }
         paths.sort();
         for path in paths {
             let file = File::open(&path).map_err(|e| Error::IoFailure {
@@ -153,7 +161,16 @@ impl JsonlStorage {
                 source: e,
             })?;
             let reader = BufReader::new(file);
-            for line in reader.lines().map_while(std::result::Result::ok) {
+            for line in reader.lines() {
+                // A line-read error must surface, not silently TRUNCATE the
+                // rest of the file (the prior `map_while` stopped at the first
+                // error, dropping every subsequent event). IO is strict;
+                // content parsing stays lenient (telemetry validates its
+                // closed schema at append time).
+                let line = line.map_err(|e| Error::IoFailure {
+                    path: path.clone(),
+                    source: e,
+                })?;
                 if line.trim().is_empty() {
                     continue;
                 }
