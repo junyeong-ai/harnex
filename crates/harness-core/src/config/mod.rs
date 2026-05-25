@@ -600,8 +600,32 @@ impl Config {
                     location: None,
                 });
             }
+            // Source and target paths must stay inside the project. The
+            // runtime write/read guard rejects `..` at execution time, so per
+            // Article IV reject it at load rather than deferring to a runtime
+            // failure on an otherwise "valid" config.
+            if crate::path_guard::reject_traversal(&group.source).is_err() {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "codegen group '{}' source '{}' must not contain `..`",
+                        group.name,
+                        group.source.display()
+                    ),
+                    location: None,
+                });
+            }
             sources.insert(normalize_lexical(&group.source));
             for target in &group.targets {
+                if crate::path_guard::reject_traversal(&target.path).is_err() {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "codegen group '{}' target '{}' must not contain `..`",
+                            group.name,
+                            target.path.display()
+                        ),
+                        location: None,
+                    });
+                }
                 if crate::codegen::RendererStrategy::from_str(&target.format).is_none() {
                     return Err(Error::ConfigInvalid {
                         message: format!(
@@ -1027,6 +1051,31 @@ mod tests {
         assert_eq!(cfg.kinds.len(), 1);
         assert_eq!(cfg.evidence.unwrap().verifiers.len(), 2);
         assert_eq!(cfg.telemetry.unwrap().kinds.len(), 1);
+    }
+
+    #[test]
+    fn rejects_codegen_target_path_traversal() {
+        // A target path with `..` must be rejected at load — the runtime
+        // write guard would reject it, so an otherwise-valid config that the
+        // runtime cannot honor must not load (Article IV).
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+
+            [codegen]
+            [[codegen.groups]]
+            name = "group-a"
+            source = "source.toml"
+            source_key = "values"
+            [[codegen.groups.targets]]
+            path = "../outside.md"
+            begin = "<!-- BEGIN:x -->"
+            end = "<!-- END:x -->"
+            format = "markdown-bullet-list"
+        "#;
+        let err = parse(src).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
+        assert!(err.to_string().contains("must not contain `..`"));
     }
 
     #[test]
