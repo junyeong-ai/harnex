@@ -74,6 +74,27 @@ fn observation_append_load_roundtrip() {
 }
 
 #[test]
+fn observation_with_namespaced_tag_round_trips() {
+    // A tag containing a path separator (namespaced, e.g. `rust/async`) must
+    // not write into a subdirectory the flat ledger reader never scans. The
+    // filename is encoded; the real tag is preserved in the record body and
+    // loads back intact.
+    let tmp = TempDir::new().unwrap();
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    ledger
+        .append("rust/async", "prefer tokio::spawn", "spec-a")
+        .unwrap();
+    ledger
+        .append("rust/async", "prefer tokio::spawn", "spec-b")
+        .unwrap();
+    let all = ledger.load_all().unwrap();
+    assert_eq!(all.len(), 2, "namespaced-tag observations must not be lost");
+    assert!(all.iter().all(|o| o.tag == "rust/async"));
+    // The slash never created a real subdirectory under the ledger dir.
+    assert!(!tmp.path().join("rust").exists());
+}
+
+#[test]
 fn promoter_lists_threshold_crossing_groups() {
     let tmp = TempDir::new().unwrap();
     let cfg = default_lifecycle(tmp.path().to_path_buf());

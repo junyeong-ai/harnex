@@ -360,29 +360,38 @@ impl<'a> ProjectChecker<'a> {
         skipped: &mut Vec<SkippedRule>,
         files_scanned: &mut usize,
     ) -> Result<()> {
-        let path = self.working_dir.join(".claude/settings.json");
-        if !path.is_file() {
+        // The project settings and its local override are independent files
+        // with independent `--since` filter status. Check each on its own —
+        // a change to `settings.local.json` alone must NOT be masked by
+        // `settings.json` being absent from the diff.
+        let project = self.working_dir.join(".claude/settings.json");
+        let local = self.working_dir.join(".claude/settings.local.json");
+        let mut considered = false;
+        if project.is_file() {
+            considered = true;
+            if self.passes_filter(&project, changed) {
+                findings.extend(
+                    SettingsValidator::new().validate_file(&project, SettingsScope::Project)?,
+                );
+                *files_scanned += 1;
+            }
+        }
+        if local.is_file() {
+            considered = true;
+            if self.passes_filter(&local, changed) {
+                findings
+                    .extend(SettingsValidator::new().validate_file(&local, SettingsScope::Local)?);
+                *files_scanned += 1;
+            }
+        }
+        if considered {
+            run.push("validate.settings".into());
+        } else {
             skipped.push(SkippedRule {
                 slug: "validate.settings".into(),
                 reason: ".claude/settings.json not present".into(),
             });
-            return Ok(());
         }
-        if !self.passes_filter(&path, changed) {
-            run.push("validate.settings".into());
-            return Ok(());
-        }
-        // ProjectChecker runs against a project root, so the scope is
-        // unambiguous: project. The local override (`settings.local.json`) is
-        // discovered separately if present.
-        findings.extend(SettingsValidator::new().validate_file(&path, SettingsScope::Project)?);
-        *files_scanned += 1;
-        let local = self.working_dir.join(".claude/settings.local.json");
-        if local.is_file() && self.passes_filter(&local, changed) {
-            findings.extend(SettingsValidator::new().validate_file(&local, SettingsScope::Local)?);
-            *files_scanned += 1;
-        }
-        run.push("validate.settings".into());
         Ok(())
     }
 
@@ -418,6 +427,12 @@ impl<'a> ProjectChecker<'a> {
         Ok(())
     }
 
+    /// Codegen drift is checked **globally**, deliberately ignoring `--since`.
+    /// A sentinel-block source edit can drift any number of targets, and the
+    /// source→target mapping is not 1:1 with the changed-file set, so filtering
+    /// by the diff window would let an upstream source change slip through as
+    /// a false-negative (drift present, not reported). The full check is cheap
+    /// (it reads only the configured groups), so it always runs in full.
     fn run_codegen(
         &self,
         findings: &mut Vec<Finding>,

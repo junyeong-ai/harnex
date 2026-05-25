@@ -39,14 +39,36 @@ pub fn reject_traversal(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Reject overwriting a symbolic link.
+/// Reject writing through a symlink. Walks from the leaf upward, rejecting
+/// any component that is itself a symlink: an overwrite-through-symlink at
+/// the leaf, OR a planted symlinked parent (`foo` → `/etc`, then write
+/// `foo/bar`) that would redirect the write outside its directory. Checking
+/// only the final path misses the parent case.
+///
+/// The walk STOPS at the first existing real directory: everything at or
+/// above it is pre-existing, trusted environment that this guard must not
+/// police — notably system mount symlinks such as macOS `/var -> /private/var`,
+/// which sit above every temp/project path and would otherwise reject all
+/// writes. The components below that anchor are the ones the write creates,
+/// and `create_dir_all` only ever makes real directories there.
 pub fn reject_symlink_write(path: &Path) -> Result<()> {
-    match fs::symlink_metadata(path) {
-        Ok(meta) if meta.file_type().is_symlink() => Err(Error::PathSymlinkRefused {
-            path: path.to_path_buf(),
-        }),
-        _ => Ok(()),
+    let mut current = Some(path);
+    while let Some(p) = current {
+        match fs::symlink_metadata(p) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(Error::PathSymlinkRefused {
+                    path: p.to_path_buf(),
+                });
+            }
+            // First existing real directory going up: trust boundary reached.
+            Ok(meta) if meta.is_dir() => return Ok(()),
+            // Existing non-dir (regular file at the leaf) or non-existent
+            // prefix: keep walking parents.
+            _ => {}
+        }
+        current = p.parent();
     }
+    Ok(())
 }
 
 /// Atomically write `contents` to `path`.
@@ -114,11 +136,14 @@ pub fn append_line(path: &Path, line: &[u8]) -> Result<()> {
             source: e,
         })?;
 
-    file.write_all(line).map_err(|e| Error::IoFailure {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
-    file.write_all(b"\n").map_err(|e| Error::IoFailure {
+    // Assemble line + newline into ONE buffer and write once. Two separate
+    // write_all calls let concurrent appenders interleave a record and its
+    // newline, corrupting the JSONL ledger. A single append-mode write of a
+    // record-sized buffer is atomic on POSIX.
+    let mut record = Vec::with_capacity(line.len() + 1);
+    record.extend_from_slice(line);
+    record.push(b'\n');
+    file.write_all(&record).map_err(|e| Error::IoFailure {
         path: path.to_path_buf(),
         source: e,
     })?;
@@ -232,5 +257,35 @@ mod tests {
         let target = tmp.path().join("a/b/c.jsonl");
         append_line(&target, b"hello").unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "hello\n");
+    }
+
+    #[test]
+    fn write_atomic_refuses_symlinked_parent_dir() {
+        // A symlinked *ancestor* must be refused too: `link -> /victim`, then
+        // `write_atomic(link/file)` would otherwise land the write inside the
+        // symlink target. The guard walks every component, not just the leaf.
+        let tmp = TempDir::new().unwrap();
+        let real_dir = tmp.path().join("real_dir");
+        fs::create_dir(&real_dir).unwrap();
+        let link_dir = tmp.path().join("link_dir");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_dir, &link_dir).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&real_dir, &link_dir).unwrap();
+        let through_link = link_dir.join("file.txt");
+        assert!(matches!(
+            write_atomic(&through_link, b"x").unwrap_err(),
+            Error::PathSymlinkRefused { .. }
+        ));
+    }
+
+    #[test]
+    fn append_line_writes_record_atomically() {
+        // The record and its newline are written in a single buffer, so a
+        // reader never observes a record without its terminating newline.
+        let tmp = TempDir::new().unwrap();
+        let target = tmp.path().join("ledger.jsonl");
+        append_line(&target, br#"{"a":1}"#).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"{\"a\":1}\n");
     }
 }

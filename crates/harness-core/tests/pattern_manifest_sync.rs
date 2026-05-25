@@ -34,8 +34,8 @@ fn patterns_dir() -> PathBuf {
 
 fn load_manifest() -> Manifest {
     let path = patterns_dir().join("manifest.toml");
-    let raw = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let raw =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     toml::from_str(&raw).unwrap_or_else(|e| panic!("parse manifest.toml: {e}"))
 }
 

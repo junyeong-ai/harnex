@@ -33,7 +33,11 @@ fn copy_file(src: &Path, dst: &Path) {
 /// `bash -n <path>` — syntax-check a generated shell script without running it.
 /// On non-unix (no bash), assume OK; the unix CI lane is the gate.
 fn bash_n_ok(path: &Path) -> bool {
-    match std::process::Command::new("bash").arg("-n").arg(path).status() {
+    match std::process::Command::new("bash")
+        .arg("-n")
+        .arg(path)
+        .status()
+    {
         Ok(status) => status.success(),
         Err(_) => true,
     }

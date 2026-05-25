@@ -116,7 +116,9 @@ impl DecisionLedger {
     }
 
     pub fn append(&self, record: &DecisionRecord) -> Result<()> {
-        let path = self.dir.join(format!("{}.jsonl", record.tag));
+        let path = self
+            .dir
+            .join(format!("{}.jsonl", super::tag_filename_stem(&record.tag)));
         let line = serde_json::to_string(record).map_err(|e| Error::IoFailure {
             path: path.clone(),
             source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),

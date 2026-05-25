@@ -43,9 +43,7 @@ impl Verifier for FilePathLineVerifier {
         {
             return VerifyOutcome::Violation {
                 message: format!("claim path '{path}' escapes the project root"),
-                hint: Some(
-                    "use a project-relative path without `..` or a leading `/`".into(),
-                ),
+                hint: Some("use a project-relative path without `..` or a leading `/`".into()),
             };
         }
 

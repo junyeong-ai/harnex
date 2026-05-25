@@ -37,3 +37,55 @@ pub use decision_recorder::{
 pub use observation::{Observation, ObservationLedger};
 pub use retire::{RetirementSweeper, SweepOutcome};
 pub use retirement::{RetirementClassifier, RetirementOutcome, RetirementSignal};
+
+/// Encode a tag into a filesystem-safe ledger filename stem. A tag is a
+/// semantic grouping key (it may be namespaced, e.g. `rust/async`); the
+/// real tag is always stored in the JSONL record body, so the filename
+/// only needs to be safe and deterministic. Any character outside
+/// `[A-Za-z0-9._-]` is percent-encoded — injective (so distinct tags never
+/// collide into one ledger) and free of path separators (`/` → `%2F`,
+/// `\` → `%5C`). Without this, a `/` in a tag would write into a
+/// subdirectory the flat ledger reader never scans, silently losing the
+/// observation from promotion candidates. `.` is left intact: the caller
+/// always appends a `.jsonl` suffix, so the stem can never form a bare
+/// `.`/`..` path component.
+pub(crate) fn tag_filename_stem(tag: &str) -> String {
+    let mut out = String::with_capacity(tag.len());
+    for b in tag.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tag_filename_tests {
+    use super::tag_filename_stem;
+
+    #[test]
+    fn path_separators_are_encoded() {
+        assert_eq!(tag_filename_stem("rust/async"), "rust%2Fasync");
+        assert!(!tag_filename_stem("a/b/c").contains('/'));
+        assert!(!tag_filename_stem("a\\b").contains('\\'));
+    }
+
+    #[test]
+    fn dots_pass_through_safely() {
+        // `.` is safe: the caller appends `.jsonl`, so a `..` tag yields the
+        // stem `..` → filename `...jsonl`, a single ordinary filename, never
+        // a traversal component.
+        assert_eq!(tag_filename_stem(".."), "..");
+        assert_eq!(tag_filename_stem("v1.2"), "v1.2");
+    }
+
+    #[test]
+    fn safe_tags_pass_through_and_are_injective() {
+        assert_eq!(tag_filename_stem("error-handling"), "error-handling");
+        // `%` itself is encoded, so a literal tag cannot collide with an
+        // encoded one.
+        assert_ne!(tag_filename_stem("a/b"), tag_filename_stem("a%2Fb"));
+    }
+}
