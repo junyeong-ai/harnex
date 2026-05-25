@@ -42,9 +42,9 @@ Settings validator:
 - `permissions.defaultMode` must be in `KNOWN_DEFAULT_MODE_VALUES`
   (`default|acceptEdits|plan|auto|dontAsk|bypassPermissions`) if present (Major).
 - Project / local scope settings carrying a key in
-  `KNOWN_PROJECT_SCOPE_NOOP_KEYS` (`defaultMode: "auto"`,
-  `autoMemoryDirectory`, `autoMode`, `skipDangerousModePermissionPrompt`)
-  raise a Major advisory — those keys silently no-op outside user/managed.
+  `KNOWN_PROJECT_SCOPE_NOOP_KEYS` (the const is the owner — see settings.rs;
+  `defaultMode: "auto"` is the value-restricted special case) raise a Major
+  advisory — those keys silently no-op outside user/managed.
 - `skillOverrides` values must be `on|name-only|user-invocable-only|off` (Major).
 - Allow rules whose command base is in `DANGEROUS_ALLOW_BASES`
   (`rm`, `rm -rf`, `curl`, `sudo`) without a deny of the same base raise a

@@ -50,6 +50,7 @@ pub const KNOWN_DEFAULT_MODE_VALUES: &[&str] = &[
 pub const KNOWN_PROJECT_SCOPE_NOOP_KEYS: &[&str] = &[
     "autoMemoryDirectory",
     "autoMode",
+    "useAutoModeDuringPlan",
     "skipDangerousModePermissionPrompt",
 ];
 
@@ -57,8 +58,9 @@ pub const KNOWN_PROJECT_SCOPE_NOOP_KEYS: &[&str] = &[
 ///
 /// Scope decides which keys / values are honored: certain settings
 /// (`defaultMode: "auto"`, `autoMemoryDirectory`, `autoMode`,
-/// `skipDangerousModePermissionPrompt`) silently no-op outside user / managed
-/// scope, so the validator must know its input's scope to fire the right
+/// `useAutoModeDuringPlan`, `skipDangerousModePermissionPrompt`) silently
+/// no-op outside user / managed scope, so the validator must know its scope
+/// to fire the right
 /// findings. Caller-provided rather than path-inferred — path heuristics
 /// (HOME env, filename) are platform-brittle and the caller already knows
 /// which file it loaded.

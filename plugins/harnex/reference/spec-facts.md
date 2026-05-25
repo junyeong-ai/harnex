@@ -69,7 +69,8 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   `crates/harness-core/src/validate/settings.rs`; the mirror below is held
   in sync by the `spec_facts_noop_keys_match` integration test.
   <!-- harnex-managed:start spec-facts-project-scope-noop-keys -->
-  autoMemoryDirectory, autoMode, skipDangerousModePermissionPrompt.
+  autoMemoryDirectory, autoMode, useAutoModeDuringPlan,
+  skipDangerousModePermissionPrompt.
   <!-- harnex-managed:end spec-facts-project-scope-noop-keys -->
   (`defaultMode: "auto"` is a VALUE restriction, not a key restriction —
   handled separately by the `SettingsScope` check.) Never emit these into a
