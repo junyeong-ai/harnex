@@ -69,6 +69,10 @@ A repo with no `.claude/`.
      common `check-on-stop.sh`)
    - `.claude/rules/constitution.md` (common, managed region wraps the
      articles — the path-scoped rules added later sit beside it untouched)
+   - `.claude/rules/governance.md` (common — self-improvement gatekeeper;
+     4-question rubric for when to add/reject/retire rules)
+   - `.claude/rules/artifact-lifecycle.md` (common — promotion path from
+     observation → validated pattern → rule; retirement criteria)
    - `CLAUDE.md` (common skeleton; user fills `## Layout`, `## Build & test`,
      `## Conventions` — they are project-authored; the `## Enforcement`
      section is the managed region)
@@ -103,6 +107,27 @@ operator to re-phrase using a verb from this list.
   permissions.allow.json}` + the matching `<lang>-dev` profile stub in
   `profiles.rs`. Operator fills the toolchain commands; the
   `policy_template_sync` reverse-gap test enforces both sides exist.
+- **`extend pattern <name>`** — install a proven engineering pattern from
+  the pattern library at `${CLAUDE_SKILL_DIR}/templates/patterns/<name>/`.
+  Each pattern is a skeleton with `<!-- fill in -->` markers — the
+  operator customizes it for their project. Available patterns:
+  - `review-lenses` — convergent review loop framework with severity
+    routing and stall-limit. Creates `.claude/rules/review-lenses.md`.
+  - `spec-workflow` — spec-driven development directory structure
+    (`specs/<slug>/`) with lifecycle states and gates. Creates
+    `.claude/rules/spec-workflow.md`.
+  - `observability` — span naming, PII boundary, baseline-before-alert
+    maturity model. Creates `.claude/rules/observability.md`.
+  - `deprecation` — allow-marker grammar with sunset dates,
+    delete-in-same-PR default. Creates `.claude/rules/deprecation.md`.
+  - `pr-conventions` — PR description template (TL;DR / What changed /
+    Impact / Risk) + AI-fill discipline. Creates
+    `.claude/rules/pr-conventions.md` + `.github/pull_request_template.md`.
+  - `naming-decisions` — team naming vocabulary (tool suffixes, parameter
+    bags, factory verbs, domain terms). Creates
+    `.claude/rules/naming-decisions.md`.
+  - `copy-conventions` — communication register, terminology namespace,
+    error message format, i18n. Creates `.claude/rules/copy-conventions.md`.
 
 In every verb: read the module-map's `existing_harness` first; match the
 incumbent hook-runner pattern, rule mechanism, and gate sequence. Never
