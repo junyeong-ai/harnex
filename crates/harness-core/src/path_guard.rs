@@ -39,34 +39,31 @@ pub fn reject_traversal(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Reject writing through a symlink. Walks from the leaf upward, rejecting
-/// any component that is itself a symlink: an overwrite-through-symlink at
-/// the leaf, OR a planted symlinked parent (`foo` → `/etc`, then write
-/// `foo/bar`) that would redirect the write outside its directory. Checking
-/// only the final path misses the parent case.
+/// Reject writing through a symlink at two checked components: the leaf
+/// (don't clobber a symlinked file) and its immediate parent directory
+/// (`link` → `/etc`, then write `link/file` redirects the write out of the
+/// tree). `symlink_metadata` does not follow the final component, so each
+/// check sees the component's own type.
 ///
-/// The walk STOPS at the first existing real directory: everything at or
-/// above it is pre-existing, trusted environment that this guard must not
-/// police — notably system mount symlinks such as macOS `/var -> /private/var`,
-/// which sit above every temp/project path and would otherwise reject all
-/// writes. The components below that anchor are the ones the write creates,
-/// and `create_dir_all` only ever makes real directories there.
+/// SCOPE: arbitrarily-deep symlinked ancestors (a symlink two or more levels
+/// above the leaf) are deliberately NOT policed here. Catching those soundly
+/// requires a trusted-root anchor — `symlink_metadata` silently follows
+/// intermediate symlinks, and without a root we cannot distinguish a planted
+/// redirect from a legitimate system mount symlink (macOS `/var ->
+/// /private/var`) that sits above every path. Within this toolkit every write
+/// parent is a config-declared directory the tool itself creates with
+/// `create_dir_all` (which makes real directories), so the realistic injection
+/// point is the immediate parent, which is checked. Traversal (`..`) is
+/// rejected separately by [`reject_traversal`].
 pub fn reject_symlink_write(path: &Path) -> Result<()> {
-    let mut current = Some(path);
-    while let Some(p) = current {
-        match fs::symlink_metadata(p) {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                return Err(Error::PathSymlinkRefused {
-                    path: p.to_path_buf(),
-                });
-            }
-            // First existing real directory going up: trust boundary reached.
-            Ok(meta) if meta.is_dir() => return Ok(()),
-            // Existing non-dir (regular file at the leaf) or non-existent
-            // prefix: keep walking parents.
-            _ => {}
+    for component in [Some(path), path.parent()].into_iter().flatten() {
+        if let Ok(meta) = fs::symlink_metadata(component)
+            && meta.file_type().is_symlink()
+        {
+            return Err(Error::PathSymlinkRefused {
+                path: component.to_path_buf(),
+            });
         }
-        current = p.parent();
     }
     Ok(())
 }

@@ -531,6 +531,18 @@ impl Config {
         }
         let mut seen = HashSet::new();
         for k in &t.kinds {
+            // Telemetry kind names are used directly as ledger filenames
+            // (`{name}.jsonl`), so they share the same safe-name contract as
+            // [[kinds]] — a `/` or `..` would otherwise escape the storage dir.
+            if !KIND_NAME_PATTERN.is_match(&k.name) {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "[[telemetry.kinds]] name '{}' must match [a-z0-9][a-z0-9_-]*[a-z0-9] (ASCII lowercase, digits, hyphens, underscores)",
+                        k.name
+                    ),
+                    location: None,
+                });
+            }
             if !seen.insert(&k.name) {
                 return Err(Error::ConfigInvalid {
                     message: format!("duplicate [[telemetry.kinds]] name: {}", k.name),
@@ -736,6 +748,20 @@ impl Config {
                     ),
                     location: None,
                 });
+            }
+            // Each exclude_glob must compile, or the runtime silently drops
+            // it (`.ok()`) and the exclusion never takes effect. `{slug}` is a
+            // runtime placeholder; substitute a sentinel before compiling so
+            // the glob alternation parser doesn't mask a structural error.
+            for g in &d.exclude_globs {
+                let probe = g.replace("{slug}", "slug");
+                glob::Pattern::new(&probe).map_err(|e| Error::ConfigInvalid {
+                    message: format!(
+                        "consumer detector for kind '{}' has invalid exclude_glob '{g}': {e}",
+                        d.kind
+                    ),
+                    location: None,
+                })?;
             }
         }
         Ok(())
@@ -1069,12 +1095,31 @@ mod tests {
             storage = "jsonl"
             storage_dir = ".harness/telemetry"
             [[telemetry.kinds]]
-            name = "k"
+            name = "kx"
             [telemetry.kinds.payload_schema]
             type = "object"
             required = ["ok", 123]
             [telemetry.kinds.payload_schema.properties.ok]
             type = "string"
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+    }
+
+    #[test]
+    fn rejects_telemetry_kind_name_with_path_separator() {
+        // A telemetry kind name is used as a ledger filename, so a path
+        // separator (or `..`) must be rejected at load — it would otherwise
+        // escape the storage dir.
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [telemetry]
+            storage = "jsonl"
+            storage_dir = ".harness/telemetry"
+            [[telemetry.kinds]]
+            name = "../escape"
+            [telemetry.kinds.payload_schema]
+            type = "object"
         "#;
         assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
     }
@@ -1088,7 +1133,7 @@ mod tests {
             storage = "jsonl"
             storage_dir = ".harness/telemetry"
             [[telemetry.kinds]]
-            name = "k"
+            name = "kx"
             [telemetry.kinds.payload_schema]
             type = "object"
             [telemetry.kinds.payload_schema.properties.f]

@@ -96,9 +96,23 @@ impl ConsumerDetector for GrepConsumerDetector {
             .filter_map(|g| glob::Pattern::new(&g.replace("{slug}", slug)).ok())
             .collect();
         let mut out = Vec::new();
-        for entry in WalkDir::new(&self.working_dir) {
-            // A walk error (e.g. an unreadable directory) must surface, NOT
-            // be dropped: silently skipping a subtree could miss a file that
+        // Prune build/binary directories BEFORE descent so an unreadable one
+        // (e.g. a permission-locked `target/`) never aborts the sweep — those
+        // subtrees are skip surfaces, not consumers. `depth() == 0` keeps the
+        // root even if the project dir itself is named like a skip dir.
+        let walker = WalkDir::new(&self.working_dir)
+            .into_iter()
+            .filter_entry(|e| {
+                e.depth() == 0
+                    || !(e.file_type().is_dir()
+                        && e.file_name()
+                            .to_str()
+                            .is_some_and(|n| SKIP_DIRS.contains(&n)))
+            });
+        for entry in walker {
+            // After pruning skip surfaces, a remaining walk error (an
+            // unreadable directory we DO care about) must surface, NOT be
+            // dropped: silently skipping such a subtree could miss a file that
             // references the slug, producing a false `NoConsumers` signal and
             // retiring a still-referenced artifact. Fail loudly instead.
             let entry = entry.map_err(|e| Error::IoFailure {
@@ -115,13 +129,6 @@ impl ConsumerDetector for GrepConsumerDetector {
             }
             let path = entry.path();
             let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
-            if path.components().any(|c| {
-                c.as_os_str()
-                    .to_str()
-                    .is_some_and(|s| SKIP_DIRS.contains(&s))
-            }) {
-                continue;
-            }
             if path
                 .extension()
                 .and_then(|e| e.to_str())
