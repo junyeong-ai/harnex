@@ -8,22 +8,26 @@ JSON envelope on stdout and exits with a documented code.
 - Success: `write_envelope_success(out, data)` — wraps in
   `{"ok":true,"data":<data>,"warnings":[]}`.
 - Error: harness-core `Error` flows up; main converts via the typed
-  ErrorCode to `{"ok":false,"error":{...}}`.
-- The single exception is `harness completions --raw` (shell-completion
-  bytes go straight to stdout; documented in
-  `.claude/rules/completions.md`).
+  ErrorCode to `{"ok":false,"error":{...}}`. Invalid CLI arguments are
+  caught via `Cli::try_parse()` and mapped to an error envelope (exit 2);
+  `--help` / `--version` stay clap-native (exit 0).
+- The sanctioned non-envelope stdout exceptions (`--raw`, `guard hook-run`
+  passthrough, `guard stop-audit` exit 2) are enumerated in
+  `.claude/rules/envelope.md` — do not add others.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
-| `0` | Success (no findings, or findings below blocker severity) |
-| `1` | At least one `Severity::Blocker` finding |
-| `2` | Runtime failure (config not found, IO failure, etc.) |
+| `0` | Success (no findings, or only advisory `Minor`/`Info` findings) |
+| `1` | At least one gating finding (`Severity::fails_gate()` — `Blocker` or `Major`) |
+| `2` | Runtime failure (config not found, IO failure, invalid arguments) |
 
-The `has_blocker = findings.iter().any(|f| f.severity == Severity::Blocker)`
-pattern is used in `check.rs`, `evidence.rs`, `validate.rs` — keep it
-identical across sites for predictable AI/CI semantics.
+The gate threshold is the single source of truth `Severity::fails_gate()`
+(returns true for `Blocker | Major`). `check.rs`, `audit.rs`, `evidence.rs`,
+`validate.rs` all decide exit 1 via
+`findings.iter().any(|f| f.severity.fails_gate())` — keep it identical across
+sites. To change the threshold, edit `fails_gate`, never the call sites.
 
 ## Adding a subcommand
 

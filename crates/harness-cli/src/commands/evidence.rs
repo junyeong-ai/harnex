@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use clap::Subcommand;
 
 use harness_core::config::Config;
-use harness_core::envelope::{ListResponse, Severity};
+use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::evidence::EvidenceVerifier;
 
@@ -48,11 +48,11 @@ fn verify<W: Write>(paths: Vec<PathBuf>, out: &mut W) -> Result<ExitCode> {
         findings.append(&mut fs);
     }
 
-    let has_blocker = findings.iter().any(|f| f.severity == Severity::Blocker);
+    let has_gating_finding = findings.iter().any(|f| f.severity.fails_gate());
 
     write_envelope_success(out, ListResponse::new(findings))?;
 
-    Ok(if has_blocker {
+    Ok(if has_gating_finding {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
