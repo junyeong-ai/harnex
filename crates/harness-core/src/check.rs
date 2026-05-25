@@ -521,7 +521,7 @@ impl<'a> ProjectChecker<'a> {
                     .collect()
             })
             .unwrap_or_default();
-        let perm_findings = PermissionAuditor::new(perms_policy, &allow, &ask, &deny).audit();
+        let perm_findings = PermissionAuditor::new(perms_policy, &allow, &ask, &deny)?.audit();
         for pf in &perm_findings {
             findings.push(Finding {
                 slug: match pf.kind {

@@ -113,71 +113,11 @@ fn all_schemas() -> Value {
     })
 }
 
-/// Every known ErrorCode in stable kebab-screaming order.
-/// Adding a variant requires adding it here AND in the registry test.
+/// Every known ErrorCode string, derived from the single source
+/// [`ErrorCode::ALL`]. No parallel hand-maintained list (Constitution IX);
+/// the exhaustive `ErrorCode::as_str` match keeps `ALL` complete.
 fn error_code_strings() -> Vec<&'static str> {
-    use ErrorCode::*;
-    let all: &[ErrorCode] = &[
-        ConfigInvalid,
-        ConfigNotFound,
-        ConfigVersionMismatch,
-        PathTraversal,
-        PathSymlinkRefused,
-        IoFailure,
-        TelemetryKindUnknown,
-        TelemetryPayloadInvalid,
-        CodegenSourceMissing,
-        CodegenSourceKeyMissing,
-        CodegenSourceShapeInvalid,
-        CodegenRendererUnknown,
-        CodegenSentinelMissing,
-        CodegenCycle,
-        PolicyProfileUnknown,
-        PolicyVersionFailure,
-        ValidateFrontmatterMalformed,
-        ValidateFrontmatterInvalid,
-        LifecycleObservationCorrupt,
-        LifecycleConsumerStrategyUnknown,
-        LifecycleDemoteWithoutApproval,
-        LifecycleDecisionTextEmpty,
-        GuardHookInputInvalid,
-        GuardSpawnFailure,
-        GraphResponseInvalid,
-        GraphSpawnFailure,
-        CheckGitFailure,
-    ];
-    for code in all {
-        match code {
-            ConfigInvalid
-            | ConfigNotFound
-            | ConfigVersionMismatch
-            | PathTraversal
-            | PathSymlinkRefused
-            | IoFailure
-            | TelemetryKindUnknown
-            | TelemetryPayloadInvalid
-            | CodegenSourceMissing
-            | CodegenSourceKeyMissing
-            | CodegenSourceShapeInvalid
-            | CodegenRendererUnknown
-            | CodegenSentinelMissing
-            | CodegenCycle
-            | PolicyProfileUnknown
-            | PolicyVersionFailure
-            | ValidateFrontmatterMalformed
-            | ValidateFrontmatterInvalid
-            | LifecycleObservationCorrupt
-            | LifecycleConsumerStrategyUnknown
-            | LifecycleDemoteWithoutApproval
-            | LifecycleDecisionTextEmpty
-            | GuardHookInputInvalid
-            | GuardSpawnFailure
-            | GraphResponseInvalid
-            | GraphSpawnFailure
-            | CheckGitFailure => {}
-        }
-    }
-    all.iter().map(|c| c.as_str()).collect()
+    ErrorCode::ALL.iter().map(|c| c.as_str()).collect()
 }
 
 #[cfg(test)]
