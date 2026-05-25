@@ -88,9 +88,12 @@ flattens real per-package differences.
   `<lang>/permissions.allow.json`; `hooks` = common `hooks.json`).
   If CI config reveals additional tools the project uses (docker, terraform,
   gcloud), suggest composing with `gcp-strict` or `aws-strict` profiles.
-- `hooks/` (`<lang>/_runner.sh`, common `_stop_runner.sh`,
-  `<lang>/post-format.sh`, `<lang>/session-start.sh`,
-  common `check-on-stop.sh`).
+- `hooks/` — Claude Code hook scripts (`<lang>/_runner.sh`, common
+  `_stop_runner.sh`, `<lang>/post-format.sh`, `<lang>/session-start.sh`,
+  common `check-on-stop.sh`) AND the git pre-commit hook (common
+  `git-hooks/pre-commit` → `hooks/pre-commit`, runs gitleaks). The two
+  hook kinds coexist: git runs only files named after git events
+  (`pre-commit`), Claude Code runs the `_runner.sh`-dispatched scripts.
 - `.claude/rules/constitution.md` (common, managed region wraps the
   articles — the path-scoped rules added later sit beside it untouched).
 - `.claude/rules/governance.md` (common — self-improvement gatekeeper;
@@ -113,11 +116,14 @@ flattens real per-package differences.
 
 ### Step 3 — Finalize
 
-Set hook scripts executable (0o755). Verify: `bash -n` on every `.sh`,
-JSON-parse settings.json. Run `harness check` / `harness audit` if the
-binary oracle is available. Report what was generated and suggest
-`extend pattern` additions based on what the analysis revealed (e.g.,
-if CI has deploy stages → suggest `extend pattern spec-workflow`).
+Set hook scripts executable (0o755), including `hooks/pre-commit`. Point git
+at the version-controlled hooks: `git config core.hooksPath hooks` (state
+this command for the operator to run; do not run git config silently).
+Verify: `bash -n` on every `.sh` and on `hooks/pre-commit`, JSON-parse
+settings.json. Run `harness check` / `harness audit` if the binary oracle is
+available. Report what was generated and suggest `extend pattern` additions
+based on what the analysis revealed (e.g., CI deploy stages →
+`extend pattern spec-workflow`).
 
 ## Mode: extend (brownfield, additive — closed verb menu)
 

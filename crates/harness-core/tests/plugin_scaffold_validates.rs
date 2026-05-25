@@ -30,6 +30,15 @@ fn copy_file(src: &Path, dst: &Path) {
     fs::copy(src, dst).unwrap_or_else(|e| panic!("copy {src:?} -> {dst:?}: {e}"));
 }
 
+/// `bash -n <path>` — syntax-check a generated shell script without running it.
+/// On non-unix (no bash), assume OK; the unix CI lane is the gate.
+fn bash_n_ok(path: &Path) -> bool {
+    match std::process::Command::new("bash").arg("-n").arg(path).status() {
+        Ok(status) => status.success(),
+        Err(_) => true,
+    }
+}
+
 /// Assemble `.claude/settings.json` from the committed JSON projection files
 /// — exactly the composition `harnex scaffold` performs. Returns the absolute
 /// path of the assembled file inside `project_root`.
@@ -65,14 +74,25 @@ fn run_scaffold_validation(lang: &str) {
     // settings.json (assembled from JSON projections)
     let settings_path = assemble_settings_json(&templates, lang, proj_root);
 
-    // constitution + CLAUDE.md (markdown templates, dropped verbatim)
-    copy_file(
-        &templates.join("common/constitution.md"),
-        &proj_root.join(".claude/rules/constitution.md"),
-    );
+    // Foundation rules + CLAUDE.md (markdown templates, dropped verbatim)
+    for rule in ["constitution.md", "rules/governance.md", "rules/artifact-lifecycle.md"] {
+        let src = templates.join("common").join(rule);
+        let dst = proj_root
+            .join(".claude/rules")
+            .join(PathBuf::from(rule).file_name().unwrap());
+        copy_file(&src, &dst);
+    }
     copy_file(
         &templates.join("common/CLAUDE.md"),
         &proj_root.join("CLAUDE.md"),
+    );
+
+    // git pre-commit hook (the enforced half of "secrets never reach git")
+    let pre_commit = proj_root.join("hooks/pre-commit");
+    copy_file(&templates.join("common/git-hooks/pre-commit"), &pre_commit);
+    assert!(
+        bash_n_ok(&pre_commit),
+        "[{lang}] generated hooks/pre-commit fails `bash -n`"
     );
 
     // Optional path-scoped convention rule for the language

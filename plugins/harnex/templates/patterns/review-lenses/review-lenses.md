@@ -20,18 +20,20 @@ and re-walks the (possibly grown) scope until convergence or a stall limit.
 
 ## Default lenses
 
-Six lenses ship as the baseline review vocabulary. Each lens is a
-separate file under `.claude/lenses/`. Add, remove, or customize
-lenses to match your project's priorities.
+Six lenses ship as the baseline review vocabulary. Each is a high-signal
+review question — not a checklist of linter-owned or model-default checks
+(those belong to the formatter, type checker, and the model's own defaults,
+per keep-soften-cut). Add, remove, or customize lenses to match your
+project's priorities.
 
-| Lens | Checks for |
+| Lens | High-signal question |
 |---|---|
-| **completeness** | Missing error handling, untested paths, unaddressed requirements |
-| **best-practice** | Violations of architecture rules and established patterns |
-| **extensibility** | Tight coupling, missing abstractions, hardcoded assumptions |
-| **logic** | Off-by-one, race conditions, null paths, incorrect state transitions |
-| **naming** | Inconsistent names, ambiguous abbreviations, convention drift |
-| **root-cause** | Symptom-level fixes, band-aids that don't address the underlying cause |
+| **completeness** | Does the change address the whole requirement, including failure paths? |
+| **best-practice** | Does it honor the project's own architecture rules (cite the rule)? |
+| **extensibility** | Will the next change here be cheap — without premature abstraction? |
+| **logic** | Is behavior correct on the paths tests did not exercise? |
+| **naming** | Do new names match the project's recorded vocabulary? |
+| **root-cause** | Does the fix remove the cause, or hide the symptom? |
 
 ## Lens file contract
 
@@ -42,12 +44,14 @@ Each `.claude/lenses/<id>.md` carries frontmatter:
 id: <kebab-case>
 applies_to: [code, design, spec, plan]
 anchors:
-  - <rule-slug>  # rules this lens cites as authority
+  - constitution   # rule(s) this lens cites as authority; constitution is
+                   # always present. Add project rules during install.
 ---
 ```
 
-Body: the evaluation criteria. Findings reference an anchor (rule slug)
-as the authority — no finding without a citation.
+Body: a high-signal question, not a checklist. Findings reference an anchor
+(rule slug) as the authority — no finding without a citation. On install,
+re-point or add anchors to the project's actual rules where they exist.
 
 ## Severity routing
 
