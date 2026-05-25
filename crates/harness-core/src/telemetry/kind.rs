@@ -42,29 +42,51 @@ impl KindSchema {
             });
         }
 
-        let required: HashSet<String> = obj
-            .get("required")
-            .and_then(|r| r.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+        // `required` must be an array of strings. A non-string entry is a
+        // malformed schema — reject at load rather than silently drop it
+        // (a dropped requirement weakens validation invisibly).
+        let required: HashSet<String> = match obj.get("required") {
+            None => HashSet::new(),
+            Some(Value::Array(arr)) => {
+                let mut set = HashSet::new();
+                for entry in arr {
+                    let Some(s) = entry.as_str() else {
+                        return Err(Error::ConfigInvalid {
+                            message: format!(
+                                "telemetry kind payload_schema.required must be an array of \
+                                 strings; got {entry}"
+                            ),
+                            location: None,
+                        });
+                    };
+                    set.insert(s.to_string());
+                }
+                set
+            }
+            Some(_) => {
+                return Err(Error::ConfigInvalid {
+                    message: "telemetry kind payload_schema.required must be an array".into(),
+                    location: None,
+                });
+            }
+        };
 
-        let properties: HashMap<String, PropertySchema> = obj
-            .get("properties")
-            .and_then(|p| p.as_object())
-            .map(|map| {
-                map.iter()
-                    .map(|(k, v)| {
-                        let prop: PropertySchema =
-                            serde_json::from_value(v.clone()).unwrap_or_default();
-                        (k.clone(), prop)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        // Each property schema must deserialize cleanly. A malformed entry
+        // (unknown type, bad enum) must fail at load — never become an
+        // unconstrained field via a silent default.
+        let mut properties: HashMap<String, PropertySchema> = HashMap::new();
+        if let Some(map) = obj.get("properties").and_then(|p| p.as_object()) {
+            for (k, v) in map {
+                let prop: PropertySchema =
+                    serde_json::from_value(v.clone()).map_err(|e| Error::ConfigInvalid {
+                        message: format!(
+                            "telemetry kind payload_schema.properties.{k} is malformed: {e}"
+                        ),
+                        location: None,
+                    })?;
+                properties.insert(k.clone(), prop);
+            }
+        }
 
         // Every required field must also be declared in properties.
         for r in &required {
@@ -72,6 +94,22 @@ impl KindSchema {
                 return Err(Error::ConfigInvalid {
                     message: format!(
                         "telemetry kind required field '{r}' has no entry in properties"
+                    ),
+                    location: None,
+                });
+            }
+        }
+
+        // Each declared `type` must be one of the supported primitives — at
+        // load time, not only when a payload happens to exercise the field.
+        for (name, prop) in &properties {
+            if let Some(ty) = &prop.ty
+                && !matches!(ty.as_str(), "string" | "integer" | "number" | "boolean")
+            {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "telemetry kind property '{name}' has unknown type '{ty}' \
+                         (use string | integer | number | boolean)"
                     ),
                     location: None,
                 });

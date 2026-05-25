@@ -54,6 +54,28 @@ fn passes_when_file_path_line_resolves() {
 }
 
 #[test]
+fn rejects_path_traversal_outside_project() {
+    // A claim path with `..` must not verify (or read) a file outside the
+    // project root, even if that file exists.
+    let tmp = TempDir::new().unwrap();
+    let project = tmp.path().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    // A real file just outside the project root.
+    std::fs::write(tmp.path().join("secret.txt"), "x\n").unwrap();
+
+    let markdown = "See `../secret.txt:1`.";
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(markdown, Path::new("test.md"), &project);
+    assert_eq!(findings.len(), 1, "traversal claim must be a finding");
+    assert_eq!(findings[0].slug, "evidence-internal");
+    assert!(
+        findings[0].message.contains("escapes the project root"),
+        "expected traversal rejection, got: {}",
+        findings[0].message
+    );
+}
+
+#[test]
 fn rejects_nonexistent_path() {
     let tmp = TempDir::new().unwrap();
     let markdown = "See `src/missing.rs:5`.";

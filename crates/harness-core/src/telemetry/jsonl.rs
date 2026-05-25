@@ -70,7 +70,16 @@ impl JsonlStorage {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("rotated");
-            let rotated = parent.join(format!("{stem}-{ts}.jsonl"));
+            // Second-resolution timestamps collide if two rotations land in
+            // the same second; never overwrite an existing rotated ledger —
+            // append a counter until the target is free (telemetry is
+            // append-only, so silent overwrite would lose history).
+            let mut rotated = parent.join(format!("{stem}-{ts}.jsonl"));
+            let mut n = 1u32;
+            while rotated.exists() {
+                rotated = parent.join(format!("{stem}-{ts}-{n}.jsonl"));
+                n += 1;
+            }
             std::fs::rename(path, &rotated).map_err(|e| Error::IoFailure {
                 path: path.to_path_buf(),
                 source: e,
