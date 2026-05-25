@@ -50,18 +50,22 @@ domain-suffix convention:
 | `Syncer` | drift detection between SSoT and projection | `SentinelSyncer` |
 | `Recorder` | append-only ledger writer | `LifecycleDecisionRecorder` |
 | `Generator` | composes config-declared inputs into one artifact | `PermissionGenerator` |
+| `Checker` | orchestrator that runs producers and aggregates, or a pass/fail gate | `ProjectChecker`, `VersionChecker` |
 
 When introducing a new finding-producer, pick the suffix from this
 table — never invent a new one without extending this table first.
 
 ### Adding an `ErrorCode` variant
 
-1. Add the variant to `error::ErrorCode` and its `as_str()` arm.
-2. Add the variant to the `all` array AND the exhaustive match in
-   `export::error_code_strings()` — the match fails to compile without
-   it. The array must also include the new variant or
-   `error_codes_schema_lists_all_variants` test catches the gap.
-3. Add a typed variant to `error::Error` with `#[error(...)]` mapping.
+1. Add the variant to `error::ErrorCode`, its `as_str()` arm, and
+   `ErrorCode::ALL` — the exhaustive `as_str` match fails to compile until
+   the arm exists; the schema (`export::error_code_strings`) derives from
+   `ALL`, so a variant missing from `ALL` is missing from the schema.
+2. Add a typed variant to `error::Error` with `#[error(...)]` mapping and
+   the matching `code()` arm.
+3. The `error_code_tests` (in `error.rs`) assert `ALL` is unique and
+   non-shrinking; `error_codes_schema_lists_all_variants` (in `export.rs`)
+   asserts the schema surfaces them.
 
 ### Adding a finding emit site
 

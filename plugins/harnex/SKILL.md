@@ -135,10 +135,11 @@ operator to re-phrase using a verb from this list.
 
 - **`extend hook <event-name>`** — add a hook for `<event-name>` (must be in
   spec-facts hook events). The runner selection is safety-critical and
-  template-driven: a Stop-class event (`Stop`, `SubagentStop`, `StopFailure`)
-  dispatches through `_stop_runner.sh` (forces exit 0 — non-zero exit on a
-  Stop hook triggers the re-stop loop); every other event dispatches through
-  `_runner.sh` (propagates exit code). The verifier script's BODY is
+  template-driven: `Stop` and `SubagentStop` dispatch through
+  `_stop_runner.sh` (forces exit 0 — their non-zero exit forces continuation,
+  the re-stop loop). Every other event — including `StopFailure`, whose exit 2
+  is genuinely ignored — dispatches through `_runner.sh` (propagates exit
+  code). The verifier script's BODY is
   project-specific check logic the operator authors — that is not free-
   generated safety-critical control flow, which lives entirely in the two
   runner templates. Add the event entry to `.claude/settings.json` `hooks`

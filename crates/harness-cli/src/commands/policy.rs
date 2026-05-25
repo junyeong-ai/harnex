@@ -119,7 +119,7 @@ fn run_permissions<W: Write>(
                         .collect()
                 })
                 .unwrap_or_default();
-            let findings = PermissionAuditor::new(perms_policy, &allow, &ask, &deny).audit();
+            let findings = PermissionAuditor::new(perms_policy, &allow, &ask, &deny)?.audit();
             let has_issues = !findings.is_empty();
             write_envelope_success(out, ListResponse::new(findings))?;
             Ok(if has_issues {

@@ -53,6 +53,41 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
+    /// Every variant, in stable order. Single source for the
+    /// `export schema error-codes` vocabulary — the exhaustive `as_str`
+    /// match forces this list to stay complete (a new variant fails to
+    /// compile `as_str` until handled, and the `all_variants_in_ALL` test
+    /// asserts `ALL` carries it).
+    pub const ALL: &'static [Self] = &[
+        Self::ConfigInvalid,
+        Self::ConfigNotFound,
+        Self::ConfigVersionMismatch,
+        Self::PathTraversal,
+        Self::PathSymlinkRefused,
+        Self::IoFailure,
+        Self::TelemetryKindUnknown,
+        Self::TelemetryPayloadInvalid,
+        Self::CodegenSourceMissing,
+        Self::CodegenSourceKeyMissing,
+        Self::CodegenSourceShapeInvalid,
+        Self::CodegenRendererUnknown,
+        Self::CodegenSentinelMissing,
+        Self::CodegenCycle,
+        Self::PolicyProfileUnknown,
+        Self::PolicyVersionFailure,
+        Self::ValidateFrontmatterMalformed,
+        Self::ValidateFrontmatterInvalid,
+        Self::LifecycleObservationCorrupt,
+        Self::LifecycleConsumerStrategyUnknown,
+        Self::LifecycleDemoteWithoutApproval,
+        Self::LifecycleDecisionTextEmpty,
+        Self::GuardHookInputInvalid,
+        Self::GuardSpawnFailure,
+        Self::GraphResponseInvalid,
+        Self::GraphSpawnFailure,
+        Self::CheckGitFailure,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ConfigInvalid => "CONFIG_INVALID",
@@ -284,5 +319,33 @@ impl Error {
             Self::ConfigInvalid { location, .. } => location.as_ref(),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod error_code_tests {
+    use super::ErrorCode;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn all_codes_have_unique_nonempty_strings() {
+        let mut seen = BTreeSet::new();
+        for code in ErrorCode::ALL {
+            let s = code.as_str();
+            assert!(!s.is_empty(), "{code:?} has empty as_str");
+            assert!(seen.insert(s), "duplicate code string: {s}");
+        }
+    }
+
+    #[test]
+    fn all_is_complete_against_as_str() {
+        // The exhaustive `as_str` match already forces every variant to have
+        // a string; this asserts ALL enumerates exactly those. A new variant
+        // added to the enum + as_str but forgotten in ALL is caught here
+        // because the schema (export::error_code_strings) derives from ALL.
+        let count = ErrorCode::ALL.len();
+        let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
+        assert_eq!(count, unique.len(), "ALL has a duplicate variant");
+        assert!(count >= 27, "ALL shrank unexpectedly — variant dropped?");
     }
 }

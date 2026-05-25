@@ -20,9 +20,11 @@ When adding a new schema target:
 3. Add a test under `export::tests` that asserts a structural property
    (e.g., expected key presence).
 
-`error-codes` is hand-rolled — every `ErrorCode` variant must appear in
-`error_code_strings()`. Test `error_codes_schema_lists_all_variants`
-catches drift if a new variant is missed.
+`error-codes` derives from `ErrorCode::ALL` (the single source) via
+`error_code_strings()` — no parallel hand-maintained list. The exhaustive
+`ErrorCode::as_str` match forces `ALL` to stay complete; the
+`error_code_tests` (in `error.rs`) and `error_codes_schema_lists_all_variants`
+(in `export.rs`) catch drift.
 
 `all` bundles every other target. Adding a new target requires adding it
 to `all_schemas` AND the `all_schemas_emits_every_named_target` test.

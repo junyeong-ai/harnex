@@ -75,18 +75,29 @@ pub struct PermissionAuditor<'a> {
 }
 
 impl<'a> PermissionAuditor<'a> {
+    /// Validates profile names up front — symmetric with
+    /// [`PermissionGenerator::new`]. An unknown profile would otherwise be
+    /// silently skipped by [`Self::audit`], dropping an intended guardrail
+    /// with no signal even on the public library path (the CLI path is
+    /// already covered by `Config::validate`, but the library API must not
+    /// depend on the caller having validated first).
     pub fn new(
         policy: &'a PermissionsPolicy,
         settings_allow: &'a [String],
         settings_ask: &'a [String],
         settings_deny: &'a [String],
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        for p in &policy.profiles {
+            if !PermissionProfile::ALL.contains(&p.as_str()) {
+                return Err(Error::PolicyProfileUnknown { name: p.clone() });
+            }
+        }
+        Ok(Self {
             policy,
             settings_allow,
             settings_ask,
             settings_deny,
-        }
+        })
     }
 
     pub fn audit(&self) -> Vec<PermissionFinding> {
@@ -165,7 +176,9 @@ mod tests {
         let allow = vec!["Bash(ls *)".to_string()];
         let ask: Vec<String> = vec![];
         let deny = vec![]; // intentionally empty
-        let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny).audit();
+        let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny)
+            .unwrap()
+            .audit();
         assert!(!findings.is_empty());
         assert!(
             findings
@@ -180,7 +193,9 @@ mod tests {
         let allow = vec!["Bash(foo)".to_string()];
         let ask: Vec<String> = vec![];
         let deny = vec!["Bash(foo)".to_string()];
-        let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny).audit();
+        let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny)
+            .unwrap()
+            .audit();
         assert!(
             findings
                 .iter()
@@ -194,12 +209,26 @@ mod tests {
         let allow: Vec<String> = vec![];
         let ask = vec!["Bash(bar)".to_string()];
         let deny = vec!["Bash(bar)".to_string()];
-        let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny).audit();
+        let findings = PermissionAuditor::new(&policy, &allow, &ask, &deny)
+            .unwrap()
+            .audit();
         assert!(
             findings
                 .iter()
                 .any(|f| f.kind == PermissionFindingKind::ContradictoryRule)
         );
         assert!(findings.iter().any(|f| f.message.contains("ask and deny")));
+    }
+
+    #[test]
+    fn auditor_rejects_unknown_profile() {
+        // Symmetric with generator_rejects_unknown_profile — the public
+        // library path must not silently skip an unvalidated profile name.
+        let policy = PermissionsPolicy {
+            profiles: vec!["basline".into()],
+            ..Default::default()
+        };
+        let empty: Vec<String> = vec![];
+        assert!(PermissionAuditor::new(&policy, &empty, &empty, &empty).is_err());
     }
 }

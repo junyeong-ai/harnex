@@ -100,8 +100,14 @@ impl SettingsDriftAuditor {
             let is_regex = after
                 .chars()
                 .any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '|'));
-            let has_tool_segment = after.contains("__");
-            if !is_regex && !has_tool_segment {
+            // An exact-string matcher is well-formed only as
+            // `mcp__<server>__<tool>` with BOTH segments non-empty.
+            // `mcp__server__` (empty tool) and `mcp____tool` (empty server)
+            // are exact strings matching no real tool.
+            let well_formed = after
+                .split_once("__")
+                .is_some_and(|(server, tool)| !server.is_empty() && !tool.is_empty());
+            if !is_regex && !well_formed {
                 findings.push(Finding {
                     slug: "audit-mcp-matcher-incomplete".into(),
                     severity: Severity::Major,
@@ -151,7 +157,10 @@ impl SettingsDriftAuditor {
                     fix_command: None,
                 });
             }
-            if event_name == "Stop" || event_name == "SubagentStop" || event_name == "StopFailure" {
+            // Only Stop and SubagentStop force continuation on exit 2 (the
+            // re-stop loop). StopFailure's exit 2 is genuinely ignored per
+            // spec-facts, so it is NOT loop-trap-prone — do not flag it.
+            if event_name == "Stop" || event_name == "SubagentStop" {
                 let command = handler
                     .get("command")
                     .and_then(|v| v.as_str())
@@ -241,6 +250,41 @@ mod tests {
                 .iter()
                 .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
             "expected audit-mcp-matcher-incomplete: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn flags_mcp_matcher_with_empty_segment() {
+        // `mcp__server__` (empty tool) and `mcp____tool` (empty server) are
+        // exact strings matching no real tool — both must be flagged.
+        for bad in ["mcp__server__", "mcp____tool", "mcp__"] {
+            let json = format!(
+                r#"{{ "hooks": {{ "PreToolUse": [{{ "matcher": "{bad}",
+                     "hooks": [{{"type":"command","command":"x"}}] }}] }} }}"#
+            );
+            let findings = run_on(&json);
+            assert!(
+                findings.iter().any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+                "matcher '{bad}' (empty segment) must be flagged: {findings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_flag_stop_failure_for_runner_wrapper() {
+        // StopFailure exit 2 is ignored per spec — it is NOT loop-trap-prone,
+        // so a StopFailure hook without _stop_runner must not be flagged.
+        let json = r#"{
+            "hooks": {
+                "StopFailure": [{
+                    "hooks": [{"type": "command", "command": "hooks/_runner.sh on-fail.sh"}]
+                }]
+            }
+        }"#;
+        let findings = run_on(json);
+        assert!(
+            !findings.iter().any(|f| f.slug == "audit-stop-blocking-suspect"),
+            "StopFailure must not be flagged as Stop-loop-prone: {findings:?}"
         );
     }
 
