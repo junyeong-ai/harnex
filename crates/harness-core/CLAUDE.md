@@ -67,6 +67,13 @@ table — never invent a new one without extending this table first.
    non-shrinking; `error_codes_schema_lists_all_variants` (in `export.rs`)
    asserts the schema surfaces them.
 
+### Adding a config section
+
+1. Add the field to `Config` and its substruct.
+2. Add a validation arm to `Config::validate`.
+3. Add a unit test in `config/mod.rs` that constructs an invalid config
+   and asserts the matching `ErrorCode`.
+
 ### Adding a finding emit site
 
 Every `Finding` must carry an actionable `hint`. There are no

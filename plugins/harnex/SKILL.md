@@ -37,12 +37,15 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
 3. **Specific-but-minimal, never crude heuristics.** Apply keep-soften-cut:
    emit the KEEP set, ship SOFTEN as opt-in with an escape hatch, emit nothing
    from CUT. No natural-language pattern-matching in a blocking tier.
-4. **Spec-correct.** Per spec-facts: hook `timeout` in seconds, Stop wrappers
-   exit 0, hook MCP matchers `mcp__server__tool` or `mcp__server__.*` (bare
-   `mcp__server` matches NOTHING in a hook matcher — that bare form is
-   permission-rule syntax only), `Bash(cmd *)` space-wildcards,
-   `deny>ask>allow`, no project-ignored settings keys. When in doubt, re-read
-   the live doc — freezing the spec is the failure.
+4. **Spec-correct.** Every generated artifact obeys spec-facts. Specifics:
+   - Hook `timeout` is in **seconds** (never milliseconds).
+   - Stop/SubagentStop wrappers **exit 0** (exit 2 forces continuation).
+   - Hook MCP matchers: `mcp__server__tool` or `mcp__server__.*` — bare
+     `mcp__server` matches NOTHING (that form is permission-rule syntax only).
+   - Permission wildcards: `Bash(cmd *)` with space-then-`*`.
+   - Evaluation order: `deny > ask > allow`, first-match-wins.
+   - Never emit project-scope no-op keys into `.claude/settings.json`.
+   When in doubt, re-read the live doc — freezing the spec is the failure.
 5. **Right language.** Detect from lockfile+manifest; never cross-wire (biome
    for TS, ruff for Python, rustfmt for Rust). If detection matches no
    supported stack (language-matrix has only typescript/python/rust), REFUSE —
