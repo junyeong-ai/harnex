@@ -92,26 +92,34 @@ impl SettingsDriftAuditor {
         let Some(matcher) = entry.get("matcher").and_then(|v| v.as_str()) else {
             return;
         };
-        // MCP matcher must take the form `mcp__<server>__<tool>` or
-        // `mcp__<server>__.*`. Bare `mcp__<server>` matches nothing.
-        if let Some(after) = matcher.strip_prefix("mcp__")
-            && !after.contains("__")
-        {
-            findings.push(Finding {
-                slug: "audit-mcp-matcher-incomplete".into(),
-                severity: Severity::Major,
-                location: Location::file(path.to_path_buf()),
-                message: format!(
-                    "hook '{event_name}'[{entry_idx}] matcher '{matcher}' matches no MCP tool — \
-                     use 'mcp__{after}__<tool>' for a specific tool or 'mcp__{after}__.*' for all"
-                ),
-                hint: Some(
-                    "the spec requires the `__<tool>` segment; bare `mcp__server` is a no-op"
-                        .into(),
-                ),
-                auto_fixable: false,
-                fix_command: None,
-            });
+        // Only a BARE `mcp__<server>` matches nothing — an exact-string
+        // matcher (per the spec, `[A-Za-z0-9_|]` only) with no `__<tool>`
+        // segment. A matcher carrying a regex metacharacter (`mcp__.*`,
+        // `mcp__.*__write.*`) is a JS regex that DOES match — never flag it.
+        if let Some(after) = matcher.strip_prefix("mcp__") {
+            let is_regex = after
+                .chars()
+                .any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '|'));
+            let has_tool_segment = after.contains("__");
+            if !is_regex && !has_tool_segment {
+                findings.push(Finding {
+                    slug: "audit-mcp-matcher-incomplete".into(),
+                    severity: Severity::Major,
+                    location: Location::file(path.to_path_buf()),
+                    message: format!(
+                        "hook '{event_name}'[{entry_idx}] matcher '{matcher}' matches no MCP tool — \
+                         bare 'mcp__{after}' is an exact string with no tool segment. Use \
+                         'mcp__{after}__<tool>' for one tool, 'mcp__{after}__.*' for all of that \
+                         server, or 'mcp__.*' for every MCP tool"
+                    ),
+                    hint: Some(
+                        "add the `__<tool>` segment or a regex wildcard; bare `mcp__server` is a no-op"
+                            .into(),
+                    ),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
+            }
         }
     }
 
@@ -252,6 +260,48 @@ mod tests {
                 .iter()
                 .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
             "mcp__server__.* is valid: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_all_mcp_tools_regex_matcher() {
+        // `mcp__.*` is a JS regex (contains `.`) that matches every MCP tool
+        // across every server — a common, valid telemetry matcher. It must
+        // NOT be flagged as incomplete (regression: real projects use it).
+        let json = r#"{
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "mcp__.*",
+                    "hooks": [{"type": "command", "command": "x"}]
+                }]
+            }
+        }"#;
+        let findings = run_on(json);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+            "mcp__.* (all MCP tools) is a valid regex matcher: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_cross_server_regex_matcher() {
+        // `mcp__.*__write.*` — write tools from any server. Regex, valid.
+        let json = r#"{
+            "hooks": {
+                "PreToolUse": [{
+                    "matcher": "mcp__.*__write.*",
+                    "hooks": [{"type": "command", "command": "x"}]
+                }]
+            }
+        }"#;
+        let findings = run_on(json);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+            "cross-server regex matcher is valid: {findings:?}"
         );
     }
 
