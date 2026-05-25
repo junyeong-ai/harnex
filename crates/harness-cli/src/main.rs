@@ -2,8 +2,13 @@
 //!
 //! Every command emits exactly one envelope on stdout. Exit codes:
 //! - 0 = success
-//! - 1 = success with blocking findings / drift / mismatch
-//! - 2 = runtime failure (unexpected error)
+//! - 1 = success with gating findings (Blocker | Major) / drift / mismatch
+//! - 2 = runtime failure (unexpected error) OR invalid CLI invocation
+//!
+//! Invalid argument parsing is mapped to an error envelope (exit 2) rather
+//! than clap's native stderr message, so the "one envelope on stdout"
+//! contract holds even for a malformed invocation. `--help` / `--version`
+//! remain clap-native (exit 0) — they are not command executions.
 
 use std::io::{self, Write};
 use std::process::ExitCode;
@@ -11,6 +16,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use harness_core::envelope;
+use harness_core::error::Error;
 
 mod commands;
 
@@ -81,9 +87,30 @@ enum Command {
 }
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
     let stdout = io::stdout();
     let mut out = stdout.lock();
+
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            use clap::error::ErrorKind;
+            // `--help` / `--version` are clap-native displays, not command
+            // executions — print them verbatim (exit 0), do not envelope.
+            if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+                let _ = e.print();
+                return ExitCode::SUCCESS;
+            }
+            // Any other parse error is an invalid invocation: emit one error
+            // envelope on stdout and exit 2 (runtime failure).
+            let err = Error::ConfigInvalid {
+                message: format!("invalid arguments: {}", e.kind()),
+                location: None,
+            };
+            let _ = envelope::write_error(&mut out, &err);
+            let _ = out.flush();
+            return ExitCode::from(2);
+        }
+    };
 
     let result = match cli.command {
         Command::Evidence { cmd } => commands::evidence::run(cmd, &mut out),

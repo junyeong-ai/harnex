@@ -5,7 +5,6 @@ use std::process::ExitCode;
 use clap::Args;
 
 use harness_core::audit::ProjectAuditor;
-use harness_core::envelope::Severity;
 use harness_core::error::Result;
 
 use super::write_envelope_success;
@@ -30,12 +29,9 @@ pub fn run<W: Write>(args: AuditArgs, out: &mut W) -> Result<ExitCode> {
         auditor = auditor.with_plugin_root(plugin_root);
     }
     let outcome = auditor.run()?;
-    let has_blocker = outcome
-        .findings
-        .iter()
-        .any(|f| f.severity == Severity::Blocker);
+    let has_gating_finding = outcome.findings.iter().any(|f| f.severity.fails_gate());
     write_envelope_success(out, outcome)?;
-    Ok(if has_blocker {
+    Ok(if has_gating_finding {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS

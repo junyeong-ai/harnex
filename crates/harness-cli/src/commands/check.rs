@@ -4,7 +4,6 @@ use std::process::ExitCode;
 use clap::Args;
 
 use harness_core::check::ProjectChecker;
-use harness_core::envelope::Severity;
 use harness_core::error::Result;
 
 use super::{load_config, write_envelope_success};
@@ -27,23 +26,23 @@ pub fn run<W: Write>(args: CheckArgs, out: &mut W) -> Result<ExitCode> {
     if let Some(since) = args.since.as_deref() {
         check = check.with_since(since);
     }
-    let blocker_in = |findings: &[harness_core::envelope::Finding]| {
-        findings.iter().any(|f| f.severity == Severity::Blocker)
+    let gating_in = |findings: &[harness_core::envelope::Finding]| {
+        findings.iter().any(|f| f.severity.fails_gate())
     };
     if args.fix {
         let outcome = check.fix()?;
-        let has_blocker = blocker_in(&outcome.after.findings);
+        let has_gating_finding = gating_in(&outcome.after.findings);
         write_envelope_success(out, outcome)?;
-        Ok(if has_blocker {
+        Ok(if has_gating_finding {
             ExitCode::from(1)
         } else {
             ExitCode::SUCCESS
         })
     } else {
         let outcome = check.run()?;
-        let has_blocker = blocker_in(&outcome.findings);
+        let has_gating_finding = gating_in(&outcome.findings);
         write_envelope_success(out, outcome)?;
-        Ok(if has_blocker {
+        Ok(if has_gating_finding {
             ExitCode::from(1)
         } else {
             ExitCode::SUCCESS

@@ -59,11 +59,14 @@ pub struct Warning {
 
 /// Severity ladder. Closed enum, kebab-case in JSON.
 ///
-/// `Blocker` is the highest tier — non-zero exit, prevents commits / CI
-/// passage. New tiers may be added at the top when a class of findings
-/// needs to outrank Blocker (e.g., security violations); doing so
-/// requires updating `Severity::rank` and every `has_blocker` pattern
-/// (the compiler enforces both via exhaustive `match`).
+/// `Blocker` and `Major` are the GATING tiers: any finding at or above
+/// `Major` fails the validation gate (non-zero exit, blocks commits / CI).
+/// `Minor` and `Info` are advisory — surfaced in the envelope but never
+/// change the exit code (e.g. an opted-out memory-only claim is `Minor`).
+/// New tiers may be added at the top when a class of findings needs to
+/// outrank Blocker; doing so requires updating `Severity::rank` (the
+/// compiler enforces the exhaustive `match`). The gate threshold lives in
+/// one place — [`Severity::fails_gate`] — consumed by every CLI command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Severity {
@@ -81,6 +84,26 @@ impl Severity {
             Self::Minor => 2,
             Self::Info => 3,
         }
+    }
+
+    /// Whether a finding of this severity fails the validation gate (exit 1).
+    /// Single source of truth for the gate threshold: `Blocker | Major`.
+    /// `Minor` / `Info` are advisory and do not change the exit code.
+    pub fn fails_gate(self) -> bool {
+        self.rank() <= Self::Major.rank()
+    }
+}
+
+#[cfg(test)]
+mod severity_tests {
+    use super::Severity;
+
+    #[test]
+    fn gate_threshold_is_blocker_and_major() {
+        assert!(Severity::Blocker.fails_gate());
+        assert!(Severity::Major.fails_gate());
+        assert!(!Severity::Minor.fails_gate(), "Minor is advisory");
+        assert!(!Severity::Info.fails_gate(), "Info is advisory");
     }
 }
 
