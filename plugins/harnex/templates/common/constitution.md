@@ -12,11 +12,11 @@ deny rules are guaranteed.
 
 ## II. Secrets never reach git
 
-Reads, writes, and edits of secret files (env, keys, credentials) are denied at
-the permission layer — the enforced boundary. Commit-time secret scanning
-(gitleaks) is a git pre-commit hook the project installs separately; it is
-recommended, not enforced by this harness. A leaked secret is irreversible
-once pushed.
+Two enforced boundaries: the permission layer denies reads/writes/edits of
+secret files (stops Claude), and the `hooks/pre-commit` git hook runs
+gitleaks on staged changes (stops a developer's own commit). The permission
+layer alone cannot cover commits made outside Claude — the git hook closes
+that gap. A leaked secret is irreversible once pushed.
 
 ## III. Destructive operations are denied, not discouraged
 

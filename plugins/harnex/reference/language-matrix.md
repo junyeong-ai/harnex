@@ -30,9 +30,14 @@ ruff; emitting the wrong formatter is the meta-failure to avoid).
 - `autoMemoryEnabled: false` is a defensible default for team repos (shared
   context lives in git, not per-developer caches) — emit only if the project
   signals it; never force.
-- Two hook wrappers: `_runner.sh` (anchor cwd at git root → probe runtime →
-  fail-open on env drift → dispatch) and `_stop_runner.sh` (same, always exit
-  0). Both reject `..` path-traversal in the script-name argument.
+- Two Claude Code hook wrappers: `_runner.sh` (anchor cwd at git root →
+  probe runtime → fail-open on env drift → dispatch) and `_stop_runner.sh`
+  (same, always exit 0). Both reject `..` path-traversal in the script-name
+  argument.
+- One git hook: `hooks/pre-commit` runs gitleaks on staged changes (the
+  enforced half of "secrets never reach git"; permission deny covers only
+  Claude). Fail-open if gitleaks is absent; escape hatch via
+  `HARNEX_SKIP_GITLEAKS=1`. Activated by `git config core.hooksPath hooks`.
 - `permissions.deny` floor: do NOT hand-write or re-enumerate it — copy
   `templates/common/permissions.deny.json` verbatim. That file is the single
   source of truth (generated from the oracle's `baseline` profile, held in sync
