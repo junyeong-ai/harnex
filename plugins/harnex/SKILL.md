@@ -38,9 +38,11 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
    emit the KEEP set, ship SOFTEN as opt-in with an escape hatch, emit nothing
    from CUT. No natural-language pattern-matching in a blocking tier.
 4. **Spec-correct.** Per spec-facts: hook `timeout` in seconds, Stop wrappers
-   exit 0, `mcp__server` / `mcp__server__tool` matchers (never a regex form),
-   `Bash(cmd *)` space-wildcards, `deny>ask>allow`, no project-ignored settings
-   keys. When in doubt, re-read the live doc — freezing the spec is the failure.
+   exit 0, hook MCP matchers `mcp__server__tool` or `mcp__server__.*` (bare
+   `mcp__server` matches NOTHING in a hook matcher — that bare form is
+   permission-rule syntax only), `Bash(cmd *)` space-wildcards,
+   `deny>ask>allow`, no project-ignored settings keys. When in doubt, re-read
+   the live doc — freezing the spec is the failure.
 5. **Right language.** Detect from lockfile+manifest; never cross-wire (biome
    for TS, ruff for Python, rustfmt for Rust). Never emit `node -e` /
    `python3 -c` into permissions. Never grant built-in read-only commands
@@ -131,10 +133,18 @@ Free-form additive generation invites free-form free-generation. The verb
 menu below enumerates the closed set; refuse any other request and ask the
 operator to re-phrase using a verb from this list.
 
-- **`extend hook <event-name>`** — add a hook for `<event-name>` (must be
-  in spec-facts hook events). Compose `_runner.sh` dispatch + a new verifier
-  script next to the existing siblings; add the event entry to
-  `.claude/settings.json` `hooks` (the managed region).
+- **`extend hook <event-name>`** — add a hook for `<event-name>` (must be in
+  spec-facts hook events). The runner selection is safety-critical and
+  template-driven: a Stop-class event (`Stop`, `SubagentStop`, `StopFailure`)
+  dispatches through `_stop_runner.sh` (forces exit 0 — non-zero exit on a
+  Stop hook triggers the re-stop loop); every other event dispatches through
+  `_runner.sh` (propagates exit code). The verifier script's BODY is
+  project-specific check logic the operator authors — that is not free-
+  generated safety-critical control flow, which lives entirely in the two
+  runner templates. Add the event entry to `.claude/settings.json` `hooks`
+  (the managed region) with the correct runner per the rule above; for a
+  PreToolUse/PermissionRequest matcher targeting MCP, use
+  `mcp__server__tool` / `mcp__server__.*`, never bare `mcp__server`.
 - **`extend rule <slug> <paths-glob>`** — drop a path-scoped rule at
   `.claude/rules/<slug>.md` with the given `paths:` frontmatter. Body is a
   short imperatives skeleton (heading + 3-5 bullets) — the operator fills.

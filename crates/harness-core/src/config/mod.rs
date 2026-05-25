@@ -663,6 +663,16 @@ impl Config {
         let Some(p) = &self.policy else {
             return Ok(());
         };
+        // Profile names must resolve — a typo (e.g. "basline") would
+        // otherwise be silently skipped by the permission auditor, dropping
+        // an intended guardrail with no failure signal. Fail at load instead.
+        if let Some(perms) = &p.permissions {
+            for name in &perms.profiles {
+                if crate::policy::PermissionProfile::from_str(name).is_none() {
+                    return Err(Error::PolicyProfileUnknown { name: name.clone() });
+                }
+            }
+        }
         for v in &p.versions {
             match v.strategy.as_str() {
                 "exact" | "minor" | "major" | "rolling" => {}
@@ -1057,6 +1067,29 @@ mod tests {
         let err = parse(src).unwrap_err();
         assert_eq!(err.code(), ErrorCode::ConfigInvalid);
         assert!(err.to_string().contains("empty source_key"));
+    }
+
+    #[test]
+    fn rejects_unknown_permission_profile() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [policy.permissions]
+            profiles = ["baseline", "basline"]
+        "#;
+        let err = parse(src).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::PolicyProfileUnknown);
+    }
+
+    #[test]
+    fn accepts_known_permission_profiles() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [policy.permissions]
+            profiles = ["baseline", "python-dev"]
+        "#;
+        assert!(parse(src).is_ok());
     }
 
     #[test]
