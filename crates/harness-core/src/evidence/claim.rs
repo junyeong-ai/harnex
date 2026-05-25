@@ -18,12 +18,12 @@ use regex::Regex;
 pub struct Claim {
     pub raw: String,
     pub provenance: Option<String>,
-    pub value: ClaimValue,
+    pub kind: ClaimKind,
     pub line: u32,
 }
 
 #[derive(Debug, Clone)]
-pub enum ClaimValue {
+pub enum ClaimKind {
     FilePathLine {
         path: String,
         line: Option<u32>,
@@ -82,7 +82,7 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             out.push(Claim {
                 raw: cap[0].to_string(),
                 provenance: Some("fetched-url".to_string()),
-                value: ClaimValue::Url {
+                kind: ClaimKind::Url {
                     url: cap[2].to_string(),
                     fetched_date: Some(cap[1].to_string()),
                 },
@@ -94,7 +94,7 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             out.push(Claim {
                 raw: cap[0].to_string(),
                 provenance: Some("context7".to_string()),
-                value: ClaimValue::Context7Library {
+                kind: ClaimKind::Context7Library {
                     library: cap[1].to_string(),
                 },
                 line: line_no,
@@ -105,7 +105,7 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             out.push(Claim {
                 raw: "[memory]".to_string(),
                 provenance: Some("memory-only".to_string()),
-                value: ClaimValue::Memory,
+                kind: ClaimKind::Memory,
                 line: line_no,
             });
         }
@@ -114,7 +114,7 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             out.push(Claim {
                 raw: cap[0].to_string(),
                 provenance: Some("internal".to_string()),
-                value: ClaimValue::FilePathLine {
+                kind: ClaimKind::FilePathLine {
                     path: cap[1].to_string(),
                     // The regex guarantees `cap[2]` is all digits, so the
                     // only parse failure is OVERFLOW of u32 — a line number
@@ -139,8 +139,8 @@ mod tests {
         let md = "See `src/lib.rs:42` for context.";
         let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);
-        match &claims[0].value {
-            ClaimValue::FilePathLine { path, line } => {
+        match &claims[0].kind {
+            ClaimKind::FilePathLine { path, line } => {
                 assert_eq!(path, "src/lib.rs");
                 assert_eq!(*line, Some(42));
             }
@@ -202,8 +202,8 @@ Back outside: `src/after.rs:7`.
         let claims = parse_claims(md);
         let paths: Vec<&str> = claims
             .iter()
-            .filter_map(|c| match &c.value {
-                ClaimValue::FilePathLine { path, .. } => Some(path.as_str()),
+            .filter_map(|c| match &c.kind {
+                ClaimKind::FilePathLine { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -221,8 +221,8 @@ Back outside: `src/after.rs:7`.
 ";
         let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);
-        match &claims[0].value {
-            ClaimValue::FilePathLine { path, .. } => assert_eq!(path, "src/outside.md"),
+        match &claims[0].kind {
+            ClaimKind::FilePathLine { path, .. } => assert_eq!(path, "src/outside.md"),
             _ => panic!("expected FilePathLine"),
         }
     }

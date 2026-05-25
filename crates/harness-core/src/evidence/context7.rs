@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use super::{Claim, ClaimValue, Verifier, VerifyOutcome};
+use super::{Claim, ClaimKind, Verifier, VerifyOutcome};
 
 pub(crate) struct Context7Verifier {
     provenance: String,
@@ -28,8 +28,8 @@ impl Verifier for Context7Verifier {
     }
 
     fn verify(&self, claim: &Claim, _working_dir: &Path) -> VerifyOutcome {
-        let library = match &claim.value {
-            ClaimValue::Context7Library { library } => library,
+        let library = match &claim.kind {
+            ClaimKind::Context7Library { library } => library,
             _ => {
                 return VerifyOutcome::Violation {
                     message: format!(

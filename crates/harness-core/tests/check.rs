@@ -266,8 +266,8 @@ name = "allowed"
         "harness codegen sync"
     );
     assert!(matches!(
-        outcome.fixes_attempted[0].status,
-        harness_core::check::FixStatus::Applied
+        outcome.fixes_attempted[0].outcome,
+        harness_core::check::FixOutcome::Applied
     ));
     assert!(
         outcome.after.findings.is_empty(),
@@ -290,17 +290,17 @@ fn fix_is_noop_when_no_auto_fixable_findings() {
 }
 
 #[test]
-fn fix_unrecognized_command_status() {
+fn fix_unrecognized_command_outcome() {
     // Manually craft a "fix command not in registry" via the registry's
     // own match. Direct path: invoke try_fix through fix() with no
     // findings; verify branch is reachable via match arms.
     // Since auto_fixable + fix_command currently only triggers codegen,
-    // unrecognized status path is reserved for future validators.
+    // the Unrecognized outcome path is reserved for future validators.
     // This test documents the API surface exists.
     let tmp = TempDir::new().unwrap();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
-    // No fixes attempted means no Unrecognized statuses surface today;
+    // No fixes attempted means no Unrecognized outcomes surface today;
     // this test pins behaviour for documentation.
     assert!(outcome.fixes_attempted.is_empty());
 }

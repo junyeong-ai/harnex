@@ -48,7 +48,7 @@ pub struct CheckOutcome {
 /// after-check snapshot. Consumers compare `before.findings.len()` vs
 /// `after.findings.len()` to confirm convergence.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-pub struct FixOutcome {
+pub struct FixReport {
     pub before: CheckOutcome,
     pub fixes_attempted: Vec<FixAttempt>,
     pub after: CheckOutcome,
@@ -59,12 +59,12 @@ pub struct FixAttempt {
     pub fix_command: String,
     /// Slugs of findings this fix targeted.
     pub finding_slugs: Vec<String>,
-    pub status: FixStatus,
+    pub outcome: FixOutcome,
 }
 
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-#[serde(tag = "status", rename_all = "kebab-case")]
-pub enum FixStatus {
+#[serde(tag = "outcome", rename_all = "kebab-case")]
+pub enum FixOutcome {
     /// Fix function ran successfully.
     Applied,
     /// Fix function ran but returned an error.
@@ -125,7 +125,7 @@ impl<'a> ProjectChecker<'a> {
     /// Run check, execute every auto_fixable finding via the safe-fix
     /// registry, then re-run check. When no auto_fixable findings exist
     /// the second run is skipped (`before == after`).
-    pub fn fix(&self) -> Result<FixOutcome> {
+    pub fn fix(&self) -> Result<FixReport> {
         use std::collections::BTreeMap;
 
         let before = self.run()?;
@@ -139,7 +139,7 @@ impl<'a> ProjectChecker<'a> {
         }
         if grouped.is_empty() {
             let after = before.clone();
-            return Ok(FixOutcome {
+            return Ok(FixReport {
                 before,
                 fixes_attempted: Vec::new(),
                 after,
@@ -148,17 +148,17 @@ impl<'a> ProjectChecker<'a> {
         let mut attempts: Vec<FixAttempt> = grouped
             .into_iter()
             .map(|(cmd, slugs)| {
-                let status = self.try_fix(&cmd);
+                let outcome = self.try_fix(&cmd);
                 FixAttempt {
                     fix_command: cmd,
                     finding_slugs: slugs,
-                    status,
+                    outcome,
                 }
             })
             .collect();
         attempts.sort_by(|a, b| a.fix_command.cmp(&b.fix_command));
         let after = self.run()?;
-        Ok(FixOutcome {
+        Ok(FixReport {
             before,
             fixes_attempted: attempts,
             after,
@@ -173,20 +173,20 @@ impl<'a> ProjectChecker<'a> {
     /// 3. Add a match arm here (the compiler enforces exhaustiveness on
     ///    `FixCommand`, so missing this step is a build error).
     /// 4. Add a test asserting drift → fix → 0 findings.
-    fn try_fix(&self, cmd: &str) -> FixStatus {
+    fn try_fix(&self, cmd: &str) -> FixOutcome {
         let Some(parsed) = FixCommand::from_str(cmd) else {
-            return FixStatus::Unrecognized;
+            return FixOutcome::Unrecognized;
         };
         match parsed {
             FixCommand::CodegenSync => {
                 let Some(cfg) = self.config.codegen.as_ref() else {
-                    return FixStatus::Failed {
+                    return FixOutcome::Failed {
                         reason: "no [codegen] section in harness.toml".into(),
                     };
                 };
                 match SentinelSyncer::new(cfg, self.working_dir).sync() {
-                    Ok(_) => FixStatus::Applied,
-                    Err(e) => FixStatus::Failed {
+                    Ok(_) => FixOutcome::Applied,
+                    Err(e) => FixOutcome::Failed {
                         reason: e.to_string(),
                     },
                 }

@@ -14,7 +14,7 @@ use std::path::Path;
 use jiff::{Timestamp, Unit, civil::Date, tz::TimeZone};
 use url::Url;
 
-use super::{Claim, ClaimValue, Verifier, VerifyOutcome};
+use super::{Claim, ClaimKind, Verifier, VerifyOutcome};
 
 pub(crate) struct FetchedUrlVerifier {
     provenance: String,
@@ -36,8 +36,8 @@ impl Verifier for FetchedUrlVerifier {
     }
 
     fn verify(&self, claim: &Claim, _working_dir: &Path) -> VerifyOutcome {
-        let (url, fetched_date) = match &claim.value {
-            ClaimValue::Url { url, fetched_date } => (url, fetched_date),
+        let (url, fetched_date) = match &claim.kind {
+            ClaimKind::Url { url, fetched_date } => (url, fetched_date),
             _ => {
                 return VerifyOutcome::Violation {
                     message: format!(

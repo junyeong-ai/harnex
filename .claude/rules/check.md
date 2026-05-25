@@ -47,7 +47,7 @@ agents (CI, pre-commit) can execute the fix without operator intervention.
 `harness check --fix` (and `ProjectChecker::fix`) close the loop: groups
 findings by `fix_command`, dispatches each through the [`FixCommand`]
 enum's exhaustive match in `try_fix`, then re-runs the check. Returns
-`FixOutcome { before, fixes_attempted, after }` — the consumer compares
+`FixReport { before, fixes_attempted, after }` — the consumer compares
 `before.findings.len()` vs `after.findings.len()` to confirm convergence.
 
 Adding a new auto-fixable finding requires three coordinated edits:

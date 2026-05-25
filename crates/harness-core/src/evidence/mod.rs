@@ -24,7 +24,7 @@ pub mod memory;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub use claim::{Claim, ClaimValue, parse_claims};
+pub use claim::{Claim, ClaimKind, parse_claims};
 
 use crate::config::EvidenceConfig;
 use crate::envelope::{Finding, Location, Severity};
