@@ -104,12 +104,20 @@ impl JsonlStorage {
             source: e,
         })?;
 
+        // The ledger filename is derived from `event.kind`. Pin it to a single
+        // path component so the computed path can NEVER escape `self.dir` —
+        // this rejects separators (`a/b`), absolute kinds (`/tmp/x`), and
+        // `.`/`..` regardless of where the kind came from. Config validates
+        // kind names at load; this is the self-contained write-boundary guard
+        // for any direct `JsonlStorage` caller (telemetry cannot depend on the
+        // config layer's KIND_NAME_PATTERN — that would be a cycle).
+        if Path::new(&event.kind).file_name().and_then(|f| f.to_str()) != Some(event.kind.as_str())
+        {
+            return Err(Error::PathTraversal {
+                path: PathBuf::from(format!("{}.jsonl", event.kind)),
+            });
+        }
         let path = self.current_file(&event.kind);
-        // The filename is derived from `event.kind`; guard the COMPUTED path
-        // (not just `self.dir`) so a malformed kind can never escape the
-        // storage dir. Config validates kind names at load; this is the
-        // belt-and-suspenders for any direct caller of `JsonlStorage`.
-        path_guard::reject_traversal(&path)?;
         path_guard::reject_symlink_write(&path)?;
 
         // Serialise the rotate-and-append critical section across processes.
