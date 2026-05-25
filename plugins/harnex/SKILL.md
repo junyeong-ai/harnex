@@ -107,27 +107,53 @@ operator to re-phrase using a verb from this list.
   permissions.allow.json}` + the matching `<lang>-dev` profile stub in
   `profiles.rs`. Operator fills the toolchain commands; the
   `policy_template_sync` reverse-gap test enforces both sides exist.
-- **`extend pattern <name>`** — install a proven engineering pattern from
-  the pattern library at `${CLAUDE_SKILL_DIR}/templates/patterns/<name>/`.
-  Each pattern is a skeleton with `<!-- fill in -->` markers — the
-  operator customizes it for their project. Available patterns:
-  - `review-lenses` — convergent review loop framework with severity
-    routing and stall-limit. Creates `.claude/rules/review-lenses.md`.
-  - `spec-workflow` — spec-driven development directory structure
-    (`specs/<slug>/`) with lifecycle states and gates. Creates
-    `.claude/rules/spec-workflow.md`.
-  - `observability` — span naming, PII boundary, baseline-before-alert
-    maturity model. Creates `.claude/rules/observability.md`.
-  - `deprecation` — allow-marker grammar with sunset dates,
-    delete-in-same-PR default. Creates `.claude/rules/deprecation.md`.
-  - `pr-conventions` — PR description template (TL;DR / What changed /
-    Impact / Risk) + AI-fill discipline. Creates
-    `.claude/rules/pr-conventions.md` + `.github/pull_request_template.md`.
-  - `naming-decisions` — team naming vocabulary (tool suffixes, parameter
-    bags, factory verbs, domain terms). Creates
-    `.claude/rules/naming-decisions.md`.
-  - `copy-conventions` — communication register, terminology namespace,
-    error message format, i18n. Creates `.claude/rules/copy-conventions.md`.
+- **`extend pattern <name>`** — install a proven engineering pattern,
+  **customized to the target project**. Flow:
+  1. Read the skeleton from `${CLAUDE_SKILL_DIR}/templates/patterns/<name>/`.
+  2. Explore the project (Phase-1 fingerprint + pattern-specific analysis).
+  3. Customize the skeleton's defaults based on what you observe.
+  4. Write to `${CLAUDE_PROJECT_DIR}`.
+  The template provides proven structure + defaults; the LLM replaces
+  generic defaults with project-specific observations. Sections where the
+  project has no clear convention yet keep the default with a note.
+
+  **Per-pattern analysis instructions:**
+  - `naming-decisions` — scan file names (dominant casing), imports
+    (factory verb patterns), type definitions (parameter bag suffixes),
+    tool scripts (suffix conventions). Pre-fill each section with observed
+    patterns. Flag `## Domain vocabulary` for operator input.
+  - `copy-conventions` — detect locale from string literals. Detect error
+    message format from existing error handling code. Detect i18n framework
+    from dependencies (next-intl, react-i18n, gettext, fluent). Pre-fill
+    register and terminology with observations.
+  - `review-lenses` — auto-link lens `anchors:` to the project's existing
+    `.claude/rules/` files. Copy 6 default lens files to `.claude/lenses/`.
+    Customize `applies_to:` based on what file types the project has.
+  - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
+    If found, adapt template structure to match existing layout instead of
+    overwriting. Map CI stages to gates if CI config exists.
+  - `observability` — detect logging/tracing framework (structlog, winston,
+    tracing, OpenTelemetry SDK). Pre-fill namespace prefix from the project
+    name. Adapt span naming examples to the detected framework.
+  - `deprecation` — detect existing deprecation markers (`@deprecated`
+    decorators, JSDoc tags, `#[deprecated]` attributes). Adapt the
+    allow-marker format to complement, not conflict with, the language's
+    native deprecation mechanism.
+  - `pr-conventions` — check for existing `.github/pull_request_template.md`.
+    If found, merge harnex defaults into the existing template's structure
+    rather than replacing it.
+
+  Available patterns:
+  - `review-lenses` — convergent review loop + 6 default lens files.
+  - `spec-workflow` — 5-phase spec pipeline (specify → plan → implement →
+    validate → wrapup) + optional preview/deploy.
+  - `observability` — span naming, PII boundary, baseline-before-alert.
+  - `deprecation` — allow-marker grammar with sunset dates.
+  - `pr-conventions` — PR template + AI-fill discipline.
+  - `naming-decisions` — team naming vocabulary (tool suffixes, factory
+    verbs, parameter bags, domain terms).
+  - `copy-conventions` — communication register, terminology, error
+    message format, i18n.
 
 In every verb: read the module-map's `existing_harness` first; match the
 incumbent hook-runner pattern, rule mechanism, and gate sequence. Never
