@@ -71,8 +71,14 @@ pub fn extract_regions(content: &str) -> BTreeMap<String, String> {
             break;
         };
         let body = &content[header_end..header_end + rel_end];
-        if !seen_slugs.insert(slug.clone()) {
-            // Duplicate slug — poison to empty body so drift checks fire.
+        // A body that itself contains a start marker means malformed nesting
+        // (e.g. `:start a` … `:start a` … `:end a`): the inner `:end` closed
+        // the OUTER start and the nested start was swallowed into this body,
+        // so the duplicate-slug guard below never sees it. Poison to an empty
+        // body so a downstream drift check fires rather than accepting a
+        // region with a stray sentinel inside it.
+        if !seen_slugs.insert(slug.clone()) || body.contains(START_PREFIX) {
+            // Duplicate / nested slug — poison to empty body so drift checks fire.
             out.insert(slug, String::new());
         } else {
             out.insert(slug, body.to_string());
@@ -159,6 +165,28 @@ second
             regions.get("a").map(String::as_str),
             Some(""),
             "duplicate slug must poison to empty body"
+        );
+    }
+
+    #[test]
+    fn nested_same_slug_poisons_to_empty_body() {
+        // `:start a` … `:start a` … `:end a` … `:end a`: the inner `:end`
+        // closes the outer start and the nested start lands inside the body.
+        // That body contains a start marker → poison so drift is detected.
+        let content = "\
+<!-- harnex-managed:start a -->
+outer
+<!-- harnex-managed:start a -->
+inner
+<!-- harnex-managed:end a -->
+trailer
+<!-- harnex-managed:end a -->
+";
+        let regions = extract_regions(content);
+        assert_eq!(
+            regions.get("a").map(String::as_str),
+            Some(""),
+            "nested same-slug must poison to empty body"
         );
     }
 

@@ -70,6 +70,42 @@ allowed = ["old"]
 }
 
 #[test]
+fn sync_rejects_duplicate_sentinel_pair() {
+    // A target with the SAME begin/end pair twice would leave the second
+    // block permanently stale (replace_block updates only the first). It must
+    // be rejected as a structural error, not silently half-synced.
+    let tmp = TempDir::new().unwrap();
+    let source = tmp.path().join("src.toml");
+    std::fs::write(&source, "[kinds]\nallowed = [\"rule\"]\n").unwrap();
+    let target = tmp.path().join("dup.toml");
+    std::fs::write(
+        &target,
+        "# BEGIN k\nold\n# END k\nmid\n# BEGIN k\nstale\n# END k\n",
+    )
+    .unwrap();
+    let cfg = CodegenConfig {
+        groups: vec![CodegenGroupDecl {
+            name: "kinds".into(),
+            source: source.strip_prefix(tmp.path()).unwrap().to_path_buf(),
+            source_key: "kinds.allowed".into(),
+            source_format: "toml".into(),
+            targets: vec![SentinelTargetDecl {
+                path: target.strip_prefix(tmp.path()).unwrap().to_path_buf(),
+                begin: "# BEGIN k".into(),
+                end: "# END k".into(),
+                format: "toml-array-assignment".into(),
+                name: Some("allowed".into()),
+            }],
+        }],
+    };
+    let err = SentinelSyncer::new(&cfg, tmp.path()).sync().unwrap_err();
+    assert_eq!(
+        err.code(),
+        harness_core::error::ErrorCode::CodegenSentinelDuplicate
+    );
+}
+
+#[test]
 fn sync_applies_changes_atomically() {
     let tmp = TempDir::new().unwrap();
     let (source, target) = setup(&tmp);

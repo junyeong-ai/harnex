@@ -112,6 +112,25 @@ impl<'a> SentinelSyncer<'a> {
             path: target_path.clone(),
             source: e,
         })?;
+        // `replace_block` updates only the FIRST begin/end pair; a second pair
+        // would be left permanently stale and silently converge. Reject a
+        // duplicated sentinel pair as a structural error rather than syncing
+        // half the file.
+        let begin_count = original
+            .lines()
+            .filter(|l| l.trim() == target.begin.trim())
+            .count();
+        let end_count = original
+            .lines()
+            .filter(|l| l.trim() == target.end.trim())
+            .count();
+        if begin_count > 1 || end_count > 1 {
+            return Err(Error::CodegenSentinelDuplicate {
+                begin: target.begin.clone(),
+                end: target.end.clone(),
+                path: target_path.clone(),
+            });
+        }
         let new_content = replace_block(&original, &target.begin, &target.end, &rendered)
             .ok_or_else(|| Error::CodegenSentinelMissing {
                 begin: target.begin.clone(),

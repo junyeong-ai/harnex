@@ -36,6 +36,7 @@ pub enum ErrorCode {
     CodegenSourceShapeInvalid,
     CodegenRendererUnknown,
     CodegenSentinelMissing,
+    CodegenSentinelDuplicate,
     CodegenCycle,
     PolicyProfileUnknown,
     PolicyVersionFailure,
@@ -72,6 +73,7 @@ impl ErrorCode {
         Self::CodegenSourceShapeInvalid,
         Self::CodegenRendererUnknown,
         Self::CodegenSentinelMissing,
+        Self::CodegenSentinelDuplicate,
         Self::CodegenCycle,
         Self::PolicyProfileUnknown,
         Self::PolicyVersionFailure,
@@ -103,6 +105,7 @@ impl ErrorCode {
             Self::CodegenSourceShapeInvalid => "CODEGEN_SOURCE_SHAPE_INVALID",
             Self::CodegenRendererUnknown => "CODEGEN_RENDERER_UNKNOWN",
             Self::CodegenSentinelMissing => "CODEGEN_SENTINEL_MISSING",
+            Self::CodegenSentinelDuplicate => "CODEGEN_SENTINEL_DUPLICATE",
             Self::CodegenCycle => "CODEGEN_CYCLE",
             Self::PolicyProfileUnknown => "POLICY_PROFILE_UNKNOWN",
             Self::PolicyVersionFailure => "POLICY_VERSION_FAILURE",
@@ -173,6 +176,13 @@ pub enum Error {
         path: PathBuf,
     },
 
+    #[error("codegen sentinel '{begin}' / '{end}' appears more than once in {path:?}")]
+    CodegenSentinelDuplicate {
+        begin: String,
+        end: String,
+        path: PathBuf,
+    },
+
     #[error("codegen cycle: target {path:?} is also a source")]
     CodegenCycle { path: PathBuf },
 
@@ -235,6 +245,7 @@ impl Error {
             Self::CodegenSourceShapeInvalid { .. } => ErrorCode::CodegenSourceShapeInvalid,
             Self::CodegenRendererUnknown { .. } => ErrorCode::CodegenRendererUnknown,
             Self::CodegenSentinelMissing { .. } => ErrorCode::CodegenSentinelMissing,
+            Self::CodegenSentinelDuplicate { .. } => ErrorCode::CodegenSentinelDuplicate,
             Self::CodegenCycle { .. } => ErrorCode::CodegenCycle,
             Self::PolicyProfileUnknown { .. } => ErrorCode::PolicyProfileUnknown,
             Self::PolicyVersionFailure { .. } => ErrorCode::PolicyVersionFailure,
@@ -287,6 +298,9 @@ impl Error {
             Self::CodegenSentinelMissing { .. } => {
                 Some("add the BEGIN/END sentinel lines to the target file")
             }
+            Self::CodegenSentinelDuplicate { .. } => Some(
+                "the target file must contain exactly one BEGIN/END sentinel pair — remove the duplicate",
+            ),
             Self::CodegenCycle { .. } => Some("targets must not be source files in any group"),
             Self::PolicyProfileUnknown { .. } => Some(
                 "use one of the built-in profiles or register a custom profile in harness.toml",
