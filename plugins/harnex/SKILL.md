@@ -59,27 +59,60 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
 ## Mode: scaffold (greenfield)
 
 A repo with no `.claude/`.
-1. Phase-1 fingerprint (exploration.md) → language profile. Single-package if no
-   workspace globs — emit the lean variant (no per-module layer).
-2. Compose into `${CLAUDE_PROJECT_DIR}`:
-   - `.claude/settings.json` (`permissions` = common `permissions.deny.json` +
-     `<lang>/permissions.allow.json`; `hooks` = common `hooks.json`)
-   - `hooks/` (`<lang>/_runner.sh`, common `_stop_runner.sh`,
-     `<lang>/post-format.sh`, `<lang>/session-start.sh`,
-     common `check-on-stop.sh`)
-   - `.claude/rules/constitution.md` (common, managed region wraps the
-     articles — the path-scoped rules added later sit beside it untouched)
-   - `.claude/rules/governance.md` (common — self-improvement gatekeeper;
-     4-question rubric for when to add/reject/retire rules)
-   - `.claude/rules/artifact-lifecycle.md` (common — promotion path from
-     observation → validated pattern → rule; retirement criteria)
-   - `CLAUDE.md` (common skeleton; user fills `## Layout`, `## Build & test`,
-     `## Conventions` — they are project-authored; the `## Enforcement`
-     section is the managed region)
-   - Optionally one `<lang>/rules/<lang>-conventions.md` as a starting
-     path-scoped rule example.
-3. Set hook scripts executable (0o755). Run `harness check` if the binary
-   oracle is available.
+
+### Step 1 — Deep project analysis
+
+Run the full Phase-1 fingerprint (exploration.md), PLUS the following
+project-specific analysis. The goal: every generated file is pre-filled
+with project-fit content, not blank placeholders.
+
+| Analyze | Source | Feeds into |
+|---|---|---|
+| Language + package manager | lockfile + manifest | template selection |
+| Monorepo structure | workspace config | lean vs multi-package scaffold |
+| Build / test / lint commands | Makefile, Justfile, package.json `scripts`, pyproject.toml `[tool.just]`/`[project.scripts]`, CI config | CLAUDE.md `## Build & test` |
+| Directory layout | top-level `ls` + workspace member dirs | CLAUDE.md `## Layout` |
+| Project description | README.md first paragraph, manifest `description` field | CLAUDE.md header |
+| Formatter / linter / type checker | biome.json, .eslintrc, ruff in pyproject.toml, rustfmt.toml, tsconfig.json | CLAUDE.md `## Conventions`, post-format hook config |
+| Existing CI pipeline | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile` | hook event selection, gate sequence |
+| Existing test framework | vitest.config, pytest.ini, Cargo test | `<lang>-conventions.md` testing section |
+
+### Step 2 — Compose artifacts from templates + analysis
+
+- `.claude/settings.json` (`permissions` = common `permissions.deny.json` +
+  `<lang>/permissions.allow.json`; `hooks` = common `hooks.json`).
+  If CI config reveals additional tools the project uses (docker, terraform,
+  gcloud), suggest composing with `gcp-strict` or `aws-strict` profiles.
+- `hooks/` (`<lang>/_runner.sh`, common `_stop_runner.sh`,
+  `<lang>/post-format.sh`, `<lang>/session-start.sh`,
+  common `check-on-stop.sh`).
+- `.claude/rules/constitution.md` (common, managed region wraps the
+  articles — the path-scoped rules added later sit beside it untouched).
+- `.claude/rules/governance.md` (common — self-improvement gatekeeper;
+  4-question rubric for when to add/reject/retire rules).
+- `.claude/rules/artifact-lifecycle.md` (common — promotion path from
+  observation → validated pattern → rule; retirement criteria).
+- `CLAUDE.md` — **LLM fills from analysis, not blank placeholders**:
+  - `# <project-name>` — from manifest `name` or README title.
+  - `## Layout` — from directory scan. One line per top-level area;
+    let the agent read manifests for detail rather than enumerating
+    every file. Include workspace member directories if monorepo.
+  - `## Build & test` — exact commands from Makefile/Justfile/package.json
+    scripts. Format: `<command>` — `<what it does>`.
+  - `## Conventions` — only decisions the formatter doesn't enforce.
+    State the formatter/linter/type-checker in use (observed from config)
+    and any project-specific patterns found in the codebase.
+  - `## Enforcement` — harnex-managed region (from template).
+- Optionally one `<lang>/rules/<lang>-conventions.md` as a starting
+  path-scoped rule — customize to the detected test framework, toolchain.
+
+### Step 3 — Finalize
+
+Set hook scripts executable (0o755). Verify: `bash -n` on every `.sh`,
+JSON-parse settings.json. Run `harness check` / `harness audit` if the
+binary oracle is available. Report what was generated and suggest
+`extend pattern` additions based on what the analysis revealed (e.g.,
+if CI has deploy stages → suggest `extend pattern spec-workflow`).
 
 ## Mode: extend (brownfield, additive — closed verb menu)
 
