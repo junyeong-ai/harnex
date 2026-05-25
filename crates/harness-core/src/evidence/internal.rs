@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use super::{Claim, ClaimValue, Verifier, VerifyOutcome};
+use super::{Claim, ClaimKind, Verifier, VerifyOutcome};
 
 pub(crate) struct FilePathLineVerifier {
     provenance: String,
@@ -20,8 +20,8 @@ impl Verifier for FilePathLineVerifier {
     }
 
     fn verify(&self, claim: &Claim, working_dir: &Path) -> VerifyOutcome {
-        let (path, line) = match &claim.value {
-            ClaimValue::FilePathLine { path, line } => (path, *line),
+        let (path, line) = match &claim.kind {
+            ClaimKind::FilePathLine { path, line } => (path, *line),
             _ => {
                 return VerifyOutcome::Violation {
                     message: format!(
