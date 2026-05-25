@@ -139,9 +139,17 @@ impl ConsumerDetector for GrepConsumerDetector {
             if excludes.iter().any(|p| p.matches_path(relative)) {
                 continue;
             }
-            if let Ok(content) = std::fs::read_to_string(path)
-                && content.contains(&needle)
-            {
+            // Read bytes (not `read_to_string`) and lossy-decode: a genuine IO
+            // error (e.g. permission denied) must surface — silently skipping a
+            // readable-but-errored file could miss a consumer and produce a
+            // false `NoConsumers` retirement signal. Invalid UTF-8 is decoded
+            // lossily rather than dropped, so one stray byte never aborts the
+            // sweep nor hides a slug match.
+            let bytes = std::fs::read(path).map_err(|e| Error::IoFailure {
+                path: path.to_path_buf(),
+                source: e,
+            })?;
+            if String::from_utf8_lossy(&bytes).contains(&needle) {
                 out.push(relative.to_path_buf());
             }
         }

@@ -600,14 +600,18 @@ impl Config {
                     location: None,
                 });
             }
-            // Source and target paths must stay inside the project. The
-            // runtime write/read guard rejects `..` at execution time, so per
-            // Article IV reject it at load rather than deferring to a runtime
-            // failure on an otherwise "valid" config.
-            if crate::path_guard::reject_traversal(&group.source).is_err() {
+            // Source and target paths must stay inside the project: reject
+            // both `..` traversal AND absolute paths (an absolute path wins a
+            // `join`, silently escaping working_dir). The runtime write/read
+            // guard would reject these at execution time, so per Article IV
+            // reject them at load rather than deferring to a runtime failure
+            // on an otherwise "valid" config.
+            if crate::path_guard::reject_traversal(&group.source).is_err()
+                || group.source.is_absolute()
+            {
                 return Err(Error::ConfigInvalid {
                     message: format!(
-                        "codegen group '{}' source '{}' must not contain `..`",
+                        "codegen group '{}' source '{}' must be project-relative (no `..`, no leading `/`)",
                         group.name,
                         group.source.display()
                     ),
@@ -616,10 +620,12 @@ impl Config {
             }
             sources.insert(normalize_lexical(&group.source));
             for target in &group.targets {
-                if crate::path_guard::reject_traversal(&target.path).is_err() {
+                if crate::path_guard::reject_traversal(&target.path).is_err()
+                    || target.path.is_absolute()
+                {
                     return Err(Error::ConfigInvalid {
                         message: format!(
-                            "codegen group '{}' target '{}' must not contain `..`",
+                            "codegen group '{}' target '{}' must be project-relative (no `..`, no leading `/`)",
                             group.name,
                             target.path.display()
                         ),
@@ -663,12 +669,15 @@ impl Config {
                 }
             }
         }
-        // Duplicate target sentinels across groups would create non-convergent sync.
+        // Duplicate target sentinels across groups would create non-convergent
+        // sync. Key on the LEXICALLY-NORMALIZED path (as the cycle check above
+        // does) so `target.md` and `./target.md` are recognized as the same
+        // file rather than slipping past as distinct keys.
         let mut target_sentinels: HashSet<(PathBuf, String, String)> = HashSet::new();
         for group in &cg.groups {
             for target in &group.targets {
                 let key = (
-                    target.path.clone(),
+                    normalize_lexical(&target.path),
                     target.begin.clone(),
                     target.end.clone(),
                 );
@@ -1075,7 +1084,31 @@ mod tests {
         "#;
         let err = parse(src).unwrap_err();
         assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("must not contain `..`"));
+        assert!(err.to_string().contains("must be project-relative"));
+    }
+
+    #[test]
+    fn rejects_codegen_target_absolute_path() {
+        // An absolute target path wins a `join` and escapes working_dir, so it
+        // must be rejected at load just like `..`.
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+
+            [codegen]
+            [[codegen.groups]]
+            name = "group-a"
+            source = "source.toml"
+            source_key = "values"
+            [[codegen.groups.targets]]
+            path = "/etc/cron.d/evil.md"
+            begin = "<!-- BEGIN:x -->"
+            end = "<!-- END:x -->"
+            format = "markdown-bullet-list"
+        "#;
+        let err = parse(src).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
+        assert!(err.to_string().contains("must be project-relative"));
     }
 
     #[test]

@@ -352,14 +352,18 @@ mod error_code_tests {
     }
 
     #[test]
-    fn all_is_complete_against_as_str() {
-        // The exhaustive `as_str` match already forces every variant to have
-        // a string; this asserts ALL enumerates exactly those. A new variant
-        // added to the enum + as_str but forgotten in ALL is caught here
-        // because the schema (export::error_code_strings) derives from ALL.
+    fn all_entries_are_unique_and_nonshrinking() {
+        // Guards what a test CAN guard without variant reflection: ALL carries
+        // no duplicate (a copy-paste slip) and never shrinks (a dropped
+        // variant). It does NOT prove ALL lists every variant — on stable Rust
+        // that needs variant reflection. The defense against an as_str-present
+        // but ALL-absent variant is procedural: the exhaustive `as_str` match
+        // forces editing THIS file when a variant is added (ALL sits directly
+        // above it), and the add-variant checklist in crates/harness-core/
+        // CLAUDE.md names the step. Bump the floor when a variant is added.
         let count = ErrorCode::ALL.len();
         let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(count, unique.len(), "ALL has a duplicate variant");
-        assert!(count >= 27, "ALL shrank unexpectedly — variant dropped?");
+        assert!(count >= 28, "ALL shrank unexpectedly — variant dropped?");
     }
 }
