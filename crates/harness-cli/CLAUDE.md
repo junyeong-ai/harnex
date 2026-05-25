@@ -29,6 +29,11 @@ The gate threshold is the single source of truth `Severity::fails_gate()`
 `findings.iter().any(|f| f.severity.fails_gate())` — keep it identical across
 sites. To change the threshold, edit `fails_gate`, never the call sites.
 
+## Shell completions
+
+`completions <shell>` delegates to `clap_complete::Shell::value_variants()` —
+never hand-maintain the shell list.
+
 ## Adding a subcommand
 
 1. Create `commands/<group>.rs` exposing a clap `enum SomeCommand` plus
