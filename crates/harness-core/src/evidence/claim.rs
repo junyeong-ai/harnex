@@ -116,7 +116,12 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
                 provenance: Some("internal".to_string()),
                 value: ClaimValue::FilePathLine {
                     path: cap[1].to_string(),
-                    line: cap[2].parse().ok(),
+                    // The regex guarantees `cap[2]` is all digits, so the
+                    // only parse failure is OVERFLOW of u32 — a line number
+                    // far beyond any file. Map it to u32::MAX so the verifier
+                    // reports it as out-of-range, never silently as "no line
+                    // to check" (which would let a bogus claim pass).
+                    line: Some(cap[2].parse().unwrap_or(u32::MAX)),
                 },
                 line: line_no,
             });

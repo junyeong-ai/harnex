@@ -101,6 +101,23 @@ fn rejects_line_out_of_range() {
 }
 
 #[test]
+fn rejects_overflowing_line_number() {
+    // A line literal that overflows u32 must surface as out-of-range, never
+    // be silently dropped to "no line to check" (which would pass on an
+    // existing file).
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("src/lib.rs");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "only one line\n").unwrap();
+
+    let markdown = "See `src/lib.rs:999999999999999999999`.";
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
+    assert_eq!(findings.len(), 1, "overflowing line must be a finding");
+    assert!(findings[0].message.contains("out of range"));
+}
+
+#[test]
 fn memory_only_blocks_when_configured() {
     let tmp = TempDir::new().unwrap();
     let markdown = "Unverified [memory] claim.";

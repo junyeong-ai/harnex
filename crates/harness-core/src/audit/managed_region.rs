@@ -191,6 +191,20 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
     // would produce duplicate findings and mask which template is canonical.
     let mut seen = std::collections::BTreeSet::new();
     for entry in &parsed.managed {
+        // Both paths are joined under their roots and read; reject `..` and
+        // absolute paths at load so a manifest cannot point the auditor at a
+        // file outside the templates dir or the project root.
+        for (label, p) in [("template", &entry.template), ("project", &entry.project)] {
+            if crate::path_guard::reject_traversal(p).is_err() || p.is_absolute() {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "{MANIFEST_FILENAME} {label} path '{}' must be project-relative (no `..`, no leading `/`)",
+                        p.display()
+                    ),
+                    location: Some(Location::file(path.to_path_buf())),
+                });
+            }
+        }
         if !seen.insert(&entry.project) {
             return Err(Error::ConfigInvalid {
                 message: format!(
@@ -378,6 +392,25 @@ project = ".claude/rules/constitution.md"
             "empty manifest must error, got {:?}",
             err.code()
         );
+    }
+
+    #[test]
+    fn manifest_with_traversing_project_path_is_rejected() {
+        let plugin = TempDir::new().unwrap();
+        let proj = TempDir::new().unwrap();
+        write(
+            plugin.path(),
+            "templates/managed-files.toml",
+            r#"[[managed]]
+template = "common/CLAUDE.md"
+project = "../outside.md"
+"#,
+        );
+        let err = ManagedRegionAuditor::new(plugin.path())
+            .audit(proj.path())
+            .unwrap_err();
+        assert!(matches!(err.code(), crate::error::ErrorCode::ConfigInvalid));
+        assert!(err.to_string().contains("project-relative"));
     }
 
     #[test]
