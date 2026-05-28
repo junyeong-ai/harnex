@@ -15,11 +15,9 @@ fn rule_validator_flags_missing_paths_frontmatter() {
     let v = RuleValidator::new(&policy);
     let md = "# Body without frontmatter\n";
     let findings = v.validate_text(md, Path::new("my-rule.md"));
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.slug == "rule-missing-paths-frontmatter")
-    );
+    assert!(findings
+        .iter()
+        .any(|f| f.slug == "rule-missing-paths-frontmatter"));
 }
 
 #[test]
@@ -64,11 +62,9 @@ fn skill_validator_flags_missing_frontmatter() {
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.slug == "skill-missing-frontmatter")
-    );
+    assert!(findings
+        .iter()
+        .any(|f| f.slug == "skill-missing-frontmatter"));
 }
 
 #[test]
@@ -120,11 +116,9 @@ fn skill_validator_flags_description_over_budget() {
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(&md, &path);
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.slug == "skill-description-over-budget")
-    );
+    assert!(findings
+        .iter()
+        .any(|f| f.slug == "skill-description-over-budget"));
 }
 
 #[test]
@@ -191,11 +185,9 @@ fn skill_validator_accepts_disable_on_side_effect_when_opted_in() {
     let path = tmp.path().join("deploy-app/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let findings = v.validate_text(md, &path);
-    assert!(
-        !findings
-            .iter()
-            .any(|f| f.slug == "skill-side-effect-no-disable")
-    );
+    assert!(!findings
+        .iter()
+        .any(|f| f.slug == "skill-side-effect-no-disable"));
 }
 
 #[test]
@@ -436,6 +428,77 @@ fn skill_validator_accepts_array_allowed_tools() {
         !findings
             .iter()
             .any(|f| f.slug == "skill-allowed-tools-invalid"),
+        "array of strings should be accepted: {findings:?}"
+    );
+}
+
+#[test]
+fn skill_validator_accepts_string_and_array_disallowed_tools() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    for dt in ["Agent WebSearch", "[Agent, WebSearch]"] {
+        let md = format!(
+            "---\nname: my-skill\ndescription: a skill\ndisallowed-tools: {dt}\n---\nBody\n"
+        );
+        let findings = v.validate_text(&md, &path);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "skill-disallowed-tools-invalid"),
+            "disallowed-tools {dt:?} is valid, should not be flagged: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn skill_validator_flags_non_string_non_array_disallowed_tools() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let md = "---\nname: my-skill\ndescription: a skill\ndisallowed-tools: 42\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let findings = v.validate_text(md, &path);
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "skill-disallowed-tools-invalid"
+                && matches!(f.severity, Severity::Major)),
+        "expected skill-disallowed-tools-invalid for a numeric value: {findings:?}"
+    );
+}
+
+#[test]
+fn skill_validator_accepts_array_disallowed_tools() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let md = "---\nname: my-skill\ndescription: a skill\ndisallowed-tools:\n  - Agent\n  - WebSearch\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let findings = v.validate_text(md, &path);
+    assert!(
+        !findings
+            .iter()
+            .any(|f| f.slug == "skill-disallowed-tools-invalid"),
         "array of strings should be accepted: {findings:?}"
     );
 }

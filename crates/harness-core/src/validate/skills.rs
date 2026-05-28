@@ -16,6 +16,7 @@
 //! - `user-invocable` must be boolean if present.
 //! - `context` must be `"fork"` if present.
 //! - `allowed-tools` is a string OR an array of strings (spec accepts both).
+//! - `disallowed-tools` is a string OR an array of strings (spec accepts both).
 //! - `paths` is a string OR an array of valid glob patterns (spec accepts both).
 //! - `hooks` keys must be in `KNOWN_HOOK_EVENTS` if present.
 //! - `effort` must be one of `low|medium|high|xhigh|max` if present.
@@ -50,7 +51,7 @@ const KNOWN_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 /// `reject_unknown_keys` never false-positives on a valid-but-unmodeled key.
 /// Update when the upstream skills spec adds a key (same contract as
 /// KNOWN_HOOK_EVENTS).
-const KNOWN_SKILL_KEYS: &[&str] = &[
+pub const KNOWN_SKILL_KEYS: &[&str] = &[
     "name",
     "description",
     "when_to_use",
@@ -59,6 +60,7 @@ const KNOWN_SKILL_KEYS: &[&str] = &[
     "disable-model-invocation",
     "user-invocable",
     "allowed-tools",
+    "disallowed-tools",
     "model",
     "effort",
     "context",
@@ -91,6 +93,8 @@ struct SkillFrontmatter {
     context: Option<String>,
     #[serde(default, rename = "allowed-tools")]
     allowed_tools: Option<yaml_serde::Value>,
+    #[serde(default, rename = "disallowed-tools")]
+    disallowed_tools: Option<yaml_serde::Value>,
     #[serde(default)]
     paths: Option<yaml_serde::Value>,
     #[serde(default)]
@@ -345,6 +349,40 @@ impl<'a> SkillValidator<'a> {
                     message: "allowed-tools must be a string or an array of strings".into(),
                     hint: Some(
                         "use `allowed-tools: Bash(gh *) Read` (string) or `[Bash, Read]` (list)"
+                            .into(),
+                    ),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
+            }
+        }
+
+        // disallowed-tools: same shape as allowed-tools (string or list of strings)
+        if let Some(ref val) = parsed.disallowed_tools {
+            if let Some(seq) = val.as_sequence() {
+                for (i, item) in seq.iter().enumerate() {
+                    if !item.is_string() {
+                        findings.push(Finding {
+                            slug: "skill-disallowed-tools-invalid".into(),
+                            severity: Severity::Major,
+                            location: Location::line(path.to_path_buf(), fm.begin_line),
+                            message: format!("disallowed-tools[{i}] is not a string"),
+                            hint: Some(
+                                "each entry in disallowed-tools must be a tool name string".into(),
+                            ),
+                            auto_fixable: false,
+                            fix_command: None,
+                        });
+                    }
+                }
+            } else if !val.is_string() {
+                findings.push(Finding {
+                    slug: "skill-disallowed-tools-invalid".into(),
+                    severity: Severity::Major,
+                    location: Location::line(path.to_path_buf(), fm.begin_line),
+                    message: "disallowed-tools must be a string or an array of strings".into(),
+                    hint: Some(
+                        "use `disallowed-tools: Agent` (string) or `[Agent, WebSearch]` (list)"
                             .into(),
                     ),
                     auto_fixable: false,

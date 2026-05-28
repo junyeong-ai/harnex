@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use harness_core::sentinel;
-use harness_core::validate::{KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS};
+use harness_core::validate::{KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS, KNOWN_SKILL_KEYS};
 
 fn spec_facts_content() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -32,6 +32,18 @@ fn parse_identifier_csv(block: &str) -> BTreeSet<String> {
     block
         .split(|c: char| c == ',' || c.is_whitespace())
         .map(|t| t.trim_matches(|c: char| !c.is_ascii_alphanumeric()))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Tokenize hyphenated identifiers (`allowed-tools, disallowed-tools` →
+/// {"allowed-tools", "disallowed-tools"}). Splits only on comma/whitespace
+/// but preserves internal hyphens and underscores.
+fn parse_hyphenated_csv(block: &str) -> BTreeSet<String> {
+    block
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(|t| t.trim_matches(|c: char| c == '.' || c.is_whitespace()))
         .filter(|t| !t.is_empty())
         .map(str::to_string)
         .collect()
@@ -66,6 +78,21 @@ fn spec_facts_noop_keys_match_known_keys() {
     assert_eq!(
         parsed, canonical,
         "spec-facts.md noop-keys block drifted from KNOWN_PROJECT_SCOPE_NOOP_KEYS — \
+         update the sentinel block to match Rust SSoT"
+    );
+}
+
+#[test]
+fn spec_facts_skill_keys_match_known_keys() {
+    let regions = sentinel::extract_regions(&spec_facts_content());
+    let block = regions
+        .get("spec-facts-skill-keys")
+        .expect("missing managed region 'spec-facts-skill-keys' in spec-facts.md");
+    let parsed = parse_hyphenated_csv(block);
+    let canonical: BTreeSet<String> = KNOWN_SKILL_KEYS.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        parsed, canonical,
+        "spec-facts.md skill-keys block drifted from KNOWN_SKILL_KEYS — \
          update the sentinel block to match Rust SSoT"
     );
 }

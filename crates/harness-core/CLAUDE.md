@@ -92,7 +92,6 @@ string), because `ProjectChecker::try_fix` dispatches via the enum.
 | `NodexRunner` | external-process boundary + test mock seam (see `graph::client`) |
 
 No 1-impl trait exists outside of a documented process/test boundary.
-`Storage` was removed once it became 1-impl with no mock.
 
 ## Testing
 
