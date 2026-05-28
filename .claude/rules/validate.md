@@ -20,6 +20,8 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
 - `context` must be `"fork"` if present (Major).
 - `allowed-tools` is a string OR an array of strings — spec accepts both;
   flag only a non-string/non-array value (Major).
+- `disallowed-tools` is a string OR an array of strings — same shape
+  rules as `allowed-tools` (Major).
 - `paths` is a string (comma-separated) OR an array of glob patterns — spec
   accepts both; each glob must compile (Major).
 - `hooks` keys validated against `KNOWN_HOOK_EVENTS` (Major).

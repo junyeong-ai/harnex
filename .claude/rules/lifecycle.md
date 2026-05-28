@@ -42,8 +42,7 @@ the matching `[[lifecycle.consumer_detectors]]`, globs the kind's path
 pattern, and classifies each match. The `Silent` signal is derived
 automatically by scanning telemetry payloads for the slug as an exact
 string match within the configured `silence_window_days`. Operators
-no longer pass `--silent` by hand — `harness lifecycle retire` covers
-the entire surface in one call.
+`harness lifecycle retire` covers the entire surface in one call.
 
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`
 with the reason "foundation kind (excluded from retirement)" — the

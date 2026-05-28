@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# git pre-push hook — run the full gate before code reaches the remote.
+#
+# Pre-commit runs the fast tier (secret scan); pre-push runs the full gate
+# (type-check + test + build). Fail-open on a missing gate runner — never
+# block a push because the toolchain is not installed. Escape hatch via
+# HARNEX_SKIP_PREPUSH=1 for a confirmed CI-covers-it situation.
+set -uo pipefail
+
+[[ "${HARNEX_SKIP_PREPUSH:-}" == "1" ]] && exit 0
+
+# Replace the next line with the project's full gate command during
+# scaffold. Examples:
+#   pnpm gate            (TypeScript / pnpm)
+#   just check           (Python / uv + Just)
+#   cargo test           (Rust / cargo)
+echo "[harnex] pre-push gate not configured — skipping." >&2
+exit 0

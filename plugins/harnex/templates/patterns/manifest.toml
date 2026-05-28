@@ -64,3 +64,11 @@ analyze = ["locale from string literals", "error message format", "i18n framewor
 files = [
   { template = "copy-conventions.md", destination = ".claude/rules/copy-conventions.md" },
 ]
+
+[[pattern]]
+slug = "write-guard"
+analyze = ["files with lifecycle status frontmatter (docs/, specs/)", "immutable/frozen file patterns", "existing lint/check tools invocable at write time"]
+files = [
+  { template = "write-guard.md", destination = ".claude/rules/write-guard.md" },
+  { template = "check-pre-write.sh", destination = "hooks/check-pre-write.sh" },
+]

@@ -234,6 +234,11 @@ operator to re-phrase using a verb from this list.
   - `pr-conventions` — check for existing `.github/pull_request_template.md`.
     If found, merge harnex defaults into the existing template's structure
     rather than replacing it.
+  - `write-guard` — detect files with lifecycle governance (docs/, specs/
+    with status frontmatter). Detect existing convention checking tools
+    (linter config, type checker). Pre-fill the verifier's case arms with
+    observed protection patterns. Add a PreToolUse(Edit|Write) hook entry
+    to `.claude/settings.json` dispatching through `_runner.sh`.
 
   Available patterns:
   - `review-lenses` — convergent review loop + 6 default lens files.
@@ -246,6 +251,8 @@ operator to re-phrase using a verb from this list.
     verbs, parameter bags, domain terms).
   - `copy-conventions` — communication register, terminology, error
     message format, i18n.
+  - `write-guard` — PreToolUse(Edit|Write) enforcement: verifier
+    skeleton + governance rule for write-time convention checking.
 
 In every verb: read the module-map's `existing_harness` first; match the
 incumbent hook-runner pattern, rule mechanism, and gate sequence. Never

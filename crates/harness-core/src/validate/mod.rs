@@ -28,4 +28,4 @@ pub use settings::{
     KNOWN_DEFAULT_MODE_VALUES, KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS,
     KNOWN_SKILL_OVERRIDE_VALUES, SettingsScope, SettingsValidator,
 };
-pub use skills::SkillValidator;
+pub use skills::{KNOWN_SKILL_KEYS, SkillValidator};

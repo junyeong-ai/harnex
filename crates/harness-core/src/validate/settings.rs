@@ -160,6 +160,7 @@ pub const KNOWN_HOOK_EVENTS: &[&str] = &[
     "SubagentStart",
     "SubagentStop",
     "Notification",
+    "MessageDisplay",
     "PreCompact",
     "PostCompact",
     "InstructionsLoaded",

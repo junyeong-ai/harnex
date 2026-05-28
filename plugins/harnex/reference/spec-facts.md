@@ -17,9 +17,10 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   SessionStart, SessionEnd, Setup, UserPromptSubmit, UserPromptExpansion,
   PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch,
   PermissionRequest, PermissionDenied, Stop, StopFailure, SubagentStart,
-  SubagentStop, Notification, PreCompact, PostCompact, InstructionsLoaded,
-  ConfigChange, CwdChanged, FileChanged, WorktreeCreate, WorktreeRemove,
-  TaskCreated, TaskCompleted, TeammateIdle, Elicitation, ElicitationResult.
+  SubagentStop, Notification, MessageDisplay, PreCompact, PostCompact,
+  InstructionsLoaded, ConfigChange, CwdChanged, FileChanged, WorktreeCreate,
+  WorktreeRemove, TaskCreated, TaskCompleted, TeammateIdle, Elicitation,
+  ElicitationResult.
   <!-- harnex-managed:end spec-facts-hook-events -->
 - **Exit codes.** 0 = success, stdout JSON parsed for control fields (stdout
   reaches Claude as context only for UserPromptSubmit, UserPromptExpansion,
@@ -47,8 +48,16 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   Claude runs the hook from a subdirectory, and exec form passes each arg
   without shell tokenization (no quoting of spaces). `${CLAUDE_PROJECT_DIR}` /
   `${CLAUDE_PLUGIN_ROOT}` are exported to the spawned process.
+- **Common handler fields** (all hook types): `type` (required), `if`
+  (permission-rule-syntax predicate — evaluated only on tool events),
+  `timeout`, `statusMessage` (shown during execution), `once` (honored in
+  skill frontmatter only; ignored in settings files). Command-specific:
+  `async` (non-blocking), `asyncRewake`
+  (non-blocking + rewake Claude on exit 2 with stderr/stdout as system
+  reminder), `shell` (`"bash"` | `"powershell"`).
 - **stdin** carries session_id, transcript_path, cwd, permission_mode,
-  hook_event_name (PreToolUse adds tool_name, tool_input, tool_use_id).
+  hook_event_name, effort (PreToolUse adds tool_name, tool_input,
+  tool_use_id). Inside subagents: also agent_id, agent_type.
 - **`additionalContext`** injects context on SessionStart, Setup,
   SubagentStart, UserPromptSubmit, UserPromptExpansion, and the tool events
   (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch) — on tool events
@@ -111,10 +120,17 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
 
 ## Skills (/en/skills)
 
-- **Frontmatter (all optional, only `description` recommended):** name
-  (`[a-z0-9-]{1,64}`), description, when_to_use, argument-hint, arguments,
-  disable-model-invocation, user-invocable, allowed-tools, model, effort
-  (`low|medium|high|xhigh|max`), context (`fork`), agent, hooks, paths, shell.
+- **Frontmatter (all optional, only `description` recommended).** Canonical
+  SSoT is `crates/harness-core/src/validate/skills.rs::KNOWN_SKILL_KEYS`;
+  the mirror below is held in sync by the `spec_facts_skill_keys_match`
+  integration test (drift fails the build).
+  <!-- harnex-managed:start spec-facts-skill-keys -->
+  name, description, when_to_use, argument-hint, arguments,
+  disable-model-invocation, user-invocable, allowed-tools, disallowed-tools,
+  model, effort, context, agent, hooks, paths, shell.
+  <!-- harnex-managed:end spec-facts-skill-keys -->
+  Constraints: name (`[a-z0-9-]{1,64}`), effort (`low|medium|high|xhigh|max`),
+  context (`fork`).
 - **Location:** `.claude/skills/<name>/SKILL.md` (project/personal),
   `<plugin-root>/skills/<name>/SKILL.md` (plugin), or — since v2.1.142 — a bare
   `SKILL.md` at the plugin root with no `skills/` dir and no `skills` manifest
@@ -125,9 +141,16 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   for side-effect skills (generate/write/deploy). `user-invocable: false` only
   hides the menu; it does NOT block the Skill tool.
 - **`allowed-tools` GRANTS (pre-approves) tools while the skill is active; it
-  does NOT restrict.** To restrict, use `permissions.deny`.
+  does NOT restrict.** `disallowed-tools` REMOVES tools from Claude's pool
+  while the skill is active (the inverse). To deny outright, use
+  `permissions.deny`.
 - Budgets: description + when_to_use ≤ 1536 chars; SKILL.md ≤ 500 lines (move
-  reference to supporting files, loaded on demand).
+  reference to supporting files, loaded on demand). After compaction,
+  skill content keeps first 5 000 tokens/skill and 25 000 tokens combined
+  (most-recent-first).
+- **Dynamic context injection:** `` !`command` `` in SKILL.md body runs a shell
+  command before content reaches Claude; output replaces the placeholder.
+  Disabled per-project by `disableSkillShellExecution: true`.
 - **Bundled-asset variables:** `${CLAUDE_SKILL_DIR}` — the directory holding
   this skill's `SKILL.md`; the documented, install-level-portable anchor for
   skill-bundled reference docs and templates (works whether installed
@@ -149,7 +172,9 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   brace expansion) they load only on matching files; without `paths:` they load
   every session. A foundation rule (constitution) is the one that intentionally
   omits `paths:`.
-- `@path` import: relative to the importing file, max depth 5, loads at launch.
+- `@path` import: relative to the importing file, max depth 4, loads at launch.
+- **`claudeMdExcludes`:** glob patterns to skip specific CLAUDE.md files.
+  Merges across settings layers. Managed-policy files cannot be excluded.
 - Block-level `<!-- ... -->` is stripped before injection (free for notes).
 - **CLAUDE.md / rules / auto-memory are ADVISORY** — "no guarantee of strict
   compliance." Only hooks and `permissions.deny` are client-enforced.
