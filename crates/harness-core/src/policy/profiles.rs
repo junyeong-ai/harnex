@@ -26,6 +26,14 @@ impl PermissionProfile {
         "jvm-dev",
     ];
 
+    /// Languages the oracle ships a dev profile for — what the scaffold
+    /// manifest's `{lang}` resolves against. Derived from [`Self::ALL`], so
+    /// adding a `<lang>-dev` profile widens every language-tier surface at
+    /// once and no second list can disagree with this one.
+    pub fn languages() -> impl Iterator<Item = &'static str> {
+        Self::ALL.iter().filter_map(|n| n.strip_suffix("-dev"))
+    }
+
     pub fn from_str(name: &str) -> Option<Self> {
         Some(match name {
             "baseline" => baseline(),

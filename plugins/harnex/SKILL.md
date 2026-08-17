@@ -284,10 +284,16 @@ finding is a defect against the spec or against the harness's own wiring:
 - `audit-mcp-matcher-incomplete` — `mcp__server` matcher without the
   required `__.*` suffix (matches nothing).
 - `audit-hook-script-missing` — a hook names a `${CLAUDE_PROJECT_DIR}` path
-  that is not on disk, so the handler errors and the action proceeds
-  unguarded.
+  that is a scaffold-manifest destination and is not on disk, so the handler
+  errors and the action proceeds unguarded. Scoped to manifest destinations
+  on purpose: the anchor proves a token is a project path, never that the
+  project has already built it, and `node_modules/.bin/*` or `target/release/*`
+  are correct wirings that are simply absent on a fresh clone. The cost is
+  that this protects harnex-generated wiring, not an operator's own scripts.
 - `audit-managed-region-edited` — content inside a `harnex-managed`
   region diverges from the corresponding template.
+- `audit-managed-region-missing` — a managed artifact is on disk with its
+  `harnex-managed` sentinels gone, so regenerate has nothing to write into.
 
 **2 — Run the exploration Phase-1 fingerprint** (exploration.md) and compare
 its `existing_harness` block against what a scaffold for the detected stack

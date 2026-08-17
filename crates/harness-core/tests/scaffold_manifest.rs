@@ -24,13 +24,8 @@ fn manifest() -> ScaffoldManifest {
     ScaffoldManifest::load(&templates_root()).expect("scaffold.toml loads")
 }
 
-/// Languages the oracle offers a profile for — the single source of truth the
-/// manifest's `{lang}` resolves against.
 fn languages() -> Vec<&'static str> {
-    PermissionProfile::ALL
-        .iter()
-        .filter_map(|n| n.strip_suffix("-dev"))
-        .collect()
+    PermissionProfile::languages().collect()
 }
 
 #[test]
@@ -218,10 +213,13 @@ fn the_foundation_tier_stands_alone() {
         // rules are patterns rather than paths. Scanning those for anchored
         // paths would fail this test on the first permission rule that
         // legitimately mentions one.
-        if serde_json::from_str::<serde_json::Value>(&raw).is_ok_and(|v| !v.is_object()) {
+        let Ok(fragment) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            panic!("fragment '{template}' is not JSON");
+        };
+        if !fragment.is_object() {
             continue;
         }
-        for referenced in harness_core::guard::paths_in_command(&raw) {
+        for referenced in wired_destinations(&fragment) {
             assert!(
                 foundation_destinations.contains(&referenced),
                 "foundation hook fragment '{template}' wires '{referenced}', which the foundation \
@@ -229,6 +227,64 @@ fn the_foundation_tier_stands_alone() {
             );
         }
     }
+}
+
+/// Every project path a hook fragment wires: the wrapper its `command` names,
+/// and the verifier that wrapper dispatches.
+///
+/// The second half is where this invariant actually lives. harnex's wrappers
+/// take a verifier's bare name as `args[0]` and resolve it under `hooks/`, and
+/// every fragment in both tiers names the same two wrappers — so `command`
+/// alone can never tell a foundation fragment from one reaching into the
+/// language tier, and a guard reading only `command` passes vacuously.
+///
+/// The auditor deliberately refuses this resolution, because what an arbitrary
+/// project's wrapper does with its arguments is not knowable from outside it.
+/// Here it is knowable: these are harnex's own templates and the convention is
+/// harnex's own.
+fn wired_destinations(fragment: &serde_json::Value) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let Some(events) = fragment.as_object() else {
+        return out;
+    };
+    for entries in events.values() {
+        for entry in entries.as_array().into_iter().flatten() {
+            let handlers = entry.get("hooks").and_then(|h| h.as_array());
+            for handler in handlers.into_iter().flatten() {
+                let command = handler
+                    .get("command")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or_default();
+                // Keyed on the key's presence, exactly as the auditor is:
+                // `"args": []` is still a direct spawn, and asking whether the
+                // list is empty instead would send one fragment down the shell
+                // grammar here and the exec grammar there — two readers again.
+                let Some(args) = handler.get("args").and_then(|a| a.as_array()) else {
+                    out.extend(harness_core::guard::paths_in_command(command));
+                    continue;
+                };
+                let args: Vec<&str> = args.iter().filter_map(|v| v.as_str()).collect();
+
+                out.extend(harness_core::guard::path_in_argument(command));
+                for (i, arg) in args.iter().enumerate() {
+                    match harness_core::guard::path_in_argument(arg) {
+                        Some(path) => {
+                            out.insert(path);
+                        }
+                        // A bare first argument is the verifier name the
+                        // wrapper resolves under `hooks/`. A flag is not a
+                        // name: `hooks/--verbose` would fail the tier
+                        // assertion on a legitimate fragment.
+                        None if i == 0 && !arg.starts_with('-') => {
+                            out.insert(format!("hooks/{arg}"));
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 fn walk(dir: &PathBuf) -> Vec<PathBuf> {

@@ -1074,6 +1074,39 @@ fn agent_validator_flags_closed_set_violations() {
 }
 
 #[test]
+fn agent_validator_flags_a_hooks_block_that_is_not_a_mapping() {
+    // Only the mapping arm was read, so every other shape declared hooks and
+    // wired none of them without a word.
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    for body in ["hooks: []", "hooks: PreToolUse", "hooks: 3"] {
+        let md = format!("---\nname: r\ndescription: d\n{body}\n---\nBody\n");
+        let findings = v.validate_text(&md, Path::new(".claude/agents/r.md"));
+        let slugs: Vec<&str> = findings.iter().map(|f| f.slug.as_str()).collect();
+        assert!(
+            slugs.contains(&"agent-hooks-invalid"),
+            "{body}: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn agent_validator_flags_mcp_servers_entries_that_name_nothing() {
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: r\ndescription: d\nmcpServers: [123, true]\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new(".claude/agents/r.md"));
+    let slugs: Vec<&str> = findings.iter().map(|f| f.slug.as_str()).collect();
+    assert!(slugs.contains(&"agent-mcp-servers-invalid"), "{findings:?}");
+
+    // An inline definition is a mapping, and its interior is the spec's
+    // business rather than this validator's.
+    let ok = "---\nname: r\ndescription: d\nmcpServers:\n  - name-one\n  - command: node\n    args: [server.js]\n---\nBody\n";
+    let findings = v.validate_text(ok, Path::new(".claude/agents/r.md"));
+    assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+#[test]
 fn agent_validator_flags_unaddressable_name() {
     let policy = agents_policy(false);
     let v = AgentValidator::new(&policy);

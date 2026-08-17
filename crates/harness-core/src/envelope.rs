@@ -95,6 +95,39 @@ impl Severity {
 }
 
 #[cfg(test)]
+mod success_shape_tests {
+    use super::{Warning, write_success};
+
+    #[test]
+    fn warnings_is_present_even_when_empty() {
+        // Article II states the success shape as `{ok, data?, error?,
+        // warnings[]}`. Omitting the key in the quiet case makes every
+        // consumer special-case the common path.
+        let mut out = Vec::new();
+        write_success(&mut out, serde_json::json!({"n": 1}), &[]).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            value.get("warnings"),
+            Some(&serde_json::json!([])),
+            "{value}"
+        );
+    }
+
+    #[test]
+    fn warnings_carry_code_and_message() {
+        let mut out = Vec::new();
+        let warnings = vec![Warning {
+            code: "w".into(),
+            message: "m".into(),
+        }];
+        write_success(&mut out, serde_json::json!({}), &warnings).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(value["warnings"][0]["code"], "w");
+        assert_eq!(value["warnings"][0]["message"], "m");
+    }
+}
+
+#[cfg(test)]
 mod severity_tests {
     use super::Severity;
 
@@ -159,15 +192,14 @@ impl<T: schemars::JsonSchema> ListResponse<T> {
     }
 }
 
-fn slice_is_empty<T>(s: &&[T]) -> bool {
-    s.is_empty()
-}
-
+/// `warnings` is always serialized, empty included: Article II states the
+/// success shape as `{ok, data?, error?, warnings[]}`, and a consumer reading
+/// `envelope.warnings.length` should not have to know that the quiet case
+/// spells the empty list as a missing key.
 #[derive(Serialize)]
 struct SuccessEnvelope<'a, T: Serialize> {
     ok: bool,
     data: T,
-    #[serde(skip_serializing_if = "slice_is_empty")]
     warnings: &'a [Warning],
 }
 

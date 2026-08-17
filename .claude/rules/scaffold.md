@@ -1,3 +1,12 @@
+---
+paths:
+  - "plugins/harnex/templates/scaffold.toml"
+  - "crates/harness-core/src/scaffold.rs"
+  - "crates/harness-core/tests/scaffold_manifest.rs"
+  - "crates/harness-core/tests/plugin_scaffold_validates.rs"
+  - "crates/harness-core/tests/adopted_scaffold_matches_templates.rs"
+---
+
 # scaffold — the composition manifest
 
 `plugins/harnex/templates/scaffold.toml` declares every template-derived
@@ -21,10 +30,18 @@ every hook while reporting a clean scaffold before this manifest existed.
 profile still receives. `Tier::Language` needs a detected stack. The split is
 what makes a partial harness expressible instead of an all-or-nothing refusal.
 
-Load-time validation rejects: a destination that is absolute, `~`-rooted, or
+Load-time validation rejects: a destination that is absolute, `~/`-rooted, or
 escapes with `..`; a template escaping the templates directory; `{lang}` in a
 foundation artifact (the tier must resolve with no language); `merge` into a
-non-JSON destination; an artifact that is both merged and managed.
+non-JSON destination; an artifact that is both merged and managed; and any
+field outside the declared shape (Constitution V — every field defaults, so
+`manageed = true` would otherwise leave the artifact unguarded while reading
+as though it were covered).
+
+`{lang}` resolves only against an identifier (`[a-z0-9-]+`). Containment is
+checked at load time against the unsubstituted string, so a language carrying
+a separator would rewrite the shape that check approved; both resolvers are
+public, and a guarantee that holds only while every caller behaves is not one.
 
 ## Adding an artifact
 

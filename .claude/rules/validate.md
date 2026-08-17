@@ -58,9 +58,13 @@ Agent validator (per <https://code.claude.com/docs/en/sub-agents>):
   `memory` ∈ `user|project|local`, `color` ∈ the eight documented values (Major).
 - `maxTurns` is a positive integer; `background` is a boolean.
 - `tools` / `disallowedTools` are a string or a list of strings; `skills` is a
-  list of strings; `mcpServers` is anything but a scalar (inline definitions
-  are mappings).
-- `hooks` keys validated against `KNOWN_HOOK_EVENTS` (Major).
+  list of strings; `mcpServers` is neither a scalar nor a list carrying an
+  element that names nothing (a bool, a number, a null). A mapping element
+  stays accepted — an inline definition is one, and judging its interior
+  would flag a config the spec allows.
+- `hooks` must be a mapping (Major), then its keys are validated against
+  `KNOWN_HOOK_EVENTS` (Major). Reading only the mapping arm accepted every
+  other shape in silence, declaring hooks and wiring none.
 - `model` is free-form — aliases and full ids are both valid and the set moves
   with the vendor, the same call the skill validator makes.
 - `name` is never checked against the filename: the spec resolves an agent by

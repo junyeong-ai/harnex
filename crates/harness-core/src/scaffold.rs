@@ -40,6 +40,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::envelope::Location;
 use crate::error::{Error, Result};
+use crate::policy::PermissionProfile;
 
 const MANIFEST_FILENAME: &str = "scaffold.toml";
 
@@ -79,7 +80,12 @@ impl Tier {
     }
 }
 
+/// Closed schema (Constitution V). Every field here defaults, so a misspelled
+/// one is not a parse error but a silently weaker artifact: `manageed = true`
+/// leaves `managed` false, and the artifact drops out of managed-region drift
+/// enforcement while the manifest still reads as if it were covered.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Artifact {
     pub tier: Tier,
     /// Path under `templates/`, possibly carrying `{lang}`.
@@ -111,10 +117,22 @@ impl Artifact {
         substitute(&self.destination, lang).map(PathBuf::from)
     }
 
-    /// A glob that matches this artifact's destination whatever the language
-    /// — the form a consumer with no detected stack can still resolve.
-    pub fn destination_glob(&self) -> String {
-        self.destination.replace(LANG_PLACEHOLDER, "*")
+    /// Every concrete destination this artifact can occupy: one per language
+    /// the oracle ships a profile for when the manifest parameterizes it,
+    /// otherwise exactly one.
+    ///
+    /// Enumerating the languages is what makes a stack-free answer exact. A
+    /// `*` in `{lang}`'s place reads any name of the same shape as coverage —
+    /// a project's own `api-conventions.md` would report the language rule
+    /// present with no harnex rule anywhere.
+    pub fn resolved_destinations(&self) -> Vec<PathBuf> {
+        if self.destination_is_language_parameterized() {
+            PermissionProfile::languages()
+                .filter_map(|lang| self.destination_for(Some(lang)))
+                .collect()
+        } else {
+            self.destination_for(None).into_iter().collect()
+        }
     }
 
     /// True when the destination cannot be named without a language.
@@ -127,10 +145,21 @@ fn substitute(value: &str, lang: Option<&str>) -> Option<String> {
     if !value.contains(LANG_PLACEHOLDER) {
         return Some(value.to_string());
     }
-    lang.map(|l| value.replace(LANG_PLACEHOLDER, l))
+    let lang = lang?;
+    // `check_contained` ran at load time against the unsubstituted string, so
+    // a language carrying path syntax would rewrite the shape it approved —
+    // `{lang}/x` with `lang = "../.."` resolves outside the root. Production
+    // callers pass a closed set, but both resolvers are public and a
+    // guarantee that holds only while every caller behaves is not one.
+    let identifier = !lang.is_empty()
+        && lang
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    identifier.then(|| value.replace(LANG_PLACEHOLDER, lang))
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ManifestFile {
     #[serde(default)]
     artifact: Vec<Artifact>,
@@ -189,13 +218,19 @@ impl ScaffoldManifest {
         }
     }
 
-    /// A manifest path must stay under the root it is joined to. Absolute and
-    /// `~`-rooted values are rejected because `Path::join` replaces the base
-    /// with them outright; `..` is rejected by component so a filename that
-    /// merely contains dots stays legal.
+    /// A manifest path must stay under the root it is joined to.
+    ///
+    /// Three rejections, each for its own mechanism. Absolute values because
+    /// `Path::join` replaces the base with them outright. Tilde-rooted values
+    /// because a shell downstream expands them — `Path` itself never does — and
+    /// both spellings expand, `~/x` to `$HOME` and `~user/x` to another
+    /// account's home, so the test is a leading `~` on a value that goes on to
+    /// name a directory. A tilde with no separator is just a filename:
+    /// `~notes.md`, or an Office lock file's `~$doc`. `..` by component, so a
+    /// filename that merely contains dots stays legal.
     fn check_contained(&self, label: &str, value: &str) -> Result<()> {
         let path = Path::new(value);
-        if path.is_absolute() || value.starts_with('~') {
+        if path.is_absolute() || (value.starts_with('~') && value.contains('/')) {
             return Err(self.invalid(format!("{label} '{value}' is not relative")));
         }
         if path.components().any(|c| c.as_os_str() == "..") {
@@ -287,6 +322,84 @@ mod tests {
     }
 
     #[test]
+    fn a_misspelled_field_is_rejected_rather_than_defaulted() {
+        // Every field here defaults, so an unrecognised one is not a loud
+        // parse failure but a quietly weaker artifact: `manageed` leaves
+        // `managed` false and the artifact drops out of drift enforcement
+        // while the manifest still reads as though it were covered.
+        let err = manifest_from(
+            r#"
+[[artifact]]
+tier = "foundation"
+template = "common/CLAUDE.md"
+destination = "CLAUDE.md"
+manageed = true
+"#,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::ConfigInvalid { .. }),
+            "expected ConfigInvalid, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn a_language_that_is_not_an_identifier_resolves_to_nothing() {
+        // `check_contained` approved the unsubstituted string, so a language
+        // carrying path syntax would rewrite the shape it approved. Both
+        // resolvers are public, so the guarantee cannot rest on the caller.
+        let m = manifest_from(
+            r#"
+[[artifact]]
+tier = "language"
+template = "{lang}/post-format.sh"
+destination = ".claude/rules/{lang}-conventions.md"
+"#,
+        )
+        .unwrap();
+        let a = &m.artifacts()[0];
+        for hostile in ["../../..", "a/b", "..", "UPPER", "with space", ""] {
+            assert_eq!(a.destination_for(Some(hostile)), None, "lang '{hostile}'");
+            assert_eq!(a.template_for(Some(hostile)), None, "lang '{hostile}'");
+        }
+        assert!(a.destination_for(Some("jvm")).is_some());
+    }
+
+    #[test]
+    fn a_leading_tilde_is_only_rejected_where_a_shell_would_expand_it() {
+        // `Path` never expands a tilde, so the rejection is about a shell
+        // downstream — and that only expands `~/`. A bare `~` starts ordinary
+        // relative filenames.
+        assert!(
+            manifest_from(
+                r#"
+[[artifact]]
+tier = "foundation"
+template = "common/notes.md"
+destination = "~notes.md"
+"#,
+            )
+            .is_ok()
+        );
+        // Both spellings a shell expands: `~/` to this account's home and
+        // `~user/` to another's.
+        for rooted in ["~/notes.md", "~someone/notes.md"] {
+            assert!(
+                manifest_from(&format!(
+                    r#"
+[[artifact]]
+tier = "foundation"
+template = "common/notes.md"
+destination = "{rooted}"
+"#,
+                ))
+                .is_err(),
+                "'{rooted}' should be rejected"
+            );
+        }
+    }
+
+    #[test]
     fn resolves_the_language_placeholder_on_both_sides() {
         let m = manifest_from(
             r#"
@@ -307,7 +420,13 @@ destination = ".claude/rules/{lang}-conventions.md"
             PathBuf::from(".claude/rules/rust-conventions.md")
         );
         assert!(a.template_for(None).is_none());
-        assert_eq!(a.destination_glob(), ".claude/rules/*-conventions.md");
+
+        // One concrete path per shipped language, never a `*` that would also
+        // admit a project's own `api-conventions.md`.
+        let resolved = a.resolved_destinations();
+        assert_eq!(resolved.len(), PermissionProfile::languages().count());
+        assert!(resolved.contains(&PathBuf::from(".claude/rules/rust-conventions.md")));
+        assert!(resolved.iter().all(|d| !d.to_string_lossy().contains('*')));
     }
 
     #[test]

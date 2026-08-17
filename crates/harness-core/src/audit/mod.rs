@@ -56,8 +56,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::envelope::{Finding, Location, SkippedRule};
-use crate::error::{Error, Result};
+use crate::envelope::{Finding, SkippedRule};
+use crate::error::Result;
 use crate::scaffold::ScaffoldManifest;
 
 use hook_wiring::HookWiringAuditor;
@@ -246,8 +246,14 @@ impl<'a> ProjectAuditor<'a> {
     }
 
     /// Presence of every scaffold artifact, in manifest order. A destination
-    /// the manifest parameterizes by language resolves through a glob, so the
-    /// answer needs no stack detection and stays exact either way.
+    /// the manifest parameterizes by language has one name per shipped
+    /// language, and holding any of them is coverage — so the answer needs no
+    /// stack detection and every path tested is one the scaffold would emit.
+    ///
+    /// Exact paths rather than a pattern, on both counts that matter: a `*`
+    /// standing in for `{lang}` counts a project's own `api-conventions.md` as
+    /// coverage, and a project path carrying `[` or `?` turns the search
+    /// itself into a pattern over a tree nobody named.
     fn coverage(&self) -> Result<Vec<CoverageEntry>> {
         let Some(plugin_root) = &self.plugin_root else {
             return Ok(Vec::new());
@@ -255,26 +261,10 @@ impl<'a> ProjectAuditor<'a> {
         let manifest = ScaffoldManifest::load(&plugin_root.join("templates"))?;
         let mut entries = Vec::new();
         for artifact in manifest.artifacts() {
-            let present = if artifact.destination_is_language_parameterized() {
-                // A pattern that will not compile leaves presence unknown, and
-                // reporting unknown as absent is the silent-pass this module
-                // refuses: a project path carrying `[` or `?` would report
-                // every language artifact missing while the files are there.
-                let pattern = self.working_dir.join(artifact.destination_glob());
-                let mut paths =
-                    glob::glob(&pattern.to_string_lossy()).map_err(|e| Error::ConfigInvalid {
-                        message: format!(
-                            "coverage glob '{}' failed to compile: {e}",
-                            pattern.display()
-                        ),
-                        location: Some(Location::file(manifest.path().to_path_buf())),
-                    })?;
-                paths.any(|p| p.is_ok())
-            } else {
-                artifact
-                    .destination_for(None)
-                    .is_some_and(|d| self.working_dir.join(d).exists())
-            };
+            let present = artifact
+                .resolved_destinations()
+                .iter()
+                .any(|d| self.working_dir.join(d).exists());
             entries.push(CoverageEntry {
                 tier: artifact.tier.as_str().to_string(),
                 destination: artifact.destination.clone(),

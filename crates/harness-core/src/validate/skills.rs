@@ -47,6 +47,10 @@ static SIDE_EFFECT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         .expect("SIDE_EFFECT_PATTERN")
 });
 
+/// Reasoning-effort levels, shared with the sub-agent validator — the same
+/// vocabulary appears on both spec pages, so one owner keeps a change from
+/// reaching one validator and not the other. Both surfaces list it in their
+/// `SPEC_SETS`, which is what makes a change move both stamps.
 pub const KNOWN_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
 /// Complete Claude Code skill frontmatter key surface (wire names).
