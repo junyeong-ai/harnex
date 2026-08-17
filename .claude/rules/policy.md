@@ -11,7 +11,8 @@ Permission profiles are static data. Each `PermissionProfile` carries
 When adding a new profile:
 1. Add a `fn <name>() -> PermissionProfile` in `policy/profiles.rs`.
 2. Add a match arm in `PermissionProfile::from_str`.
-3. Append the name to `PermissionProfile::ALL` (single source of truth —
+3. Append the name to `PermissionProfile::ALL`
+   (`crates/harness-core/src/policy/profiles.rs:18` — single source of truth;
    the round-trip test catches drift).
 4. Document its scope in the function comment (which ecosystem hazards it covers).
 

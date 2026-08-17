@@ -259,10 +259,15 @@ operator to re-phrase using a verb from this list.
   ships is the blank-page problem in disguise.
 
   **Per-pattern analysis instructions:**
-  - `naming-decisions` — scan file names (dominant casing), imports
-    (factory verb patterns), type definitions (parameter bag suffixes),
-    tool scripts (suffix conventions). Pre-fill each section with observed
-    patterns. Flag `## Domain vocabulary` for operator input.
+  - `naming-decisions` — every section is read out of the repository, never
+    chosen for it: count file-name casing per kind, read the construction verbs
+    off the functions that build things, read the suffixes off the option/config
+    types, and take the domain vocabulary from type and table names rather than
+    from prose. Name the file that settles each answer. Where the code is
+    inconsistent, say which concept has two names — that is the decision the
+    team still owes, and it is the most valuable line in the file. A convention
+    imported from another project contradicts the code a reader is looking at,
+    and the code wins.
   - `copy-conventions` — detect locale from string literals. Detect error
     message format from existing error handling code. Detect i18n framework
     from dependencies (next-intl, react-i18n, gettext, fluent). Pre-fill

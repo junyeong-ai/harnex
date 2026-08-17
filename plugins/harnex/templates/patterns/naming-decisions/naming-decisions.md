@@ -8,52 +8,54 @@ paths:
 
 # Naming decisions
 
-Team-level naming conventions that the formatter does not enforce and the
-model cannot infer from context alone. Defaults below are drawn from two
-independently-converged production harnesses; override where they conflict
-with your team's existing practice.
+The vocabulary this codebase already uses, written down so it stays one
+vocabulary. Formatters do not enforce naming and a model cannot infer a
+convention from a file it has not opened, so the same concept acquires three
+names and the same suffix three meanings.
+
+Every table below is **read out of this repository, not chosen for it**. A
+convention imported from somewhere else is worse than none: it contradicts the
+code a reader is looking at, and the code wins. Where a section has no
+established practice yet, say so and pick one — that is a decision, and it
+belongs in a commit body as well as here.
+
+Name the file that settles each answer. A table with no owner drifts the first
+time someone renames a directory; a pointer can be checked, and `harness check`
+resolves the `path.ext:line` form against the tree.
 
 ## File naming
 
-- Source files: `kebab-case` (TypeScript/web) or `snake_case` (Python/Rust).
-- Test files: co-located as `<name>.test.ts` or `test_<name>.py`.
-- Config files: `<purpose>.config.{ts,json,toml}` (never bare `config`).
+<!-- harnex-fill: the dominant casing per file kind, counted across the tree —
+     source, test, config — with a representative path for each -->
 
 ## Tool / script suffixes
 
-A closed suffix set prevents ad-hoc naming across the toolchain:
+A closed suffix set is what stops the next script inventing a seventh word for
+"checks something". Fill from the scripts that exist; leave a row out rather
+than inventing a meaning nobody has used.
 
-| Suffix | Meaning | Example |
+| Suffix | Meaning in this repo | Example |
 |---|---|---|
-| `-lint` | Static analysis, no mutation | `harness-lint` |
-| `-audit` | Cross-input semantic check, no mutation | `dep-audit` |
-| `-check` | Structural validation, may exit non-zero | `type-check` |
-| `-build` | Produces an artifact | `docker-build` |
-| `-sync` | Synchronizes two representations | `schema-sync` |
-| `-format` | Rewrites files for style | `code-format` |
+<!-- harnex-fill: one row per suffix observed across the task runner, CI jobs
+     and script directories, each with the real script that establishes it -->
 
 ## Factory / constructor verbs
 
-| Verb | Meaning |
-|---|---|
-| `create*` | Allocates a new resource (may have side effects) |
-| `build*` | Assembles from parts (pure, returns value) |
-| `from*` | Converts from another representation |
-| `parse*` | Deserializes from string/bytes |
-| `define*` | Registers a definition (declarative, not imperative) |
+<!-- harnex-fill: the verbs this codebase actually uses to construct things and
+     what distinguishes them here — a `create` that allocates versus a `build`
+     that assembles is a real distinction only if the code makes it -->
 
 ## Parameter bag suffixes
 
-| Suffix | Semantics |
-|---|---|
-| `Config` | Immutable after initialization; read-only at runtime |
-| `Options` | Per-call overrides; merged with defaults |
-| `Params` | Positional/required arguments (not optional) |
+<!-- harnex-fill: the suffixes on option/config types and what each means here,
+     or "none observed yet" with the one this repo will use -->
 
 ## Domain vocabulary
 
-<!-- harnex-fill: your project's ubiquitous language. Example:
-     - "tenant" (not "organization", "workspace", or "account")
-     - "pipeline" (not "workflow", "flow", or "chain")
-     Consistent vocabulary prevents the same concept having three names
-     across the codebase. -->
+The ubiquitous language: one word per concept, and the word the code uses.
+
+<!-- harnex-fill: each concept where this repo has settled on one word over
+     obvious alternatives, with the module that defines it. Read the type and
+     table names, not the prose — "tenant" (not organization/workspace/account)
+     is a finding only if the code says tenant. Flag the ones where the code is
+     inconsistent: those are the decisions the team still owes. -->

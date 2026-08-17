@@ -32,9 +32,9 @@ what makes a partial harness expressible instead of an all-or-nothing refusal.
 
 ## Content kinds
 
-`content.kind` decides three answers that must agree — how the artifact is
-emitted, how its presence is tested, what counts as drift — so it is one field
-rather than three flags. Independent booleans could also spell "merged and
+`content.kind` (`crates/harness-core/src/scaffold.rs:99`) decides three answers
+that must agree — how the artifact is emitted, how its presence is tested, what
+counts as drift — so it is one field rather than three flags. Independent booleans could also spell "merged and
 managed", a state that named nothing and had to be rejected at load.
 
 | kind | project copy | presence is | drift is |
