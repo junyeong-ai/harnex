@@ -100,6 +100,12 @@ destination = "harness.toml"
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "seed" }
+template = "common/skills/harness-curate/SKILL.md"
+destination = ".claude/skills/harness-curate/SKILL.md"
+
+[[artifact]]
+tier = "foundation"
 content = { kind = "copy" }
 template = "common/_runner.sh"
 destination = "hooks/_runner.sh"

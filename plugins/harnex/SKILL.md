@@ -117,6 +117,14 @@ alone, `seed` is theirs to edit from the first commit, `managed` is theirs
 outside the sentinels, `merge` shares its destination with the other tier and
 with their own entries.
 
+One artifact is a skill rather than a rule, and the rubric is why: the
+promotion-and-retirement pass `governance.md` describes is a procedure over
+several commands with a decision at each step, and invariant 2 sends a workflow
+to a skill. It also needs `allowed-tools`, which a rule cannot carry, and it
+must be in context when someone runs the sweep rather than when they happen to
+edit a rule — which is all a `paths:` scope can offer. Every other foundation
+artifact stays a rule because it is guidance, not a procedure.
+
 The manifest declares template-derived artifacts. Three emissions are outside
 it because their content comes from the project rather than from a template:
 - For Rust, `rustfmt.toml` carrying the edition declared in `Cargo.toml` —

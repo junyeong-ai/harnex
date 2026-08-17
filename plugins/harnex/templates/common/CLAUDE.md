@@ -26,4 +26,6 @@ Guardrails that must always hold live in `.claude/settings.json` (hooks +
 See `.claude/rules/constitution.md` for the foundation laws,
 `.claude/rules/agent-conduct.md` for how to work in this repo, and
 `.claude/rules/*.md` (path-scoped) for topic guidance.
+
+`/harness-curate` runs the promotion-and-retirement pass those rules describe.
 <!-- harnex-managed:end enforcement-summary -->

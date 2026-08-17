@@ -65,10 +65,21 @@ template would make tailoring — the intended use — read as drift.
 A scaffold must be runnable, not merely well-formed. `harness.toml` is a
 foundation artifact for that reason: without it the generated `governance.md`
 sends its reader to `harness lifecycle observe|candidates|retire` and
-`harness telemetry report`, and every one answers CONFIG_NOT_FOUND.
-`assert_scaffold_is_operable` holds the emitted fixture to it, because auditing
-artifacts can never catch a missing artifact that was the one making the rest
-reachable.
+`harness telemetry report`, and every one answers CONFIG_NOT_FOUND. The
+`workspace` allow floor is one for the same reason a step lower — every command
+those rules name prompts without it. And `harness-curate` is the skill that
+runs the sweep, because a procedure over several commands is what invariant 2
+assigns to a skill, and a rule can carry neither `allowed-tools` nor a trigger
+that fires when someone sits down to run it.
+
+`assert_scaffold_is_operable` holds the emitted fixture to the config surfaces,
+and the skill sweep asserts the emitted set is non-empty — auditing artifacts
+can never catch a missing artifact that was the one making the rest reachable.
+
+The fixture reads every policy from the scaffolded `harness.toml`, never from a
+literal. A restated policy is one no real project has: the fixture would pass
+under settings the scaffold does not ship, which is how an always-loaded rule
+and a strict skill policy both went green here while failing in the field.
 
 ## Adding an artifact
 
