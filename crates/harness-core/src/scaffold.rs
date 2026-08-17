@@ -327,6 +327,87 @@ impl ScaffoldManifest {
     }
 }
 
+/// Whether a [`Content::Merge`] fragment reached `key` in a merged document.
+///
+/// Containment, not equality — that is what `merge` means. A destination is
+/// shared by both tiers and by whatever the project added itself, so demanding
+/// equality would report the foundation's contribution missing the moment a
+/// language fragment landed beside it. Objects match key-wise; arrays match
+/// element-wise and unordered, because the order two fragments land in is a
+/// property neither of them declares.
+///
+/// An absent key path is absent, never an empty match: the destination exists
+/// because some other artifact wrote it, which is exactly why its existence
+/// cannot answer for this fragment.
+pub fn fragment_landed(doc: &serde_json::Value, key: &str, fragment: &serde_json::Value) -> bool {
+    key.split('.')
+        .try_fold(doc, |node, seg| node.get(seg))
+        .is_some_and(|landed| contains(landed, fragment))
+}
+
+fn contains(whole: &serde_json::Value, part: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match (whole, part) {
+        (Value::Object(w), Value::Object(p)) => p
+            .iter()
+            .all(|(k, v)| w.get(k).is_some_and(|got| contains(got, v))),
+        (Value::Array(w), Value::Array(p)) => {
+            p.iter().all(|v| w.iter().any(|got| contains(got, v)))
+        }
+        _ => whole == part,
+    }
+}
+
+#[cfg(test)]
+mod containment_tests {
+    use super::fragment_landed;
+    use serde_json::json;
+
+    #[test]
+    fn a_fragment_is_found_beside_another_contributors_entries() {
+        let settings = json!({"hooks": {
+            "SessionStart": [{"matcher": "startup"}],
+            "Stop": [{}],
+            "PostToolUse": [{"matcher": "Edit|Write"}],
+            "PreToolUse": [{"matcher": "operator's own"}],
+        }});
+        let foundation = json!({"SessionStart": [{"matcher": "startup"}], "Stop": [{}]});
+        let language = json!({"PostToolUse": [{"matcher": "Edit|Write"}]});
+        assert!(fragment_landed(&settings, "hooks", &foundation));
+        assert!(fragment_landed(&settings, "hooks", &language));
+    }
+
+    #[test]
+    fn a_fragment_that_never_merged_is_not_found() {
+        let settings = json!({"hooks": {"SessionStart": [{"matcher": "startup"}]}});
+        let language = json!({"PostToolUse": [{"matcher": "Edit|Write"}]});
+        assert!(!fragment_landed(&settings, "hooks", &language));
+    }
+
+    #[test]
+    fn an_array_matches_element_wise_and_unordered() {
+        let doc = json!({"permissions": {"allow": ["Bash(git commit *)", "Write", "Bash(uv *)"]}});
+        assert!(fragment_landed(
+            &doc,
+            "permissions.allow",
+            &json!(["Bash(uv *)", "Write"])
+        ));
+        assert!(!fragment_landed(
+            &doc,
+            "permissions.allow",
+            &json!(["Bash(poe *)"])
+        ));
+    }
+
+    #[test]
+    fn an_absent_key_path_is_absent_rather_than_empty() {
+        let doc = json!({"permissions": {"deny": []}});
+        assert!(fragment_landed(&doc, "permissions.deny", &json!([])));
+        assert!(!fragment_landed(&doc, "permissions.allow", &json!([])));
+        assert!(!fragment_landed(&doc, "hooks.SessionStart", &json!([])));
+    }
+}
+
 #[cfg(test)]
 mod tier_tests {
     use super::Tier;

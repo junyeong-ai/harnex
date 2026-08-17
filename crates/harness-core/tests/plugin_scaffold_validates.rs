@@ -117,9 +117,12 @@ fn emit_tier(
     }
 }
 
-/// Set `value` at a dotted key path, unioning object keys when a fragment
-/// already occupies it — two artifacts contribute hook events to the same
-/// `hooks` object, and neither may erase the other.
+/// Set `value` at a dotted key path, unioning when a fragment already
+/// occupies it — objects key-wise, arrays as a sorted set. Both tiers
+/// contribute to `hooks` and to `permissions.allow`, and neither may erase the
+/// other: a replacement would drop the foundation's Stop hook the moment the
+/// language fragment landed, and the harness would validate clean while
+/// running nothing.
 fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Value) {
     let mut cursor = root;
     let keys: Vec<&str> = key_path.split('.').collect();
@@ -136,11 +139,16 @@ fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Val
         .unwrap()
         .entry(last)
         .or_insert(serde_json::Value::Null);
-    match (slot.as_object_mut(), value) {
-        (Some(existing), serde_json::Value::Object(incoming)) => {
+    match (&mut *slot, value) {
+        (serde_json::Value::Object(existing), serde_json::Value::Object(incoming)) => {
             for (k, v) in incoming {
                 existing.insert(k, v);
             }
+        }
+        (serde_json::Value::Array(existing), serde_json::Value::Array(incoming)) => {
+            existing.extend(incoming);
+            existing.sort_by_key(serde_json::Value::to_string);
+            existing.dedup();
         }
         (_, incoming) => *slot = incoming,
     }
@@ -203,6 +211,22 @@ fn run_scaffold_validation(lang: &str) {
         assert!(
             events.contains(&event),
             "[{lang}] merging the language hook fragment dropped '{event}': {events:?}"
+        );
+    }
+
+    // Both tiers merge into `permissions.allow` the same way. The floor is
+    // what carries `Edit`, `Write` and the oracle grant, so a replacing merge
+    // would leave a scaffold that prompts on every edit it makes.
+    let allow: Vec<&str> = settings["permissions"]["allow"]
+        .as_array()
+        .expect("permissions.allow is an array")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    for rule in ["Edit", "Write", "Bash(harness *)"] {
+        assert!(
+            allow.contains(&rule),
+            "[{lang}] merging the language allow fragment dropped '{rule}': {allow:?}"
         );
     }
 

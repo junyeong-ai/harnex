@@ -119,10 +119,11 @@ fn every_non_scaffold_template_exists() {
 }
 
 #[test]
-fn no_two_merge_fragments_claim_the_same_sub_key() {
-    // Merging is a key union, so two fragments naming the same sub-key would
-    // leave the later one silently replacing the earlier. `scaffold.toml`
-    // already has two artifacts contributing to `hooks`, one per tier.
+fn no_two_merge_fragments_claim_the_same_contribution() {
+    // Merging is a union — of keys for an object fragment, of elements for an
+    // array — so two fragments claiming the same contribution would leave one
+    // silently absorbing the other. `scaffold.toml` has two artifacts
+    // contributing to `hooks` and two to `permissions.allow`, one per tier.
     let root = templates_root();
     let m = manifest();
     for lang in languages() {
@@ -149,17 +150,30 @@ fn no_two_merge_fragments_claim_the_same_sub_key() {
                         );
                     }
                 }
-                // A non-object fragment — every permission list is an array —
-                // replaces its slot outright, so the merge path itself may be
-                // claimed only once. Skipping these left three of the five
-                // merge artifacts unguarded.
-                None => {
-                    assert!(
-                        claimed.insert((merge.clone(), String::new())),
-                        "two scaffold.toml fragments both merge a non-object into '{merge}' for \
-                         language '{lang}'; the second would replace the first outright"
-                    );
-                }
+                // An array fragment — every permission list is one —
+                // contributes its elements, and the union is a sorted set. Two
+                // fragments naming the same rule would collapse silently and
+                // leave one grant with two owners. Any other scalar replaces
+                // its slot outright, so the path may be claimed only once.
+                None => match value.as_array() {
+                    Some(elements) => {
+                        for element in elements {
+                            let rule = element.to_string();
+                            assert!(
+                                claimed.insert((merge.clone(), rule.clone())),
+                                "two scaffold.toml fragments both contribute {rule} to '{merge}' \
+                                 for language '{lang}'; the union would hide the duplication"
+                            );
+                        }
+                    }
+                    None => {
+                        assert!(
+                            claimed.insert((merge.clone(), String::new())),
+                            "two scaffold.toml fragments both merge a scalar into '{merge}' for \
+                             language '{lang}'; the second would replace the first outright"
+                        );
+                    }
+                },
             }
         }
     }

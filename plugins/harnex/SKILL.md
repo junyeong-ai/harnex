@@ -86,7 +86,7 @@ with project-fit content, not blank placeholders.
 |---|---|---|
 | Language + package manager | lockfile + manifest | template selection |
 | Monorepo structure | workspace config | lean vs multi-package scaffold |
-| Build / test / lint commands | Makefile, Justfile, package.json `scripts`, pyproject.toml `[tool.just]`/`[project.scripts]`, CI config | CLAUDE.md `## Build & test` |
+| Build / test / lint commands **and the runner that drives them** | Makefile, Justfile, `package.json` `scripts`, pyproject.toml `[tool.poe.tasks]`/`[tool.hatch.envs.*.scripts]`/`[tool.pdm.scripts]`/`[project.scripts]`, Taskfile.yml, mise `[tasks]`, CI config | CLAUDE.md `## Build & test` **and** the gate-driver grant (language-matrix) |
 | Directory layout | top-level `ls` + workspace member dirs | CLAUDE.md `## Layout` |
 | Project description | README.md first paragraph, manifest `description` field | CLAUDE.md header |
 | Formatter / linter / type checker | biome.json, .eslintrc, ruff in pyproject.toml, rustfmt.toml, tsconfig.json | CLAUDE.md `## Conventions`, post-format hook config |
@@ -117,13 +117,18 @@ alone, `seed` is theirs to edit from the first commit, `managed` is theirs
 outside the sentinels, `merge` shares its destination with the other tier and
 with their own entries.
 
-The manifest declares template-derived artifacts. Two emissions are outside it
-because their content comes from the project rather than from a template:
+The manifest declares template-derived artifacts. Three emissions are outside
+it because their content comes from the project rather than from a template:
 - For Rust, `rustfmt.toml` carrying the edition declared in `Cargo.toml` —
   per-file `rustfmt` does not read the manifest and would otherwise format to
   a different style than `cargo fmt` (language-matrix).
 - Composing `gcp-strict` or `aws-strict` into `permissions` when CI config
   reveals the project uses docker / terraform / gcloud.
+- The gate-driver grant, from the task declaration Step 1 already read (the
+  language-matrix fingerprint table). A project whose gates run through `just`,
+  `make`, `poe` or `task` prompts on every gate invocation without it, and the
+  language toolchain grant does not cover the runner that wraps it. No signal,
+  no grant — an undeclared runner is the same guess as the wrong formatter.
 
 Git hooks and Claude Code hooks coexist in `hooks/`: git runs only files named
 after git events (`pre-commit`), Claude Code runs the `_runner.sh`-dispatched

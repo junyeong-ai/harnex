@@ -15,17 +15,29 @@ When adding a new profile:
    the round-trip test catches drift).
 4. Document its scope in the function comment (which ecosystem hazards it covers).
 
-Profile naming: `<ecosystem>-strict` for cloud/tool surfaces; `baseline`
-for OS-universal hazards only; `<lang>-dev` for a language toolchain.
+Profile naming is by scope, not by tool: `baseline` is the deny floor
+(OS-universal hazards) and `workspace` the allow floor (working in a
+repository at all — neither carries a language dependency);
+`<ecosystem>-strict` is a cloud/tool surface; `<lang>-dev` is a language
+toolchain and carries nothing but that toolchain — the floor belongs to
+`workspace`, or a stack with no language profile scaffolds with an empty
+allow list.
+
+A `<lang>-dev` profile is the ecosystem's mainstream toolchain, not a claim
+about which of it a given project uses. An allow for an absent tool never
+matches; a missing one prompts on every invocation. The project's own gate
+driver is composed on evidence by the skill, never guessed here.
 
 `profiles.rs` is the single source of truth for permission rules. The harnex
 plugin's committed permission templates are a projection of it:
-`templates/common/permissions.deny.json` mirrors `baseline.deny`, and each
+`templates/common/permissions.deny.json` mirrors `baseline.deny`,
+`templates/common/permissions.allow.json` mirrors `workspace.allow`, and each
 `templates/<lang>/permissions.allow.json` mirrors `<lang>-dev.allow`. The
-`policy_template_sync` integration test fails on any drift. After editing a
-profile, regenerate the matching template (`harness policy permissions
-generate` with that profile selected) and copy the array across — never
-hand-edit one side. A new `<lang>-dev` profile MUST ship its template.
+`policy_template_sync` integration test fails on any drift, and holds the
+foundation and language allow sets disjoint. After editing a profile,
+regenerate the matching template (`harness policy permissions generate` with
+that profile selected) and copy the array across — never hand-edit one side.
+A new `<lang>-dev` profile MUST ship its template.
 
 Rule grammar follows the Claude Code spec: Bash uses space-then-`*`
 (`Bash(cmd *)`); never grant built-in read-only commands (no-op); a Read deny
