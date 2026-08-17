@@ -66,6 +66,7 @@ fn every_manifest_template_exists_for_every_language() {
 /// Templates a mode other than `scaffold` installs, so the unclaimed sweep
 /// does not read them as dead weight. Each names the verb that emits it.
 const NON_SCAFFOLD_TEMPLATES: &[(&str, &str)] = &[
+    ("common/rule-template.md", "extend rule"),
     ("common/skill-template.md", "extend skill"),
     ("common/git-hooks/commit-msg", "extend pattern commit-msg"),
     ("common/git-hooks/pre-push", "extend pattern pre-push"),

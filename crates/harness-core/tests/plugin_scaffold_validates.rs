@@ -354,6 +354,16 @@ fn run_scaffold_validation(lang: &str) {
     // The skeleton `extend skill <name>` writes (before the operator fills the
     // body) must pass SkillValidator as-is, so a freshly scaffolded skill is
     // spec-correct from the first commit.
+    // --- The `extend rule` template must itself validate clean ---
+    // Same contract as the skill skeleton below: the file the verb writes is
+    // held to the policy the scaffold ships, so a derived rule is spec-correct
+    // from its first commit rather than from whenever someone runs the gate.
+    let rule_template = plugin_templates().join("common/rule-template.md");
+    let dst = proj_root.join(".claude/rules/example-derived.md");
+    copy_file(&rule_template, &dst);
+    let findings = rv.validate_file(&dst).unwrap();
+    assert_no_findings(lang, "validate.rules(rule-template.md)", &findings);
+
     let skill_template = plugin_templates().join("common/skill-template.md");
     let dst = proj_root.join(".claude/skills/example-skill/SKILL.md");
     copy_file(&skill_template, &dst);

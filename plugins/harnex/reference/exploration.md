@@ -48,11 +48,22 @@ placeholders. Read the source, not the whole tree.
 | CI pipeline + gates | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `turbo.json` | hook event selection; suggested `extend pattern` |
 | Test framework | `vitest.config`, `pytest.ini`, Cargo test layout | `<lang>-conventions.md` testing section |
 | Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners in deps/CI | suggested `gcp-strict`/`aws-strict` profile; secret-scan recommendation |
+| **Enforced invariants** | project lint scripts + CI steps + pre-commit entries; closed enums / registries / allowlists with an exhaustive match; structural tests (enumerate members, hold two representations in sync, pin a naming shape) | `extend rule` bodies; the scaffold report's rule candidates |
 
 A concern with no signal keeps its template default and is noted "none
 observed yet" — never a guessed value. `extend` runs only the rows its verb
 touches (e.g., `extend pattern naming-decisions` reads file-name casing +
 import verbs).
+
+**The enforced-invariants row is the only one that produces domain content, and
+it is bounded by what it can point at.** A project's real invariants are its
+own vocabulary, which harnex may never invent (Constitution VII) — but a guard
+the codebase already runs is an observation, and naming it is the same act as
+reading a lockfile. The bound is mechanical rather than tasteful: a candidate
+with an enforcer becomes a rule bullet citing it; a candidate without one
+becomes a `harness lifecycle observe` entry and waits for a second sighting.
+Scaffold *reports* what it found so the operator knows which `extend rule`
+calls are worth making; `extend rule` is what writes one.
 
 For a monorepo, run Phase 2 per workspace member when packages differ in
 toolchain or test framework — a single root profile flattens real
