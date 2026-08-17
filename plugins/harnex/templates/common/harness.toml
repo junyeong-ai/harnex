@@ -1,0 +1,46 @@
+# harness oracle configuration.
+#
+# Without this file the oracle answers CONFIG_NOT_FOUND, and `harness check`,
+# `harness validate`, `harness lifecycle` and `harness telemetry` are all
+# unreachable — including the retirement sweep `governance.md` sends you to.
+# The scaffold ships it so the loop those rules describe is runnable from the
+# first commit rather than after someone notices.
+#
+# Every validator with a subject here is on. The surfaces a fresh scaffold has
+# none of yet stay declared anyway, so the first skill or sub-agent added is
+# checked from its first commit instead of whenever someone remembers to widen
+# this file.
+
+[meta]
+harnex_version = ">=0.1, <0.2"
+
+[validate.rules]
+# The Claude Code memory budget applies to what loads every turn — a rule
+# carrying no `paths:`. Path-scoped rules cost context only on the files they
+# govern, so `max_scoped_lines` stays unset: a cohesive long rule is not a
+# defect. `constitution.md` is the one artifact the scaffold emits that is
+# meant to load unconditionally.
+max_lines = 200
+always_loaded_slugs = ["constitution"]
+
+[validate.skills]
+
+[validate.agents]
+
+[validate.output_styles]
+
+# The promotion-and-retirement loop `governance.md` and `artifact-lifecycle.md`
+# describe. Every threshold has a default, so the section is declared empty on
+# purpose: the loop is runnable from the first commit, and the numbers are
+# tuned once the corpus is large enough to have an opinion. Without the
+# section, `harness lifecycle observe|candidates|retire` — the commands those
+# rules send you to — answer CONFIG_INVALID.
+[lifecycle]
+
+# `lifecycle retire` derives its Silent verdict from this ledger, so the sweep
+# needs the section even before the project records anything. `kinds` starts
+# empty: an event schema is a project's own vocabulary and inventing one here
+# would be the domain guessing harnex refuses. Declare a kind when there is
+# something to count.
+[telemetry]
+storage_dir = ".harness/telemetry"

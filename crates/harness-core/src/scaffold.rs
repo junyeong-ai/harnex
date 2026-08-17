@@ -1,15 +1,22 @@
 //! # scaffold — the composition manifest a generated harness is built from
 //!
 //! `templates/scaffold.toml` declares every template-derived artifact a
-//! harness contains: the template it comes from, where it lands, whether it is
-//! copied or merged into a JSON destination, and which tier it belongs to.
-//! Emissions whose content comes from the project rather than from a template
-//! — a `rustfmt.toml` carrying the detected edition, a cloud permission
-//! profile composed from CI config — are the skill's, and `SKILL.md` names
-//! them where it reads this file. Three consumers
-//! read it — the skill that emits a harness, the test that builds a fixture,
-//! and the auditor that reports which destinations a project holds — so the
+//! harness contains: the template it comes from, where it lands, which tier it
+//! belongs to, and how the project's copy relates to the template it came
+//! from. Emissions whose content comes from the project rather than from a
+//! template — a `rustfmt.toml` carrying the detected edition, a cloud
+//! permission profile composed from CI config — are the skill's, and
+//! `SKILL.md` names them where it reads this file. Three consumers read it —
+//! the skill that emits a harness, the test that builds a fixture, and the
+//! auditor that reports which destinations a project holds — so the
 //! composition is stated once and drift between those views is impossible.
+//!
+//! [`Content`] is what keeps those three views agreeing. How an artifact is
+//! emitted, how its presence is tested, and what counts as drift are one
+//! decision, so they are one field: machinery held byte-identical, a seed
+//! handed to the project outright, a sentinel-partitioned file, or a JSON
+//! fragment whose presence is its landing at a key rather than its shared
+//! destination existing.
 //!
 //! [`Tier`] is what makes a partial harness expressible. `Foundation`
 //! artifacts carry no language dependency: the permission floor, the
@@ -80,29 +87,47 @@ impl Tier {
     }
 }
 
-/// Closed schema (Constitution V). Every field here defaults, so a misspelled
-/// one is not a parse error but a silently weaker artifact: `manageed = true`
-/// leaves `managed` false, and the artifact drops out of managed-region drift
-/// enforcement while the manifest still reads as if it were covered.
+/// How an artifact's project copy relates to the template that emits it.
+///
+/// One discriminator, because the relationship decides three answers that must
+/// agree: how the artifact is emitted, how its presence is tested, and what
+/// counts as drift. Independent flags could also spell "merged and managed",
+/// which named nothing and had to be rejected at load — an invalid state that
+/// this enum cannot represent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum Content {
+    /// Machinery. The project's copy must stay byte-identical to the template,
+    /// because the template is the only statement of what it does.
+    Copy,
+    /// A starting point the project takes ownership of. harnex writes it once
+    /// and asserts nothing about it afterwards — a project's governance is its
+    /// own, and holding it to the template would make tailoring read as drift.
+    Seed,
+    /// Partitioned by `harnex-managed` sentinels: harnex owns what they bound,
+    /// the project owns everything outside them.
+    Managed,
+    /// A JSON fragment contributed into a shared destination at `key`. Several
+    /// artifacts may name the same destination, so this is the only kind whose
+    /// presence is not answered by the destination existing.
+    Merge { key: String },
+}
+
+/// Closed schema (Constitution V). `executable` defaults, so a misspelled
+/// field is not a parse error but a silently weaker artifact — a hook that
+/// lands without its exec bit is wired and unrunnable.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Artifact {
     pub tier: Tier,
+    pub content: Content,
     /// Path under `templates/`, possibly carrying `{lang}`.
     pub template: String,
     /// Project-relative destination, possibly carrying `{lang}`.
     pub destination: String,
-    /// JSON key path this fragment contributes to. Absent means the template
-    /// is copied to `destination` verbatim.
-    #[serde(default)]
-    pub merge: Option<String>,
     /// Written 0o755 — a hook Claude Code invokes directly.
     #[serde(default)]
     pub executable: bool,
-    /// Carries `harnex-managed` sentinels, so the managed-region auditor
-    /// holds the project's copy to this template.
-    #[serde(default)]
-    pub managed: bool,
 }
 
 impl Artifact {
@@ -115,6 +140,18 @@ impl Artifact {
     /// The destination path with `{lang}` resolved, under `project_root`.
     pub fn destination_for(&self, lang: Option<&str>) -> Option<PathBuf> {
         substitute(&self.destination, lang).map(PathBuf::from)
+    }
+
+    /// Every template this artifact can be emitted from: one per shipped
+    /// language when the manifest parameterizes it, otherwise exactly one.
+    pub fn resolved_templates(&self) -> Vec<String> {
+        if self.template.contains(LANG_PLACEHOLDER) {
+            PermissionProfile::languages()
+                .filter_map(|lang| self.template_for(Some(lang)))
+                .collect()
+        } else {
+            self.template_for(None).into_iter().collect()
+        }
     }
 
     /// Every concrete destination this artifact can occupy: one per language
@@ -205,10 +242,9 @@ impl ScaffoldManifest {
         self.artifacts.iter().filter(move |a| a.tier == tier)
     }
 
-    /// Artifacts whose project copy the managed-region auditor compares
-    /// against its template.
-    pub fn managed(&self) -> impl Iterator<Item = &Artifact> {
-        self.artifacts.iter().filter(|a| a.managed)
+    /// Artifacts in the given content kind, in declaration order.
+    pub fn with_content(&self, kind: &Content) -> impl Iterator<Item = &Artifact> {
+        self.artifacts.iter().filter(move |a| &a.content == kind)
     }
 
     fn invalid(&self, message: String) -> Error {
@@ -261,32 +297,30 @@ impl ScaffoldManifest {
                     a.template
                 )));
             }
-            if a.managed && a.tier == Tier::Language {
-                return Err(self.invalid(format!(
-                    "artifact '{}' is managed on the language tier; a managed pair must resolve \
-                     without a detected stack, and one that cannot is silently never audited",
-                    a.template
-                )));
-            }
-            if let Some(merge) = &a.merge
-                && (merge.is_empty() || merge.split('.').any(|k| k.trim().is_empty()))
-            {
-                return Err(self.invalid(format!(
-                    "artifact '{}' declares an empty `merge` key path '{merge}'",
-                    a.template
-                )));
-            }
-            if a.merge.is_some() && !a.destination.ends_with(".json") {
-                return Err(self.invalid(format!(
-                    "artifact '{}' declares `merge` into a non-JSON destination '{}'",
-                    a.template, a.destination
-                )));
-            }
-            if a.managed && a.merge.is_some() {
-                return Err(self.invalid(format!(
-                    "artifact '{}' is both merged and managed; sentinel regions need a whole file",
-                    a.template
-                )));
+            match &a.content {
+                Content::Managed if a.tier == Tier::Language => {
+                    return Err(self.invalid(format!(
+                        "artifact '{}' is managed on the language tier; a managed pair must \
+                         resolve without a detected stack, and one that cannot is silently \
+                         never audited",
+                        a.template
+                    )));
+                }
+                Content::Merge { key } => {
+                    if key.is_empty() || key.split('.').any(|k| k.trim().is_empty()) {
+                        return Err(self.invalid(format!(
+                            "artifact '{}' declares an empty merge key path '{key}'",
+                            a.template
+                        )));
+                    }
+                    if !a.destination.ends_with(".json") {
+                        return Err(self.invalid(format!(
+                            "artifact '{}' merges into a non-JSON destination '{}'",
+                            a.template, a.destination
+                        )));
+                    }
+                }
+                Content::Copy | Content::Seed | Content::Managed => {}
             }
         }
         Ok(())
@@ -331,6 +365,7 @@ mod tests {
             r#"
 [[artifact]]
 tier = "foundation"
+content = { kind = "copy" }
 template = "common/CLAUDE.md"
 destination = "CLAUDE.md"
 manageed = true
@@ -352,6 +387,7 @@ manageed = true
             r#"
 [[artifact]]
 tier = "language"
+content = { kind = "copy" }
 template = "{lang}/post-format.sh"
 destination = ".claude/rules/{lang}-conventions.md"
 "#,
@@ -375,6 +411,7 @@ destination = ".claude/rules/{lang}-conventions.md"
                 r#"
 [[artifact]]
 tier = "foundation"
+content = { kind = "copy" }
 template = "common/notes.md"
 destination = "~notes.md"
 "#,
@@ -389,6 +426,7 @@ destination = "~notes.md"
                     r#"
 [[artifact]]
 tier = "foundation"
+content = {{ kind = "copy" }}
 template = "common/notes.md"
 destination = "{rooted}"
 "#,
@@ -405,6 +443,7 @@ destination = "{rooted}"
             r#"
 [[artifact]]
 tier = "language"
+content = { kind = "copy" }
 template = "{lang}/rules/{lang}-conventions.md"
 destination = ".claude/rules/{lang}-conventions.md"
 "#,
@@ -435,9 +474,9 @@ destination = ".claude/rules/{lang}-conventions.md"
             r#"
 [[artifact]]
 tier = "foundation"
+content = { kind = "managed" }
 template = "common/CLAUDE.md"
 destination = "CLAUDE.md"
-managed = true
 "#,
         )
         .unwrap();
@@ -452,6 +491,7 @@ managed = true
             r#"
 [[artifact]]
 tier = "foundation"
+content = { kind = "copy" }
 template = "{lang}/post-format.sh"
 destination = "hooks/post-format.sh"
 "#,
@@ -471,7 +511,7 @@ destination = "hooks/post-format.sh"
                 ("template", "destination = \"CLAUDE.md\""),
             ] {
                 let err = manifest_from(&format!(
-                    "[[artifact]]\ntier = \"foundation\"\n{other}\n{field} = \"{escape}\"\n"
+                    "[[artifact]]\ntier = \"foundation\"\ncontent = {{ kind = \"copy\" }}\n{other}\n{field} = \"{escape}\"\n"
                 ))
                 .unwrap_err();
                 assert!(
@@ -487,7 +527,7 @@ destination = "hooks/post-format.sh"
         // `..` is rejected by path component, so a legal name is not caught by
         // a substring test.
         let m = manifest_from(
-            "[[artifact]]\ntier = \"foundation\"\ntemplate = \"common/a..b.md\"\ndestination = \"a..b.md\"\n",
+            "[[artifact]]\ntier = \"foundation\"\ncontent = { kind = \"copy\" }\ntemplate = \"common/a..b.md\"\ndestination = \"a..b.md\"\n",
         )
         .unwrap();
         assert_eq!(m.artifacts().len(), 1);
@@ -499,9 +539,9 @@ destination = "hooks/post-format.sh"
             r#"
 [[artifact]]
 tier = "foundation"
+content = { kind = "merge", key = "permissions.deny" }
 template = "common/CLAUDE.md"
 destination = "CLAUDE.md"
-merge = "permissions.deny"
 "#,
         )
         .unwrap_err();
@@ -517,9 +557,9 @@ merge = "permissions.deny"
             r#"
 [[artifact]]
 tier = "language"
+content = { kind = "managed" }
 template = "{lang}/rules/{lang}-conventions.md"
 destination = ".claude/rules/{lang}-conventions.md"
-managed = true
 "#,
         )
         .unwrap_err();
@@ -533,30 +573,33 @@ managed = true
     fn rejects_an_empty_merge_key_path() {
         for merge in ["", ".", "a..b", " "] {
             let err = manifest_from(&format!(
-                "[[artifact]]\ntier = \"foundation\"\ntemplate = \"common/hooks.json\"\ndestination = \".claude/settings.json\"\nmerge = \"{merge}\"\n"
+                "[[artifact]]\ntier = \"foundation\"\ncontent = {{ kind = \"merge\", key = \"{merge}\" }}\ntemplate = \"common/hooks.json\"\ndestination = \".claude/settings.json\"\n"
             ))
             .unwrap_err();
             assert!(
-                err.to_string().contains("empty `merge` key path"),
+                err.to_string().contains("empty merge key path"),
                 "merge '{merge}' must be refused: {err}"
             );
         }
     }
 
     #[test]
-    fn rejects_an_artifact_that_is_both_merged_and_managed() {
+    fn an_artifact_declares_exactly_one_content_kind() {
+        // Independent flags could spell "merged and managed", which named
+        // nothing and was rejected at load. One discriminator makes it
+        // unrepresentable, and an unknown kind is refused at the boundary
+        // rather than defaulting to the mildest reading.
         let err = manifest_from(
             r#"
 [[artifact]]
 tier = "foundation"
+content = { kind = "mergeed", key = "hooks" }
 template = "common/hooks.json"
 destination = ".claude/settings.json"
-merge = "hooks"
-managed = true
 "#,
         )
         .unwrap_err();
-        assert!(err.to_string().contains("merged and managed"), "{err}");
+        assert!(matches!(err, Error::ConfigInvalid { .. }), "{err:?}");
     }
 
     #[test]

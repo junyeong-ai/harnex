@@ -101,15 +101,21 @@ flattens real per-package differences.
 ### Step 2 — Compose artifacts from templates + analysis
 
 **The file set is `${CLAUDE_SKILL_DIR}/templates/scaffold.toml`, not this
-list.** Read it and emit every artifact it declares: copy each one to its
-`destination`, merge each JSON fragment into the `merge` key path it names
-(a key union where two artifacts name the same key — the manifest header
-states the rule),
-`chmod 0o755` where `executable` is set. Emit the `foundation` tier always and
-the `language` tier when a stack matched, resolving `{lang}` to the detected
-language. The manifest is the single home for that set — a second list here
-would be the one that drifts, and the oracle's fixture test builds from the
-same file so a scaffold and its guard cannot disagree.
+list.** Read it and emit every artifact it declares, dispatching on
+`content.kind`: `copy`, `seed` and `managed` are written to `destination`
+verbatim; `merge` contributes its JSON fragment at `content.key` as a key
+union where two artifacts name the same key (the manifest header states the
+rule). `chmod 0o755` where `executable` is set. Emit the `foundation` tier
+always and the `language` tier when a stack matched, resolving `{lang}` to the
+detected language. The manifest is the single home for that set — a second
+list here would be the one that drifts, and the oracle's fixture test builds
+from the same file so a scaffold and its guard cannot disagree.
+
+`content.kind` also says what happens to each artifact afterwards, which is
+what the operator needs to hear when you report: `copy` is machinery to leave
+alone, `seed` is theirs to edit from the first commit, `managed` is theirs
+outside the sentinels, `merge` shares its destination with the other tier and
+with their own entries.
 
 The manifest declares template-derived artifacts. Two emissions are outside it
 because their content comes from the project rather than from a template:

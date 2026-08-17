@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use harness_core::policy::PermissionProfile;
-use harness_core::scaffold::{ScaffoldManifest, Tier};
+use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
 
 fn templates_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/templates")
@@ -128,7 +128,7 @@ fn no_two_merge_fragments_claim_the_same_sub_key() {
     for lang in languages() {
         let mut claimed: BTreeSet<(String, String)> = BTreeSet::new();
         for artifact in m.artifacts() {
-            let Some(merge) = &artifact.merge else {
+            let Content::Merge { key: merge } = &artifact.content else {
                 continue;
             };
             let template = artifact
@@ -173,7 +173,7 @@ fn every_destination_is_claimed_once_per_language() {
         for artifact in m.artifacts() {
             // A JSON fragment contributes to a shared destination by design;
             // exactly one artifact may own a destination outright.
-            if artifact.merge.is_some() {
+            if matches!(artifact.content, Content::Merge { .. }) {
                 continue;
             }
             let dest = artifact
@@ -204,7 +204,7 @@ fn the_foundation_tier_stands_alone() {
         .collect();
 
     for artifact in m.tier(Tier::Foundation) {
-        if artifact.merge.is_none() {
+        if !matches!(artifact.content, Content::Merge { .. }) {
             continue;
         }
         let template = artifact.template_for(None).unwrap();

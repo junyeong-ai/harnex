@@ -30,8 +30,9 @@ editing it, not using it):
 - **Budgets:** `SKILL.md` body < 500 lines; `description` + `when_to_use`
   ≤ 1536 chars, key use case first.
 - **`templates/scaffold.toml` is the composition.** Which artifacts a harness
-  contains, where each lands, and which tier it belongs to are declared there
-  and nowhere else. The skill emits from it, the oracle's fixture test builds
+  contains, where each lands, which tier it belongs to, and how the project's
+  copy relates to its template (`content.kind`: `copy` | `seed` | `managed` |
+  `merge`) are declared there and nowhere else. The skill emits from it, the oracle's fixture test builds
   from it, and `harness audit` reports coverage against it, so a file list
   restated in prose is the one that drifts (constitution IX). The `foundation`
   tier is what a stack with no language profile still receives; nothing in it

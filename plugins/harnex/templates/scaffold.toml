@@ -10,17 +10,29 @@
 #
 # Fields:
 #   tier         "foundation" (language-agnostic) | "language" (needs a profile)
+#   content      how the project's copy relates to this template — see below
 #   template     path under `templates/`; `{lang}` resolves to the detected language
 #   destination  project-relative path; `{lang}` resolves the same way
-#   merge        JSON key path this fragment contributes to; absent = copy verbatim.
-#                Several artifacts may name the same key — `hooks` is claimed by
-#                both tiers — and the contribution is a KEY UNION, never a
-#                replacement: the language tier adds its PostToolUse entry beside
-#                the foundation's SessionStart and Stop rather than erasing them.
-#                An array-valued key is claimed by exactly one artifact.
 #   executable   the artifact is a script and is written 0o755
-#   managed      the artifact carries `<!-- harnex-managed -->` sentinels, so the
-#                managed-region auditor compares it against this template
+#
+# `content.kind` is the discriminator every consumer switches on, because how
+# an artifact is emitted, how its presence is tested, and what counts as drift
+# are one decision rather than three:
+#
+#   copy     machinery — the project's copy must stay byte-identical, because
+#            this template is the only statement of what it does.
+#   seed     a starting point the project takes ownership of. Written once,
+#            never held to the template afterwards: a project's governance is
+#            its own, and tailoring it is the intended use, not drift.
+#   managed  partitioned by `<!-- harnex-managed -->` sentinels — harnex owns
+#            what they bound, the project owns everything outside them.
+#   merge    a JSON fragment contributed at `key`. Several artifacts may name
+#            the same key — `hooks` is claimed by both tiers — and the
+#            contribution is a KEY UNION, never a replacement: the language
+#            tier adds its PostToolUse entry beside the foundation's
+#            SessionStart and Stop rather than erasing them. An array-valued
+#            key is claimed by exactly one artifact. Presence is the fragment
+#            landing at its key, not the shared destination existing.
 #
 # Adding a language means adding its `<lang>-dev` profile plus the three
 # `{lang}` template files — never an edit here. The language set derives from
@@ -31,64 +43,77 @@
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "merge", key = "permissions.deny" }
 template = "common/permissions.deny.json"
 destination = ".claude/settings.json"
-merge = "permissions.deny"
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "merge", key = "hooks" }
 template = "common/hooks.json"
 destination = ".claude/settings.json"
-merge = "hooks"
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "managed" }
 template = "common/CLAUDE.md"
 destination = "CLAUDE.md"
-managed = true
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "managed" }
 template = "common/rules/constitution.md"
 destination = ".claude/rules/constitution.md"
-managed = true
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "seed" }
 template = "common/rules/governance.md"
 destination = ".claude/rules/governance.md"
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "seed" }
 template = "common/rules/artifact-lifecycle.md"
 destination = ".claude/rules/artifact-lifecycle.md"
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "seed" }
+template = "common/harness.toml"
+destination = "harness.toml"
+
+[[artifact]]
+tier = "foundation"
+content = { kind = "copy" }
 template = "common/_runner.sh"
 destination = "hooks/_runner.sh"
 executable = true
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "copy" }
 template = "common/_stop_runner.sh"
 destination = "hooks/_stop_runner.sh"
 executable = true
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "copy" }
 template = "common/session-start.sh"
 destination = "hooks/session-start.sh"
 executable = true
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "copy" }
 template = "common/check-on-stop.sh"
 destination = "hooks/check-on-stop.sh"
 executable = true
 
 [[artifact]]
 tier = "foundation"
+content = { kind = "copy" }
 template = "common/git-hooks/pre-commit"
 destination = "hooks/pre-commit"
 executable = true
@@ -97,23 +122,25 @@ executable = true
 
 [[artifact]]
 tier = "language"
+content = { kind = "merge", key = "permissions.allow" }
 template = "{lang}/permissions.allow.json"
 destination = ".claude/settings.json"
-merge = "permissions.allow"
 
 [[artifact]]
 tier = "language"
+content = { kind = "merge", key = "hooks" }
 template = "common/hooks.format.json"
 destination = ".claude/settings.json"
-merge = "hooks"
 
 [[artifact]]
 tier = "language"
+content = { kind = "copy" }
 template = "{lang}/post-format.sh"
 destination = "hooks/post-format.sh"
 executable = true
 
 [[artifact]]
 tier = "language"
+content = { kind = "seed" }
 template = "{lang}/rules/{lang}-conventions.md"
 destination = ".claude/rules/{lang}-conventions.md"
