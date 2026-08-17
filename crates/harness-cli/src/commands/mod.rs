@@ -33,8 +33,13 @@ pub fn config_dir(config_path: &std::path::Path, working_dir: &std::path::Path) 
         .unwrap_or_else(|| working_dir.to_path_buf())
 }
 
+/// Emit the success envelope, carrying whatever the binary must disclose
+/// about itself. Spec-vocabulary staleness rides here rather than any
+/// command's findings: it describes this build's knowledge, not the project
+/// the command was pointed at, and every consumer sees it on every call.
 pub fn write_envelope_success<T: serde::Serialize, W: Write>(out: &mut W, data: T) -> Result<()> {
-    harness_core::envelope::write_success(out, data, &[]).map_err(|e| Error::IoFailure {
+    let warnings = harness_core::spec::stale_warnings_now();
+    harness_core::envelope::write_success(out, data, &warnings).map_err(|e| Error::IoFailure {
         path: PathBuf::from("(stdout)"),
         source: e,
     })

@@ -18,9 +18,9 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch,
   PermissionRequest, PermissionDenied, Stop, StopFailure, SubagentStart,
   SubagentStop, Notification, MessageDisplay, PreCompact, PostCompact,
-  InstructionsLoaded, ConfigChange, CwdChanged, FileChanged, WorktreeCreate,
-  WorktreeRemove, TaskCreated, TaskCompleted, TeammateIdle, Elicitation,
-  ElicitationResult.
+  InstructionsLoaded, ConfigChange, CwdChanged, DirectoryAdded, FileChanged,
+  WorktreeCreate, WorktreeRemove, TaskCreated, TaskCompleted, TeammateIdle,
+  Elicitation, ElicitationResult.
   <!-- harnex-managed:end spec-facts-hook-events -->
 - **Exit codes.** 0 = success, stdout JSON parsed for control fields (stdout
   reaches Claude as context only for UserPromptSubmit, UserPromptExpansion,
@@ -85,8 +85,9 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   handled separately by the `SettingsScope` check.) Never emit these into a
   generated `.claude/settings.json` — they become no-ops.
 - **Pattern syntax:** `Bash(npm run *)`, `Read(.env)`, `Read(./secrets/**)`,
-  `Edit(...)`, `Write(...)`, `WebFetch(domain:github.com)`, `Skill(name)`,
-  `Agent(Explore)`. MCP uses double-underscore, NOT a parenthesized form:
+  `Edit(...)`, `Write(...)`, `PowerShell(Get-ChildItem *)`,
+  `WebFetch(domain:github.com)`, `Skill(name)`, `Agent(Explore)`.
+  MCP uses double-underscore, NOT a parenthesized form:
   `mcp__<server>` (all its tools), `mcp__<server>__<tool>`, or `mcp__<server>__*`.
 - **Bash matching:** a single `*` matches any run of characters *including
   spaces*, so one wildcard spans multiple args. The canonical wildcard is a
@@ -97,6 +98,16 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   (`Bash(* --version)`). Wrappers `timeout/time/nice/nohup/stdbuf` (and bare
   `xargs`) are stripped before matching; env-runners (`npx`, `docker exec`,
   `devbox run`) are NOT — write `Bash(npx <tool> *)`, never bare `Bash(npx *)`.
+- **`PowerShell` is a second shell tool, not a Windows detail.** It is enabled
+  by default on Windows without Git Bash and opt-in elsewhere
+  (`CLAUDE_CODE_USE_POWERSHELL_TOOL=1` + `pwsh` on PATH), so a `Bash`-only rule
+  set leaves it ungoverned wherever it is on. Two consequences: a hook that
+  inspects shell commands matches `Bash|PowerShell`, never `Bash` alone; and a
+  deny floor that mirrors only Bash states a narrower boundary than it reads as.
+  harnex's baseline deliberately stays Bash-only — the generated harness targets
+  POSIX toolchains where the tool is off by default, and mirroring every rule
+  for a tool no target project enables is cost without catch. A project that
+  turns it on owns the mirror.
 - **Read-only built-ins never prompt** (`ls cat echo pwd head tail grep find wc
   which diff stat du cd` + read-only `git`): an allow rule for them is a no-op —
   never emit one. To force a prompt, add an `ask`/`deny` rule.
@@ -127,10 +138,13 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   <!-- harnex-managed:start spec-facts-skill-keys -->
   name, description, when_to_use, argument-hint, arguments,
   disable-model-invocation, user-invocable, allowed-tools, disallowed-tools,
-  model, effort, context, agent, hooks, paths, shell.
+  model, effort, context, agent, background, hooks, paths, shell, metadata,
+  license, compatibility.
   <!-- harnex-managed:end spec-facts-skill-keys -->
   Constraints: name (`[a-z0-9-]{1,64}`), effort (`low|medium|high|xhigh|max`),
-  context (`fork`).
+  context (`fork`), background (bool, only with `context: fork`, ≥ v2.1.218),
+  metadata (a mapping — any other value is silently dropped). `license` and
+  `compatibility` come from the Agent Skills standard: accepted, never acted on.
 - **Location:** `.claude/skills/<name>/SKILL.md` (project/personal),
   `<plugin-root>/skills/<name>/SKILL.md` (plugin), or — since v2.1.142 — a bare
   `SKILL.md` at the plugin root with no `skills/` dir and no `skills` manifest
@@ -182,9 +196,20 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
 ## Plugins (/en/plugins)
 
 - Manifest `.claude-plugin/plugin.json`; only `name` required, or omit the
-  manifest entirely. Components live at plugin root: `skills/`, `hooks/`,
-  `agents/`, `commands/`, `.mcp.json`, `bin/`. A plugin root CLAUDE.md is NOT
-  loaded as context — ship instructions in a skill.
+  manifest entirely. Components live at plugin root: `skills/`, `commands/`,
+  `agents/`, `workflows/`, `output-styles/`, `hooks/hooks.json`, `.mcp.json`,
+  `.lsp.json`, `bin/`, plus the experimental `themes/` and
+  `monitors/monitors.json`. Beyond the metadata fields, the manifest carries
+  `userConfig` (typed values an installer supplies, `sensitive` ones through
+  secure storage), `dependencies` (other plugins, optional semver), `channels`,
+  and `defaultEnabled`. A plugin root CLAUDE.md is NOT loaded as context —
+  ship instructions in a skill.
+- **`workflows/` is a distinct component class from `skills/`.** A skill is
+  instructions a model follows; a workflow is a script the runtime executes
+  over many subagents, invoked as a slash command. The two are not
+  substitutes: a workflow earns its place where one charge runs identically
+  over many items whose defects are independent, and where no step needs
+  operator input mid-run.
 - **Omit `version`** for an internal fast-iterating tool: the commit SHA then
   drives updates (every commit is a new version). Set `version` only for
   stable releases users opt into.

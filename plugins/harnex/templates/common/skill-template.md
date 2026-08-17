@@ -13,7 +13,15 @@ disable-model-invocation: true
      - Pre-approve only the tools the procedure needs with
        `allowed-tools: Bash(cmd *) ...` (it GRANTS, it does not restrict).
      - Reference bundled files by `${CLAUDE_SKILL_DIR}/...` so paths resolve
-       wherever the skill is installed. -->
+       wherever the skill is installed.
+     - A procedure that must not leak into (or out of) the main conversation
+       adds `context: fork`, which turns the body into a subagent task. Then
+       `agent:` picks the host whose charge already states the discipline the
+       procedure depends on — a mismatch pits system prompt against task — and
+       `background: false` is required when the caller reads the result in the
+       same turn, since a forked skill returns asynchronously by default. The
+       built-in Explore and Plan hosts skip CLAUDE.md, so a procedure citing a
+       rule or the constitution hosts on a project agent instead. -->
 
 # <skill name>
 

@@ -10,11 +10,11 @@
 //! ```
 //!
 //! The block between the sentinels mirrors a region of a plugin template.
-//! Which template owns which project file is declared in
-//! `templates/managed-files.toml` shipped with the plugin — Constitution
-//! VII forbids encoding such project-domain paths in Rust source. This
-//! auditor reads the manifest, then compares the project's bytes against
-//! the template's for every declared pair.
+//! Which template owns which project file is declared by the `managed`
+//! artifacts of `templates/scaffold.toml` — the same manifest the skill
+//! emits from and the fixture test builds from, so a managed pair cannot
+//! disagree with the composition it belongs to. Constitution VII forbids
+//! encoding such project-domain paths in Rust source.
 //!
 //! ## What this module refuses to do
 //!
@@ -29,30 +29,12 @@
 //! - Never silently succeed on a missing manifest. The whole auditor fails
 //!   loudly so a wrong `--plugin-root` cannot masquerade as a clean audit.
 
-use std::path::{Path, PathBuf};
-
-use serde::Deserialize;
+use std::path::Path;
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
+use crate::scaffold::ScaffoldManifest;
 use crate::sentinel;
-
-const MANIFEST_FILENAME: &str = "managed-files.toml";
-
-/// Parsed shape of `templates/managed-files.toml`.
-#[derive(Debug, Deserialize)]
-struct Manifest {
-    #[serde(default)]
-    managed: Vec<ManagedFile>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ManagedFile {
-    /// Relative path of the template within the templates directory.
-    template: PathBuf,
-    /// Relative path of the artifact within the target project.
-    project: PathBuf,
-}
 
 /// Aggregated outcome of a managed-region audit pass.
 #[derive(Debug)]
@@ -74,24 +56,31 @@ impl<'a> ManagedRegionAuditor<'a> {
 
     pub(crate) fn audit(&self, project_root: &Path) -> Result<ManagedRegionOutcome> {
         let templates_root = self.plugin_root.join("templates");
-        let manifest_path = templates_root.join(MANIFEST_FILENAME);
-        let manifest = load_manifest(&manifest_path)?;
+        let manifest = ScaffoldManifest::load(&templates_root)?;
 
         let mut findings = Vec::new();
         let mut files_scanned: usize = 0;
-        for entry in &manifest.managed {
-            let template_path = templates_root.join(&entry.template);
+        for artifact in manifest.managed() {
+            // A managed artifact is foundation-tier by construction (the
+            // manifest refuses `{lang}` there), so both paths resolve without
+            // a detected stack.
+            let (Some(template), Some(destination)) =
+                (artifact.template_for(None), artifact.destination_for(None))
+            else {
+                continue;
+            };
+            let template_path = templates_root.join(&template);
             if !template_path.is_file() {
                 return Err(Error::ConfigInvalid {
                     message: format!(
-                        "managed-files.toml lists '{}' but the template is missing at {}",
-                        entry.template.display(),
+                        "scaffold.toml declares managed artifact '{template}' but the template is \
+                         missing at {}",
                         template_path.display()
                     ),
-                    location: Some(Location::file(manifest_path.clone())),
+                    location: Some(Location::file(manifest.path().to_path_buf())),
                 });
             }
-            let project_path = project_root.join(&entry.project);
+            let project_path = project_root.join(&destination);
             if !project_path.is_file() {
                 continue;
             }
@@ -170,54 +159,6 @@ impl<'a> ManagedRegionAuditor<'a> {
     }
 }
 
-fn load_manifest(path: &Path) -> Result<Manifest> {
-    let raw = std::fs::read_to_string(path).map_err(|e| Error::IoFailure {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
-    let parsed: Manifest = toml::from_str(&raw).map_err(|e| Error::ConfigInvalid {
-        message: format!("parse {MANIFEST_FILENAME}: {e}"),
-        location: Some(Location::file(path.to_path_buf())),
-    })?;
-    if parsed.managed.is_empty() {
-        return Err(Error::ConfigInvalid {
-            message: format!(
-                "{MANIFEST_FILENAME} has no [[managed]] entries — at least one is required"
-            ),
-            location: Some(Location::file(path.to_path_buf())),
-        });
-    }
-    // Reject duplicate project paths — two entries pointing at the same file
-    // would produce duplicate findings and mask which template is canonical.
-    let mut seen = std::collections::BTreeSet::new();
-    for entry in &parsed.managed {
-        // Both paths are joined under their roots and read; reject `..` and
-        // absolute paths at load so a manifest cannot point the auditor at a
-        // file outside the templates dir or the project root.
-        for (label, p) in [("template", &entry.template), ("project", &entry.project)] {
-            if crate::path_guard::reject_traversal(p).is_err() || p.is_absolute() {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "{MANIFEST_FILENAME} {label} path '{}' must be project-relative (no `..`, no leading `/`)",
-                        p.display()
-                    ),
-                    location: Some(Location::file(path.to_path_buf())),
-                });
-            }
-        }
-        if !seen.insert(&entry.project) {
-            return Err(Error::ConfigInvalid {
-                message: format!(
-                    "{MANIFEST_FILENAME} has duplicate project path: {}",
-                    entry.project.display()
-                ),
-                location: Some(Location::file(path.to_path_buf())),
-            });
-        }
-    }
-    Ok(parsed)
-}
-
 /// Normalize a region body for comparison: trim, collapse internal CR/LF.
 fn normalize(body: &str) -> String {
     body.replace("\r\n", "\n").trim().to_string()
@@ -227,6 +168,7 @@ fn normalize(body: &str) -> String {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn write(dir: &Path, rel: &str, body: &str) -> PathBuf {
@@ -259,15 +201,19 @@ outside
         );
         write(
             plugin_root,
-            "templates/managed-files.toml",
+            "templates/scaffold.toml",
             r#"
-[[managed]]
+[[artifact]]
+tier = "foundation"
 template = "common/CLAUDE.md"
-project = "CLAUDE.md"
+destination = "CLAUDE.md"
+managed = true
 
-[[managed]]
+[[artifact]]
+tier = "foundation"
 template = "common/rules/constitution.md"
-project = ".claude/rules/constitution.md"
+destination = ".claude/rules/constitution.md"
+managed = true
 "#,
         );
     }
@@ -364,7 +310,7 @@ project = ".claude/rules/constitution.md"
         // CRIT7: a wrong --plugin-root must NOT masquerade as a clean audit.
         let plugin = TempDir::new().unwrap();
         let proj = TempDir::new().unwrap();
-        // No managed-files.toml written.
+        // No scaffold.toml written.
         let err = ManagedRegionAuditor::new(plugin.path())
             .audit(proj.path())
             .unwrap_err();
@@ -379,11 +325,7 @@ project = ".claude/rules/constitution.md"
     fn empty_manifest_is_rejected() {
         let plugin = TempDir::new().unwrap();
         let proj = TempDir::new().unwrap();
-        write(
-            plugin.path(),
-            "templates/managed-files.toml",
-            "managed = []\n",
-        );
+        write(plugin.path(), "templates/scaffold.toml", "artifact = []\n");
         let err = ManagedRegionAuditor::new(plugin.path())
             .audit(proj.path())
             .unwrap_err();
@@ -400,17 +342,19 @@ project = ".claude/rules/constitution.md"
         let proj = TempDir::new().unwrap();
         write(
             plugin.path(),
-            "templates/managed-files.toml",
-            r#"[[managed]]
+            "templates/scaffold.toml",
+            r#"[[artifact]]
+tier = "foundation"
 template = "common/CLAUDE.md"
-project = "../outside.md"
+destination = "../outside.md"
+managed = true
 "#,
         );
         let err = ManagedRegionAuditor::new(plugin.path())
             .audit(proj.path())
             .unwrap_err();
         assert!(matches!(err.code(), crate::error::ErrorCode::ConfigInvalid));
-        assert!(err.to_string().contains("project-relative"));
+        assert!(err.to_string().contains("escapes its root"));
     }
 
     #[test]
@@ -419,10 +363,12 @@ project = "../outside.md"
         let proj = TempDir::new().unwrap();
         write(
             plugin.path(),
-            "templates/managed-files.toml",
-            r#"[[managed]]
+            "templates/scaffold.toml",
+            r#"[[artifact]]
+tier = "foundation"
 template = "common/does-not-exist.md"
-project = "x.md"
+destination = "x.md"
+managed = true
 "#,
         );
         let err = ManagedRegionAuditor::new(plugin.path())

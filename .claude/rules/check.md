@@ -11,18 +11,24 @@ deterministic sort order: severity ascending (Blocker first), slug,
 path. The shape never changes — adding a new validator only extends the
 list of producer slugs.
 
-When adding a new validator:
-1. Add a `run_<name>` private method on `ProjectChecker` that takes
-   `(&changed, &mut findings, &mut run, &mut skipped, &mut files_scanned)`
-   and follows the same skipped-vs-ran contract.
-2. Call it from `ProjectChecker::run` between existing validators.
-3. Include the validator's slug in the test
-   `check_runs_every_enabled_validator` `run` assertion list.
+When adding a new glob-driven validator:
+1. Implement `harness_core::validate::SurfaceValidator` on it — the config
+   accessor, the glob, and the slug. The shared `run_surface_validator` then
+   supplies the skipped-vs-ran contract, the `--since` filter, and the file
+   count; never copy that body.
+2. Add one `run_surface_validator::<V>` call in `ProjectChecker::run`.
+3. Include the slug in `check_runs_every_enabled_validator` and in
+   `check_skips_validators_with_no_config_section`.
 4. Document the slug in this rule.
+
+A validator that is not glob-driven (`validate.settings` reads two named
+files with independent `--since` status) keeps its own method and says why.
 
 Validator slugs (current):
 - `validate.rules`
 - `validate.skills`
+- `validate.agents`
+- `validate.output_styles`
 - `validate.settings`
 - `evidence`
 - `codegen`

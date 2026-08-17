@@ -37,8 +37,13 @@ at `.claude-plugin/marketplace.json`. Install, then drive it by mode:
 /harnex regenerate    # re-derive against the current Claude Code spec
 ```
 
-It detects the stack from lockfile + manifest (TypeScript/pnpm,
-Python/uv, Rust/cargo), composes the safety-critical pieces from `templates/`, and
+It detects the stack from lockfile + manifest (TypeScript/pnpm, Python/uv,
+Rust/cargo, JVM/Gradle-Maven for Java and Kotlin) and composes the harness
+from `templates/scaffold.toml`, which declares every artifact in two tiers: a
+**foundation** tier with no language dependency — the permission floor, the
+foundation rules, the hook wrappers, the gitleaks pre-commit hook — and a
+**language** tier that needs a detected profile. A stack harnex has no profile
+for still receives the foundation tier and a report of what is missing. It
 never free-generates a hook or permission rule. Knowledge lives in
 `reference/` (the spec facts, the enforced-vs-advisory split, the
 keep/soften/cut principle, the language matrix, the exploration procedure).
@@ -49,7 +54,8 @@ keep/soften/cut principle, the language matrix, the exploration procedure).
 cargo build --release          # → ./target/release/harness
 ```
 
-Requires Rust 1.95+.
+Requires Rust 1.97+. `rust-toolchain.toml` pins the exact toolchain, so a
+checkout builds with the same compiler CI uses.
 
 ## IDE integration
 
@@ -114,6 +120,8 @@ harness policy versions show | check --tool T --installed V
 
 harness validate rules <files...>
 harness validate skills <files...>
+harness validate agents <files...>
+harness validate output-styles <files...>
 harness validate settings [<path>]
 harness validate commit-msg <path>                     # closed-enum trailer
 
@@ -155,7 +163,10 @@ patterns covered out of the box:
 - Sentinel-block enum codegen across many files
 - Permission profiles (`baseline`, `git-strict`, `gcp-strict`, `aws-strict`,
   and per-language `*-dev`) for Claude Code settings
-- Claude Code spec compliance (rules / skills / settings frontmatter)
+- Claude Code spec compliance (rules / skills / agents / output-styles /
+  settings frontmatter)
+- Hook wiring integrity — every `${CLAUDE_PROJECT_DIR}` path a hook names
+  resolves, so a handler cannot fail open while the harness reads as wired
 - Promotion + retirement lifecycle for learnings
 - Settings.json hook adapter (the documented hook events)
 - Single-command CI gate

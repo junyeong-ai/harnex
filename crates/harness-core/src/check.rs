@@ -29,7 +29,10 @@ use crate::envelope::{Finding, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
-use crate::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
+use crate::validate::{
+    AgentValidator, OutputStyleValidator, RuleValidator, SettingsScope, SettingsValidator,
+    SkillValidator, SurfaceValidator,
+};
 
 /// Aggregate result of running every enabled validator.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
@@ -201,14 +204,28 @@ impl<'a> ProjectChecker<'a> {
         let mut files_scanned = 0usize;
         let changed = self.changed_files()?;
 
-        self.run_rule_validator(
+        self.run_surface_validator::<RuleValidator<'_>>(
             &changed,
             &mut findings,
             &mut run,
             &mut skipped,
             &mut files_scanned,
         )?;
-        self.run_skill_validator(
+        self.run_surface_validator::<SkillValidator<'_>>(
+            &changed,
+            &mut findings,
+            &mut run,
+            &mut skipped,
+            &mut files_scanned,
+        )?;
+        self.run_surface_validator::<AgentValidator<'_>>(
+            &changed,
+            &mut findings,
+            &mut run,
+            &mut skipped,
+            &mut files_scanned,
+        )?;
+        self.run_surface_validator::<OutputStyleValidator<'_>>(
             &changed,
             &mut findings,
             &mut run,
@@ -300,13 +317,19 @@ impl<'a> ProjectChecker<'a> {
         })? {
             out.push(entry.map_err(|e| Error::IoFailure {
                 path: e.path().to_path_buf(),
-                source: e.into_error(),
+                source: e.into(),
             })?);
         }
         Ok(out)
     }
 
-    fn run_rule_validator(
+    /// Run one [`SurfaceValidator`] over the files its glob covers.
+    ///
+    /// Every glob-driven validator shares this body — the skipped-vs-ran
+    /// contract, the `--since` filter, and the scanned-file count are stated
+    /// once, so an artifact class added later cannot diverge from the others
+    /// on any of them.
+    fn run_surface_validator<V: SurfaceValidator<'a>>(
         &self,
         changed: &Option<HashSet<PathBuf>>,
         findings: &mut Vec<Finding>,
@@ -314,56 +337,22 @@ impl<'a> ProjectChecker<'a> {
         skipped: &mut Vec<SkippedRule>,
         files_scanned: &mut usize,
     ) -> Result<()> {
-        let Some(policy) = self.config.validate.as_ref().and_then(|v| v.rules.as_ref()) else {
+        let Some(policy) = V::policy(self.config) else {
             skipped.push(SkippedRule {
-                slug: "validate.rules".into(),
-                reason: "no [validate.rules] section".into(),
+                slug: V::SLUG.into(),
+                reason: format!("no [{}] section", V::SLUG),
             });
             return Ok(());
         };
-        let validator = RuleValidator::new(policy);
-        let candidates = self.discover_glob(".claude/rules/*.md")?;
-        for path in &candidates {
+        let validator = V::build(policy);
+        for path in &self.discover_glob(V::GLOB)? {
             if !self.passes_filter(path, changed) {
                 continue;
             }
             *files_scanned += 1;
-            findings.extend(validator.validate_file(path)?);
+            findings.extend(validator.validate_path(path)?);
         }
-        run.push("validate.rules".into());
-        Ok(())
-    }
-
-    fn run_skill_validator(
-        &self,
-        changed: &Option<HashSet<PathBuf>>,
-        findings: &mut Vec<Finding>,
-        run: &mut Vec<String>,
-        skipped: &mut Vec<SkippedRule>,
-        files_scanned: &mut usize,
-    ) -> Result<()> {
-        let Some(policy) = self
-            .config
-            .validate
-            .as_ref()
-            .and_then(|v| v.skills.as_ref())
-        else {
-            skipped.push(SkippedRule {
-                slug: "validate.skills".into(),
-                reason: "no [validate.skills] section".into(),
-            });
-            return Ok(());
-        };
-        let validator = SkillValidator::new(policy);
-        let candidates = self.discover_glob(".claude/skills/*/SKILL.md")?;
-        for path in &candidates {
-            if !self.passes_filter(path, changed) {
-                continue;
-            }
-            *files_scanned += 1;
-            findings.extend(validator.validate_file(path)?);
-        }
-        run.push("validate.skills".into());
+        run.push(V::SLUG.into());
         Ok(())
     }
 

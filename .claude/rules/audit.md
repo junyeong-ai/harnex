@@ -24,24 +24,47 @@ new sub-auditor:
 
 Sub-auditor slugs (current):
 - `settings-drift` — `.claude/settings.json` value compliance
-  (`audit-ms-timeout`, `audit-mcp-matcher-incomplete`,
-  `audit-stop-blocking-suspect`).
+  (`audit-ms-timeout`, `audit-mcp-matcher-incomplete`).
+- `hook-wiring` — a hook naming a **scaffold artifact** that is absent
+  (`audit-hook-script-missing`). Two scopings, each removing a guess. Only the
+  `${CLAUDE_PROJECT_DIR}` anchor is read, because it is the one token form that
+  denotes a project path by construction. And only manifest destinations are
+  judged, because the anchor proves a token is a project path without proving
+  the project already built it — `node_modules/.bin/*`, `target/release/*`, and
+  a bundler's output are correct wirings that are simply absent on a fresh
+  clone. The cost is stated in the module doc: this protects harnex-generated
+  wiring, not an operator's own scripts.
+  The grammar itself lives in `guard::project_dir` (`.claude/rules/guard.md`),
+  read by this auditor and by the scaffold-manifest test alike — a second
+  scanner would drift on the first edit to either's shell vocabulary.
 - `managed-region` — sentinel-block integrity vs the plugin templates
-  declared in `plugins/harnex/templates/managed-files.toml`
+  declared by the `managed` artifacts of `plugins/harnex/templates/scaffold.toml`
   (`audit-managed-region-edited`, `audit-managed-region-missing`).
+
+Spec-vocabulary staleness is deliberately not an audit finding: it describes
+this binary's knowledge, not the project under audit, so it rides the
+envelope's `warnings[]` on every command (`.claude/rules/spec.md`). As a
+finding it would misattribute the problem and make a fixture's zero-findings
+assertion fail on a calendar with no code change.
 
 Sentinel parsing routes through `harness_core::sentinel::extract_regions`
 — the same util the `spec_facts_sync` drift test uses. Constitution IX:
 no parallel sentinel parser.
 
-Managed-region drift loads `plugins/harnex/templates/managed-files.toml`
-as the file-pair manifest — Constitution VII: no project-domain paths in
-Rust source. Adding a new managed-region template is a TOML entry, never a
-code change.
+Managed-region drift reads the `managed` artifacts of
+`plugins/harnex/templates/scaffold.toml` — the same manifest the skill emits
+from, so a managed pair cannot disagree with the composition it belongs to
+(Constitution VII: no project-domain paths in Rust source). Marking a template
+managed is a TOML flag, never a code change.
 
 Boundary: audit findings are **deterministic value / structural** checks —
-never prose pattern matching. The cost of an audit false positive is
-operator distrust; the benefit is detecting a class of defects validators
-do not. Anything short of that ratio belongs in `validate`, not here. Per
-`keep-soften-cut`, numeric thresholds (e.g., `audit-ms-timeout`) ship as
-`Minor` advisories — not blocking.
+never prose pattern matching, and never an inference about behavior the
+settings file does not state. A filename, a script's name, or any other
+stand-in for what a verifier's body does is a guess dressed as a check: it
+clears the correct spellings it does not recognize and cannot see the
+incorrect ones it does. Where an invariant is decidable only at generation,
+it is enforced in the template and this auditor stays silent. The cost of an
+audit false positive is operator distrust; the benefit is detecting a class
+of defects validators do not. Anything short of that ratio belongs in
+`validate`, not here. Per `keep-soften-cut`, numeric thresholds (e.g.,
+`audit-ms-timeout`) ship as `Minor` advisories — not blocking.

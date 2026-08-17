@@ -26,6 +26,24 @@ Variants:
   hook non-zero exits trigger re-stop). Non-zero observations emit a
   `[harness-stop-advisory]` line to stderr for operator visibility.
 
+`project_dir` owns the `${CLAUDE_PROJECT_DIR}` grammar — the one token form in
+a hook that denotes a repository path by construction. Both anchor spellings
+are read. A glob or a token carrying a second variable is not a path and is
+skipped.
+
+**Two functions, because a handler carries two kinds of string.**
+`paths_in_command` reads a shell-interpreted `command`: a token ends at an
+unescaped metacharacter or at its quote, so trailing flags are not part of the
+filename. `path_in_argument` reads one literal `args` element, which nothing
+splits, so a space belongs to the name and a prefix before the anchor does not.
+The caller picks by the field it read — inferring the grammar from where the
+anchor sits inside the string reads
+`${CLAUDE_PROJECT_DIR}/hooks/run.sh --verbose` as a filename ending in
+`--verbose`, and disagrees with the same command written `bash ...`.
+
+One home because two would drift: the hook-wiring auditor and the
+scaffold-manifest test ask the same question of the same grammar.
+
 StopAuditor handles the Stop event in three phases:
 1. `has_changes_check` — exit 0 means no changes, allow stop.
 2. Bump per-session retry counter via `path_guard::write_atomic`.

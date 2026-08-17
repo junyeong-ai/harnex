@@ -30,6 +30,20 @@ fn profile_set(name: &str, field: fn(&PermissionProfile) -> &[&'static str]) -> 
     field(&p).iter().map(|s| s.to_string()).collect()
 }
 
+/// `(profile name, template path)` for every `<lang>-dev` profile, derived
+/// from the registry. A language added to `PermissionProfile::ALL` joins
+/// every check below without an edit here — the pairing is what a
+/// hand-listed set silently omits.
+fn dev_profile_templates() -> Vec<(&'static str, String)> {
+    PermissionProfile::ALL
+        .iter()
+        .filter_map(|name| {
+            name.strip_suffix("-dev")
+                .map(|lang| (*name, format!("{lang}/permissions.allow.json")))
+        })
+        .collect()
+}
+
 #[test]
 fn common_deny_template_matches_baseline_profile() {
     assert_eq!(
@@ -41,13 +55,9 @@ fn common_deny_template_matches_baseline_profile() {
 
 #[test]
 fn lang_allow_templates_match_dev_profiles() {
-    for (profile, rel) in [
-        ("rust-dev", "rust/permissions.allow.json"),
-        ("python-dev", "python/permissions.allow.json"),
-        ("typescript-dev", "typescript/permissions.allow.json"),
-    ] {
+    for (profile, rel) in dev_profile_templates() {
         assert_eq!(
-            template(rel),
+            template(&rel),
             profile_set(profile, |p| &p.allow),
             "{rel} drifted from the `{profile}` profile allow set"
         );
@@ -73,15 +83,12 @@ fn no_profile_or_template_carries_duplicate_rules() {
         assert_unique(&format!("profile '{name}' deny"), &deny);
         assert_unique(&format!("profile '{name}' allow"), &allow);
     }
-    for rel in [
-        "common/permissions.deny.json",
-        "rust/permissions.allow.json",
-        "python/permissions.allow.json",
-        "typescript/permissions.allow.json",
-    ] {
+    let mut templates = vec!["common/permissions.deny.json".to_string()];
+    templates.extend(dev_profile_templates().into_iter().map(|(_, rel)| rel));
+    for rel in templates {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../plugins/harnex/templates")
-            .join(rel);
+            .join(&rel);
         let raw = std::fs::read_to_string(&path).unwrap();
         let rules: Vec<String> = serde_json::from_str(&raw).unwrap();
         assert_unique(&format!("template {rel}"), &rules);
@@ -111,16 +118,13 @@ fn all_profile_bash_rules_use_canonical_space_wildcard() {
 fn every_dev_profile_has_a_committed_allow_template() {
     // Guards the reverse gap: a new `*-dev` profile must ship a template so
     // the plugin can scaffold it without the binary.
-    for name in PermissionProfile::ALL {
-        if let Some(lang) = name.strip_suffix("-dev") {
-            let rel = format!("{lang}/permissions.allow.json");
-            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../plugins/harnex/templates")
-                .join(&rel);
-            assert!(
-                path.exists(),
-                "dev profile '{name}' has no plugin template at {rel}"
-            );
-        }
+    for (name, rel) in dev_profile_templates() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/harnex/templates")
+            .join(&rel);
+        assert!(
+            path.exists(),
+            "dev profile '{name}' has no plugin template at {rel}"
+        );
     }
 }

@@ -23,6 +23,7 @@ impl PermissionProfile {
         "rust-dev",
         "python-dev",
         "typescript-dev",
+        "jvm-dev",
     ];
 
     pub fn from_str(name: &str) -> Option<Self> {
@@ -34,6 +35,7 @@ impl PermissionProfile {
             "rust-dev" => rust_dev(),
             "python-dev" => python_dev(),
             "typescript-dev" => typescript_dev(),
+            "jvm-dev" => jvm_dev(),
             _ => return None,
         })
     }
@@ -320,9 +322,47 @@ fn typescript_dev() -> PermissionProfile {
     }
 }
 
+/// JVM development toolchain — one profile for Java and Kotlin, because the
+/// surface that prompts is the build tool and both languages drive the same
+/// one. Wrapper and installed spellings are both granted (`./gradlew` and
+/// `gradle`, `./mvnw` and `mvn`) since a project types whichever it has.
+///
+/// `Bash(java *)` is deliberately absent. In a Gradle or Maven project the
+/// build tool is the entry point for every compile, test, and run, so a bare
+/// `java` grant buys almost nothing while reaching `java -jar <anything>` —
+/// arbitrary bytecode with no flag-level deny that separates it from a
+/// legitimate run. The narrower grant is the honest one; a project that runs
+/// artifacts directly adds the rule it actually needs.
+fn jvm_dev() -> PermissionProfile {
+    let mut allow: Vec<&'static str> = vec![
+        "Bash(./gradlew *)",
+        "Bash(gradle *)",
+        "Bash(./mvnw *)",
+        "Bash(mvn *)",
+        "Bash(google-java-format *)",
+        "Bash(ktlint *)",
+    ];
+    allow.extend_from_slice(COMMON_DEV_ALLOW);
+    PermissionProfile {
+        name: "jvm-dev",
+        allow,
+        ask: vec![],
+        deny: vec![],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every `<lang>-dev` profile, derived from the registry rather than
+    /// listed. A language added to `ALL` without a template or without the
+    /// common allows then fails here instead of passing unexamined.
+    fn dev_profile_names() -> impl Iterator<Item = &'static &'static str> {
+        PermissionProfile::ALL
+            .iter()
+            .filter(|n| n.ends_with("-dev"))
+    }
 
     #[test]
     fn known_profiles_round_trip_through_registry() {
@@ -486,44 +526,59 @@ mod tests {
     }
 
     #[test]
-    fn rust_dev_allow_list_is_non_empty() {
-        let p = rust_dev();
-        assert!(!p.allow.is_empty(), "rust-dev must have allow patterns");
-        assert!(p.allow.contains(&"Bash(cargo *)"));
-        assert!(p.allow.contains(&"Bash(rustfmt *)"));
-    }
-
-    #[test]
-    fn python_dev_allow_list_is_non_empty() {
-        let p = python_dev();
-        assert!(!p.allow.is_empty(), "python-dev must have allow patterns");
-        assert!(p.allow.contains(&"Bash(uv *)"));
-        assert!(p.allow.contains(&"Bash(python *)"));
-        assert!(p.allow.contains(&"Bash(python3 *)"));
-        assert!(p.allow.contains(&"Bash(pytest *)"));
-        assert!(p.allow.contains(&"Bash(ruff *)"));
-        assert!(p.allow.contains(&"Bash(mypy *)"));
-    }
-
-    #[test]
-    fn typescript_dev_allow_list_is_non_empty() {
-        let p = typescript_dev();
-        assert!(
-            !p.allow.is_empty(),
-            "typescript-dev must have allow patterns"
-        );
-        assert!(p.allow.contains(&"Bash(pnpm *)"));
-        assert!(p.allow.contains(&"Bash(node *)"));
-        assert!(p.allow.contains(&"Bash(tsx *)"));
-        assert!(p.allow.contains(&"Bash(tsc *)"));
-        assert!(p.allow.contains(&"Bash(biome *)"));
-        // env-runners are scoped per project, never granted wholesale
-        assert!(!p.allow.contains(&"Bash(npx *)"));
+    fn every_dev_profile_carries_its_toolchain() {
+        for (name, expected) in [
+            ("rust-dev", &["Bash(cargo *)", "Bash(rustfmt *)"][..]),
+            (
+                "python-dev",
+                &[
+                    "Bash(uv *)",
+                    "Bash(python *)",
+                    "Bash(python3 *)",
+                    "Bash(pytest *)",
+                    "Bash(ruff *)",
+                    "Bash(mypy *)",
+                ][..],
+            ),
+            (
+                "typescript-dev",
+                &[
+                    "Bash(pnpm *)",
+                    "Bash(node *)",
+                    "Bash(tsx *)",
+                    "Bash(tsc *)",
+                    "Bash(biome *)",
+                ][..],
+            ),
+            (
+                "jvm-dev",
+                &[
+                    "Bash(./gradlew *)",
+                    "Bash(gradle *)",
+                    "Bash(./mvnw *)",
+                    "Bash(mvn *)",
+                    "Bash(google-java-format *)",
+                    "Bash(ktlint *)",
+                ][..],
+            ),
+        ] {
+            let p = PermissionProfile::from_str(name).expect("profile must exist");
+            for rule in expected {
+                assert!(p.allow.contains(rule), "{name} must allow {rule}");
+            }
+        }
+        // Env-runners execute an arbitrary inner command, so they are scoped
+        // per project rather than granted wholesale.
+        assert!(!typescript_dev().allow.contains(&"Bash(npx *)"));
+        // The JVM's build tool is the entry point for compile, test, and run,
+        // so a bare `java` grant would reach `java -jar <anything>` for almost
+        // no benefit.
+        assert!(!jvm_dev().allow.contains(&"Bash(java *)"));
     }
 
     #[test]
     fn dev_profiles_include_common_dev_allows() {
-        for name in &["rust-dev", "python-dev", "typescript-dev"] {
+        for name in dev_profile_names() {
             let p = PermissionProfile::from_str(name).unwrap();
             assert!(p.allow.contains(&"Edit"), "{name} must allow Edit");
             assert!(p.allow.contains(&"Write"), "{name} must allow Write");

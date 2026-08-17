@@ -17,36 +17,63 @@ fallback that swallows an unrecognized stack.
 | `pnpm-lock.yaml` + `package.json` (`pnpm-workspace.yaml`) | TypeScript / pnpm (+ Turborepo if `turbo.json`) |
 | `uv.lock` + `pyproject.toml` (`[tool.uv.workspace]`) | Python / uv (+ Just if `Justfile`, prek if `.pre-commit-config.yaml`) |
 | `Cargo.toml` (`[workspace]`) + `Cargo.lock` | Rust / cargo |
-| none of the above (e.g. `go.mod`, `pom.xml`, `build.gradle`, `Gemfile`, `composer.json`) | **UNSUPPORTED** — refuse |
+| `settings.gradle{,.kts}` or `build.gradle{,.kts}` (+ `gradlew`) | JVM / Gradle (+ version catalog if `gradle/libs.versions.toml`) |
+| `pom.xml` (+ `mvnw`) | JVM / Maven |
+| none of the above (e.g. `go.mod`, `*.csproj`, `Gemfile`, `composer.json`) | **no profile** — foundation tier only |
 
-**Unsupported stack is a first-class outcome, not undefined behavior.** When no
-supported-language row matches, harnex must NOT emit a half-built lean scaffold
-with no language profile. Refuse explicitly: write nothing, and tell the
-operator "harnex supports typescript / python / rust; detected <stack> is not
-supported — add a language (`extend language <lang>`) or scaffold the
-language-agnostic `common/` pieces by hand." A wrong-or-empty profile is worse
-than an honest refusal.
+**No profile is a first-class outcome, and it is not a refusal.** The
+composition manifest (`templates/scaffold.toml`) splits a harness into a
+`foundation` tier that needs no language and a `language` tier that does, so a
+stack with no profile receives the whole enforced floor — the permission deny
+set, the foundation rules, the hook wrappers, the gitleaks pre-commit hook —
+and is told exactly which language-tier artifacts are missing and why. What
+must never happen is a *wrong* profile: emitting ruff into a Go repo is the
+meta-failure this matrix exists to prevent. An absent profile is a different
+thing, and withholding a floor the stack never needed a profile for protects
+nobody. Offer `extend language <lang>` as the way to close the remaining tier.
+
+**The JVM row is one profile for two languages, on purpose.** The axis a
+template directory is keyed on is the toolchain, not the language name:
+`typescript/` is really node+pnpm and `python/` is uv. On the JVM, Gradle and
+Maven each serve Java and Kotlin, and no build-file fingerprint separates them
+— `build.gradle.kts` names the DSL, not the sources. Mixed Java + Kotlin trees
+are the common case (Android, an in-progress migration), so a `java/`-only
+profile would leave every `.kt` file unformatted while reporting a complete
+scaffold. `jvm/post-format.sh` dispatches on the file extension instead, which
+is what invariant 5 actually asks for: `.java` reaches a Java formatter and
+`.kt` a Kotlin one, never each other's.
 
 ## Per-language template parameters
 
-| Axis | TypeScript (pnpm) | Python (uv) | Rust (cargo) |
-|---|---|---|---|
-| Formatter (PostToolUse) | `biome check --write` | `ruff format` + `ruff check --fix` | `rustfmt <file>` |
-| Typecheck | `tsc` (via `turbo run type-check`) | `ty` | `cargo check` |
-| Hook runner inner cmd | native `node` on `.ts` | `uv run --frozen python -m <mod>` | probe `cargo`, dispatch `.sh` (no per-hook `.rs` build); JSON hooks use `jq` |
-| Gate runner | `pnpm` (+ `turbo`) | `just` (hooks via `prek`) | `cargo` |
-| Secret scan | gitleaks | gitleaks | gitleaks |
-| PreToolUse default | non-blocking (advisory) | project choice (blocking convention-gate is valid) | non-blocking |
+| Axis | TypeScript (pnpm) | Python (uv) | Rust (cargo) | JVM (Gradle / Maven) |
+|---|---|---|---|---|
+| Formatter (PostToolUse) | `biome check --write` | `ruff format` + `ruff check --fix` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
+| Typecheck | `tsc` (via `turbo run type-check`) | `ty` | `cargo check` | `./gradlew compileJava compileKotlin` / `./mvnw -o compile` |
+| Verifier forms the runner dispatches | `.sh` + `.ts` via `node` | `.sh` + `.py` via `uv run --frozen` | `.sh` only (no per-hook `.rs` build); JSON parsed with `jq` | `.sh` only (no per-hook JVM start); JSON parsed with `jq` |
+| Gate runner | `pnpm` (+ `turbo`) | `just` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
+| Secret scan | gitleaks | gitleaks | gitleaks | gitleaks |
+| PreToolUse default | non-blocking (advisory) | project choice (blocking convention-gate is valid) | non-blocking | non-blocking |
+
+**JVM formatting never routes through the build tool.** `gradlew spotlessApply`
+and `mvn spotless:apply` start a JVM, warm a daemon, and format the whole
+project; at PostToolUse that exceeds the hook timeout on every single edit, and
+a formatter that times out is a formatter that silently does nothing. The
+standalone CLIs finish inside the budget a per-edit hook has. Each arm also
+probes its own formatter and skips when absent, so a Java-only or Kotlin-only
+repo is never penalised for the tool it does not install.
 
 ## Language-agnostic constants (every generated harness)
 
 - `autoMemoryEnabled: false` is a defensible default for team repos (shared
   context lives in git, not per-developer caches) — emit only if the project
   signals it; never force.
-- Two Claude Code hook wrappers: `_runner.sh` (anchor cwd at git root →
-  probe runtime → fail-open on env drift → dispatch) and `_stop_runner.sh`
+- Two Claude Code hook wrappers, both language-agnostic: `_runner.sh` (anchor
+  cwd at git root → dispatch by verifier extension) and `_stop_runner.sh`
   (same, always exit 0). Both reject `..` path-traversal in the script-name
-  argument.
+  argument. The wrapper probes no toolchain — each non-shell dispatch arm
+  probes the interpreter it invokes, and a `.sh` verifier probes whatever it
+  shells out to. A wrapper that gated on the language's build tool skipped
+  working hooks whenever an unrelated tool was missing.
 - One git hook: `hooks/pre-commit` runs gitleaks on staged changes (the
   enforced half of "secrets never reach git"; permission deny covers only
   Claude). Fail-open if gitleaks is absent; escape hatch via
@@ -70,6 +97,14 @@ than an honest refusal.
   them per project (`npx <tool> *`).
 - `constitution.md` is the one `.claude/rules/*.md` that omits `paths:`
   (foundation, always-loaded). Every other rule carries `paths:`.
+- **The per-file formatter must resolve the same config the gate does.**
+  A PostToolUse hook formats one file; the CI gate formats the workspace.
+  Where the two read configuration differently, every edit reverts what the
+  gate requires and the loop is invisible until CI reds. Rust is the live
+  case: `rustfmt <file>` never sees `Cargo.toml` and defaults to edition
+  2015, so a Rust scaffold emits `rustfmt.toml` carrying the edition read
+  from the project's manifest. Check the same property before wiring any new
+  language's formatter.
 - Hook config `timeout` in SECONDS (10–30 typical), `type: "command"`.
 - Sentinel-block codegen source may be toml/json/yaml (`source_format`) — point
   at the project's existing SSoT, never hand-maintain a duplicate.

@@ -14,6 +14,8 @@
 //! - [`telemetry`] — append-only closed-schema event ledger.
 //! - [`codegen`] — cross-file sentinel-block sync.
 //! - [`policy`] — permission profiles + version pins.
+//! - [`scaffold`] — the composition manifest a generated harness is built from.
+//! - [`spec`] — when each closed vocabulary was last measured against the docs.
 //! - [`validate`] — rule / skill / settings / commit-msg checks.
 //! - [`audit`] — harness-engineering compliance gate (spec drift,
 //!   managed-region integrity).
@@ -44,7 +46,9 @@ pub mod guard;
 pub mod lifecycle;
 pub mod path_guard;
 pub mod policy;
+pub mod scaffold;
 pub mod sentinel;
+pub mod spec;
 pub mod telemetry;
 pub mod validate;
 

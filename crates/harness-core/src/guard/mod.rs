@@ -9,6 +9,9 @@
 //!   inner exits to 0 (for Stop/SubagentStop) — observed code captured in
 //!   the envelope, never propagated to git, preventing Stop-loop traps.
 //!   Both fail-open when the project root cannot be resolved.
+//! - [`project_dir`] — the `${CLAUDE_PROJECT_DIR}` anchor grammar, one
+//!   function per field kind: a shell-interpreted `command` and a literal
+//!   `args` element are not parsed alike.
 //! - [`StopAuditor`] — handles the Stop event; spawns fresh-context critique
 //!   skill when changes exist; bounded retry counter prevents
 //!   premature-termination defect classes.
@@ -24,8 +27,10 @@
 
 pub mod hook_event;
 pub mod hook_runner;
+pub mod project_dir;
 pub mod stop_audit;
 
 pub use hook_event::HookEvent;
 pub use hook_runner::{HookRunOutcome, HookRunner};
+pub use project_dir::{path_in_argument, paths_in_command};
 pub use stop_audit::{StopAuditor, StopDecision};

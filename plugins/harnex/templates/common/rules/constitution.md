@@ -40,4 +40,16 @@ A rule exists only if it enforces an invariant the model cannot self-verify, at
 a boundary where a violation is irreversible or invisible. No rule restates a
 habit a capable model already follows. No heuristic ships whose false-positive
 cost exceeds its catch rate.
+
+## VII. Defaults bend; the floor does not
+
+Two layers, and they are never written alike. **Defaults** are process knobs
+the operator owns — review depth, check-in cadence, fan-out, worktree
+isolation. An explicit instruction changes them. **The floor** is Articles
+I–VI plus whatever guardrail this project made enforced: it bends for nobody
+and moves only through break-glass, audited.
+
+Never phrase a default as a floor. An absolute "never" on a cadence or depth
+knob reads as rigidity the model honors *over* an explicit operator request,
+which costs friction and protects nothing. Reserve "never" for the floor.
 <!-- harnex-managed:end constitution-articles -->
