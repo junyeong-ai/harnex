@@ -182,6 +182,11 @@ Content the manifest cannot supply, because it comes from Step 1's analysis:
 Set hook scripts executable (0o755), including `hooks/pre-commit`. Point git
 at the version-controlled hooks: `git config core.hooksPath hooks` (state
 this command for the operator to run; do not run git config silently).
+Report the enforced invariants Phase 2 found — the guards this project already
+runs that no rule names yet. Each is an `extend rule <slug> <paths-glob>` worth
+making, and naming them is what turns a floor into this project's harness.
+Suggest them; do not write them unasked.
+
 Verify: `bash -n` on every `.sh` and on `hooks/pre-commit`, JSON-parse
 settings.json. Run `harness check` / `harness audit` if the binary oracle is
 available. On a repo that already had artifacts, the scaffolded `harness.toml`
@@ -212,9 +217,37 @@ operator to re-phrase using a verb from this list.
   (the managed region) with the correct runner per the rule above; for a
   PreToolUse/PermissionRequest matcher targeting MCP, use
   `mcp__server__tool` / `mcp__server__.*`, never bare `mcp__server`.
-- **`extend rule <slug> <paths-glob>`** — drop a path-scoped rule at
-  `.claude/rules/<slug>.md` with the given `paths:` frontmatter. Body is a
-  short imperatives skeleton (heading + 3-5 bullets) — the operator fills.
+- **`extend rule <slug> <paths-glob>`** — derive a path-scoped rule at
+  `.claude/rules/<slug>.md` from `common/rule-template.md`, filling it from
+  what the code under `<paths-glob>` **already enforces**. A skeleton handed to
+  the operator is the blank page this skill exists to avoid, and a rule written
+  from the model's priors is worse — it states confident things about a
+  codebase nobody checked.
+
+  Read four sources under the glob, in this order (exploration Phase 2's
+  *enforced invariants* row):
+  1. **Enforcers that already run over these paths** — CI steps, task-runner
+     targets, pre-commit entries, `.claude/settings.json` hook verifiers,
+     project lint scripts.
+  2. **Structural invariants in the code** — a closed enum or registry with an
+     exhaustive match, an allowlist, a base type every member implements, a
+     single validation boundary, a custom error hierarchy.
+  3. **Tests that assert structure rather than behavior** — one that enumerates
+     members, holds two representations in sync, or pins a naming shape. A
+     test is an invariant someone already decided was worth guarding.
+  4. **What the formatter, linter and type checker already cover** — to
+     *exclude*. The governance rubric rejects a rule that restates them.
+
+  Then one hard rule: **an invariant with no enforcer in the tree does not
+  become a rule.** It becomes `harness lifecycle observe --tag <slug> --text
+  "<observation>"`, which is where a candidate waits until it has recurred.
+  This is what keeps derivation from becoming invention, and it is not a
+  matter of judgment — no enforcer, no bullet.
+
+  Every bullet names its enforcer as `path/to/file.ext:line`, so the evidence
+  check resolves it and a rename fails the gate instead of leaving a rule that
+  points nowhere. Report what you moved to the ledger as well as what you
+  wrote; the observations are usually the more interesting half.
 - **`extend skill <name>`** — scaffold a spec-correct domain skill at
   `.claude/skills/<name>/SKILL.md` from `common/skill-template.md`. Frontmatter
   is composed correct-by-spec (description+when_to_use ≤ 1536 chars, body
