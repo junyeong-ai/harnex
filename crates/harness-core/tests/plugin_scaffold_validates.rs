@@ -17,7 +17,6 @@ use harness_core::audit::{AuditCheckKind, ProjectAuditor};
 use harness_core::config::SkillsPolicy;
 use harness_core::envelope::Finding;
 use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
-use harness_core::sentinel;
 use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
 use tempfile::TempDir;
 
@@ -108,37 +107,19 @@ fn emit_tier(
                         .unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
                 merge_at(settings, key, fragment);
             }
-            // `copy` and `seed` keep an incumbent: a file already at that path
-            // is the project's, and replacing it is the worst outcome the
-            // scaffold has available.
-            Content::Copy | Content::Seed if dst.exists() => {}
-            Content::Copy | Content::Seed => {
+            // An incumbent is the project's file, and every non-merge kind
+            // keeps it. `managed` included: its partition governs a file
+            // harnex created and will regenerate, and is not standing to
+            // append to one it did not. Contributing a region to an existing
+            // file would be right for a `CLAUDE.md` that is three lines of
+            // notes and wrong for a `constitution.md` the project already
+            // wrote, and a rule that needs the file's meaning to decide is
+            // not a rule.
+            Content::Copy | Content::Seed | Content::Managed if dst.exists() => {}
+            Content::Copy | Content::Seed | Content::Managed => {
                 copy_file(&src, &dst);
                 if artifact.executable {
                     set_executable(&dst);
-                }
-            }
-            // `managed` owns only what its sentinels bound, so it contributes
-            // those blocks and leaves every other byte alone. With no
-            // incumbent, "everything else" is empty and this is a plain write.
-            Content::Managed => {
-                let template_body = fs::read_to_string(&src).unwrap();
-                match fs::read_to_string(&dst) {
-                    Ok(incumbent) => {
-                        let held = sentinel::extract_regions(&incumbent);
-                        let contributed: String = sentinel::blocks(&template_body)
-                            .into_iter()
-                            .filter(|b| {
-                                sentinel::extract_regions(b)
-                                    .keys()
-                                    .all(|slug| !held.contains_key(slug))
-                            })
-                            .map(|b| format!("\n\n{b}"))
-                            .collect();
-                        fs::write(&dst, format!("{}{contributed}\n", incumbent.trim_end()))
-                            .unwrap();
-                    }
-                    Err(_) => copy_file(&src, &dst),
                 }
             }
         }
@@ -556,24 +537,13 @@ fn scaffolding_over_an_incumbent_preserves_it() {
         "a `seed` artifact replaced governance the project had already written"
     );
 
-    // `managed`: harnex contributes its sentinel blocks and nothing else.
-    let merged = fs::read_to_string(proj_root.join("CLAUDE.md")).unwrap();
-    assert!(
-        merged.starts_with(claude_md.trim_end()),
-        "the incumbent CLAUDE.md must survive verbatim, got:\n{merged}"
-    );
-    let template_slugs =
-        sentinel::extract_regions(&fs::read_to_string(templates.join("common/CLAUDE.md")).unwrap());
-    let merged_slugs = sentinel::extract_regions(&merged);
+    // `managed`: a file harnex did not create is not one it may edit. Its
+    // partition is for regenerating a file harnex wrote, not a licence to
+    // append to the project's own.
     assert_eq!(
-        merged_slugs.keys().collect::<Vec<_>>(),
-        template_slugs.keys().collect::<Vec<_>>(),
-        "every managed region must land so `regenerate` can find it again"
-    );
-    assert!(
-        !merged.contains("harnex-fill"),
-        "a managed contribution must carry no unfilled markers into a file the \
-         project already wrote: the project owns those sections"
+        fs::read_to_string(proj_root.join("CLAUDE.md")).unwrap(),
+        claude_md,
+        "a `managed` artifact edited a CLAUDE.md the project had written"
     );
 
     // `merge`: the project's own entries survive beside both tiers'.

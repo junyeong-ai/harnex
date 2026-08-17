@@ -27,24 +27,22 @@
 #   managed  partitioned by `<!-- harnex-managed -->` sentinels — harnex owns
 #            what they bound, the project owns everything outside them.
 #
-# The kind also decides what happens when the DESTINATION ALREADY EXISTS, which
-# is the common case rather than the exceptional one: a repo with no `.claude/`
-# usually still has a `CLAUDE.md`, because Claude Code reads one without any
-# `.claude/` directory at all, and a repo with git hooks already has `hooks/`.
-# The answer is the kind's own meaning, not a new field:
+# A DESTINATION THAT ALREADY EXISTS is the project's file, and every kind above
+# keeps it: emit nothing there and report the collision. This is the common case
+# rather than the exceptional one — a repo with no `.claude/` usually still has
+# a `CLAUDE.md`, because Claude Code reads one without any `.claude/` directory
+# at all, and a repo with git hooks already has `hooks/`.
 #
-#   copy     an incumbent at that path is a different thing wearing the same
-#            name. Keep it, emit nothing, and report the collision — silently
-#            replacing a project's `hooks/pre-commit` is the worst outcome
-#            available.
-#   seed     the project already owns one. Keep it, emit nothing, report.
-#   managed  harnex owns only what its sentinels bound, so contribute those
-#            blocks and leave every other byte of the incumbent alone. On a
-#            file that does not exist yet, "everything else" is empty and this
-#            is a plain write. Same rule as `regenerate`, which is the point:
-#            one contract, not one per mode.
-#   merge    already collision-aware — the union at `key` is defined against
-#            whatever is there, including entries the project wrote itself.
+# `managed` is no exception, though it looks like one. Its partition governs a
+# file harnex created and will regenerate; it is not standing to append to a
+# file harnex did not write. Contributing a region to an incumbent would read as
+# helpful on a `CLAUDE.md` that is three lines of notes and as presumptuous on a
+# `constitution.md` the project already wrote — and a rule that needs the file's
+# meaning to decide is not a rule.
+#
+# `merge` is the one kind that writes into an occupied destination, because it
+# never owns one: the union at `key` is defined against whatever is there,
+# including entries the project wrote itself.
 #
 # Emission is therefore idempotent: running a scaffold twice changes nothing
 # the second time.
