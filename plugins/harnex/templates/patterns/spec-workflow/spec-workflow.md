@@ -5,21 +5,45 @@ paths:
 
 # Spec-driven workflow
 
-Non-trivial features go through a spec before implementation. A spec is
-a directory under `specs/<slug>/` with a lifecycle state tracked in
-frontmatter. Small fixes (single-package, few files) commit directly.
+A spec is a directory under `specs/<slug>/` with a lifecycle state tracked
+in frontmatter.
+
+## What a spec is for
+
+Two things, and neither is telling the model what to do:
+
+1. **A checkpoint a person reviews before the work lands.** The shape gets
+   approved while it is still cheap to change.
+2. **The state file the work runs from.** Sessions compact; a conversation
+   does not survive its own context window, and a file does. `agent-conduct.md`
+   puts structured facts in a structured file — for a spec, this directory is
+   that file.
+
+Read the artifacts that way. `spec.md`'s acceptance criteria are what the
+validation gate checks against, not a briefing. `plan.md`'s Outstanding Issues
+is where the review gate writes, so the next session reads what the last one
+found instead of rediscovering it.
 
 ## Decision threshold
 
-- **Spec required**: crosses package boundaries, introduces a new
-  abstraction, changes a public contract, or affects more than one team.
-- **Direct commit**: bug fix, typo, single-package refactor within
-  existing abstractions.
+Ask the two questions above, not how large the change is:
+
+- **Spec**: someone other than the author needs to approve the shape before it
+  lands, **or** the work will outlive one context window and its state has to
+  live somewhere a fresh session can read.
+- **Direct commit**: neither holds. It lands green in one pass and the commit
+  body carries everything a later reader needs.
+
+Size and file count are proxies for the second question, and they decay — what
+took a week of sessions when this rubric was written may now be one. Ask the
+question the artifact answers, not the proxy.
 
 ## Phases (default 5-phase pipeline)
 
 Each phase produces an artifact and passes through a gate before the
-next phase begins. Add or remove phases to match your team's process.
+next phase begins. Add or remove phases to match your team's process — a
+phase whose artifact nobody reviews and no later session reads is ceremony,
+and the two questions above are how to tell.
 
 | Phase | Artifact | Gate | Done when |
 |---|---|---|---|

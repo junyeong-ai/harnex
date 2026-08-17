@@ -255,7 +255,10 @@ operator to re-phrase using a verb from this list.
     file types the project has.
   - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
     If found, adapt template structure to match existing layout instead of
-    overwriting. Map CI stages to gates if CI config exists. `specs/_template/`
+    overwriting. Map CI stages to gates if CI config exists. Drop any phase
+    whose artifact nobody on this project would review and no later session
+    would read — the pipeline is checkpoints and state, and a phase that is
+    neither is ceremony the project pays for on every spec. `specs/_template/`
     holds one file per artifact-producing phase, so a pipeline customized in
     the rule is customized there in the same install — a phase added gains its
     template file, a phase dropped loses it. The `<...>` placeholders inside
