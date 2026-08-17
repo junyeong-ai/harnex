@@ -42,12 +42,22 @@ wrapup, as the project requires:
 ## Spec directory layout
 
 ```
-specs/<slug>/
-├── spec.md          # Problem + constraints + acceptance criteria
-├── plan.md          # Solution design + tasks + risks
-├── wrapup.md        # Post-implementation observations + learnings
-└── learning.md      # (optional) Promoted patterns from this spec
+specs/
+├── _template/       # copy this directory to start a spec
+│   ├── spec.md
+│   ├── plan.md
+│   └── wrapup.md
+└── <slug>/
+    ├── spec.md      # Problem + constraints + acceptance criteria
+    ├── plan.md      # Solution design + tasks + risks
+    ├── wrapup.md    # Post-implementation observations + learnings
+    └── learning.md  # (optional) Promoted patterns from this spec
 ```
+
+Start a spec by copying `specs/_template/` to `specs/<slug>/` and filling the
+`<...>` placeholders. `_template/` carries one file per phase that produces an
+artifact, so the file set is the pipeline: a phase added or dropped above is
+added or dropped there in the same commit.
 
 ## `spec.md` frontmatter
 
