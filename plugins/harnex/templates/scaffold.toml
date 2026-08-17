@@ -26,6 +26,28 @@
 #            its own, and tailoring it is the intended use, not drift.
 #   managed  partitioned by `<!-- harnex-managed -->` sentinels — harnex owns
 #            what they bound, the project owns everything outside them.
+#
+# The kind also decides what happens when the DESTINATION ALREADY EXISTS, which
+# is the common case rather than the exceptional one: a repo with no `.claude/`
+# usually still has a `CLAUDE.md`, because Claude Code reads one without any
+# `.claude/` directory at all, and a repo with git hooks already has `hooks/`.
+# The answer is the kind's own meaning, not a new field:
+#
+#   copy     an incumbent at that path is a different thing wearing the same
+#            name. Keep it, emit nothing, and report the collision — silently
+#            replacing a project's `hooks/pre-commit` is the worst outcome
+#            available.
+#   seed     the project already owns one. Keep it, emit nothing, report.
+#   managed  harnex owns only what its sentinels bound, so contribute those
+#            blocks and leave every other byte of the incumbent alone. On a
+#            file that does not exist yet, "everything else" is empty and this
+#            is a plain write. Same rule as `regenerate`, which is the point:
+#            one contract, not one per mode.
+#   merge    already collision-aware — the union at `key` is defined against
+#            whatever is there, including entries the project wrote itself.
+#
+# Emission is therefore idempotent: running a scaffold twice changes nothing
+# the second time.
 #   merge    a JSON fragment contributed at `key`. Several artifacts may name
 #            the same key — `hooks` and `permissions.allow` are each claimed by
 #            both tiers — and the contribution is a UNION, never a replacement:
@@ -139,7 +161,20 @@ template = "common/git-hooks/pre-commit"
 destination = "hooks/pre-commit"
 executable = true
 
-# ---------- language: needs a detected stack ----------
+# ---------- language: emitted once per detected stack ----------
+#
+# Detection answers with a SET, not a winner. A lockfile is evidence that a
+# stack is present, never evidence that it is the only one, and a repository
+# with two of them has two — one measured here holds 17,085 `.py` files beside
+# 3,433 `.ts`, and picking by row order would have handed it a formatter that
+# silently skips 83% of its source. Every artifact below therefore resolves
+# per language: `permissions.allow` and `hooks.PostToolUse` union across the
+# matched set, and the conventions rule and formatter carry `{lang}` in their
+# destination so two stacks never collide.
+#
+# Each `post-format-{lang}.sh` dispatches on the file extension and exits 0 on
+# anything it does not own, so several of them coexist as separate PostToolUse
+# entries with no arbitration between them.
 
 [[artifact]]
 tier = "language"
@@ -149,15 +184,15 @@ destination = ".claude/settings.json"
 
 [[artifact]]
 tier = "language"
-content = { kind = "merge", key = "hooks" }
-template = "common/hooks.format.json"
+content = { kind = "merge", key = "hooks.PostToolUse" }
+template = "{lang}/hooks.format.json"
 destination = ".claude/settings.json"
 
 [[artifact]]
 tier = "language"
 content = { kind = "copy" }
 template = "{lang}/post-format.sh"
-destination = "hooks/post-format.sh"
+destination = "hooks/post-format-{lang}.sh"
 executable = true
 
 [[artifact]]

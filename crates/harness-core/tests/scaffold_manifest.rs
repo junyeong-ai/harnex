@@ -123,11 +123,16 @@ fn no_two_merge_fragments_claim_the_same_contribution() {
     // Merging is a union — of keys for an object fragment, of elements for an
     // array — so two fragments claiming the same contribution would leave one
     // silently absorbing the other. `scaffold.toml` has two artifacts
-    // contributing to `hooks` and two to `permissions.allow`, one per tier.
+    // contributing under `hooks` and two to `permissions.allow`, one per tier.
+    //
+    // Contributions are compared by their FULL dotted path, not by the merge
+    // key plus a bare name. `hooks` carrying a `PostToolUse` object key and
+    // `hooks.PostToolUse` carrying elements are the same JSON location reached
+    // two ways, and comparing the keys as written would let the pair through.
     let root = templates_root();
     let m = manifest();
     for lang in languages() {
-        let mut claimed: BTreeSet<(String, String)> = BTreeSet::new();
+        let mut claimed: BTreeSet<String> = BTreeSet::new();
         for artifact in m.artifacts() {
             let Content::Merge { key: merge } = &artifact.content else {
                 continue;
@@ -144,9 +149,9 @@ fn no_two_merge_fragments_claim_the_same_contribution() {
                 Some(object) => {
                     for key in object.keys() {
                         assert!(
-                            claimed.insert((merge.clone(), key.clone())),
-                            "two scaffold.toml fragments both contribute '{key}' under '{merge}' \
-                             for language '{lang}'; the union would silently drop the first"
+                            claimed.insert(format!("{merge}.{key}")),
+                            "two scaffold.toml fragments both contribute '{merge}.{key}' for \
+                             language '{lang}'; the union would silently drop the first"
                         );
                     }
                 }
@@ -160,7 +165,7 @@ fn no_two_merge_fragments_claim_the_same_contribution() {
                         for element in elements {
                             let rule = element.to_string();
                             assert!(
-                                claimed.insert((merge.clone(), rule.clone())),
+                                claimed.insert(format!("{merge}[{rule}]")),
                                 "two scaffold.toml fragments both contribute {rule} to '{merge}' \
                                  for language '{lang}'; the union would hide the duplication"
                             );
@@ -168,7 +173,7 @@ fn no_two_merge_fragments_claim_the_same_contribution() {
                     }
                     None => {
                         assert!(
-                            claimed.insert((merge.clone(), String::new())),
+                            claimed.insert(merge.clone()),
                             "two scaffold.toml fragments both merge a scalar into '{merge}' for \
                              language '{lang}'; the second would replace the first outright"
                         );

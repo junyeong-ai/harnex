@@ -46,9 +46,13 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
    - Evaluation order: `deny > ask > allow`, first-match-wins.
    - Never emit project-scope no-op keys into `.claude/settings.json`.
    When in doubt, re-read the live doc — freezing the spec is the failure.
-5. **Right language, and a floor without one.** Detect from lockfile+manifest;
-   never cross-wire (biome for TS, ruff for Python, rustfmt for Rust). When no
-   supported stack matches, emit the manifest's **foundation tier** — the
+5. **Every language present, and a floor without one.** Detect from
+   lockfile+manifest and match *every* row whose signal is there — the answer
+   is a set, and the language tier is emitted once per member. Never
+   cross-wire (biome for TS, ruff for Python, rustfmt for Rust), and never
+   resolve two present stacks by row order: that is the wrong-profile failure
+   with extra steps. When no supported stack matches, emit the manifest's
+   **foundation tier** — the
    permission floor, the foundation rules, the hook wrappers, the secret-scan
    git hook, all language-agnostic — and report exactly which language-tier
    artifacts are unavailable and why. What is forbidden is a *wrong* profile,
@@ -102,14 +106,24 @@ flattens real per-package differences.
 
 **The file set is `${CLAUDE_SKILL_DIR}/templates/scaffold.toml`, not this
 list.** Read it and emit every artifact it declares, dispatching on
-`content.kind`: `copy`, `seed` and `managed` are written to `destination`
-verbatim; `merge` contributes its JSON fragment at `content.key` as a key
-union where two artifacts name the same key (the manifest header states the
-rule). `chmod 0o755` where `executable` is set. Emit the `foundation` tier
-always and the `language` tier when a stack matched, resolving `{lang}` to the
-detected language. The manifest is the single home for that set — a second
-list here would be the one that drifts, and the oracle's fixture test builds
-from the same file so a scaffold and its guard cannot disagree.
+`content.kind` — into a destination that does not exist, `copy`, `seed` and
+`managed` are written verbatim and `merge` contributes its JSON fragment at
+`content.key` as a union where two artifacts name the same key (the manifest
+header states the rule). `chmod 0o755` where `executable` is set. Emit the
+`foundation` tier always, and the `language` tier once per detected stack,
+resolving `{lang}` to that language each time. The manifest is the single home
+for that set — a second list here would be the one that drifts, and the
+oracle's fixture test builds from the same file so a scaffold and its guard
+cannot disagree.
+
+**Check every destination before writing it.** A repo with no `.claude/` — the
+repo scaffold mode is for — usually still has a `CLAUDE.md`, because Claude
+Code reads one without any `.claude/` directory, and a repo with git hooks
+already has `hooks/`. The manifest header states the rule per kind: `copy` and
+`seed` keep the incumbent and emit nothing; `managed` contributes only its
+sentinel blocks and leaves every other byte alone; `merge` unions. Never
+replace a file the project wrote. Report every collision you left in place,
+naming what harnex would have put there, so the operator can merge by hand.
 
 `content.kind` also says what happens to each artifact afterwards, which is
 what the operator needs to hear when you report: `copy` is machinery to leave
@@ -171,7 +185,11 @@ at the version-controlled hooks: `git config core.hooksPath hooks` (state
 this command for the operator to run; do not run git config silently).
 Verify: `bash -n` on every `.sh` and on `hooks/pre-commit`, JSON-parse
 settings.json. Run `harness check` / `harness audit` if the binary oracle is
-available. Report what was generated and suggest `extend pattern` additions
+available. On a repo that already had artifacts, the scaffolded `harness.toml`
+points validators at them for the first time, so report those findings as part
+of what the scaffold revealed rather than leaving them to be discovered — a
+brownfield harness typically has some, and they are the reason the scaffold was
+worth running. Report what was generated and suggest `extend pattern` additions
 based on what the analysis revealed (e.g., CI deploy stages →
 `extend pattern spec-workflow`).
 

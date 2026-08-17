@@ -17,6 +17,7 @@ use harness_core::audit::{AuditCheckKind, ProjectAuditor};
 use harness_core::config::SkillsPolicy;
 use harness_core::envelope::Finding;
 use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
+use harness_core::sentinel;
 use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
 use tempfile::TempDir;
 
@@ -107,10 +108,37 @@ fn emit_tier(
                         .unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
                 merge_at(settings, key, fragment);
             }
-            Content::Copy | Content::Seed | Content::Managed => {
+            // `copy` and `seed` keep an incumbent: a file already at that path
+            // is the project's, and replacing it is the worst outcome the
+            // scaffold has available.
+            Content::Copy | Content::Seed if dst.exists() => {}
+            Content::Copy | Content::Seed => {
                 copy_file(&src, &dst);
                 if artifact.executable {
                     set_executable(&dst);
+                }
+            }
+            // `managed` owns only what its sentinels bound, so it contributes
+            // those blocks and leaves every other byte alone. With no
+            // incumbent, "everything else" is empty and this is a plain write.
+            Content::Managed => {
+                let template_body = fs::read_to_string(&src).unwrap();
+                match fs::read_to_string(&dst) {
+                    Ok(incumbent) => {
+                        let held = sentinel::extract_regions(&incumbent);
+                        let contributed: String = sentinel::blocks(&template_body)
+                            .into_iter()
+                            .filter(|b| {
+                                sentinel::extract_regions(b)
+                                    .keys()
+                                    .all(|slug| !held.contains_key(slug))
+                            })
+                            .map(|b| format!("\n\n{b}"))
+                            .collect();
+                        fs::write(&dst, format!("{}{contributed}\n", incumbent.trim_end()))
+                            .unwrap();
+                    }
+                    Err(_) => copy_file(&src, &dst),
                 }
             }
         }
@@ -458,7 +486,7 @@ fn foundation_only_scaffold_is_coherent_without_a_language() {
         .map(|c| c.destination.as_str())
         .collect();
     assert!(
-        absent.contains(&"hooks/post-format.sh"),
+        absent.iter().any(|d| d.starts_with("hooks/post-format-")),
         "the formatter hook must report absent in a foundation-only scaffold: {absent:?}"
     );
     assert!(
@@ -470,6 +498,204 @@ fn foundation_only_scaffold_is_coherent_without_a_language() {
         "every foundation artifact must report present: {:?}",
         outcome.coverage
     );
+}
+
+/// Scaffolding a repo that already has files at the manifest's destinations
+/// must not destroy them.
+///
+/// This is the common case, not the exceptional one. Claude Code reads a root
+/// `CLAUDE.md` with no `.claude/` directory at all, so "no `.claude/`" — the
+/// condition scaffold mode is defined by — says nothing about whether a
+/// `CLAUDE.md` exists; seven of the repositories this was measured against
+/// were in exactly that state, one of them 306 lines. A repo with git hooks
+/// already has `hooks/`, which is where four `copy` artifacts land.
+#[test]
+fn scaffolding_over_an_incumbent_preserves_it() {
+    let templates = plugin_templates();
+    let manifest = ScaffoldManifest::load(&templates).unwrap();
+    let project = TempDir::new().unwrap();
+    let proj_root = project.path();
+
+    let claude_md = "# acme\n\nProject notes live in `.acme/memories`.\n";
+    let pre_commit = "#!/bin/sh\nexec ./scripts/lint-staged\n";
+    let governance = "# Governance\n\nWe decide at the Thursday retro.\n";
+    for (rel, body) in [
+        ("CLAUDE.md", claude_md),
+        ("hooks/pre-commit", pre_commit),
+        (".claude/rules/governance.md", governance),
+    ] {
+        let path = proj_root.join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, body).unwrap();
+    }
+
+    let mut settings = serde_json::json!({
+        "permissions": {"allow": ["Bash(acme *)"]},
+        "env": {"ACME": "1"},
+    });
+    for tier in [Tier::Foundation, Tier::Language] {
+        emit_tier(
+            &manifest,
+            tier,
+            &templates,
+            Some("rust"),
+            proj_root,
+            &mut settings,
+        );
+    }
+
+    // `copy` and `seed`: the incumbent is the project's and is left alone.
+    assert_eq!(
+        fs::read_to_string(proj_root.join("hooks/pre-commit")).unwrap(),
+        pre_commit,
+        "a `copy` artifact replaced the project's own hook"
+    );
+    assert_eq!(
+        fs::read_to_string(proj_root.join(".claude/rules/governance.md")).unwrap(),
+        governance,
+        "a `seed` artifact replaced governance the project had already written"
+    );
+
+    // `managed`: harnex contributes its sentinel blocks and nothing else.
+    let merged = fs::read_to_string(proj_root.join("CLAUDE.md")).unwrap();
+    assert!(
+        merged.starts_with(claude_md.trim_end()),
+        "the incumbent CLAUDE.md must survive verbatim, got:\n{merged}"
+    );
+    let template_slugs =
+        sentinel::extract_regions(&fs::read_to_string(templates.join("common/CLAUDE.md")).unwrap());
+    let merged_slugs = sentinel::extract_regions(&merged);
+    assert_eq!(
+        merged_slugs.keys().collect::<Vec<_>>(),
+        template_slugs.keys().collect::<Vec<_>>(),
+        "every managed region must land so `regenerate` can find it again"
+    );
+    assert!(
+        !merged.contains("harnex-fill"),
+        "a managed contribution must carry no unfilled markers into a file the \
+         project already wrote: the project owns those sections"
+    );
+
+    // `merge`: the project's own entries survive beside both tiers'.
+    let allow = settings["permissions"]["allow"].as_array().unwrap();
+    assert!(allow.iter().any(|v| v == "Bash(acme *)"));
+    assert!(allow.iter().any(|v| v == "Bash(cargo *)"));
+    assert!(allow.iter().any(|v| v == "Edit"));
+    assert_eq!(settings["env"]["ACME"], "1");
+
+    // Emission is idempotent: a second pass changes nothing.
+    let before: Vec<(PathBuf, String)> = glob_under(proj_root, "**/*")
+        .into_iter()
+        .filter(|p| p.is_file())
+        .map(|p| {
+            let body = fs::read_to_string(&p).unwrap_or_default();
+            (p, body)
+        })
+        .collect();
+    for tier in [Tier::Foundation, Tier::Language] {
+        emit_tier(
+            &manifest,
+            tier,
+            &templates,
+            Some("rust"),
+            proj_root,
+            &mut settings,
+        );
+    }
+    for (path, body) in before {
+        assert_eq!(
+            fs::read_to_string(&path).unwrap_or_default(),
+            body,
+            "re-running the scaffold changed {}",
+            path.display()
+        );
+    }
+}
+
+/// A repository with two stacks gets both, and neither displaces the other.
+///
+/// Detection answers with a set: a lockfile is evidence a stack is present,
+/// never evidence it is the only one. Two of the repositories this was measured
+/// against carry `pnpm-lock.yaml` and `uv.lock` together — one of them 17,085
+/// `.py` files beside 3,433 `.ts` — so resolving the pair by row order would
+/// wire a formatter that silently skips most of the source and grant a
+/// toolchain the majority language never uses.
+#[test]
+fn a_two_stack_repo_gets_both_language_tiers() {
+    let templates = plugin_templates();
+    let manifest = ScaffoldManifest::load(&templates).unwrap();
+    let project = TempDir::new().unwrap();
+    let proj_root = project.path();
+
+    let mut settings = serde_json::json!({});
+    emit_tier(
+        &manifest,
+        Tier::Foundation,
+        &templates,
+        None,
+        proj_root,
+        &mut settings,
+    );
+    for lang in ["python", "typescript"] {
+        emit_tier(
+            &manifest,
+            Tier::Language,
+            &templates,
+            Some(lang),
+            proj_root,
+            &mut settings,
+        );
+    }
+
+    for lang in ["python", "typescript"] {
+        assert!(
+            proj_root
+                .join(format!("hooks/post-format-{lang}.sh"))
+                .exists(),
+            "{lang}'s formatter is missing; one stack displaced the other"
+        );
+        assert!(
+            proj_root
+                .join(format!(".claude/rules/{lang}-conventions.md"))
+                .exists(),
+            "{lang}'s conventions rule is missing"
+        );
+    }
+
+    // One PostToolUse entry per stack. Each script dispatches on the file
+    // extension and exits 0 on anything it does not own, so they coexist
+    // without arbitration.
+    let entries = settings["hooks"]["PostToolUse"].as_array().unwrap();
+    let args: Vec<String> = entries
+        .iter()
+        .filter_map(|e| e["hooks"][0]["args"][0].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(
+        args,
+        vec!["post-format-python.sh", "post-format-typescript.sh"],
+        "both formatters must be wired, in a stable order"
+    );
+
+    let allow: Vec<&str> = settings["permissions"]["allow"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    for rule in ["Bash(uv *)", "Bash(pnpm *)", "Bash(harness *)"] {
+        assert!(allow.contains(&rule), "{rule} missing from {allow:?}");
+    }
+
+    let settings_path = proj_root.join(".claude/settings.json");
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&settings).unwrap(),
+    )
+    .unwrap();
+    let findings = SettingsValidator::new()
+        .validate_file(&settings_path, SettingsScope::Project)
+        .unwrap();
+    assert_no_findings("python+typescript", "validate.settings", &findings);
 }
 
 #[test]

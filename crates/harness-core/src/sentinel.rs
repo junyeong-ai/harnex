@@ -89,6 +89,63 @@ pub fn fill_markers(content: &str) -> Vec<FillMarker> {
 pub fn extract_regions(content: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let mut seen_slugs = std::collections::BTreeSet::new();
+    for region in scan(content) {
+        let body = &content[region.body.clone()];
+        // A body that itself contains a start marker means malformed nesting
+        // (e.g. `:start a` … `:start a` … `:end a`): the inner `:end` closed
+        // the OUTER start and the nested start was swallowed into this body,
+        // so the duplicate-slug guard below never sees it. Poison to an empty
+        // body so a downstream drift check fires rather than accepting a
+        // region with a stray sentinel inside it.
+        if !region.terminated
+            || !seen_slugs.insert(region.slug.clone())
+            || body.contains(START_PREFIX)
+        {
+            out.insert(region.slug, String::new());
+        } else {
+            out.insert(region.slug, body.to_string());
+        }
+    }
+    out
+}
+
+/// Every `harnex-managed` block in `content`, markers included, in document
+/// order.
+///
+/// [`extract_regions`] returns bodies, which is what comparing against a
+/// template needs. Contributing a region to a file needs the block: harnex owns
+/// what its sentinels bound and nothing else, so emitting a `managed` artifact
+/// onto a destination that already exists adds these blocks and leaves the
+/// incumbent alone. A region spliced in without its markers is one `regenerate`
+/// can never find again.
+///
+/// Unterminated blocks are omitted — there is nothing well-formed to
+/// contribute, and `extract_regions` already reports the malformation as drift.
+pub fn blocks(content: &str) -> Vec<String> {
+    scan(content)
+        .into_iter()
+        .filter(|r| r.terminated)
+        .map(|r| content[r.block].to_string())
+        .collect()
+}
+
+/// One `:start`/`:end` pair located in the source.
+struct Region {
+    slug: String,
+    /// The whole block, both markers included.
+    block: std::ops::Range<usize>,
+    /// Just the bytes between the markers.
+    body: std::ops::Range<usize>,
+    /// Whether a matching `:end` was found. An unterminated start yields an
+    /// empty `body` and a `block` running to end-of-input.
+    terminated: bool,
+}
+
+/// The single pass both public functions read. Two scanners would be two
+/// grammars (Constitution IX), which is the divergence this module exists to
+/// prevent.
+fn scan(content: &str) -> Vec<Region> {
+    let mut out = Vec::new();
     let mut cursor = 0usize;
     while cursor < content.len() {
         let Some(rel_start) = content[cursor..].find(START_PREFIX) else {
@@ -109,23 +166,22 @@ pub fn extract_regions(content: &str) -> BTreeMap<String, String> {
         }
         let end_marker = format!("<!-- harnex-managed:end {slug} -->");
         let Some(rel_end) = content[header_end..].find(&end_marker) else {
-            out.insert(slug, String::new());
+            out.push(Region {
+                slug,
+                block: header_pos..content.len(),
+                body: header_end..header_end,
+                terminated: false,
+            });
             break;
         };
-        let body = &content[header_end..header_end + rel_end];
-        // A body that itself contains a start marker means malformed nesting
-        // (e.g. `:start a` … `:start a` … `:end a`): the inner `:end` closed
-        // the OUTER start and the nested start was swallowed into this body,
-        // so the duplicate-slug guard below never sees it. Poison to an empty
-        // body so a downstream drift check fires rather than accepting a
-        // region with a stray sentinel inside it.
-        if !seen_slugs.insert(slug.clone()) || body.contains(START_PREFIX) {
-            // Duplicate / nested slug — poison to empty body so drift checks fire.
-            out.insert(slug, String::new());
-        } else {
-            out.insert(slug, body.to_string());
-        }
-        cursor = header_end + rel_end + end_marker.len();
+        let block_end = header_end + rel_end + end_marker.len();
+        out.push(Region {
+            slug,
+            block: header_pos..block_end,
+            body: header_end..header_end + rel_end,
+            terminated: true,
+        });
+        cursor = block_end;
     }
     out
 }

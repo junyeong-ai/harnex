@@ -1,0 +1,6 @@
+[
+  {
+    "matcher": "Edit|Write",
+    "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/hooks/_runner.sh", "args": ["post-format-jvm.sh"], "timeout": 15 }]
+  }
+]
