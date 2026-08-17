@@ -33,8 +33,18 @@
 //!   file this crate can resolve, and treating it as one would answer for a
 //!   string the runtime never expands.
 //! - Never guess whether a quoted word carrying spaces is one long filename or
-//!   a nested command. A second anchor inside it settles the question — one
-//!   path cannot hold the project root twice — and nothing else does.
+//!   a nested command. `-c` settles it, and failing that a second anchor does,
+//!   because one path cannot hold the project root twice. Nothing else does.
+//! - Never re-lex a second level of shell. Inside `sh -c "… \"a b\" …"` the
+//!   inner shell would re-quote and recover `a b`; this module reads one level
+//!   and stops, so such a token truncates at the space. Truncation only ever
+//!   loses a match — a shortened token cannot collide with an artifact whose
+//!   name has no space in it — and modelling nested quoting is how a parser
+//!   starts answering for strings it cannot see.
+//! - Never treat non-ASCII whitespace as a word separator's equal. `-c` is
+//!   found by ASCII-shaped splitting, so a no-break space around it reads as a
+//!   separator where the shell reads a letter. It errs toward splitting, which
+//!   is again the missing-match direction.
 //! - Never infer the grammar from the string. The caller knows the handler's
 //!   shape and says so by choosing the function — and every step below the
 //!   entry points is tagged the same way, because a shared unescape is how one
@@ -554,6 +564,25 @@ mod tests {
             assert_eq!(
                 paths_in_command(source),
                 vec!["hooks/_runner.sh", "hooks/pre-commit"],
+                "'{source}'"
+            );
+        }
+    }
+
+    #[test]
+    fn a_later_word_does_not_inherit_the_command_fact() {
+        // `commanded` travels down into the region the flag proved, never
+        // sideways to the next one. The whole guarantee is that the binding
+        // is scoped to one iteration: hoisted above the loop it would latch,
+        // and every quoted filename after a `-c` would be cut at its space.
+        for source in [
+            "bash -c \"${CLAUDE_PROJECT_DIR}/a.sh\" \"${CLAUDE_PROJECT_DIR}/my file.sh\"",
+            "bash -c \"${CLAUDE_PROJECT_DIR}/a.sh\" ; cp \"${CLAUDE_PROJECT_DIR}/my file.sh\" /tmp",
+            "sh -c \"${CLAUDE_PROJECT_DIR}/a.sh\" && cat \"${CLAUDE_PROJECT_DIR}/my file.sh\"",
+        ] {
+            assert_eq!(
+                paths_in_command(source),
+                vec!["a.sh", "my file.sh"],
                 "'{source}'"
             );
         }
