@@ -1,12 +1,14 @@
 //! harnex runs the harness it ships.
 //!
 //! Adopting a scaffold artifact into this repo makes it the same fact in two
-//! places, and the manifest already says which artifacts are held to their
-//! template: `content.kind = "copy"` is machinery whose template is the only
-//! statement of what it does. The other kinds are comparable by a different
-//! rule or not at all — a `merge` fragment contributes one key to a shared
-//! file, a `managed` artifact owns everything outside its sentinels, and a
-//! `seed` is handed over to the project outright (Constitution IX).
+//! places, and the manifest already says how each artifact is held to its
+//! template. `copy` is machinery whose template is the only statement of what
+//! it does, so it is compared byte for byte. `merge` contributes a fragment to
+//! a shared file, so it is compared by containment — the destination also
+//! carries the other tier's fragment and this repo's own entries, and equality
+//! would fail on all three. `managed` owns only what its sentinels bound and
+//! `seed` is handed to the project outright, so neither is comparable here
+//! (Constitution IX).
 //!
 //! Not hypothetical. The commit that adopted the foundation hooks left
 //! `hooks/post-format.sh` six comment lines behind its template, and every
@@ -34,9 +36,23 @@ use harness_core::scaffold::{Artifact, Content, ScaffoldManifest};
 /// choice.
 const AUTHORED: &[&str] = &[];
 
-/// How many adopted artifacts this repo holds: the five foundation hooks plus
-/// the language formatter.
+/// How many adopted `copy` artifacts this repo holds: the five foundation
+/// hooks plus the language formatter.
 const ADOPTED_ARTIFACT_COUNT: usize = 6;
+
+/// The `merge` fragments this repo has adopted into `.claude/settings.json`.
+///
+/// Named rather than counted: the other languages' fragments resolve to the
+/// same destination and are correctly absent from a Rust repo, so the question
+/// is which fragments landed, not how many. A drifted rule leaves its template
+/// here and the diff says which.
+const ADOPTED_FRAGMENTS: &[&str] = &[
+    "common/permissions.deny.json",
+    "common/permissions.allow.json",
+    "common/hooks.json",
+    "common/hooks.format.json",
+    "rust/permissions.allow.json",
+];
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -122,5 +138,53 @@ fn every_adopted_scaffold_artifact_matches_its_template() {
         compared, ADOPTED_ARTIFACT_COUNT,
         "this repo now holds a different number of adopted scaffold artifacts; \
          if that was intended, update ADOPTED_ARTIFACT_COUNT"
+    );
+}
+
+#[test]
+fn every_adopted_merge_fragment_is_present_in_its_destination() {
+    // `.claude/settings.json` is this repo's own file AND the destination of
+    // five shipped fragments. The byte comparison above cannot reach it, so
+    // until now the deny floor could lose a rule — or the templates gain one —
+    // with every gate green.
+    let root = repo_root();
+    let templates = templates_root();
+    let manifest = ScaffoldManifest::load(&templates).expect("scaffold.toml loads");
+
+    let mut landed: Vec<String> = Vec::new();
+    for artifact in manifest.artifacts() {
+        let Content::Merge { key } = &artifact.content else {
+            continue;
+        };
+        for lang in candidate_languages(artifact) {
+            let (Some(template), Some(destination)) =
+                (artifact.template_for(lang), artifact.destination_for(lang))
+            else {
+                continue;
+            };
+            let (source, adopted) = (templates.join(&template), root.join(&destination));
+            if !source.exists() || !adopted.exists() {
+                continue;
+            }
+            let fragment: serde_json::Value = serde_json::from_str(&read(&source))
+                .unwrap_or_else(|e| panic!("{} is not JSON: {e}", source.display()));
+            let doc: serde_json::Value = serde_json::from_str(&read(&adopted))
+                .unwrap_or_else(|e| panic!("{} is not JSON: {e}", adopted.display()));
+            if harness_core::scaffold::fragment_landed(&doc, key, &fragment) {
+                landed.push(template.clone());
+            }
+        }
+    }
+    landed.sort();
+    landed.dedup();
+
+    let mut expected: Vec<String> = ADOPTED_FRAGMENTS.iter().map(|s| s.to_string()).collect();
+    expected.sort();
+    assert_eq!(
+        landed, expected,
+        "the fragments this repo carries have changed. A template missing from \
+         the left side is one this repo stopped shipping what it runs — re-copy \
+         it. One missing from the right is a fragment newly adopted, which is a \
+         decision, so name it in ADOPTED_FRAGMENTS."
     );
 }

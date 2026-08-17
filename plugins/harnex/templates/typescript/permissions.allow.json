@@ -1,16 +1,7 @@
 [
   "Bash(biome *)",
-  "Bash(git add *)",
-  "Bash(git branch *)",
-  "Bash(git checkout -b *)",
-  "Bash(git commit *)",
-  "Bash(git stash *)",
-  "Bash(git switch *)",
-  "Bash(mkdir -p *)",
   "Bash(node *)",
   "Bash(pnpm *)",
   "Bash(tsc *)",
-  "Bash(tsx *)",
-  "Edit",
-  "Write"
+  "Bash(tsx *)"
 ]

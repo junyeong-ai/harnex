@@ -27,12 +27,15 @@
 #   managed  partitioned by `<!-- harnex-managed -->` sentinels — harnex owns
 #            what they bound, the project owns everything outside them.
 #   merge    a JSON fragment contributed at `key`. Several artifacts may name
-#            the same key — `hooks` is claimed by both tiers — and the
-#            contribution is a KEY UNION, never a replacement: the language
-#            tier adds its PostToolUse entry beside the foundation's
-#            SessionStart and Stop rather than erasing them. An array-valued
-#            key is claimed by exactly one artifact. Presence is the fragment
-#            landing at its key, not the shared destination existing.
+#            the same key — `hooks` and `permissions.allow` are each claimed by
+#            both tiers — and the contribution is a UNION, never a replacement:
+#            the language tier adds its PostToolUse entry beside the
+#            foundation's SessionStart and Stop rather than erasing them.
+#            An object fragment contributes its keys; an array fragment its
+#            elements, unioned as a sorted set. No contribution may be claimed
+#            twice, so the union is order-independent and idempotent. Presence
+#            is the fragment landing at its key, not the shared destination
+#            existing.
 #
 # Adding a language means adding its `<lang>-dev` profile plus the three
 # `{lang}` template files — never an edit here. The language set derives from
@@ -45,6 +48,12 @@
 tier = "foundation"
 content = { kind = "merge", key = "permissions.deny" }
 template = "common/permissions.deny.json"
+destination = ".claude/settings.json"
+
+[[artifact]]
+tier = "foundation"
+content = { kind = "merge", key = "permissions.allow" }
+template = "common/permissions.allow.json"
 destination = ".claude/settings.json"
 
 [[artifact]]

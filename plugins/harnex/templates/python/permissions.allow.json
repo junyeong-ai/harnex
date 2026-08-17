@@ -1,17 +1,10 @@
 [
-  "Bash(git add *)",
-  "Bash(git branch *)",
-  "Bash(git checkout -b *)",
-  "Bash(git commit *)",
-  "Bash(git stash *)",
-  "Bash(git switch *)",
-  "Bash(mkdir -p *)",
   "Bash(mypy *)",
+  "Bash(pyright *)",
   "Bash(pytest *)",
   "Bash(python *)",
   "Bash(python3 *)",
   "Bash(ruff *)",
-  "Bash(uv *)",
-  "Edit",
-  "Write"
+  "Bash(ty *)",
+  "Bash(uv *)"
 ]

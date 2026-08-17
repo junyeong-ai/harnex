@@ -47,7 +47,15 @@ managed", a state that named nothing and had to be rejected at load.
 `merge` is the only kind whose destination is shared, which is why presence is
 containment of its fragment rather than the file existing: a foundation-only
 scaffold otherwise reports its unmerged language rows present, because the
-foundation tier wrote the file they name.
+foundation tier wrote the file they name. `scaffold::fragment_landed` is that
+predicate, and both the auditor's coverage check and the self-dogfood test
+read it — a second containment rule would be the one that drifts.
+
+The union is by fragment shape: an object contributes its keys, an array its
+elements as a sorted set. `hooks` and `permissions.allow` are each claimed by
+both tiers, and a replacing merge would erase the foundation's Stop hook, or
+its `Edit`/`Write` grants, the moment the language fragment landed —
+validating clean while running nothing.
 
 `seed` exists because a project's governance is its own. Holding it to the
 template would make tailoring — the intended use — read as drift.

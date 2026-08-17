@@ -8,12 +8,15 @@ editing it, not using it):
 
 - **Compose templates; never free-generate** a hook, permission rule, or
   timeout. The skill selects a language profile and fills declared params.
-- **Permission templates are a projection, not a source.** `permissions.deny.json`
-  and `<lang>/permissions.allow.json` are generated from the oracle's
-  `crates/harness-core/src/policy/profiles.rs` (`baseline` / `<lang>-dev`).
-  Edit the profile, regenerate with `harness policy permissions generate`,
-  copy the array across; the `policy_template_sync` test fails on drift
-  (constitution IX). Never hand-edit a template's rules.
+- **Permission templates are a projection, not a source.**
+  `common/permissions.deny.json`, `common/permissions.allow.json` and
+  `<lang>/permissions.allow.json` are generated from the oracle's
+  `crates/harness-core/src/policy/profiles.rs` (`baseline` / `workspace` /
+  `<lang>-dev`). Edit the profile, regenerate with `harness policy permissions
+  generate`, copy the array across; the `policy_template_sync` test fails on
+  drift and holds the foundation and language allow sets disjoint
+  (constitution IX). Never hand-edit a template's rules. The two floors are
+  foundation-tier: a stack with no language profile still receives both.
 - **`reference/spec-facts.md` is perishable.** Re-verify each fact against the
   live Claude Code docs every change — a frozen spec fact is the failure mode.
   Closed-set vocabularies inside spec-facts (hook events, …) live in

@@ -1,17 +1,8 @@
 [
   "Bash(./gradlew *)",
   "Bash(./mvnw *)",
-  "Bash(git add *)",
-  "Bash(git branch *)",
-  "Bash(git checkout -b *)",
-  "Bash(git commit *)",
-  "Bash(git stash *)",
-  "Bash(git switch *)",
   "Bash(google-java-format *)",
   "Bash(gradle *)",
   "Bash(ktlint *)",
-  "Bash(mkdir -p *)",
-  "Bash(mvn *)",
-  "Edit",
-  "Write"
+  "Bash(mvn *)"
 ]

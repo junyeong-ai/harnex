@@ -25,12 +25,42 @@ fallback that swallows an unrecognized stack.
 composition manifest (`templates/scaffold.toml`) splits a harness into a
 `foundation` tier that needs no language and a `language` tier that does, so a
 stack with no profile receives the whole enforced floor — the permission deny
-set, the foundation rules, the hook wrappers, the gitleaks pre-commit hook —
-and is told exactly which language-tier artifacts are missing and why. What
-must never happen is a *wrong* profile: emitting ruff into a Go repo is the
-meta-failure this matrix exists to prevent. An absent profile is a different
-thing, and withholding a floor the stack never needed a profile for protects
-nobody. Offer `extend language <lang>` as the way to close the remaining tier.
+set AND the permission allow floor, the foundation rules, `harness.toml`, the
+hook wrappers, the gitleaks pre-commit hook — and is told exactly which
+language-tier artifacts are missing and why. What must never happen is a
+*wrong* profile: emitting ruff into a Go repo is the meta-failure this matrix
+exists to prevent. An absent profile is a different thing, and withholding a
+floor the stack never needed a profile for protects nobody. Offer
+`extend language <lang>` as the way to close the remaining tier.
+
+## Gate-driver detection (evidence, not a per-language default)
+
+A project's gates run through a task runner more often than through the
+language toolchain directly, and which runner is a project fact, not a
+language one. Grant the runner that the project's own task declaration names
+— the same file Step 1 already reads for `## Build & test`, so this is one
+observation reaching two consumers rather than a second analysis.
+
+| Signal | Grant |
+|---|---|
+| `Justfile` / `justfile` | `Bash(just *)` |
+| `Makefile` | `Bash(make *)` |
+| `[tool.poe.tasks]` in `pyproject.toml` | `Bash(poe *)` |
+| `[tool.hatch.envs.*.scripts]` in `pyproject.toml` | `Bash(hatch *)` |
+| `[tool.pdm.scripts]` in `pyproject.toml` | `Bash(pdm *)` |
+| `scripts` in `package.json` | already covered by the package manager grant |
+| `Taskfile.yml` | `Bash(task *)` |
+| `mise.toml` / `.mise.toml` `[tasks]` | `Bash(mise *)` |
+
+**No signal, no grant.** A runner the project does not declare is the same
+guess as the wrong formatter. Two or more signals means two or more grants —
+a repo with a `Justfile` wrapping `poe` prompts on whichever one it types.
+
+A `<lang>-dev` profile is the ecosystem's mainstream toolchain and is not a
+claim about which of it this project uses; `python-dev` carries `ty`, `mypy`
+and `pyright` because a grant for an absent tool never matches while a missing
+one prompts on every invocation. The gate driver is the part that must be
+observed, because no ecosystem default covers it.
 
 **The JVM row is one profile for two languages, on purpose.** The axis a
 template directory is keyed on is the toolchain, not the language name:
@@ -48,9 +78,9 @@ is what invariant 5 actually asks for: `.java` reaches a Java formatter and
 | Axis | TypeScript (pnpm) | Python (uv) | Rust (cargo) | JVM (Gradle / Maven) |
 |---|---|---|---|---|
 | Formatter (PostToolUse) | `biome check --write` | `ruff format` + `ruff check --fix` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
-| Typecheck | `tsc` (via `turbo run type-check`) | `ty` | `cargo check` | `./gradlew compileJava compileKotlin` / `./mvnw -o compile` |
+| Typecheck | `tsc` (via `turbo run type-check`) | `ty` / `mypy` / `pyright` — whichever the project configures | `cargo check` | `./gradlew compileJava compileKotlin` / `./mvnw -o compile` |
 | Verifier forms the runner dispatches | `.sh` + `.ts` via `node` | `.sh` + `.py` via `uv run --frozen` | `.sh` only (no per-hook `.rs` build); JSON parsed with `jq` | `.sh` only (no per-hook JVM start); JSON parsed with `jq` |
-| Gate runner | `pnpm` (+ `turbo`) | `just` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
+| Gate runner (when the project declares none) | `pnpm` (+ `turbo`) | `uv run` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
 | Secret scan | gitleaks | gitleaks | gitleaks | gitleaks |
 | PreToolUse default | non-blocking (advisory) | project choice (blocking convention-gate is valid) | non-blocking | non-blocking |
 
@@ -78,6 +108,13 @@ repo is never penalised for the tool it does not install.
   enforced half of "secrets never reach git"; permission deny covers only
   Claude). Fail-open if gitleaks is absent; escape hatch via
   `HARNEX_SKIP_GITLEAKS=1`. Activated by `git config core.hooksPath hooks`.
+- Two permission floors, both foundation-tier and neither language-dependent:
+  `templates/common/permissions.deny.json` (the oracle's `baseline` profile)
+  and `templates/common/permissions.allow.json` (its `workspace` profile —
+  `Edit`, `Write`, `mkdir -p`, the mutating git verbs, and `harness`, which the
+  generated `governance.md` sends its reader to on every loop pass). Copy both
+  verbatim; the language tier merges its toolchain grants beside them as a set
+  union, never a replacement.
 - `permissions.deny` floor: do NOT hand-write or re-enumerate it — copy
   `templates/common/permissions.deny.json` verbatim. That file is the single
   source of truth (generated from the oracle's `baseline` profile, held in sync
@@ -90,8 +127,10 @@ repo is never penalised for the tool it does not install.
   same path. Cloud profiles (`gcp-strict`, `aws-strict`) add their destroy
   verbs. Listing the individual rules anywhere but the SSoT is how it drifts —
   don't.
-- `<lang>/permissions.allow.json` grants only commands that actually prompt
-  (`Edit`/`Write`, mutating git, the language toolchain). Read-only built-ins
+- `<lang>/permissions.allow.json` carries the language toolchain and nothing
+  else — the floor above is where `Edit`/`Write` and git live, so the two sets
+  are disjoint and a no-profile stack still gets one. Grant only commands that
+  actually prompt. Read-only built-ins
   (`ls`, `grep`, `cat`, read-only `git`) never prompt, so an allow rule for them
   is a no-op — never emit one. Broad env-runners (`npx *`) are excluded; scope
   them per project (`npx <tool> *`).

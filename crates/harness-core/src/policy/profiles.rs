@@ -17,6 +17,7 @@ pub struct PermissionProfile {
 impl PermissionProfile {
     pub const ALL: &'static [&'static str] = &[
         "baseline",
+        "workspace",
         "git-strict",
         "gcp-strict",
         "aws-strict",
@@ -37,6 +38,7 @@ impl PermissionProfile {
     pub fn from_str(name: &str) -> Option<Self> {
         Some(match name {
             "baseline" => baseline(),
+            "workspace" => workspace(),
             "git-strict" => git_strict(),
             "gcp-strict" => gcp_strict(),
             "aws-strict" => aws_strict(),
@@ -249,7 +251,9 @@ fn aws_strict() -> PermissionProfile {
     }
 }
 
-/// File and shell operations every language-specific dev profile grants.
+/// The allow floor for working in a repository at all — the counterpart to
+/// `baseline`'s deny floor, and carrying no language dependency, so it is what
+/// a stack with no `<lang>-dev` profile still receives.
 ///
 /// Only commands that actually prompt are listed: `Edit`/`Write` (file
 /// modification requires approval) and the mutating filesystem/git commands.
@@ -257,74 +261,89 @@ fn aws_strict() -> PermissionProfile {
 /// `git status`/`diff`/`log`/`show`, …) are omitted — Claude Code runs them
 /// without a prompt in every mode, so an allow rule would be a no-op. The
 /// destructive git forms denied by `baseline` still win under deny > allow.
-const COMMON_DEV_ALLOW: &[&str] = &[
-    "Edit",
-    "Write",
-    "Bash(mkdir -p *)",
-    "Bash(git add *)",
-    "Bash(git commit *)",
-    "Bash(git branch *)",
-    "Bash(git stash *)",
-    "Bash(git checkout -b *)",
-    "Bash(git switch *)",
-];
-// `cp`/`mv` are deliberately NOT pre-approved. A `Read(.env)`-class deny only
-// reaches `cat`/`head`/`tail`/`sed` (per the spec), so `cp .env /tmp/x` then
-// reading the copy would slip a secret past the deny. Leaving cp/mv to prompt
-// keeps that move visible to the operator; legitimate moves still succeed on
-// approval. `mkdir -p` stays — creating a directory cannot exfiltrate.
+///
+/// `cp`/`mv` are deliberately NOT pre-approved. A `Read(.env)`-class deny only
+/// reaches `cat`/`head`/`tail`/`sed` (per the spec), so `cp .env /tmp/x` then
+/// reading the copy would slip a secret past the deny. Leaving cp/mv to prompt
+/// keeps that move visible to the operator; legitimate moves still succeed on
+/// approval. `mkdir -p` stays — creating a directory cannot exfiltrate.
+///
+/// `harness` is here because a generated harness ships `harness.toml` and
+/// rules that send their reader to `harness lifecycle` / `harness telemetry` /
+/// `harness check`. A documented loop whose every step raises a prompt is a
+/// loop nobody runs twice.
+fn workspace() -> PermissionProfile {
+    PermissionProfile {
+        name: "workspace",
+        allow: vec![
+            "Edit",
+            "Write",
+            "Bash(mkdir -p *)",
+            "Bash(git add *)",
+            "Bash(git commit *)",
+            "Bash(git branch *)",
+            "Bash(git stash *)",
+            "Bash(git checkout -b *)",
+            "Bash(git switch *)",
+            "Bash(harness *)",
+        ],
+        ask: vec![],
+        deny: vec![],
+    }
+}
 
 /// Rust development toolchain: cargo (covers `cargo clippy`/`cargo fmt`)
-/// plus standalone rustfmt, on top of the common dev allows.
+/// plus standalone rustfmt.
 fn rust_dev() -> PermissionProfile {
-    let mut allow: Vec<&'static str> = vec!["Bash(cargo *)", "Bash(rustfmt *)"];
-    allow.extend_from_slice(COMMON_DEV_ALLOW);
     PermissionProfile {
         name: "rust-dev",
-        allow,
+        allow: vec!["Bash(cargo *)", "Bash(rustfmt *)"],
         ask: vec![],
         deny: vec![],
     }
 }
 
-/// Python development toolchain: uv, python/python3, pytest, ruff, mypy, on
-/// top of the common dev allows. `python -c` and `python3 -c` stay denied by
+/// Python development toolchain: uv, python/python3, pytest, ruff, and the
+/// three mainstream type checkers. `python -c` and `python3 -c` stay denied by
 /// `baseline`.
+///
+/// A dev profile is the ecosystem's mainstream toolchain, not a claim about
+/// which of it this project uses — an allow for an absent tool never matches,
+/// while a missing one prompts on every invocation. Naming only `mypy` here
+/// also contradicted the language matrix, which reads `ty`.
 fn python_dev() -> PermissionProfile {
-    let mut allow: Vec<&'static str> = vec![
-        "Bash(uv *)",
-        "Bash(python *)",
-        "Bash(python3 *)",
-        "Bash(pytest *)",
-        "Bash(ruff *)",
-        "Bash(mypy *)",
-    ];
-    allow.extend_from_slice(COMMON_DEV_ALLOW);
     PermissionProfile {
         name: "python-dev",
-        allow,
+        allow: vec![
+            "Bash(uv *)",
+            "Bash(python *)",
+            "Bash(python3 *)",
+            "Bash(pytest *)",
+            "Bash(ruff *)",
+            "Bash(ty *)",
+            "Bash(mypy *)",
+            "Bash(pyright *)",
+        ],
         ask: vec![],
         deny: vec![],
     }
 }
 
-/// TypeScript development toolchain: pnpm, node, tsx, tsc, biome, on top of
-/// the common dev allows. `node -e` stays denied by `baseline`. The broad
-/// `npx *` is deliberately excluded — env-runners execute arbitrary inner
-/// commands, so the spec advises a specific `Bash(npx <tool> *)` rule, which
-/// the skill adds per project rather than granting wholesale here.
+/// TypeScript development toolchain: pnpm, node, tsx, tsc, biome. `node -e`
+/// stays denied by `baseline`. The broad `npx *` is deliberately excluded —
+/// env-runners execute arbitrary inner commands, so the spec advises a
+/// specific `Bash(npx <tool> *)` rule, which the skill adds per project rather
+/// than granting wholesale here.
 fn typescript_dev() -> PermissionProfile {
-    let mut allow: Vec<&'static str> = vec![
-        "Bash(pnpm *)",
-        "Bash(node *)",
-        "Bash(tsx *)",
-        "Bash(tsc *)",
-        "Bash(biome *)",
-    ];
-    allow.extend_from_slice(COMMON_DEV_ALLOW);
     PermissionProfile {
         name: "typescript-dev",
-        allow,
+        allow: vec![
+            "Bash(pnpm *)",
+            "Bash(node *)",
+            "Bash(tsx *)",
+            "Bash(tsc *)",
+            "Bash(biome *)",
+        ],
         ask: vec![],
         deny: vec![],
     }
@@ -342,18 +361,16 @@ fn typescript_dev() -> PermissionProfile {
 /// legitimate run. The narrower grant is the honest one; a project that runs
 /// artifacts directly adds the rule it actually needs.
 fn jvm_dev() -> PermissionProfile {
-    let mut allow: Vec<&'static str> = vec![
-        "Bash(./gradlew *)",
-        "Bash(gradle *)",
-        "Bash(./mvnw *)",
-        "Bash(mvn *)",
-        "Bash(google-java-format *)",
-        "Bash(ktlint *)",
-    ];
-    allow.extend_from_slice(COMMON_DEV_ALLOW);
     PermissionProfile {
         name: "jvm-dev",
-        allow,
+        allow: vec![
+            "Bash(./gradlew *)",
+            "Bash(gradle *)",
+            "Bash(./mvnw *)",
+            "Bash(mvn *)",
+            "Bash(google-java-format *)",
+            "Bash(ktlint *)",
+        ],
         ask: vec![],
         deny: vec![],
     }
@@ -364,8 +381,8 @@ mod tests {
     use super::*;
 
     /// Every `<lang>-dev` profile, derived from the registry rather than
-    /// listed. A language added to `ALL` without a template or without the
-    /// common allows then fails here instead of passing unexamined.
+    /// listed. A language added to `ALL` then fails here instead of passing
+    /// unexamined.
     fn dev_profile_names() -> impl Iterator<Item = &'static &'static str> {
         PermissionProfile::ALL
             .iter()
@@ -467,20 +484,20 @@ mod tests {
     }
 
     #[test]
-    fn dev_profile_allows_never_contradict_baseline_deny() {
-        // Safety invariant: no `*-dev` allow may be the exact string of a
-        // baseline deny (deny > allow wins regardless, but an exact dup is a
-        // config smell the auditor flags). Locks the property across edits.
+    fn profile_allows_never_contradict_baseline_deny() {
+        // Safety invariant: no allow may be the exact string of a baseline
+        // deny (deny > allow wins regardless, but an exact dup is a config
+        // smell the auditor flags). Every profile carrying allows is checked,
+        // not just the language ones — `workspace` grants git and filesystem
+        // verbs that sit closest to the deny floor.
         let deny: std::collections::HashSet<&str> = baseline().deny.into_iter().collect();
         for name in PermissionProfile::ALL {
-            if name.ends_with("-dev") {
-                let p = PermissionProfile::from_str(name).unwrap();
-                for a in &p.allow {
-                    assert!(
-                        !deny.contains(a),
-                        "profile '{name}' allow '{a}' is also a baseline deny"
-                    );
-                }
+            let p = PermissionProfile::from_str(name).unwrap();
+            for a in &p.allow {
+                assert!(
+                    !deny.contains(a),
+                    "profile '{name}' allow '{a}' is also a baseline deny"
+                );
             }
         }
     }
@@ -545,7 +562,9 @@ mod tests {
                     "Bash(python3 *)",
                     "Bash(pytest *)",
                     "Bash(ruff *)",
+                    "Bash(ty *)",
                     "Bash(mypy *)",
+                    "Bash(pyright *)",
                 ][..],
             ),
             (
@@ -585,19 +604,36 @@ mod tests {
     }
 
     #[test]
-    fn dev_profiles_include_common_dev_allows() {
+    fn workspace_carries_the_language_agnostic_floor() {
+        let p = workspace();
+        for rule in [
+            "Edit",
+            "Write",
+            "Bash(mkdir -p *)",
+            "Bash(git commit *)",
+            "Bash(harness *)",
+        ] {
+            assert!(p.allow.contains(&rule), "workspace must allow {rule}");
+        }
+        assert!(!p.allow.contains(&"Bash(cp *)"));
+        assert!(!p.allow.contains(&"Bash(mv *)"));
+    }
+
+    #[test]
+    fn a_dev_profile_carries_nothing_but_its_toolchain() {
+        // The floor belongs to `workspace`, which is what a stack with no
+        // language profile receives. A `<lang>-dev` profile that also carried
+        // `Edit` or `git commit` would make those grants look like language
+        // facts and leave the no-profile scaffold with an empty allow list.
+        let floor: std::collections::HashSet<&str> = workspace().allow.into_iter().collect();
         for name in dev_profile_names() {
             let p = PermissionProfile::from_str(name).unwrap();
-            assert!(p.allow.contains(&"Edit"), "{name} must allow Edit");
-            assert!(p.allow.contains(&"Write"), "{name} must allow Write");
-            assert!(
-                p.allow.contains(&"Bash(git commit *)"),
-                "{name} must include git commit"
-            );
-            assert!(
-                p.allow.contains(&"Bash(mkdir -p *)"),
-                "{name} must include mkdir"
-            );
+            for rule in &p.allow {
+                assert!(
+                    !floor.contains(rule),
+                    "profile '{name}' repeats the workspace floor rule '{rule}'"
+                );
+            }
             // read-only built-ins are never granted (they never prompt)
             assert!(
                 !p.allow.iter().any(|a| a.starts_with("Bash(ls")
