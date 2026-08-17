@@ -397,6 +397,7 @@ fn assert_scaffold_is_operable(lang: &str, proj_root: &Path) {
         ("validate", config.validate.is_some()),
         ("lifecycle", config.lifecycle.is_some()),
         ("telemetry", config.telemetry.is_some()),
+        ("evidence", config.evidence.is_some()),
     ] {
         assert!(
             present,
@@ -404,6 +405,25 @@ fn assert_scaffold_is_operable(lang: &str, proj_root: &Path) {
              surface the foundation rules send the operator to is unreachable"
         );
     }
+
+    // The claim shape the generated rules are told to write must resolve to a
+    // registered verifier, or every pointer an operator adds reports
+    // `evidence-unknown-provenance` instead of being checked.
+    let evidence = config.evidence.as_ref().unwrap();
+    assert!(
+        evidence
+            .verifiers
+            .iter()
+            .any(|v| v.provenance == evidence.default_provenance && v.strategy == "file-path-line"),
+        "[{lang}] `path.ext:line` claims have no verifier: default provenance is '{}', \
+         declared verifiers are {:?}",
+        evidence.default_provenance,
+        evidence
+            .verifiers
+            .iter()
+            .map(|v| (&v.provenance, &v.strategy))
+            .collect::<Vec<_>>()
+    );
 }
 
 fn assert_no_findings(lang: &str, ctx: &str, findings: &[Finding]) {
