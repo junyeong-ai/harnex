@@ -119,11 +119,10 @@ cannot disagree.
 **Check every destination before writing it.** A repo with no `.claude/` — the
 repo scaffold mode is for — usually still has a `CLAUDE.md`, because Claude
 Code reads one without any `.claude/` directory, and a repo with git hooks
-already has `hooks/`. The manifest header states the rule per kind: `copy` and
-`seed` keep the incumbent and emit nothing; `managed` contributes only its
-sentinel blocks and leaves every other byte alone; `merge` unions. Never
-replace a file the project wrote. Report every collision you left in place,
-naming what harnex would have put there, so the operator can merge by hand.
+already has `hooks/`. An existing file is the project's: keep it, emit nothing
+there, and say so. `merge` is the only kind that writes into an occupied
+destination, because it never owns one. Report every collision you left in
+place, naming the template the operator can merge from by hand.
 
 `content.kind` also says what happens to each artifact afterwards, which is
 what the operator needs to hear when you report: `copy` is machinery to leave
