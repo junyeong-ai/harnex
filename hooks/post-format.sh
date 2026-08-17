@@ -4,6 +4,12 @@
 # repo has no bundled JSON interpreter, so jq is the canonical shell tool;
 # if it is absent the hook skips rather than hand-roll fragile JSON parsing.
 # Path traversal and non-existent files are skipped.
+#
+# Invoked per file, rustfmt reads its edition from `rustfmt.toml` — it does
+# NOT see Cargo.toml, and its own default is edition 2015. Without that file
+# the hook formats to a different style than `cargo fmt` and every edit
+# reverts what the gate requires, so the scaffold emits one alongside this
+# hook carrying the project's declared edition.
 set -uo pipefail
 
 command -v jq >/dev/null 2>&1 || exit 0

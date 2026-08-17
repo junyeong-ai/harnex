@@ -11,10 +11,19 @@
 # probes that formatter itself, which is why this file probes nothing for
 # the shell arm: gating on a toolchain the verifier never calls would skip a
 # working hook for an unrelated reason.
+#
+# A missing verifier is a separate question from a missing toolchain, and it
+# is checked once for every arm rather than per interpreter: dispatching to a
+# file that is not there ends the hook non-zero on every edit (127 from bash,
+# an interpreter error from the others), which is the one outcome this
+# wrapper exists to prevent. `harness audit` reports the absence as coverage.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "[harnex-skipped: git root not found]" >&2; exit 0; }
-cd "${ROOT}"
+# Explicit, because the two shells disagree on the default: under `set -e` an
+# unguarded failure ends the hook non-zero, which is the blocked edit this
+# wrapper exists to prevent.
+cd "${ROOT}" || { echo "[harnex-skipped: cannot enter git root]" >&2; exit 0; }
 
 [[ $# -eq 0 ]] && { echo "[harnex-skipped: no script argument]" >&2; exit 0; }
 SCRIPT="$1"; shift
@@ -24,6 +33,7 @@ case "$SCRIPT" in
 esac
 
 VERIFIER="${ROOT}/hooks/${SCRIPT}"
+[[ -f "${VERIFIER}" ]] || { echo "[harnex-skipped: verifier not found: hooks/${SCRIPT}]" >&2; exit 0; }
 
 case "$SCRIPT" in
   *.sh)

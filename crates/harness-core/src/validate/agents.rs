@@ -43,6 +43,7 @@ use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 use crate::validate::frontmatter;
 use crate::validate::settings::KNOWN_HOOK_EVENTS;
+use crate::validate::skills::KNOWN_EFFORT_LEVELS;
 
 /// `name` addresses the agent as `agent_type` in hook payloads and in
 /// `Agent(...)` permission rules. Uppercase, whitespace, and `:` (the plugin
@@ -61,8 +62,6 @@ pub const KNOWN_PERMISSION_MODES: &[&str] = &[
     "plan",
     "manual",
 ];
-
-pub const KNOWN_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
 pub const KNOWN_ISOLATION_MODES: &[&str] = &["worktree"];
 
@@ -375,16 +374,49 @@ impl<'a> AgentValidator<'a> {
         }
 
         // `mcpServers` carries either server-name strings or inline server
-        // definitions, so only a scalar is provably wrong.
-        if let Some(v) = &parsed.mcp_servers
-            && (v.is_string() || v.is_bool() || v.is_number())
+        // definitions, so only a scalar is provably wrong — and so is a list
+        // element that could be neither. A mapping or nested list element
+        // stays accepted: an inline definition is one, and guessing at its
+        // interior would flag a config the spec allows.
+        if let Some(v) = &parsed.mcp_servers {
+            let scalar = v.is_string() || v.is_bool() || v.is_number();
+            let bad_element = v.as_sequence().is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|i| i.is_bool() || i.is_number() || i.is_null())
+            });
+            if scalar || bad_element {
+                findings.push(Finding {
+                    slug: "agent-mcp-servers-invalid".into(),
+                    severity: Severity::Major,
+                    location: Location::line(path.to_path_buf(), line),
+                    message: "mcpServers must be a list of server names or inline definitions"
+                        .into(),
+                    hint: Some(
+                        "write `mcpServers: [server-name]` or nest the inline config".into(),
+                    ),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
+            }
+        }
+
+        // A `hooks` that is not a mapping has no events to check, so reading
+        // only the mapping arm accepts every other shape in silence — the
+        // frontmatter declares hooks and none of them are wired.
+        if parsed
+            .hooks
+            .as_ref()
+            .is_some_and(|h| !matches!(h, yaml_serde::Value::Mapping(_)))
         {
             findings.push(Finding {
-                slug: "agent-mcp-servers-invalid".into(),
+                slug: "agent-hooks-invalid".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), line),
-                message: "mcpServers must be a list of server names or inline definitions".into(),
-                hint: Some("write `mcpServers: [server-name]` or nest the inline config".into()),
+                message: "hooks must be a mapping of event name to handlers".into(),
+                hint: Some(
+                    "write `hooks:` with an event key beneath it, e.g. `PreToolUse:`".into(),
+                ),
                 auto_fixable: false,
                 fix_command: None,
             });

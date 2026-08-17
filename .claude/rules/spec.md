@@ -1,3 +1,11 @@
+---
+paths:
+  - "crates/harness-core/src/spec.rs"
+  - "crates/harness-core/src/validate/**"
+  - "crates/harness-core/tests/spec_facts_sync.rs"
+  - "plugins/harnex/reference/spec-facts.md"
+---
+
 # spec — measurement stamps for the Claude Code vocabularies
 
 Every `KNOWN_*` set mirrors a surface of the Claude Code spec. The tests that

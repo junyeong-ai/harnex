@@ -98,15 +98,17 @@ impl<'a> RetirementSweeper<'a> {
             };
             let detector = consumer_detector_for(detector_decl.clone(), self.working_dir)?;
 
-            let pattern = self.working_dir.join(&kind_decl.glob);
-            let Some(pat_str) = pattern.to_str() else {
+            // The project's own path is a literal, not a pattern — see
+            // `glob_root`. Unescaped, a `[` in an ancestor directory empties
+            // every kind's match list and retirement reads it as "nothing here".
+            let Ok(pat_str) = crate::glob_root::rooted(self.working_dir, &kind_decl.glob) else {
                 skipped.push(SkippedRule {
                     slug: kind_decl.name.clone(),
                     reason: "kind glob path is not valid UTF-8".into(),
                 });
                 continue;
             };
-            let glob_iter = match glob::glob(pat_str) {
+            let glob_iter = match glob::glob(&pat_str) {
                 Ok(it) => it,
                 Err(e) => {
                     skipped.push(SkippedRule {

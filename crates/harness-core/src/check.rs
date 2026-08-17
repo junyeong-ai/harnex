@@ -299,20 +299,16 @@ impl<'a> ProjectChecker<'a> {
     }
 
     fn discover_glob(&self, pattern: &str) -> Result<Vec<PathBuf>> {
-        let full = self.working_dir.join(pattern);
-        let s = full.to_str().ok_or_else(|| Error::IoFailure {
-            path: full.clone(),
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "glob path is not valid UTF-8",
-            ),
-        })?;
+        // The project's own path is a literal, not a pattern: `glob_root`
+        // escapes it so a checkout under `repo [backup]` scans its files
+        // rather than reporting a clean gate over nothing.
+        let s = crate::glob_root::rooted(self.working_dir, pattern)?;
         // Surface glob failures rather than truncating to an empty list — a
         // dropped traversal error (permissions, symlink loop) would make a
         // validator falsely report clean on files it never scanned.
         let mut out = Vec::new();
-        for entry in glob::glob(s).map_err(|e| Error::IoFailure {
-            path: full.clone(),
+        for entry in glob::glob(&s).map_err(|e| Error::IoFailure {
+            path: self.working_dir.join(pattern),
             source: std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("glob: {e}")),
         })? {
             out.push(entry.map_err(|e| Error::IoFailure {

@@ -10,6 +10,7 @@
 //! - [`envelope`] — JSON envelope contract every command emits.
 //! - [`error`] — typed Error enum with stable ErrorCode strings.
 //! - [`path_guard`] — safe write primitives (`write_atomic` + `append_line`).
+//! - [`glob_root`] — a glob pattern rooted at a literal directory.
 //! - [`evidence`] — provenance verifier with pluggable strategies.
 //! - [`telemetry`] — append-only closed-schema event ledger.
 //! - [`codegen`] — cross-file sentinel-block sync.
@@ -41,6 +42,7 @@ pub mod envelope;
 pub mod error;
 pub mod evidence;
 pub mod export;
+pub mod glob_root;
 pub mod graph;
 pub mod guard;
 pub mod lifecycle;

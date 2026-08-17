@@ -130,8 +130,8 @@ impl<'a> HookWiringAuditor<'a> {
                             severity: Severity::Major,
                             location: Location::file(path.to_path_buf()),
                             message: format!(
-                                "hook '{event_name}'[{entry_idx}].hooks[{handler_idx}] wires the scaffold artifact '{rel}', which is not in the project — \
-                                 the handler errors and the action proceeds unguarded"
+                                "hook '{event_name}'[{entry_idx}].hooks[{handler_idx}] names the scaffold artifact '{rel}', which is not in the project — \
+                                 whatever the handler wanted it for is not there"
                             ),
                             hint: Some(format!(
                                 "restore {rel}, or remove the hook entry that points at it"

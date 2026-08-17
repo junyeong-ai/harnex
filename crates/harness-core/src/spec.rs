@@ -206,22 +206,31 @@ pub fn stale_warnings_now() -> Vec<Warning> {
 mod tests {
     use super::*;
 
-    fn measured_date(name: &str) -> Date {
-        let surface = SpecSurface::ALL
+    /// The earliest measurement across all surfaces.
+    ///
+    /// Every assertion below is about the aggregate, so it has to be anchored
+    /// on a date where the aggregate claim holds by construction. The oldest
+    /// stamp is that date: every other surface was read later and so cannot be
+    /// further past the window than this one. Anchoring on a *named* surface
+    /// instead couples the test to a spread the stamps are meant to have —
+    /// surfaces are re-measured one at a time, so re-reading only the hooks
+    /// page would fail these tests for a staleness they do not test.
+    fn oldest_measurement() -> Date {
+        SpecSurface::ALL
             .iter()
-            .find(|s| s.name == name)
-            .expect("surface exists");
-        Date::strptime("%Y-%m-%d", surface.measured).unwrap()
+            .filter_map(|s| Date::strptime("%Y-%m-%d", s.measured).ok())
+            .min()
+            .expect("at least one surface is measured")
     }
 
     #[test]
     fn no_warning_on_the_day_of_measurement() {
-        assert!(stale_warnings(measured_date("hooks")).is_empty());
+        assert!(stale_warnings(oldest_measurement()).is_empty());
     }
 
     #[test]
     fn no_warning_on_the_boundary_day() {
-        let today = measured_date("hooks")
+        let today = oldest_measurement()
             .checked_add(jiff::Span::new().days(MAX_AGE_DAYS))
             .unwrap();
         assert!(
@@ -259,7 +268,7 @@ mod tests {
 
     #[test]
     fn a_stamp_dated_ahead_of_the_clock_does_not_warn() {
-        let today = measured_date("hooks")
+        let today = oldest_measurement()
             .checked_sub(jiff::Span::new().days(10))
             .unwrap();
         assert!(stale_warnings(today).is_empty());
