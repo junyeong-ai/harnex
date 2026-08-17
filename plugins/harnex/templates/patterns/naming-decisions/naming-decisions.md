@@ -52,7 +52,7 @@ A closed suffix set prevents ad-hoc naming across the toolchain:
 
 ## Domain vocabulary
 
-<!-- Fill in: your project's ubiquitous language. Example:
+<!-- harnex-fill: your project's ubiquitous language. Example:
      - "tenant" (not "organization", "workspace", or "account")
      - "pipeline" (not "workflow", "flow", or "chain")
      Consistent vocabulary prevents the same concept having three names

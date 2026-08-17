@@ -44,13 +44,13 @@ Format: **what went wrong → failing value → remediation hint**.
 
 ## Terminology namespace
 
-<!-- Fill in: one canonical term per concept. Example:
+<!-- harnex-fill: one canonical term per concept. Example:
      - "사용자" / "user"   (not "유저", "이용자", "계정")
      - "대시보드" / "dashboard"  (not "관리화면", "admin panel")
      Aliases redirect to the canonical term. -->
 
 ## Localization
 
-<!-- Fill in if multi-language: i18n framework, message key naming
+<!-- harnex-fill: i18n framework, message key naming
      convention, pluralization rules. Delete this section if
      single-language. -->

@@ -33,5 +33,5 @@ paths:
 2. **Baseline** — collect 2+ weeks of data before setting thresholds.
 3. **Alert** — threshold-based alerts with documented runbooks.
 
-<!-- Customize: replace package/attribute prefixes with your project's
+<!-- harnex-fill: replace package/attribute prefixes with your project's
      namespace. Add domain-specific span conventions as needed. -->

@@ -47,6 +47,7 @@
 //!   integrity. Operators add `audit` to CI when they want enforcement
 //!   beyond structural validation.
 
+mod fill_marker;
 mod hook_wiring;
 mod managed_region;
 mod settings_drift;
@@ -60,6 +61,7 @@ use crate::envelope::{Finding, SkippedRule};
 use crate::error::Result;
 use crate::scaffold::{Artifact, Content, ScaffoldManifest};
 
+use fill_marker::FillMarkerAuditor;
 use hook_wiring::HookWiringAuditor;
 use managed_region::ManagedRegionAuditor;
 use settings_drift::SettingsDriftAuditor;
@@ -73,16 +75,23 @@ pub enum AuditCheckKind {
     SettingsDrift,
     HookWiring,
     ManagedRegion,
+    FillMarker,
 }
 
 impl AuditCheckKind {
-    pub const ALL: &'static [Self] = &[Self::SettingsDrift, Self::HookWiring, Self::ManagedRegion];
+    pub const ALL: &'static [Self] = &[
+        Self::SettingsDrift,
+        Self::HookWiring,
+        Self::ManagedRegion,
+        Self::FillMarker,
+    ];
 
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s {
             "settings-drift" => Self::SettingsDrift,
             "hook-wiring" => Self::HookWiring,
             "managed-region" => Self::ManagedRegion,
+            "fill-marker" => Self::FillMarker,
             _ => return None,
         })
     }
@@ -92,6 +101,7 @@ impl AuditCheckKind {
             Self::SettingsDrift => "settings-drift",
             Self::HookWiring => "hook-wiring",
             Self::ManagedRegion => "managed-region",
+            Self::FillMarker => "fill-marker",
         }
     }
 }
@@ -219,6 +229,12 @@ impl<'a> ProjectAuditor<'a> {
                         continue;
                     };
                     let outcome = ManagedRegionAuditor::new(plugin_root).audit(self.working_dir)?;
+                    files_scanned += outcome.files_scanned;
+                    findings.extend(outcome.findings);
+                    run.push(kind.as_str().to_string());
+                }
+                AuditCheckKind::FillMarker => {
+                    let outcome = FillMarkerAuditor::new().audit(self.working_dir)?;
                     files_scanned += outcome.files_scanned;
                     findings.extend(outcome.findings);
                     run.push(kind.as_str().to_string());

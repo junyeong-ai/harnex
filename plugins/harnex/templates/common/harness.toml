@@ -21,7 +21,7 @@ harnex_version = ">=0.1, <0.2"
 # defect. `constitution.md` is the one artifact the scaffold emits that is
 # meant to load unconditionally.
 max_lines = 200
-always_loaded_slugs = ["constitution"]
+always_loaded_slugs = ["constitution", "agent-conduct"]
 
 [validate.skills]
 

@@ -1,9 +1,19 @@
-//! # sentinel — managed-region marker utility
+//! # sentinel — the markers harnex writes into generated files
+//!
+//! Two grammars, both reserved to harnex and both HTML comments so they are
+//! invisible when the markdown renders.
 //!
 //! `<!-- harnex-managed:start <slug> --> ... <!-- harnex-managed:end <slug> -->`
 //! sentinels delimit harnex-owned regions inside generated markdown artifacts
 //! (templates, reference docs, scaffolded `CLAUDE.md`). [`extract_regions`]
 //! returns every well-formed pair from a text body keyed by slug.
+//!
+//! `<!-- harnex-fill: <what> -->` marks a value the generating step must
+//! replace with a project observation. [`fill_markers`] returns every one left
+//! behind. Being reserved is what makes the check exact: a template that spells
+//! its gaps `<PROJECT_NAME>` or `Observed: <...>` cannot be distinguished from
+//! prose, so an unfilled placeholder ships in silence — which is the blank-page
+//! problem the templates exist to avoid, arriving as a finished-looking file.
 //!
 //! Single source of truth for sentinel parsing. Every consumer — the
 //! managed-region auditor, the `spec_facts_sync` drift test, future
@@ -31,6 +41,38 @@ use std::collections::BTreeMap;
 
 const START_PREFIX: &str = "<!-- harnex-managed:start ";
 const SUFFIX: &str = " -->";
+const FILL_PREFIX: &str = "<!-- harnex-fill:";
+
+/// One unresolved fill marker: its 1-based line, and what the template asked
+/// the generating step to observe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FillMarker {
+    pub line: usize,
+    pub wanted: String,
+}
+
+/// Every `<!-- harnex-fill: … -->` left in `content`.
+///
+/// Line-oriented and prefix-exact, like [`extract_regions`] — a marker is
+/// harnex's own token, so finding one is a fact rather than an interpretation
+/// of prose. A line carrying more than one marker reports the first: the
+/// finding is that the file is unfinished, and one per line is enough to say
+/// so without turning a report into a concordance.
+pub fn fill_markers(content: &str) -> Vec<FillMarker> {
+    content
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            let start = line.find(FILL_PREFIX)?;
+            let rest = &line[start + FILL_PREFIX.len()..];
+            let end = rest.find("-->")?;
+            Some(FillMarker {
+                line: i + 1,
+                wanted: rest[..end].trim().to_string(),
+            })
+        })
+        .collect()
+}
 
 /// Extract every `harnex-managed` block from `content` keyed by slug.
 ///

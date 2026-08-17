@@ -14,7 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use harness_core::audit::{AuditCheckKind, ProjectAuditor};
-use harness_core::config::{RulesPolicy, SkillsPolicy};
+use harness_core::config::SkillsPolicy;
 use harness_core::envelope::Finding;
 use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
 use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
@@ -29,6 +29,34 @@ fn copy_file(src: &Path, dst: &Path) {
         fs::create_dir_all(parent).unwrap_or_else(|e| panic!("mkdir {parent:?}: {e}"));
     }
     fs::copy(src, dst).unwrap_or_else(|e| panic!("copy {src:?} -> {dst:?}: {e}"));
+    resolve_fill_markers(dst);
+}
+
+/// Stand in for the step the skill performs from its project analysis.
+///
+/// The fixture asserts a *delivered* harness is clean, not that raw templates
+/// are. Leaving the markers would make every scaffold report the fill-marker
+/// findings that exist to catch a skipped analysis — and filling them here is
+/// what proves the auditor stays silent once the step has run.
+fn resolve_fill_markers(path: &Path) {
+    if path.extension().and_then(|e| e.to_str()) != Some("md") {
+        return;
+    }
+    let Ok(body) = fs::read_to_string(path) else {
+        return;
+    };
+    let mut out = String::with_capacity(body.len());
+    let mut rest = body.as_str();
+    while let Some(start) = rest.find("<!-- harnex-fill:") {
+        let Some(end) = rest[start..].find("-->") else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        out.push_str("observed from the project");
+        rest = &rest[start + end + "-->".len()..];
+    }
+    out.push_str(rest);
+    fs::write(path, out).unwrap_or_else(|e| panic!("fill {path:?}: {e}"));
 }
 
 /// `bash -n <path>` — syntax-check a generated shell script without running it.
@@ -217,12 +245,18 @@ fn run_scaffold_validation(lang: &str) {
         );
     }
 
-    // --- Rule validation (constitution + optional conventions rule) ---
-    let rule_policy = RulesPolicy {
-        max_lines: 200,
-        max_scoped_lines: None,
-        always_loaded_slugs: vec!["constitution".into()],
-    };
+    // --- Rule validation, under the policy the scaffold itself ships ---
+    // Restating the policy here would make this fixture pass against a
+    // configuration no scaffolded project has: an always-loaded rule the
+    // manifest emits and `harness.toml` never declares would be a finding in
+    // every real project and green in this test.
+    let scaffolded = harness_core::config::Config::load_from(&proj_root.join("harness.toml"))
+        .unwrap_or_else(|e| panic!("[{lang}] scaffolded harness.toml: {e}"));
+    let rule_policy = scaffolded
+        .validate
+        .as_ref()
+        .and_then(|v| v.rules.clone())
+        .unwrap_or_else(|| panic!("[{lang}] the scaffold's harness.toml declares no rule policy"));
     let rv = RuleValidator::new(&rule_policy);
     for rule_path in glob_under(&proj_root.join(".claude/rules"), "*.md") {
         let findings = rv.validate_file(&rule_path).unwrap();

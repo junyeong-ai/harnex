@@ -1,21 +1,18 @@
-# <PROJECT_NAME>
+# <!-- harnex-fill: the project name, from the manifest -->
 
-<!-- One-paragraph: what this project is and its primary stack. Keep this
-     file under 200 lines and specific — vague guidance reduces adherence. -->
+<!-- harnex-fill: one paragraph — what this project is and its primary stack -->
 
 ## Layout
 
-<!-- Where things live. One line per top-level area; let the agent read the
-     manifest/workspace files for detail rather than restating them here. -->
+<!-- harnex-fill: where things live, one line per top-level area — let the agent read the manifests for detail -->
 
 ## Build & test
 
-<!-- The exact commands. Example: `<pm> install`, `<pm> test`, `<pm> build`. -->
+<!-- harnex-fill: the exact gate commands in the project's own declared order, each as `<command>` — `<what it does>` -->
 
 ## Conventions
 
-<!-- Only project-specific decisions a capable model would not default to.
-     Do NOT restate language style the formatter/linter already enforces. -->
+<!-- harnex-fill: only decisions the formatter and linter do not already enforce -->
 
 <!-- harnex-managed:start enforcement-summary -->
 ## Enforcement
@@ -26,6 +23,7 @@ Guardrails that must always hold live in `.claude/settings.json` (hooks +
 - Edits are auto-formatted (PostToolUse).
 - Sessions surface uncommitted work on Stop without trapping.
 
-See `.claude/rules/constitution.md` for the foundation laws and
+See `.claude/rules/constitution.md` for the foundation laws,
+`.claude/rules/agent-conduct.md` for how to work in this repo, and
 `.claude/rules/*.md` (path-scoped) for topic guidance.
 <!-- harnex-managed:end enforcement-summary -->
