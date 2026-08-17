@@ -50,7 +50,7 @@ const ADOPTED_FRAGMENTS: &[&str] = &[
     "common/permissions.deny.json",
     "common/permissions.allow.json",
     "common/hooks.json",
-    "common/hooks.format.json",
+    "rust/hooks.format.json",
     "rust/permissions.allow.json",
 ];
 

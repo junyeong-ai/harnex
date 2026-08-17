@@ -7,10 +7,20 @@ ruff; emitting the wrong formatter is the meta-failure to avoid).
 
 ## Detection fingerprint (read manifests + lockfiles first)
 
-Match the FIRST supported-language row. Whether the matched language is a
-monorepo or single-package is a sub-distinction (workspace globs present →
-monorepo + Phase-3 fan-out; absent → lean single-package scaffold), NOT a
-fallback that swallows an unrecognized stack.
+**Match every row whose signal is present.** Detection answers with a set, not
+a winner: a lockfile is evidence that a stack is here, never evidence that it
+is the only one, and the language tier is emitted once per match. Whether a
+matched language is a monorepo or single-package is a sub-distinction
+(workspace globs present → monorepo + Phase-3 fan-out; absent → lean
+single-package scaffold), NOT a fallback that swallows an unrecognized stack.
+
+Row order is presentation, never precedence. Resolving two present stacks by
+which row comes first is a tiebreak wearing a decision's clothes, and it fails
+loudest exactly where it matters most: a measured repository here carries
+`pnpm-lock.yaml` beside `uv.lock` with 17,085 `.py` files against 3,433 `.ts`,
+so first-match-wins would wire `biome` as its formatter, grant `pnpm` and never
+`uv`, and skip 83% of the source in silence. That is the wrong-profile
+meta-failure arriving through the front door.
 
 | Signal | Stack |
 |---|---|
@@ -20,6 +30,12 @@ fallback that swallows an unrecognized stack.
 | `settings.gradle{,.kts}` or `build.gradle{,.kts}` (+ `gradlew`) | JVM / Gradle (+ version catalog if `gradle/libs.versions.toml`) |
 | `pom.xml` (+ `mvnw`) | JVM / Maven |
 | none of the above (e.g. `go.mod`, `*.csproj`, `Gemfile`, `composer.json`) | **no profile** — foundation tier only |
+
+Nothing arbitrates between two matched stacks at runtime either: each
+`hooks/post-format-<lang>.sh` dispatches on the file extension and exits 0 on
+anything it does not own, so they coexist as separate PostToolUse entries.
+`permissions.allow` unions both toolchains, and each stack gets its own
+`<lang>-conventions.md`.
 
 **No profile is a first-class outcome, and it is not a refusal.** The
 composition manifest (`templates/scaffold.toml`) splits a harness into a
@@ -37,9 +53,16 @@ floor the stack never needed a profile for protects nobody. Offer
 
 A project's gates run through a task runner more often than through the
 language toolchain directly, and which runner is a project fact, not a
-language one. Grant the runner that the project's own task declaration names
-— the same file Step 1 already reads for `## Build & test`, so this is one
-observation reaching two consumers rather than a second analysis.
+language one. The signal below says a runner is present; the grant comes from
+how the project actually **invokes** it, read from the same CI and task files
+Step 1 already reads for `## Build & test`.
+
+The invocation is the part that decides. `uv run poe lint` is already covered
+by `Bash(uv *)`, so a project that only ever wraps its runner needs no new
+rule, while one that also types `poe lint` does. Emit the grant only when no
+existing rule already matches the observed form — a grant that can never fire
+is a no-op, and harnex refuses those for the same reason it refuses an allow
+rule for `ls`.
 
 | Signal | Grant |
 |---|---|
