@@ -4,3 +4,4 @@ target/
 .DS_Store
 .claude/scheduled_tasks.lock
 validation/
+.claude/settings.local.json

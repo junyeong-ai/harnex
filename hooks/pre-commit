@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# git pre-commit hook — secret scanning before secrets enter git history.
+#
+# This is the enforced half of "secrets never reach git": the permission
+# layer stops Claude from reading/writing secret files, but only a git hook
+# stops a developer's own `git commit` from staging one. Installed via
+# `git config core.hooksPath hooks` (set during scaffold).
+#
+# Fail-open on a missing tool — never block a commit because gitleaks is not
+# installed. Escape hatch via HARNEX_SKIP_GITLEAKS=1 for a confirmed false
+# positive.
+set -uo pipefail
+
+[[ "${HARNEX_SKIP_GITLEAKS:-}" == "1" ]] && exit 0
+
+command -v gitleaks >/dev/null 2>&1 || {
+  echo "[harnex] gitleaks not installed — secret scan skipped." >&2
+  echo "         Install: https://github.com/gitleaks/gitleaks" >&2
+  exit 0
+}
+
+if ! gitleaks git --staged --no-banner >/dev/null 2>&1; then
+  echo "[harnex] gitleaks flagged potential secrets in staged changes — commit blocked." >&2
+  echo "         Inspect: gitleaks git --staged --verbose" >&2
+  echo "         Confirmed false positive? HARNEX_SKIP_GITLEAKS=1 git commit ..." >&2
+  exit 1
+fi
+exit 0
