@@ -29,12 +29,23 @@ editing it, not using it):
   project-owned and must survive regenerate.
 - **Budgets:** `SKILL.md` body < 500 lines; `description` + `when_to_use`
   ≤ 1536 chars, key use case first.
-- **Add a language** = a `templates/<lang>/` set (`_runner.sh`,
-  `post-format.sh`, `permissions.allow.json`, optionally
-  `rules/<lang>-conventions.md`) plus a `<lang>-dev` profile in
-  the oracle AND a row in `reference/language-matrix.md` (detection
-  fingerprint + parameters). The `policy_template_sync` reverse-gap check
-  fails until the template exists.
+- **`templates/scaffold.toml` is the composition.** Which artifacts a harness
+  contains, where each lands, and which tier it belongs to are declared there
+  and nowhere else. The skill emits from it, the oracle's fixture test builds
+  from it, and `harness audit` reports coverage against it, so a file list
+  restated in prose is the one that drifts (constitution IX). The `foundation`
+  tier is what a stack with no language profile still receives; nothing in it
+  may reference a `language`-tier artifact, and `scaffold_manifest` fails if
+  one does.
+- **Add a language** = the three `{lang}` templates the manifest names
+  (`permissions.allow.json`, `post-format.sh`, `rules/<lang>-conventions.md`)
+  plus a `<lang>-dev` profile in the oracle AND a row in
+  `reference/language-matrix.md` (detection fingerprint + parameters). The
+  manifest itself never changes — `{lang}` resolves against
+  `PermissionProfile::ALL`, and `scaffold_manifest` fails in both directions:
+  a profile without templates, and a template no artifact emits. There is no
+  per-language runner: `common/_runner.sh` dispatches every verifier and each
+  non-shell arm probes its own interpreter.
 - **Add a pattern** = a `templates/patterns/<slug>/` directory with the
   skeleton files + a `[[pattern]]` entry in `templates/patterns/manifest.toml`
   (slug, files, analyze steps). The `pattern_manifest_sync` test fails on

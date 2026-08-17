@@ -31,6 +31,10 @@ always_loaded_slugs = ["constitution"]
 max_skill_md_lines = 500
 max_description_chars = 1536
 
+[validate.agents]
+
+[validate.output_styles]
+
 [policy.permissions]
 profiles = ["baseline"]
 "#
@@ -72,6 +76,8 @@ fn check_runs_every_enabled_validator() {
     for v in [
         "validate.rules",
         "validate.skills",
+        "validate.agents",
+        "validate.output_styles",
         "validate.settings",
         "evidence",
         "policy.permissions",
@@ -104,6 +110,8 @@ harnex_version = ">=0.1, <0.2"
         "codegen",
         "evidence",
         "policy.permissions",
+        "validate.agents",
+        "validate.output_styles",
         "validate.rules",
         "validate.settings",
         "validate.skills",

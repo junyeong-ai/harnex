@@ -1,7 +1,7 @@
 # Team baseline (≥3 active developers). Exercises every module.
 
 [meta]
-harness_toolkit_version = ">=0.1, <0.2"
+harnex_version = ">=0.1, <0.2"
 
 [[kinds]]
 name = "rule"
@@ -123,12 +123,24 @@ strategy = "minor"
 # ---------- validate ----------
 
 [validate.rules]
+# Budget for the always-loaded set — rules carrying no `paths:`. Path-scoped
+# rules stay unbounded unless `max_scoped_lines` is set; they cost context
+# only on the files they govern.
 max_lines = 200
 always_loaded_slugs = ["constitution", "harness", "learned-patterns"]
 
 [validate.skills]
 max_skill_md_lines = 500
 max_description_chars = 1536
+
+# Subagent definitions under `.claude/agents/`. Enabling the section is what
+# turns the validator on; `reject_unknown_keys` additionally flags a key the
+# spec does not carry — opt in once the pinned spec surface is current.
+[validate.agents]
+
+# Output styles rewrite the system prompt for the whole session, so the two
+# booleans are the expensive fields to get wrong.
+[validate.output_styles]
 
 # ---------- lifecycle ----------
 

@@ -194,7 +194,32 @@ pub struct ValidateConfig {
     #[serde(default)]
     pub skills: Option<SkillsPolicy>,
     #[serde(default)]
+    pub agents: Option<AgentsPolicy>,
+    #[serde(default)]
+    pub output_styles: Option<OutputStylesPolicy>,
+    #[serde(default)]
     pub commit_msg: Option<CommitMsgPolicy>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct OutputStylesPolicy {
+    /// Opt-in: emit a Major finding for any frontmatter key outside the
+    /// Claude Code output-style spec surface (`KNOWN_OUTPUT_STYLE_KEYS`).
+    /// Default off — a hardcoded key list lags the upstream spec, and a stale
+    /// list turns valid frontmatter into a finding.
+    #[serde(default)]
+    pub reject_unknown_keys: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AgentsPolicy {
+    /// Opt-in: emit a Major finding for any frontmatter key outside the
+    /// Claude Code sub-agent spec surface (`KNOWN_AGENT_KEYS`). Claude Code
+    /// silently ignores an unknown key, so a typo costs the field it was
+    /// meant to set. Default off — a hardcoded key list lags the upstream
+    /// spec, and a stale list turns valid frontmatter into a finding.
+    #[serde(default)]
+    pub reject_unknown_keys: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
@@ -221,8 +246,19 @@ pub struct CommitMsgTrailerDecl {
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RulesPolicy {
+    /// Line budget for the always-loaded set — the rules that carry no
+    /// `paths:` and therefore enter every session's context. 200 is the
+    /// Claude Code memory spec's target for a file loaded unconditionally.
     #[serde(default = "default_rule_max_lines")]
     pub max_lines: usize,
+    /// Opt-in line budget for path-scoped rules, which load only when a
+    /// matching file is read. `None` (the default) leaves them unbounded:
+    /// a cohesive long rule that costs context only on its own paths is not
+    /// a defect, and a fixed ceiling over that set blocks more than it
+    /// protects. Set it when the project wants a review-for-domain-mixing
+    /// prompt; the finding is advisory either way.
+    #[serde(default)]
+    pub max_scoped_lines: Option<usize>,
     /// Rule slugs that may omit `paths:` frontmatter (always-loaded).
     #[serde(default)]
     pub always_loaded_slugs: Vec<String>,

@@ -11,9 +11,10 @@ use super::write_envelope_success;
 
 #[derive(Args)]
 pub struct AuditArgs {
-    /// Plugin root containing `templates/managed-files.toml`. When supplied,
-    /// the managed-region auditor compares generated artifacts against the
-    /// canonical templates. Without it, only spec-drift auditors run.
+    /// Plugin root containing `templates/scaffold.toml`. The manifest is the
+    /// only statement of what a harness should contain, so the managed-region,
+    /// hook-wiring, and coverage checks all need it; without it only the
+    /// spec-drift auditor runs.
     #[arg(long)]
     pub plugin_root: Option<PathBuf>,
 }

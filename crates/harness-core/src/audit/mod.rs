@@ -8,10 +8,20 @@
 //!
 //! - **Spec drift** — values that look plausible but violate the live
 //!   Claude Code spec (millisecond `timeout`, incomplete `mcp__server`
-//!   matcher, Stop hook with a non-zero exit path).
+//!   matcher).
+//! - **Hook wiring** — a hook naming a scaffold artifact that is not on disk.
+//!   The handler then errors and the action proceeds, so the harness reads as
+//!   wired while enforcing nothing. Scoped to the manifest's artifacts because
+//!   an anchored path the project *builds* — a bundler output, an installed
+//!   binary — is legitimately absent before that build runs.
 //! - **Managed-region edit** — content inside a `harnex-managed`
 //!   sentinel block that diverges from the plugin's template.
-//! - **Reserved for future enforced-vs-advisory misalignment checks.**
+//!
+//! Spec-vocabulary staleness is deliberately NOT a finding here. It is a
+//! property of the binary rather than of the project under audit, so it rides
+//! the envelope's `warnings[]` on every command ([`crate::spec`]) instead of
+//! appearing as a defect in one project's report — where it would also make a
+//! fixture's zero-findings assertion fail on a calendar with no code change.
 //!
 //! Sub-auditors dispatch through [`AuditCheckKind`] — a closed-set
 //! discriminator enum that drives `ProjectAuditor::run`'s exhaustive
@@ -37,16 +47,20 @@
 //!   integrity. Operators add `audit` to CI when they want enforcement
 //!   beyond structural validation.
 
+mod hook_wiring;
 mod managed_region;
 mod settings_drift;
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::envelope::{Finding, SkippedRule};
-use crate::error::Result;
+use crate::envelope::{Finding, Location, SkippedRule};
+use crate::error::{Error, Result};
+use crate::scaffold::ScaffoldManifest;
 
+use hook_wiring::HookWiringAuditor;
 use managed_region::ManagedRegionAuditor;
 use settings_drift::SettingsDriftAuditor;
 
@@ -57,15 +71,17 @@ use settings_drift::SettingsDriftAuditor;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditCheckKind {
     SettingsDrift,
+    HookWiring,
     ManagedRegion,
 }
 
 impl AuditCheckKind {
-    pub const ALL: &'static [Self] = &[Self::SettingsDrift, Self::ManagedRegion];
+    pub const ALL: &'static [Self] = &[Self::SettingsDrift, Self::HookWiring, Self::ManagedRegion];
 
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s {
             "settings-drift" => Self::SettingsDrift,
+            "hook-wiring" => Self::HookWiring,
             "managed-region" => Self::ManagedRegion,
             _ => return None,
         })
@@ -74,9 +90,24 @@ impl AuditCheckKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::SettingsDrift => "settings-drift",
+            Self::HookWiring => "hook-wiring",
             Self::ManagedRegion => "managed-region",
         }
     }
+}
+
+/// Which scaffold artifacts a project already holds. Presence is a fact, not
+/// a verdict: an absent destination may be a gap, or a guarantee the project
+/// keeps somewhere this auditor cannot see — server-side secret scanning, a
+/// pre-receive hook, managed settings. Deciding which needs the project's
+/// context, so the comparison is the skill's and this is its ground truth.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct CoverageEntry {
+    /// `foundation` — language-agnostic; `language` — needs a detected stack.
+    pub tier: String,
+    /// The destination as the manifest declares it, `{lang}` unresolved.
+    pub destination: String,
+    pub present: bool,
 }
 
 /// Aggregate result of running every applicable sub-auditor.
@@ -90,13 +121,17 @@ pub struct AuditOutcome {
     pub skipped: Vec<SkippedRule>,
     /// Count of unique files inspected across all sub-auditors.
     pub files_scanned: usize,
+    /// Scaffold-artifact presence, in manifest order. Empty without a plugin
+    /// root, which is the only place the composition is declared.
+    #[serde(default)]
+    pub coverage: Vec<CoverageEntry>,
 }
 
 pub struct ProjectAuditor<'a> {
     working_dir: &'a Path,
-    /// Optional path to the plugin root (containing `templates/managed-files.toml`).
-    /// When supplied, the managed-region auditor compares scaffolded
-    /// artifacts against the canonical templates.
+    /// Optional path to the plugin root (containing `templates/scaffold.toml`).
+    /// When supplied, the managed-region auditor compares scaffolded artifacts
+    /// against the canonical templates and the coverage block is populated.
     plugin_root: Option<PathBuf>,
 }
 
@@ -119,6 +154,21 @@ impl<'a> ProjectAuditor<'a> {
         let mut skipped: Vec<SkippedRule> = Vec::new();
         let mut files_scanned: usize = 0;
 
+        // The manifest is the only statement of what a harness is supposed to
+        // contain, so the checks that need that knowledge load it once here
+        // and skip explicitly when it was not supplied.
+        let manifest = match &self.plugin_root {
+            Some(root) => Some(ScaffoldManifest::load(&root.join("templates"))?),
+            None => None,
+        };
+        let declared_artifacts: BTreeSet<String> = manifest
+            .iter()
+            .flat_map(|m| m.artifacts())
+            .filter(|a| !a.destination_is_language_parameterized())
+            .filter_map(|a| a.destination_for(None))
+            .map(|d| d.to_string_lossy().to_string())
+            .collect();
+
         // Drive dispatch through AuditCheckKind::ALL — the exhaustive match
         // below forces every variant to declare its wiring at compile time.
         for kind in AuditCheckKind::ALL {
@@ -136,8 +186,32 @@ impl<'a> ProjectAuditor<'a> {
                         });
                     }
                 }
+                AuditCheckKind::HookWiring => {
+                    let settings_path = self.working_dir.join(".claude/settings.json");
+                    let reason = if manifest.is_none() {
+                        Some("no plugin root supplied (use --plugin-root)")
+                    } else if !settings_path.is_file() {
+                        Some(".claude/settings.json not present")
+                    } else {
+                        None
+                    };
+                    match reason {
+                        Some(reason) => skipped.push(SkippedRule {
+                            slug: kind.as_str().to_string(),
+                            reason: reason.into(),
+                        }),
+                        None => {
+                            findings.extend(
+                                HookWiringAuditor::new(&declared_artifacts)
+                                    .audit_file(&settings_path, self.working_dir)?,
+                            );
+                            files_scanned += 1;
+                            run.push(kind.as_str().to_string());
+                        }
+                    }
+                }
                 AuditCheckKind::ManagedRegion => {
-                    let Some(plugin_root) = &self.plugin_root else {
+                    let Some(plugin_root) = self.plugin_root.as_ref() else {
                         skipped.push(SkippedRule {
                             slug: kind.as_str().to_string(),
                             reason: "no plugin root supplied (use --plugin-root)".into(),
@@ -167,7 +241,47 @@ impl<'a> ProjectAuditor<'a> {
             run,
             skipped,
             files_scanned,
+            coverage: self.coverage()?,
         })
+    }
+
+    /// Presence of every scaffold artifact, in manifest order. A destination
+    /// the manifest parameterizes by language resolves through a glob, so the
+    /// answer needs no stack detection and stays exact either way.
+    fn coverage(&self) -> Result<Vec<CoverageEntry>> {
+        let Some(plugin_root) = &self.plugin_root else {
+            return Ok(Vec::new());
+        };
+        let manifest = ScaffoldManifest::load(&plugin_root.join("templates"))?;
+        let mut entries = Vec::new();
+        for artifact in manifest.artifacts() {
+            let present = if artifact.destination_is_language_parameterized() {
+                // A pattern that will not compile leaves presence unknown, and
+                // reporting unknown as absent is the silent-pass this module
+                // refuses: a project path carrying `[` or `?` would report
+                // every language artifact missing while the files are there.
+                let pattern = self.working_dir.join(artifact.destination_glob());
+                let mut paths =
+                    glob::glob(&pattern.to_string_lossy()).map_err(|e| Error::ConfigInvalid {
+                        message: format!(
+                            "coverage glob '{}' failed to compile: {e}",
+                            pattern.display()
+                        ),
+                        location: Some(Location::file(manifest.path().to_path_buf())),
+                    })?;
+                paths.any(|p| p.is_ok())
+            } else {
+                artifact
+                    .destination_for(None)
+                    .is_some_and(|d| self.working_dir.join(d).exists())
+            };
+            entries.push(CoverageEntry {
+                tier: artifact.tier.as_str().to_string(),
+                destination: artifact.destination.clone(),
+                present,
+            });
+        }
+        Ok(entries)
     }
 }
 

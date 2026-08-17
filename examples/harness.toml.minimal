@@ -2,7 +2,7 @@
 # stays small (1MB rotation).
 
 [meta]
-harness_toolkit_version = ">=0.1, <0.2"
+harnex_version = ">=0.1, <0.2"
 
 [evidence]
 default_provenance = "memory-only"

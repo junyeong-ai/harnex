@@ -15,7 +15,7 @@ lives under `plugins/harnex/`:
 | `plugins/harnex/SKILL.md` | single-skill plugin entry; modes: scaffold / extend / audit / regenerate |
 | `plugins/harnex/reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
 | `plugins/harnex/templates/` | L2 deterministic safety-critical templates (`common` + per-language) |
-| `plugins/harnex/templates/managed-files.toml` | manifest mapping template files to project paths (audit + regenerate input) |
+| `plugins/harnex/templates/scaffold.toml` | composition manifest — every artifact a harness contains, its tier, destination, and merge/managed flags (skill + fixture test + audit coverage all read it) |
 | `plugins/harnex/.claude-plugin/plugin.json` | manifest; `version` omitted (commit SHA drives updates) |
 
 Generated files land in `${CLAUDE_PROJECT_DIR}`; bundled assets are referenced
@@ -35,6 +35,8 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::telemetry` | append-only JSONL ledger with closed payload schema |
 | `harness-core::codegen` | sentinel-block source → target sync |
 | `harness-core::policy` | permission profiles + version pins |
+| `harness-core::scaffold` | composition manifest (`scaffold.toml`) + tier model |
+| `harness-core::spec` | measurement stamps for the Claude Code vocabularies |
 | `harness-core::validate` | rule / skill / settings / commit-msg checks + `SettingsScope` enum |
 | `harness-core::audit` | harness-engineering compliance gate (spec drift, managed-region integrity) |
 | `harness-core::lifecycle` | observation + decision ledger + retirement |

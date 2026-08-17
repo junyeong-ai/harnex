@@ -96,3 +96,22 @@ fn spec_facts_skill_keys_match_known_keys() {
          update the sentinel block to match Rust SSoT"
     );
 }
+
+/// The stamp is a commitment to a vocabulary, not a decoration beside it.
+/// Editing a closed set without re-reading the page it came from leaves the
+/// date claiming a verification that never happened — so the digest is held
+/// to the live constants and the build fails until both move together.
+#[test]
+fn spec_stamps_match_live_vocabularies() {
+    for surface in harness_core::spec::SpecSurface::ALL {
+        assert_eq!(
+            surface.digest,
+            surface.live_digest(),
+            "the '{}' vocabulary changed but its stamp did not. Re-read {} , then set \
+             `measured` to today and `digest` to 0x{:016x}",
+            surface.name,
+            surface.doc,
+            surface.live_digest()
+        );
+    }
+}

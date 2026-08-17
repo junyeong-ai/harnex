@@ -73,6 +73,37 @@ the model's.
 - Uses a natural-language pattern match in a blocking tier.
 - Applies to a single package — use a path-scoped rule, not a project-wide one.
 
+## Subagent lifetime follows role
+
+A fan-out that leaves every finished context addressable accretes, and a
+re-summoned context is not the fresh one its role promised.
+
+- **Investigator / auditor** — one charge, one report, retired. Its context is
+  not fresh for judging its own findings, so the next round spawns anew.
+- **Fixer** — one per repository or independent track, continued by message
+  across rounds. Re-spawning discards the file context that is its value.
+- **Reviewer** — re-spawned fresh per round as `<scope>-r<N>`, never handed
+  its own prior findings.
+
+For the retiring roles the report is the agent's final message: the caller
+consumes it and retires the agent. "Idle and addressable" is a re-summon
+surface, not a resting state. A fixer's round report is a checkpoint.
+
+Per round: one investigator or fixer per independent track, one reviewer per
+repository. A session that exceeds that says why. All of it is Article VII
+default, not floor.
+
+## Break glass
+
+Every enforced guardrail names its escape hatch, and using one is loud and
+recorded. `.claude/settings.local.json` (gitignored, per-developer) is the
+override home — `disableAllHooks: true` disarms the hook layer session-wide.
+The committed `.claude/settings.json` carries only team-shared defaults, so a
+fresh clone is policy-consistent with no per-developer setup.
+
+A guardrail with no hatch gets bypassed by a worse route. A hatch with no
+record is indistinguishable from a defect.
+
 ## Retirement
 
 See `artifact-lifecycle.md` for retirement criteria, procedure, and the

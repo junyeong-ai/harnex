@@ -10,16 +10,20 @@
 //!   (the spec uses seconds; 1000s exceeds every documented default
 //!   ceiling of 600s and an upper bound of 60 minutes is generous).
 //! - `mcp__<server>` matcher without `__.*` → matches nothing per spec.
-//! - `Stop` event hook without an apparent exit-0 contract (non-`_stop_`
-//!   wrapper script names) → likely Stop-loop hazard.
 //!
 //! ## What this module refuses to do
 //!
-//! - Never read shell-script bodies to assess control flow — that path
-//!   is unbounded heuristic territory. The Stop check is a NAME-only
-//!   probe: if the script name doesn't carry the `_stop_` convention,
-//!   surface it as `Info` for review. Stronger detection lives in the
-//!   `_stop_runner.sh` template's `exit 0` contract.
+//! - Never infer control flow. Whether a Stop-class hook can exit non-zero
+//!   — the re-stop-loop hazard — is a property of the verifier's body, and
+//!   reading that body is unbounded heuristic territory while reading its
+//!   *filename* is a guess dressed as a check: it clears a correct wrapper
+//!   that does not carry the naming convention and cannot see an incorrect
+//!   one that does. The invariant is enforced where it is decidable, at
+//!   generation: `_stop_runner.sh` hardcodes `exit 0`, the `extend hook`
+//!   verb routes Stop-class events through it, and
+//!   `guard::HookRunner::run_stop` holds the same contract in Rust. A
+//!   harness harnex did not generate is outside what this auditor knows,
+//!   and silence is the honest answer there.
 
 use std::path::Path;
 
@@ -35,14 +39,6 @@ use crate::error::{Error, Result};
 /// the finding is severity `Minor` because a legitimately long timeout
 /// (e.g., a slow scaffolded build hook) is plausible.
 const TIMEOUT_MS_SUSPICION_THRESHOLD: u64 = 1000;
-
-/// Naming convention the harnex Stop-class wrappers carry. The name-based
-/// probe is a heuristic — a Python or non-`_stop_` wrapper that correctly
-/// returns exit 0 would not match. The strong contract lives in
-/// `harness_core::guard::HookRunner::run_stop`. The finding is severity
-/// `Info` so the heuristic never blocks; the type-level contract on the
-/// Rust runner is the enforcement layer.
-const STOP_RUNNER_TOKEN: &str = "_stop_runner";
 
 #[derive(Default)]
 pub(crate) struct SettingsDriftAuditor;
@@ -157,33 +153,6 @@ impl SettingsDriftAuditor {
                     fix_command: None,
                 });
             }
-            // Only Stop and SubagentStop force continuation on exit 2 (the
-            // re-stop loop). StopFailure's exit 2 is genuinely ignored per
-            // spec-facts, so it is NOT loop-trap-prone — do not flag it.
-            if event_name == "Stop" || event_name == "SubagentStop" {
-                let command = handler
-                    .get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if !command.contains(STOP_RUNNER_TOKEN) {
-                    findings.push(Finding {
-                        slug: "audit-stop-blocking-suspect".into(),
-                        severity: Severity::Info,
-                        location: Location::file(path.to_path_buf()),
-                        message: format!(
-                            "Stop-class hook '{event_name}'[{entry_idx}].hooks[{handler_idx}] command does not route through a `_stop_runner` wrapper — \
-                             a non-zero exit here triggers the Claude Code re-stop loop"
-                        ),
-                        hint: Some(
-                            "wrap the inner script in `hooks/_stop_runner.sh <script>` so non-zero \
-                             observations are reported but never propagated"
-                                .into(),
-                        ),
-                        auto_fixable: false,
-                        fix_command: None,
-                    });
-                }
-            }
         }
     }
 }
@@ -273,26 +242,6 @@ mod tests {
     }
 
     #[test]
-    fn does_not_flag_stop_failure_for_runner_wrapper() {
-        // StopFailure exit 2 is ignored per spec — it is NOT loop-trap-prone,
-        // so a StopFailure hook without _stop_runner must not be flagged.
-        let json = r#"{
-            "hooks": {
-                "StopFailure": [{
-                    "hooks": [{"type": "command", "command": "hooks/_runner.sh on-fail.sh"}]
-                }]
-            }
-        }"#;
-        let findings = run_on(json);
-        assert!(
-            !findings
-                .iter()
-                .any(|f| f.slug == "audit-stop-blocking-suspect"),
-            "StopFailure must not be flagged as Stop-loop-prone: {findings:?}"
-        );
-    }
-
-    #[test]
     fn accepts_complete_mcp_matcher() {
         let json = r#"{
             "hooks": {
@@ -373,38 +322,24 @@ mod tests {
     }
 
     #[test]
-    fn flags_stop_hook_without_stop_runner_wrapper() {
-        let json = r#"{
-            "hooks": {
-                "Stop": [{
-                    "hooks": [{"type": "command", "command": "hooks/_runner.sh check-on-stop.sh"}]
-                }]
-            }
-        }"#;
-        let findings = run_on(json);
-        assert!(
-            findings
-                .iter()
-                .any(|f| f.slug == "audit-stop-blocking-suspect"),
-            "expected audit-stop-blocking-suspect: {findings:?}"
-        );
-    }
-
-    #[test]
-    fn accepts_stop_hook_via_stop_runner() {
-        let json = r#"{
-            "hooks": {
-                "Stop": [{
-                    "hooks": [{"type": "command", "command": "hooks/_stop_runner.sh check-on-stop.sh"}]
-                }]
-            }
-        }"#;
-        let findings = run_on(json);
-        assert!(
-            !findings
-                .iter()
-                .any(|f| f.slug == "audit-stop-blocking-suspect"),
-            "Stop via _stop_runner is correct: {findings:?}"
-        );
+    fn reports_nothing_on_a_stop_hook_regardless_of_wrapper_name() {
+        // Whether a Stop verifier can exit non-zero lives in its body, not in
+        // its filename. Both spellings below are correct wirings in the wild,
+        // so a name-shaped probe would clear one and flag the other while
+        // knowing nothing about either.
+        for command in [
+            "hooks/_stop_runner.sh check-on-stop.sh",
+            "bash \"${CLAUDE_PROJECT_DIR}/hooks/_runner.sh\" tools/session-check.ts stop",
+        ] {
+            let json = serde_json::json!({
+                "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": command }] }] }
+            })
+            .to_string();
+            let findings = run_on(&json);
+            assert!(
+                findings.is_empty(),
+                "Stop wiring '{command}' must produce no finding: {findings:?}"
+            );
+        }
     }
 }

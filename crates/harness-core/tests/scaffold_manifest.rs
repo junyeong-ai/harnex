@@ -1,0 +1,249 @@
+//! Drift guard between `templates/scaffold.toml`, the template tree, and the
+//! language set.
+//!
+//! The manifest is the only statement of what a generated harness contains,
+//! so three relations must hold in both directions: every artifact it names
+//! exists on disk for every supported language, every language the permission
+//! registry offers has the templates the manifest expects of it, and no
+//! per-language template sits in the tree unclaimed. A one-directional check
+//! catches the typo and misses the omission — which is the failure that
+//! matters, because an omitted artifact scaffolds a harness with a hole in it
+//! and nothing downstream can tell.
+
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+
+use harness_core::policy::PermissionProfile;
+use harness_core::scaffold::{ScaffoldManifest, Tier};
+
+fn templates_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/templates")
+}
+
+fn manifest() -> ScaffoldManifest {
+    ScaffoldManifest::load(&templates_root()).expect("scaffold.toml loads")
+}
+
+/// Languages the oracle offers a profile for — the single source of truth the
+/// manifest's `{lang}` resolves against.
+fn languages() -> Vec<&'static str> {
+    PermissionProfile::ALL
+        .iter()
+        .filter_map(|n| n.strip_suffix("-dev"))
+        .collect()
+}
+
+#[test]
+fn the_language_set_is_not_empty() {
+    assert!(
+        !languages().is_empty(),
+        "no `<lang>-dev` profile exists, so every language-tier assertion below would pass vacuously"
+    );
+}
+
+#[test]
+fn every_manifest_template_exists_for_every_language() {
+    let root = templates_root();
+    let m = manifest();
+    for artifact in m.tier(Tier::Foundation) {
+        let template = artifact
+            .template_for(None)
+            .expect("foundation needs no lang");
+        assert!(
+            root.join(&template).is_file(),
+            "scaffold.toml names foundation template '{template}', which is not in the tree"
+        );
+    }
+    for lang in languages() {
+        for artifact in m.tier(Tier::Language) {
+            let template = artifact
+                .template_for(Some(lang))
+                .expect("language tier resolves with a language");
+            assert!(
+                root.join(&template).is_file(),
+                "scaffold.toml names '{}' but language '{lang}' has no template at '{template}'",
+                artifact.template
+            );
+        }
+    }
+}
+
+/// Templates a mode other than `scaffold` installs, so the unclaimed sweep
+/// does not read them as dead weight. Each names the verb that emits it.
+const NON_SCAFFOLD_TEMPLATES: &[(&str, &str)] = &[
+    ("common/skill-template.md", "extend skill"),
+    ("common/git-hooks/commit-msg", "extend pattern commit-msg"),
+    ("common/git-hooks/pre-push", "extend pattern pre-push"),
+];
+
+#[test]
+fn no_template_is_unclaimed_by_the_manifest() {
+    // Both tiers, every language, and `common/` — the earlier sweep walked
+    // only the language directories, so three `common/` templates sat
+    // unclaimed and unnoticed. A template nothing installs is dead weight or
+    // a missing manifest row; one another mode installs is declared above.
+    let root = templates_root();
+    let m = manifest();
+    let mut claimed: BTreeSet<PathBuf> = m
+        .tier(Tier::Foundation)
+        .filter_map(|a| a.template_for(None))
+        .map(|t| root.join(t))
+        .collect();
+    for lang in languages() {
+        claimed.extend(
+            m.tier(Tier::Language)
+                .filter_map(|a| a.template_for(Some(lang)))
+                .map(|t| root.join(t)),
+        );
+    }
+    claimed.extend(NON_SCAFFOLD_TEMPLATES.iter().map(|(rel, _)| root.join(rel)));
+    // `patterns/` is its own manifest with its own drift test.
+    let unclaimed: Vec<PathBuf> = walk(&root)
+        .into_iter()
+        .filter(|p| !claimed.contains(p))
+        .filter(|p| !p.starts_with(root.join("patterns")))
+        .filter(|p| p.file_name().is_some_and(|n| n != "scaffold.toml"))
+        .collect();
+    assert!(
+        unclaimed.is_empty(),
+        "templates/ holds files no scaffold.toml artifact emits and no mode declares: {unclaimed:?}"
+    );
+}
+
+#[test]
+fn every_non_scaffold_template_exists() {
+    // The allowance above must name real files, or it silently excuses a
+    // template that was deleted.
+    let root = templates_root();
+    for (rel, verb) in NON_SCAFFOLD_TEMPLATES {
+        assert!(
+            root.join(rel).is_file(),
+            "'{rel}' is declared as installed by `{verb}` but is not in the tree"
+        );
+    }
+}
+
+#[test]
+fn no_two_merge_fragments_claim_the_same_sub_key() {
+    // Merging is a key union, so two fragments naming the same sub-key would
+    // leave the later one silently replacing the earlier. `scaffold.toml`
+    // already has two artifacts contributing to `hooks`, one per tier.
+    let root = templates_root();
+    let m = manifest();
+    for lang in languages() {
+        let mut claimed: BTreeSet<(String, String)> = BTreeSet::new();
+        for artifact in m.artifacts() {
+            let Some(merge) = &artifact.merge else {
+                continue;
+            };
+            let template = artifact
+                .template_for(Some(lang))
+                .expect("template resolves with a language");
+            let raw = std::fs::read_to_string(root.join(&template)).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&raw)
+                .unwrap_or_else(|e| panic!("{template} is not JSON: {e}"));
+            match value.as_object() {
+                // An object fragment contributes keys; two artifacts may share
+                // the destination key as long as no single key is claimed twice.
+                Some(object) => {
+                    for key in object.keys() {
+                        assert!(
+                            claimed.insert((merge.clone(), key.clone())),
+                            "two scaffold.toml fragments both contribute '{key}' under '{merge}' \
+                             for language '{lang}'; the union would silently drop the first"
+                        );
+                    }
+                }
+                // A non-object fragment — every permission list is an array —
+                // replaces its slot outright, so the merge path itself may be
+                // claimed only once. Skipping these left three of the five
+                // merge artifacts unguarded.
+                None => {
+                    assert!(
+                        claimed.insert((merge.clone(), String::new())),
+                        "two scaffold.toml fragments both merge a non-object into '{merge}' for \
+                         language '{lang}'; the second would replace the first outright"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn every_destination_is_claimed_once_per_language() {
+    let m = manifest();
+    for lang in languages() {
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for artifact in m.artifacts() {
+            // A JSON fragment contributes to a shared destination by design;
+            // exactly one artifact may own a destination outright.
+            if artifact.merge.is_some() {
+                continue;
+            }
+            let dest = artifact
+                .destination_for(Some(lang))
+                .expect("destination resolves with a language")
+                .to_string_lossy()
+                .to_string();
+            assert!(
+                seen.insert(dest.clone()),
+                "two scaffold.toml artifacts both copy to '{dest}' for language '{lang}'; the \
+                 second would silently overwrite the first"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_foundation_tier_stands_alone() {
+    // A foundation-only scaffold is what an unsupported stack receives, so
+    // nothing in that tier may depend on a language-tier artifact having
+    // landed. Every hook the foundation wires must be a foundation artifact.
+    let root = templates_root();
+    let m = manifest();
+    let foundation_destinations: BTreeSet<String> = m
+        .tier(Tier::Foundation)
+        .filter_map(|a| a.destination_for(None))
+        .map(|d| d.to_string_lossy().to_string())
+        .collect();
+
+    for artifact in m.tier(Tier::Foundation) {
+        if artifact.merge.is_none() {
+            continue;
+        }
+        let template = artifact.template_for(None).unwrap();
+        let raw = std::fs::read_to_string(root.join(&template)).unwrap();
+        // Hook fragments are objects; a permission list is an array and its
+        // rules are patterns rather than paths. Scanning those for anchored
+        // paths would fail this test on the first permission rule that
+        // legitimately mentions one.
+        if serde_json::from_str::<serde_json::Value>(&raw).is_ok_and(|v| !v.is_object()) {
+            continue;
+        }
+        for referenced in harness_core::guard::paths_in_command(&raw) {
+            assert!(
+                foundation_destinations.contains(&referenced),
+                "foundation hook fragment '{template}' wires '{referenced}', which the foundation \
+                 tier does not emit — a foundation-only scaffold would wire a handler to nothing"
+            );
+        }
+    }
+}
+
+fn walk(dir: &PathBuf) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            out.extend(walk(&path));
+        } else {
+            out.push(path);
+        }
+    }
+    out.sort();
+    out
+}

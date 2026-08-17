@@ -7,7 +7,8 @@ use clap::Subcommand;
 use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::validate::{
-    CommitMsgValidator, RuleValidator, SettingsScope, SettingsValidator, SkillValidator,
+    AgentValidator, CommitMsgValidator, OutputStyleValidator, RuleValidator, SettingsScope,
+    SettingsValidator, SkillValidator,
 };
 
 use super::{load_config, write_envelope_success};
@@ -32,6 +33,16 @@ pub enum ValidateCommand {
     },
     /// Validate `.claude/skills/*/SKILL.md` files
     Skills {
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+    },
+    /// Validate `.claude/agents/*.md` subagent definitions
+    Agents {
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+    },
+    /// Validate `.claude/output-styles/*.md`
+    OutputStyles {
         #[arg(required = true)]
         paths: Vec<PathBuf>,
     },
@@ -78,6 +89,34 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                     location: None,
                 })?;
             let v = SkillValidator::new(policy);
+            for p in paths {
+                findings.extend(v.validate_file(&p)?);
+            }
+        }
+        ValidateCommand::Agents { paths } => {
+            let policy = config
+                .validate
+                .as_ref()
+                .and_then(|v| v.agents.as_ref())
+                .ok_or_else(|| Error::ConfigInvalid {
+                    message: "no [validate.agents] section in harness.toml".into(),
+                    location: None,
+                })?;
+            let v = AgentValidator::new(policy);
+            for p in paths {
+                findings.extend(v.validate_file(&p)?);
+            }
+        }
+        ValidateCommand::OutputStyles { paths } => {
+            let policy = config
+                .validate
+                .as_ref()
+                .and_then(|v| v.output_styles.as_ref())
+                .ok_or_else(|| Error::ConfigInvalid {
+                    message: "no [validate.output_styles] section in harness.toml".into(),
+                    location: None,
+                })?;
+            let v = OutputStyleValidator::new(policy);
             for p in paths {
                 findings.extend(v.validate_file(&p)?);
             }

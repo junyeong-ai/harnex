@@ -15,13 +15,17 @@
 //!   default — the heuristic matches prose, not intent.
 //! - `user-invocable` must be boolean if present.
 //! - `context` must be `"fork"` if present.
+//! - `background` must be boolean if present.
 //! - `allowed-tools` is a string OR an array of strings (spec accepts both).
 //! - `disallowed-tools` is a string OR an array of strings (spec accepts both).
 //! - `paths` is a string OR an array of valid glob patterns (spec accepts both).
 //! - `hooks` keys must be in `KNOWN_HOOK_EVENTS` if present.
 //! - `effort` must be one of `low|medium|high|xhigh|max` if present.
+//! - `metadata` must be a mapping if present — Claude Code silently drops
+//!   any other value, so the wrong shape reaches no consumer.
 //!
-//! `agent` and `model` are valid free-form fields — accepted, never flagged.
+//! `agent`, `model`, `license`, and `compatibility` are valid free-form
+//! fields — accepted, never flagged.
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -43,7 +47,7 @@ static SIDE_EFFECT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         .expect("SIDE_EFFECT_PATTERN")
 });
 
-const KNOWN_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+pub const KNOWN_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
 /// Complete Claude Code skill frontmatter key surface (wire names).
 /// Broader than `SkillFrontmatter`'s modeled fields — includes spec keys
@@ -65,9 +69,20 @@ pub const KNOWN_SKILL_KEYS: &[&str] = &[
     "effort",
     "context",
     "agent",
+    "background",
     "hooks",
     "paths",
     "shell",
+    "metadata",
+    "license",
+    "compatibility",
+];
+
+/// Every closed set this validator reads from the skills page, labelled.
+/// The measurement stamp digests exactly this list.
+pub const SPEC_SETS: &[(&str, &[&str])] = &[
+    ("skill-keys", KNOWN_SKILL_KEYS),
+    ("effort-levels", KNOWN_EFFORT_LEVELS),
 ];
 
 pub struct SkillValidator<'a> {
@@ -91,6 +106,8 @@ struct SkillFrontmatter {
     user_invocable: Option<yaml_serde::Value>,
     #[serde(default)]
     context: Option<String>,
+    #[serde(default)]
+    background: Option<yaml_serde::Value>,
     #[serde(default, rename = "allowed-tools")]
     allowed_tools: Option<yaml_serde::Value>,
     #[serde(default, rename = "disallowed-tools")]
@@ -101,6 +118,8 @@ struct SkillFrontmatter {
     hooks: Option<yaml_serde::Value>,
     #[serde(default)]
     effort: Option<String>,
+    #[serde(default)]
+    metadata: Option<yaml_serde::Value>,
 }
 
 impl<'a> SkillValidator<'a> {
@@ -321,6 +340,24 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
+        // background: must be boolean if present
+        if let Some(ref val) = parsed.background
+            && !val.is_bool()
+        {
+            findings.push(Finding {
+                slug: "skill-background-invalid".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), fm.begin_line),
+                message: "background must be a boolean (true or false)".into(),
+                hint: Some(
+                    "set `background: false` to consume a forked skill's result in the invoking turn"
+                        .into(),
+                ),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
+
         // allowed-tools: a space-separated STRING or a YAML list of strings
         // (the spec accepts both). Only a non-string, non-sequence value (a
         // number / bool / mapping) is invalid.
@@ -493,6 +530,40 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
+        // metadata: a free-form mapping. Claude Code drops a non-mapping
+        // value silently, so the wrong shape reaches no consumer at all.
+        if let Some(ref val) = parsed.metadata
+            && !val.is_mapping()
+        {
+            findings.push(Finding {
+                slug: "skill-metadata-invalid".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), fm.begin_line),
+                message: "metadata must be a mapping; Claude Code drops any other value".into(),
+                hint: Some("nest the fields under `metadata:` as key-value pairs".into()),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
+
         findings
+    }
+}
+
+impl<'p> crate::validate::SurfaceValidator<'p> for SkillValidator<'p> {
+    type Policy = SkillsPolicy;
+    const SLUG: &'static str = "validate.skills";
+    const GLOB: &'static str = ".claude/skills/*/SKILL.md";
+
+    fn policy(config: &'p crate::config::Config) -> Option<&'p Self::Policy> {
+        config.validate.as_ref()?.skills.as_ref()
+    }
+
+    fn build(policy: &'p Self::Policy) -> Self {
+        Self::new(policy)
+    }
+
+    fn validate_path(&self, path: &Path) -> Result<Vec<Finding>> {
+        self.validate_file(path)
     }
 }

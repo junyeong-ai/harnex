@@ -166,6 +166,7 @@ pub const KNOWN_HOOK_EVENTS: &[&str] = &[
     "InstructionsLoaded",
     "ConfigChange",
     "CwdChanged",
+    "DirectoryAdded",
     "FileChanged",
     "WorktreeCreate",
     "WorktreeRemove",
@@ -174,6 +175,20 @@ pub const KNOWN_HOOK_EVENTS: &[&str] = &[
     "TeammateIdle",
     "Elicitation",
     "ElicitationResult",
+];
+
+/// The hooks page's own vocabulary, stamped separately from the settings sets
+/// because it is read from a different document. It lives beside its constant
+/// like every other `SPEC_SETS`, rather than inline in `spec.rs`.
+pub const HOOK_SPEC_SETS: &[(&str, &[&str])] = &[("hook-events", KNOWN_HOOK_EVENTS)];
+
+/// Every closed set this validator reads from the settings page, labelled.
+/// The measurement stamp digests exactly this list, so a value moved from one
+/// set to another changes the digest rather than hiding in a concatenation.
+pub const SPEC_SETS: &[(&str, &[&str])] = &[
+    ("project-scope-noop-keys", KNOWN_PROJECT_SCOPE_NOOP_KEYS),
+    ("default-mode-values", KNOWN_DEFAULT_MODE_VALUES),
+    ("skill-override-values", KNOWN_SKILL_OVERRIDE_VALUES),
 ];
 
 #[derive(Default)]

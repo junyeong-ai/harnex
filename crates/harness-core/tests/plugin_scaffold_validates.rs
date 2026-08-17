@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use harness_core::audit::{AuditCheckKind, ProjectAuditor};
 use harness_core::config::{RulesPolicy, SkillsPolicy};
 use harness_core::envelope::Finding;
+use harness_core::scaffold::{ScaffoldManifest, Tier};
 use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
 use tempfile::TempDir;
 
@@ -43,68 +44,145 @@ fn bash_n_ok(path: &Path) -> bool {
     }
 }
 
-/// Assemble `.claude/settings.json` from the committed JSON projection files
-/// — exactly the composition `harnex scaffold` performs. Returns the absolute
-/// path of the assembled file inside `project_root`.
-fn assemble_settings_json(templates: &Path, lang: &str, project_root: &Path) -> PathBuf {
-    let deny: Vec<String> = serde_json::from_str(
-        &fs::read_to_string(templates.join("common/permissions.deny.json")).unwrap(),
-    )
-    .unwrap();
-    let allow: Vec<String> = serde_json::from_str(
-        &fs::read_to_string(templates.join(format!("{lang}/permissions.allow.json"))).unwrap(),
-    )
-    .unwrap();
-    let hooks: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(templates.join("common/hooks.json")).unwrap())
-            .unwrap();
-    let settings = serde_json::json!({
-        "permissions": { "allow": allow, "deny": deny },
-        "hooks": hooks,
-    });
-    let path = project_root.join(".claude/settings.json");
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
-    path
+/// Materialise a project from `templates/scaffold.toml` exactly as the skill
+/// would: copy each artifact to its declared destination, merge each JSON
+/// fragment into the key path it declares, and set the executable bit where
+/// the manifest says the artifact is a script.
+///
+/// The manifest is the only statement of the composition, so this fixture
+/// cannot drift from what a real scaffold emits. Building the file list by
+/// hand here is what previously let the fixture omit every hook while the
+/// test still reported a clean scaffold.
+fn emit_tier(
+    manifest: &ScaffoldManifest,
+    tier: Tier,
+    templates: &Path,
+    lang: Option<&str>,
+    proj_root: &Path,
+    settings: &mut serde_json::Value,
+) {
+    for artifact in manifest.tier(tier) {
+        let (Some(template), Some(destination)) =
+            (artifact.template_for(lang), artifact.destination_for(lang))
+        else {
+            panic!(
+                "artifact {} needs a language the fixture did not supply",
+                artifact.template
+            );
+        };
+        let src = templates.join(&template);
+        let dst = proj_root.join(&destination);
+        match &artifact.merge {
+            Some(key_path) => {
+                let fragment: serde_json::Value =
+                    serde_json::from_str(&fs::read_to_string(&src).unwrap())
+                        .unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
+                merge_at(settings, key_path, fragment);
+            }
+            None => {
+                copy_file(&src, &dst);
+                if artifact.executable {
+                    set_executable(&dst);
+                }
+            }
+        }
+    }
 }
+
+/// Set `value` at a dotted key path, unioning object keys when a fragment
+/// already occupies it — two artifacts contribute hook events to the same
+/// `hooks` object, and neither may erase the other.
+fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Value) {
+    let mut cursor = root;
+    let keys: Vec<&str> = key_path.split('.').collect();
+    for key in &keys[..keys.len() - 1] {
+        cursor = cursor
+            .as_object_mut()
+            .unwrap()
+            .entry((*key).to_string())
+            .or_insert_with(|| serde_json::json!({}));
+    }
+    let last = keys[keys.len() - 1].to_string();
+    let slot = cursor
+        .as_object_mut()
+        .unwrap()
+        .entry(last)
+        .or_insert(serde_json::Value::Null);
+    match (slot.as_object_mut(), value) {
+        (Some(existing), serde_json::Value::Object(incoming)) => {
+            for (k, v) in incoming {
+                existing.insert(k, v);
+            }
+        }
+        (_, incoming) => *slot = incoming,
+    }
+}
+
+#[cfg(unix)]
+fn set_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(not(unix))]
+fn set_executable(_path: &Path) {}
 
 /// Scaffold a project from the templates as the skill would, then assert every
 /// oracle check passes cleanly on the result.
 fn run_scaffold_validation(lang: &str) {
     let templates = plugin_templates();
+    let manifest = ScaffoldManifest::load(&templates).unwrap();
     let project = TempDir::new().unwrap();
     let proj_root = project.path();
 
-    // settings.json (assembled from JSON projections)
-    let settings_path = assemble_settings_json(&templates, lang, proj_root);
+    let mut settings = serde_json::json!({});
+    emit_tier(
+        &manifest,
+        Tier::Foundation,
+        &templates,
+        None,
+        proj_root,
+        &mut settings,
+    );
+    emit_tier(
+        &manifest,
+        Tier::Language,
+        &templates,
+        Some(lang),
+        proj_root,
+        &mut settings,
+    );
 
-    // Foundation rules + CLAUDE.md (markdown templates, dropped verbatim).
-    // All three foundation rules live in common/rules/ → .claude/rules/.
-    for rule in ["constitution.md", "governance.md", "artifact-lifecycle.md"] {
-        copy_file(
-            &templates.join("common/rules").join(rule),
-            &proj_root.join(".claude/rules").join(rule),
+    let settings_path = proj_root.join(".claude/settings.json");
+    fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&settings).unwrap(),
+    )
+    .unwrap();
+
+    // Two artifacts merge into `hooks`, one per tier. The contribution is a
+    // key union: a replacement would erase the foundation's events the moment
+    // the language fragment landed, and the resulting harness would validate
+    // clean while silently running no formatter or no Stop hook.
+    let events: Vec<&str> = settings["hooks"]
+        .as_object()
+        .expect("hooks is an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    for event in ["SessionStart", "PostToolUse", "Stop"] {
+        assert!(
+            events.contains(&event),
+            "[{lang}] merging the language hook fragment dropped '{event}': {events:?}"
         );
     }
-    copy_file(
-        &templates.join("common/CLAUDE.md"),
-        &proj_root.join("CLAUDE.md"),
-    );
 
-    // git pre-commit hook (the enforced half of "secrets never reach git")
-    let pre_commit = proj_root.join("hooks/pre-commit");
-    copy_file(&templates.join("common/git-hooks/pre-commit"), &pre_commit);
-    assert!(
-        bash_n_ok(&pre_commit),
-        "[{lang}] generated hooks/pre-commit fails `bash -n`"
-    );
-
-    // Optional path-scoped convention rule for the language
-    let lang_rule = templates.join(format!("{lang}/rules/{lang}-conventions.md"));
-    if lang_rule.exists() {
-        copy_file(
-            &lang_rule,
-            &proj_root.join(format!(".claude/rules/{lang}-conventions.md")),
+    for script in glob_under(&proj_root.join("hooks"), "*") {
+        assert!(
+            bash_n_ok(&script),
+            "[{lang}] generated {} fails `bash -n`",
+            script.display()
         );
     }
 
@@ -124,11 +202,7 @@ fn run_scaffold_validation(lang: &str) {
         .with_plugin_root(plugin_root)
         .run()
         .unwrap();
-    assert_no_findings(
-        lang,
-        "audit (settings-drift + managed-region)",
-        &audit_outcome.findings,
-    );
+    assert_no_findings(lang, "audit", &audit_outcome.findings);
     // Every audit kind must have actually run — a silent skip means the
     // meta-test checks nothing. Sourced from the enum SSoT so adding a
     // variant forces this assertion to cover it.
@@ -145,6 +219,7 @@ fn run_scaffold_validation(lang: &str) {
     // --- Rule validation (constitution + optional conventions rule) ---
     let rule_policy = RulesPolicy {
         max_lines: 200,
+        max_scoped_lines: None,
         always_loaded_slugs: vec!["constitution".into()],
     };
     let rv = RuleValidator::new(&rule_policy);
@@ -216,6 +291,71 @@ fn assert_no_findings(lang: &str, ctx: &str, findings: &[Finding]) {
     );
 }
 
+/// A stack with no language profile still receives the foundation tier, and
+/// that partial harness must be coherent on its own: the permission floor
+/// applies, the foundation rules load, and every hook the foundation wires
+/// points at a script the foundation emits. This is what makes an unsupported
+/// stack a smaller harness rather than no harness.
+#[test]
+fn foundation_only_scaffold_is_coherent_without_a_language() {
+    let templates = plugin_templates();
+    let manifest = ScaffoldManifest::load(&templates).unwrap();
+    let project = TempDir::new().unwrap();
+    let proj_root = project.path();
+
+    let mut settings = serde_json::json!({});
+    emit_tier(
+        &manifest,
+        Tier::Foundation,
+        &templates,
+        None,
+        proj_root,
+        &mut settings,
+    );
+    let settings_path = proj_root.join(".claude/settings.json");
+    fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&settings).unwrap(),
+    )
+    .unwrap();
+
+    let findings = SettingsValidator::new()
+        .validate_file(&settings_path, SettingsScope::Project)
+        .unwrap();
+    assert_no_findings("foundation", "validate.settings", &findings);
+
+    let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex");
+    let working_dir = proj_root.to_path_buf();
+    let outcome = ProjectAuditor::new(&working_dir)
+        .with_plugin_root(plugin_root)
+        .run()
+        .unwrap();
+    assert_no_findings("foundation", "audit", &outcome.findings);
+
+    // Coverage reports the language tier as absent — the fact the audit skill
+    // turns into "this stack has no profile", never a defect the binary claims.
+    let absent: Vec<&str> = outcome
+        .coverage
+        .iter()
+        .filter(|c| !c.present)
+        .map(|c| c.destination.as_str())
+        .collect();
+    assert!(
+        absent.contains(&"hooks/post-format.sh"),
+        "the formatter hook must report absent in a foundation-only scaffold: {absent:?}"
+    );
+    assert!(
+        outcome
+            .coverage
+            .iter()
+            .filter(|c| c.tier == "foundation")
+            .all(|c| c.present),
+        "every foundation artifact must report present: {:?}",
+        outcome.coverage
+    );
+}
+
 #[test]
 fn typescript_scaffold_passes_all_validators() {
     run_scaffold_validation("typescript");
@@ -229,4 +369,9 @@ fn python_scaffold_passes_all_validators() {
 #[test]
 fn rust_scaffold_passes_all_validators() {
     run_scaffold_validation("rust");
+}
+
+#[test]
+fn jvm_scaffold_passes_all_validators() {
+    run_scaffold_validation("jvm");
 }

@@ -23,7 +23,7 @@ Read these first (they are the contract, load on demand):
 
 Templates live under `${CLAUDE_SKILL_DIR}/templates/`: language-agnostic
 pieces in `common/`, and one directory per supported language
-(`typescript/`, `python/`, `rust/` today — adding a language is a new
+(`typescript/`, `python/`, `rust/`, `jvm/` today — adding a language is a new
 `<lang>/` directory plus its `*-dev` permission profile). Generated files are
 written to `${CLAUDE_PROJECT_DIR}` (the target repo).
 
@@ -46,14 +46,17 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
    - Evaluation order: `deny > ask > allow`, first-match-wins.
    - Never emit project-scope no-op keys into `.claude/settings.json`.
    When in doubt, re-read the live doc — freezing the spec is the failure.
-5. **Right language.** Detect from lockfile+manifest; never cross-wire (biome
-   for TS, ruff for Python, rustfmt for Rust). If detection matches no
-   supported stack (language-matrix has only typescript/python/rust), REFUSE —
-   write nothing and report the unsupported stack; never emit a half-built
-   scaffold with no language profile. Never emit `node -e` / `python3 -c` into
-   permissions. Never grant built-in read-only commands (`ls`, `grep`, `cat`,
-   read-only `git`) — they never prompt, so an allow is a no-op; grant only
-   commands that actually prompt.
+5. **Right language, and a floor without one.** Detect from lockfile+manifest;
+   never cross-wire (biome for TS, ruff for Python, rustfmt for Rust). When no
+   supported stack matches, emit the manifest's **foundation tier** — the
+   permission floor, the foundation rules, the hook wrappers, the secret-scan
+   git hook, all language-agnostic — and report exactly which language-tier
+   artifacts are unavailable and why. What is forbidden is a *wrong* profile,
+   not an absent one: guessing a formatter is the meta-failure, while
+   withholding a floor the stack never needed a profile for helps nobody.
+   Never emit `node -e` / `python3 -c` into permissions. Never grant built-in
+   read-only commands (`ls`, `grep`, `cat`, read-only `git`) — they never
+   prompt, so an allow is a no-op; grant only commands that actually prompt.
 6. **Managed-region contract.** A generated artifact is partitioned into
    harnex-managed regions (delimited by
    `<!-- harnex-managed:start <slug> --> ... <!-- harnex-managed:end <slug> -->`)
@@ -97,23 +100,31 @@ flattens real per-package differences.
 
 ### Step 2 — Compose artifacts from templates + analysis
 
-- `.claude/settings.json` (`permissions` = common `permissions.deny.json` +
-  `<lang>/permissions.allow.json`; `hooks` = common `hooks.json`).
-  If CI config reveals additional tools the project uses (docker, terraform,
-  gcloud), suggest composing with `gcp-strict` or `aws-strict` profiles.
-- `hooks/` — Claude Code hook scripts (`<lang>/_runner.sh`, common
-  `_stop_runner.sh`, `<lang>/post-format.sh`, common `session-start.sh`,
-  common `check-on-stop.sh`) AND the git pre-commit hook (common
-  `git-hooks/pre-commit` → `hooks/pre-commit`, runs gitleaks). The two
-  hook kinds coexist: git runs only files named after git events
-  (`pre-commit`), Claude Code runs the `_runner.sh`-dispatched scripts.
-- `.claude/rules/constitution.md` (common, managed region wraps the
-  articles — the path-scoped rules added later sit beside it untouched).
-- `.claude/rules/governance.md` (common — self-improvement gatekeeper:
-  observation sink, promotion gate split advisory rule vs enforced guardrail,
-  and the oracle loop commands for surfacing candidates).
-- `.claude/rules/artifact-lifecycle.md` (common — promotion path from
-  observation → validated pattern → rule; retirement criteria).
+**The file set is `${CLAUDE_SKILL_DIR}/templates/scaffold.toml`, not this
+list.** Read it and emit every artifact it declares: copy each one to its
+`destination`, merge each JSON fragment into the `merge` key path it names
+(a key union where two artifacts name the same key — the manifest header
+states the rule),
+`chmod 0o755` where `executable` is set. Emit the `foundation` tier always and
+the `language` tier when a stack matched, resolving `{lang}` to the detected
+language. The manifest is the single home for that set — a second list here
+would be the one that drifts, and the oracle's fixture test builds from the
+same file so a scaffold and its guard cannot disagree.
+
+The manifest declares template-derived artifacts. Two emissions are outside it
+because their content comes from the project rather than from a template:
+- For Rust, `rustfmt.toml` carrying the edition declared in `Cargo.toml` —
+  per-file `rustfmt` does not read the manifest and would otherwise format to
+  a different style than `cargo fmt` (language-matrix).
+- Composing `gcp-strict` or `aws-strict` into `permissions` when CI config
+  reveals the project uses docker / terraform / gcloud.
+
+Git hooks and Claude Code hooks coexist in `hooks/`: git runs only files named
+after git events (`pre-commit`), Claude Code runs the `_runner.sh`-dispatched
+scripts.
+
+Content the manifest cannot supply, because it comes from Step 1's analysis:
+
 - `CLAUDE.md` — **LLM fills from analysis, not blank placeholders.** Use a
   fixed source precedence so two operators on the same repo converge:
   - `# <project-name>` — manifest `name` first; README title only if the
@@ -186,11 +197,13 @@ operator to re-phrase using a verb from this list.
 - **`extend permission allow <pattern>`** — same, into `permissions.allow`.
   Refuse when `<pattern>` is a read-only built-in (`ls`, `grep`, `cat`,
   read-only `git`) — its allow rule is a no-op.
-- **`extend language <lang>`** — bootstrap a new language directory:
-  `templates/<lang>/{_runner.sh, post-format.sh, permissions.allow.json}`
-  + the matching `<lang>-dev` profile stub in `profiles.rs`
-  (`session-start.sh` is common, not per-language). Operator fills the
-  toolchain commands; the `policy_template_sync` reverse-gap test enforces
+- **`extend language <lang>`** — bootstrap a new language directory with the
+  three `{lang}` templates `scaffold.toml` names —
+  `permissions.allow.json`, `post-format.sh`, `rules/<lang>-conventions.md` —
+  plus the matching `<lang>-dev` profile stub in `profiles.rs`. The hook
+  wrappers, `session-start.sh`, and `check-on-stop.sh` are foundation-tier and
+  never per-language. Operator fills the toolchain commands; the
+  `scaffold_manifest` and `policy_template_sync` reverse-gap tests enforce
   both sides exist.
 - **`extend pattern <name>`** — install a proven engineering pattern,
   **customized to the target project**. The pattern set and each pattern's
@@ -258,20 +271,35 @@ In every verb: read the module-map's `existing_harness` first; match the
 incumbent hook-runner pattern, rule mechanism, and gate sequence. Never
 overwrite `settings.json` top-level keys outside the verb's scope.
 
-## Mode: audit (read-only, envelope output)
+## Mode: audit (read-only, gap report)
 
-Drive `harness audit` and present its `AuditOutcome` envelope to the
-operator. Findings:
+Two halves, split by what is decidable. The binary decides what is provably
+wrong; the skill judges what is missing, because "missing" depends on what
+the project already guarantees elsewhere and no binary can see that.
+
+**1 — Drive `harness audit`** and present its `AuditOutcome` envelope. Every
+finding is a defect against the spec or against the harness's own wiring:
 - `audit-ms-timeout` — hook timeout values that look like milliseconds
   (≥ 1000) instead of seconds.
 - `audit-mcp-matcher-incomplete` — `mcp__server` matcher without the
   required `__.*` suffix (matches nothing).
-- `audit-stop-blocking-suspect` — `Stop` hook whose script can plausibly
-  exit non-zero (no explicit `exit 0`).
+- `audit-hook-script-missing` — a hook names a `${CLAUDE_PROJECT_DIR}` path
+  that is not on disk, so the handler errors and the action proceeds
+  unguarded.
 - `audit-managed-region-edited` — content inside a `harnex-managed`
   region diverges from the corresponding template.
 
-The CLI emits an envelope; no skill-side prose synthesis required.
+**2 — Run the exploration Phase-1 fingerprint** (exploration.md) and compare
+its `existing_harness` block against what a scaffold for the detected stack
+would emit. Report each difference as an observation with its enforced-vs-
+advisory tier, never as a defect: a project may hold the same guarantee
+server-side (CI secret scanning, a pre-receive hook, managed settings), and
+harnex cannot see that from the repo. Name the guarantee, name where harnex
+would put it, and let the operator decide. State plainly when a gap is one
+harnex has no template for — an unsupported stack, an artifact class outside
+the template set — rather than proposing a substitute.
+
+Write nothing in either half.
 
 ## Mode: regenerate (spec drift)
 

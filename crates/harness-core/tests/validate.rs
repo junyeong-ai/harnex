@@ -1,8 +1,11 @@
 //! Integration tests for validate.
 
-use harness_core::config::{RulesPolicy, SkillsPolicy};
+use harness_core::config::{AgentsPolicy, OutputStylesPolicy, RulesPolicy, SkillsPolicy};
 use harness_core::envelope::Severity;
-use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
+use harness_core::validate::{
+    AgentValidator, OutputStyleValidator, RuleValidator, SettingsScope, SettingsValidator,
+    SkillValidator,
+};
 use std::path::Path;
 use tempfile::TempDir;
 
@@ -10,6 +13,7 @@ use tempfile::TempDir;
 fn rule_validator_flags_missing_paths_frontmatter() {
     let policy = RulesPolicy {
         max_lines: 200,
+        max_scoped_lines: None,
         always_loaded_slugs: vec!["constitution".into()],
     };
     let v = RuleValidator::new(&policy);
@@ -26,6 +30,7 @@ fn rule_validator_flags_missing_paths_frontmatter() {
 fn rule_validator_accepts_constitution_without_paths() {
     let policy = RulesPolicy {
         max_lines: 200,
+        max_scoped_lines: None,
         always_loaded_slugs: vec!["constitution".into()],
     };
     let v = RuleValidator::new(&policy);
@@ -34,20 +39,60 @@ fn rule_validator_accepts_constitution_without_paths() {
     assert!(findings.is_empty(), "unexpected: {findings:?}");
 }
 
+fn long_body(lines: usize) -> String {
+    (1..=lines)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
-fn rule_validator_flags_overlong_rule() {
+fn rule_validator_flags_overlong_always_loaded_rule() {
     let policy = RulesPolicy {
         max_lines: 5,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec!["constitution".into()],
+    };
+    let v = RuleValidator::new(&policy);
+    let findings = v.validate_text(&long_body(10), Path::new("constitution.md"));
+    let finding = findings
+        .iter()
+        .find(|f| f.slug == "rule-too-long")
+        .unwrap_or_else(|| panic!("expected rule-too-long: {findings:?}"));
+    assert_eq!(finding.severity, Severity::Major);
+}
+
+#[test]
+fn rule_validator_accepts_long_path_scoped_rule_by_default() {
+    let policy = RulesPolicy {
+        max_lines: 5,
+        max_scoped_lines: None,
         always_loaded_slugs: vec![],
     };
     let v = RuleValidator::new(&policy);
-    let md = "---\npaths: [\"x\"]\n---\n".to_string()
-        + &(1..=10)
-            .map(|i| format!("line {i}"))
-            .collect::<Vec<_>>()
-            .join("\n");
+    let md = format!("---\npaths: [\"x\"]\n---\n{}", long_body(10));
     let findings = v.validate_text(&md, Path::new("rule.md"));
-    assert!(findings.iter().any(|f| f.slug == "rule-too-long"));
+    assert!(
+        findings.is_empty(),
+        "a path-scoped rule loads only on its own paths and is unbounded by default: {findings:?}"
+    );
+}
+
+#[test]
+fn rule_validator_flags_overlong_path_scoped_rule_when_opted_in() {
+    let policy = RulesPolicy {
+        max_lines: 200,
+        max_scoped_lines: Some(5),
+        always_loaded_slugs: vec![],
+    };
+    let v = RuleValidator::new(&policy);
+    let md = format!("---\npaths: [\"x\"]\n---\n{}", long_body(10));
+    let findings = v.validate_text(&md, Path::new("rule.md"));
+    let finding = findings
+        .iter()
+        .find(|f| f.slug == "rule-too-long")
+        .unwrap_or_else(|| panic!("expected rule-too-long: {findings:?}"));
+    assert_eq!(finding.severity, Severity::Minor);
 }
 
 #[test]
@@ -990,4 +1035,224 @@ fn settings_validator_excuses_noop_keys_at_user_and_managed_scope() {
             "{scope:?}: noop keys must be honored, not flagged: {findings:?}"
         );
     }
+}
+
+fn agents_policy(reject_unknown_keys: bool) -> AgentsPolicy {
+    AgentsPolicy {
+        reject_unknown_keys,
+    }
+}
+
+#[test]
+fn agent_validator_accepts_a_fully_declared_definition() {
+    let policy = agents_policy(true);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: code-reviewer\ndescription: Reviews a change set\ntools: Read, Grep\ndisallowedTools: [Agent]\nmodel: claude-opus-5\npermissionMode: plan\nmaxTurns: 12\nskills: [lint-rules]\nhooks:\n  PreToolUse: []\nmemory: project\nbackground: false\neffort: high\nisolation: worktree\ncolor: cyan\ninitialPrompt: start\n---\n\nSystem prompt.\n";
+    let findings = v.validate_text(md, Path::new(".claude/agents/code-reviewer.md"));
+    assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+#[test]
+fn agent_validator_flags_closed_set_violations() {
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: r\ndescription: d\npermissionMode: yolo\neffort: turbo\nisolation: chroot\nmemory: session\ncolor: taupe\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new(".claude/agents/r.md"));
+    let slugs: Vec<&str> = findings.iter().map(|f| f.slug.as_str()).collect();
+    for expected in [
+        "agent-permission-mode-invalid",
+        "agent-effort-invalid",
+        "agent-isolation-invalid",
+        "agent-memory-invalid",
+        "agent-color-invalid",
+    ] {
+        assert!(
+            slugs.contains(&expected),
+            "missing {expected}: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn agent_validator_flags_unaddressable_name() {
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: My:Reviewer\ndescription: d\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new(".claude/agents/reviewer.md"));
+    assert!(findings.iter().any(|f| f.slug == "agent-name-shape"));
+}
+
+#[test]
+fn agent_validator_accepts_a_name_that_differs_from_the_filename() {
+    // The spec resolves an agent by its declared `name`, not by its path.
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: reviewer\ndescription: d\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new(".claude/agents/review/deep.md"));
+    assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+#[test]
+fn agent_validator_silent_on_unknown_keys_by_default() {
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: reviewer\ndescription: d\nfutureKey: value\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new(".claude/agents/reviewer.md"));
+    assert!(
+        findings.is_empty(),
+        "a stale key list must not fail a valid definition: {findings:?}"
+    );
+}
+
+#[test]
+fn output_style_validator_accepts_a_correct_style() {
+    let policy = OutputStylesPolicy {
+        reject_unknown_keys: true,
+    };
+    let v = OutputStyleValidator::new(&policy);
+    let md = "---\nname: Diagrams first\ndescription: Lead every explanation with a diagram\nkeep-coding-instructions: true\n---\n\nBody.\n";
+    let findings = v.validate_text(md, Path::new(".claude/output-styles/diagrams.md"));
+    assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+#[test]
+fn output_style_validator_flags_a_quoted_boolean() {
+    // YAML reads `"true"` as a string, Claude Code reads a non-boolean as the
+    // `false` default, and the engineering instructions vanish for the whole
+    // session with no error anywhere.
+    let policy = OutputStylesPolicy {
+        reject_unknown_keys: false,
+    };
+    let v = OutputStyleValidator::new(&policy);
+    let md = "---\nname: Coach\nkeep-coding-instructions: \"true\"\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new(".claude/output-styles/coach.md"));
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.slug == "output-style-keep-coding-instructions-invalid"),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn output_style_validator_accepts_a_style_without_a_name() {
+    // The spec falls back to the file name, so requiring `name` would flag a
+    // style that loads exactly as its author intended.
+    let policy = OutputStylesPolicy {
+        reject_unknown_keys: true,
+    };
+    let v = OutputStyleValidator::new(&policy);
+    let md = "---\ndescription: A style\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new(".claude/output-styles/terse.md"));
+    assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+#[test]
+fn rule_validator_treats_a_paths_key_with_no_globs_as_always_loaded() {
+    // `paths:` with no value, an empty list, and blank entries all carry zero
+    // globs. Claude Code has nothing to match, so the rule loads on every turn
+    // — reading key presence alone would exempt it from both the declaration
+    // requirement and the always-loaded budget.
+    let policy = RulesPolicy {
+        max_lines: 5,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec![],
+    };
+    let v = RuleValidator::new(&policy);
+    for frontmatter in ["paths:", "paths: []", "paths: [\"\", \"  \"]"] {
+        let md = format!("---\n{frontmatter}\n---\n{}", long_body(10));
+        let findings = v.validate_text(&md, Path::new("rule.md"));
+        let slugs: Vec<&str> = findings.iter().map(|f| f.slug.as_str()).collect();
+        assert!(
+            slugs.contains(&"rule-missing-paths-frontmatter"),
+            "`{frontmatter}` scopes nothing and must not read as path-scoped: {findings:?}"
+        );
+        assert!(
+            slugs.contains(&"rule-too-long"),
+            "`{frontmatter}` leaves the rule always-loaded, so the budget applies: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn rule_validator_flags_a_paths_value_that_is_not_globs() {
+    let policy = RulesPolicy {
+        max_lines: 200,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec![],
+    };
+    let v = RuleValidator::new(&policy);
+    let md = "---\npaths: 42\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new("rule.md"));
+    assert!(
+        findings.iter().any(|f| f.slug == "rule-paths-invalid"),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn rule_validator_covers_nested_rules() {
+    // The memory spec discovers `.claude/rules/**` recursively, so a rule in a
+    // subdirectory loads exactly like a top-level one and must be validated
+    // the same way.
+    use harness_core::validate::SurfaceValidator;
+    assert_eq!(
+        <RuleValidator as SurfaceValidator>::GLOB,
+        ".claude/rules/**/*.md"
+    );
+}
+
+#[test]
+fn rule_validator_flags_a_paths_glob_that_does_not_compile() {
+    // The memory spec: `photos [2024/**` "is invalid: it matches nothing".
+    // Unflagged, the rule never loads AND is exempted from the always-loaded
+    // budget on the strength of a pattern that scopes nothing.
+    let policy = RulesPolicy {
+        max_lines: 200,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec![],
+    };
+    let v = RuleValidator::new(&policy);
+    let md = "---\npaths: [\"photos [2024/**\"]\n---\nBody\n";
+    let findings = v.validate_text(md, Path::new("rule.md"));
+    assert!(
+        findings.iter().any(|f| f.slug == "rule-paths-invalid"),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn rule_validator_slug_distinguishes_rules_in_different_directories() {
+    // Discovery is recursive, so a bare file stem would let one entry exempt
+    // every same-named rule in the tree. These are two different rules.
+    let policy = RulesPolicy {
+        max_lines: 200,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec!["style".into()],
+    };
+    let v = RuleValidator::new(&policy);
+    let md = "# No frontmatter\n";
+
+    let top = v.validate_text(md, Path::new("/repo/.claude/rules/style.md"));
+    assert!(top.is_empty(), "the declared slug is exempt: {top:?}");
+
+    let nested = v.validate_text(md, Path::new("/repo/.claude/rules/vendor/style.md"));
+    assert!(
+        nested
+            .iter()
+            .any(|f| f.slug == "rule-missing-paths-frontmatter"),
+        "`vendor/style` is a different rule and was never declared: {nested:?}"
+    );
+
+    let policy = RulesPolicy {
+        max_lines: 200,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec!["vendor/style".into()],
+    };
+    let v = RuleValidator::new(&policy);
+    let declared = v.validate_text(md, Path::new("/repo/.claude/rules/vendor/style.md"));
+    assert!(
+        declared.is_empty(),
+        "the nested rule is declared by its path below the rules dir: {declared:?}"
+    );
 }

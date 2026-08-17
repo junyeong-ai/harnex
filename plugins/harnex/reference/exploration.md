@@ -141,6 +141,10 @@ the gate sequence and rule mechanism. Then apply ONE deterministic rule:
 never overwrite; on an unavoidable conflict, surface it for the operator rather
 than pick a side.** Produce additive artifacts only; never regenerate
 `settings.json` wholesale, the gate order, permissions, telemetry schema, or
-per-module CLAUDE.md. `audit` writes nothing — it emits a gap report
-(enforced-vs-advisory coverage, keep-soften-cut violations, spec drift such as
-a millisecond `timeout`).
+per-module CLAUDE.md. `audit` writes nothing; its report is assembled from two
+sources that must not be merged — `harness audit`'s findings, which are
+defects the binary can prove (spec drift, a hook naming a script that is not
+on disk, an edited managed region), and the coverage comparison the skill
+makes from `existing_harness`, which is an observation rather than a verdict
+because a guarantee may live outside the repo. SKILL.md § Mode: audit owns
+that split.
