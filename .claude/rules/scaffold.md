@@ -30,27 +30,57 @@ every hook while reporting a clean scaffold before this manifest existed.
 profile still receives. `Tier::Language` needs a detected stack. The split is
 what makes a partial harness expressible instead of an all-or-nothing refusal.
 
-Load-time validation rejects: a destination that is absolute, `~/`-rooted, or
-escapes with `..`; a template escaping the templates directory; `{lang}` in a
-foundation artifact (the tier must resolve with no language); `merge` into a
-non-JSON destination; an artifact that is both merged and managed; and any
-field outside the declared shape (Constitution V — every field defaults, so
-`manageed = true` would otherwise leave the artifact unguarded while reading
-as though it were covered).
+## Content kinds
 
-`{lang}` resolves only against an identifier (`[a-z0-9-]+`). Containment is
-checked at load time against the unsubstituted string, so a language carrying
-a separator would rewrite the shape that check approved; both resolvers are
-public, and a guarantee that holds only while every caller behaves is not one.
+`content.kind` decides three answers that must agree — how the artifact is
+emitted, how its presence is tested, what counts as drift — so it is one field
+rather than three flags. Independent booleans could also spell "merged and
+managed", a state that named nothing and had to be rejected at load.
+
+| kind | project copy | presence is | drift is |
+|---|---|---|---|
+| `copy` | byte-identical to the template | destination exists | a defect |
+| `seed` | the project's, from first write | destination exists | not asserted |
+| `managed` | sentinels bound harnex's region | destination exists | edits inside sentinels |
+| `merge` | one fragment among several | the fragment landed at `key` | not asserted |
+
+`merge` is the only kind whose destination is shared, which is why presence is
+containment of its fragment rather than the file existing: a foundation-only
+scaffold otherwise reports its unmerged language rows present, because the
+foundation tier wrote the file they name.
+
+`seed` exists because a project's governance is its own. Holding it to the
+template would make tailoring — the intended use — read as drift.
+
+## Operability
+
+A scaffold must be runnable, not merely well-formed. `harness.toml` is a
+foundation artifact for that reason: without it the generated `governance.md`
+sends its reader to `harness lifecycle observe|candidates|retire` and
+`harness telemetry report`, and every one answers CONFIG_NOT_FOUND.
+`assert_scaffold_is_operable` holds the emitted fixture to it, because auditing
+artifacts can never catch a missing artifact that was the one making the rest
+reachable.
 
 ## Adding an artifact
 
-1. Add the `[[artifact]]` block. `merge` = contributes to a JSON key path;
-   absent = copied verbatim. `executable` = written 0o755. `managed` = carries
-   sentinels, so the managed-region auditor compares it to its template.
+1. Add the `[[artifact]]` block with its `content.kind`. `executable` = written
+   0o755.
 2. Nothing else changes for a per-language artifact: `{lang}` resolves against
    the `<lang>-dev` members of `PermissionProfile::ALL`.
 3. `tests/scaffold_manifest.rs` holds the relations both ways — every named
    template exists for every language, every per-language template is claimed,
    every non-merge destination is claimed once, and the foundation tier wires
    only foundation artifacts.
+
+Load-time validation rejects: a destination that is absolute, tilde-rooted, or
+escapes with `..`; a template escaping the templates directory; `{lang}` in a
+foundation artifact (the tier must resolve with no language); a `managed`
+artifact on the language tier; an empty merge key path; a merge into a non-JSON
+destination; and any field outside the declared shape (Constitution V — a
+misspelled field would otherwise leave an artifact silently weaker).
+
+`{lang}` resolves only against an identifier (`[a-z0-9-]+`). Containment is
+checked at load time against the unsubstituted string, so a language carrying
+a separator would rewrite the shape that check approved; both resolvers are
+public, and a guarantee that holds only while every caller behaves is not one.

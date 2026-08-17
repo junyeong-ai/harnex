@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use harness_core::audit::{AuditCheckKind, ProjectAuditor};
 use harness_core::config::{RulesPolicy, SkillsPolicy};
 use harness_core::envelope::Finding;
-use harness_core::scaffold::{ScaffoldManifest, Tier};
+use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
 use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
 use tempfile::TempDir;
 
@@ -72,14 +72,14 @@ fn emit_tier(
         };
         let src = templates.join(&template);
         let dst = proj_root.join(&destination);
-        match &artifact.merge {
-            Some(key_path) => {
+        match &artifact.content {
+            Content::Merge { key } => {
                 let fragment: serde_json::Value =
                     serde_json::from_str(&fs::read_to_string(&src).unwrap())
                         .unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
-                merge_at(settings, key_path, fragment);
+                merge_at(settings, key, fragment);
             }
-            None => {
+            Content::Copy | Content::Seed | Content::Managed => {
                 copy_file(&src, &dst);
                 if artifact.executable {
                     set_executable(&dst);
@@ -203,6 +203,7 @@ fn run_scaffold_validation(lang: &str) {
         .run()
         .unwrap();
     assert_no_findings(lang, "audit", &audit_outcome.findings);
+    assert_scaffold_is_operable(lang, proj_root);
     // Every audit kind must have actually run — a silent skip means the
     // meta-test checks nothing. Sourced from the enum SSoT so adding a
     // variant forces this assertion to cover it.
@@ -284,6 +285,37 @@ fn glob_under(dir: &Path, pattern: &str) -> Vec<PathBuf> {
 /// Any advisory (Minor / Info) is a template / oracle mismatch this meta-test
 /// is built to catch. If a finding is intentional, encode it as an explicit
 /// allowlist constant — silent severity downgrades defeat the test's purpose.
+/// A scaffold must be runnable, not merely well-formed.
+///
+/// Zero findings says the harness is spec-correct; it says nothing about
+/// whether the operator can use it. The generated `governance.md` sends its
+/// reader to `harness lifecycle observe|candidates|retire` and
+/// `harness telemetry report`, and every one of those answered CONFIG_NOT_FOUND
+/// on a fresh scaffold — the manifest declared no `harness.toml` at all, so the
+/// loop those rules describe was documented and inoperable. Auditing the
+/// artifacts could never catch that, because the missing artifact was the one
+/// that made the rest reachable.
+fn assert_scaffold_is_operable(lang: &str, proj_root: &Path) {
+    // The exact file, not an upward walk: a temp directory's ancestors are
+    // not this project, and finding someone else's config would pass the
+    // assertion for a scaffold that carries none.
+    let config = harness_core::config::Config::load_from(&proj_root.join("harness.toml"))
+        .unwrap_or_else(|e| {
+            panic!("[{lang}] a scaffolded project must carry a loadable harness.toml: {e}")
+        });
+    for (surface, present) in [
+        ("validate", config.validate.is_some()),
+        ("lifecycle", config.lifecycle.is_some()),
+        ("telemetry", config.telemetry.is_some()),
+    ] {
+        assert!(
+            present,
+            "[{lang}] the scaffold's harness.toml declares no [{surface}], so the oracle \
+             surface the foundation rules send the operator to is unreachable"
+        );
+    }
+}
+
 fn assert_no_findings(lang: &str, ctx: &str, findings: &[Finding]) {
     assert!(
         findings.is_empty(),
@@ -332,6 +364,9 @@ fn foundation_only_scaffold_is_coherent_without_a_language() {
         .run()
         .unwrap();
     assert_no_findings("foundation", "audit", &outcome.findings);
+    // A stack with no profile still gets a runnable harness: `harness.toml`
+    // is foundation-tier precisely so the loop does not depend on a language.
+    assert_scaffold_is_operable("foundation", proj_root);
 
     // Coverage reports the language tier as absent — the fact the audit skill
     // turns into "this stack has no profile", never a defect the binary claims.

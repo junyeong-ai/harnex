@@ -33,7 +33,7 @@ use std::path::Path;
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
-use crate::scaffold::ScaffoldManifest;
+use crate::scaffold::{Content, ScaffoldManifest};
 use crate::sentinel;
 
 /// Aggregated outcome of a managed-region audit pass.
@@ -60,7 +60,7 @@ impl<'a> ManagedRegionAuditor<'a> {
 
         let mut findings = Vec::new();
         let mut files_scanned: usize = 0;
-        for artifact in manifest.managed() {
+        for artifact in manifest.with_content(&Content::Managed) {
             // A managed artifact is foundation-tier by construction (the
             // manifest refuses `{lang}` there), so both paths resolve without
             // a detected stack.
@@ -207,13 +207,13 @@ outside
 tier = "foundation"
 template = "common/CLAUDE.md"
 destination = "CLAUDE.md"
-managed = true
+content = { kind = "managed" }
 
 [[artifact]]
 tier = "foundation"
 template = "common/rules/constitution.md"
 destination = ".claude/rules/constitution.md"
-managed = true
+content = { kind = "managed" }
 "#,
         );
     }
@@ -347,7 +347,7 @@ managed = true
 tier = "foundation"
 template = "common/CLAUDE.md"
 destination = "../outside.md"
-managed = true
+content = { kind = "managed" }
 "#,
         );
         let err = ManagedRegionAuditor::new(plugin.path())
@@ -368,7 +368,7 @@ managed = true
 tier = "foundation"
 template = "common/does-not-exist.md"
 destination = "x.md"
-managed = true
+content = { kind = "managed" }
 "#,
         );
         let err = ManagedRegionAuditor::new(plugin.path())

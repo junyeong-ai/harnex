@@ -58,7 +58,7 @@ use serde::Serialize;
 
 use crate::envelope::{Finding, SkippedRule};
 use crate::error::Result;
-use crate::scaffold::ScaffoldManifest;
+use crate::scaffold::{Artifact, Content, ScaffoldManifest};
 
 use hook_wiring::HookWiringAuditor;
 use managed_region::ManagedRegionAuditor;
@@ -259,12 +259,21 @@ impl<'a> ProjectAuditor<'a> {
             return Ok(Vec::new());
         };
         let manifest = ScaffoldManifest::load(&plugin_root.join("templates"))?;
+        let templates = plugin_root.join("templates");
         let mut entries = Vec::new();
         for artifact in manifest.artifacts() {
-            let present = artifact
-                .resolved_destinations()
-                .iter()
-                .any(|d| self.working_dir.join(d).exists());
+            let present = match &artifact.content {
+                // Several artifacts share one destination, so the file
+                // existing says nothing about which of them contributed. The
+                // fragment landing at its key path is the only exact answer —
+                // a foundation-only scaffold otherwise reports its unmerged
+                // language rows present because the foundation wrote the file.
+                Content::Merge { key } => self.fragment_landed(&templates, artifact, key),
+                Content::Copy | Content::Seed | Content::Managed => artifact
+                    .resolved_destinations()
+                    .iter()
+                    .any(|d| self.working_dir.join(d).exists()),
+            };
             entries.push(CoverageEntry {
                 tier: artifact.tier.as_str().to_string(),
                 destination: artifact.destination.clone(),
@@ -272,6 +281,105 @@ impl<'a> ProjectAuditor<'a> {
             });
         }
         Ok(entries)
+    }
+
+    /// Whether this fragment's own contribution is in the destination.
+    ///
+    /// Containment rather than equality: the destination is shared, and an
+    /// operator's own entries beside harnex's are the documented arrangement,
+    /// not drift. Unreadable or unparseable either side answers "not landed" —
+    /// coverage is a fact about what is there, and nothing here is a finding.
+    fn fragment_landed(&self, templates: &Path, artifact: &Artifact, key: &str) -> bool {
+        artifact.resolved_templates().iter().any(|template| {
+            let Ok(raw) = std::fs::read_to_string(templates.join(template)) else {
+                return false;
+            };
+            let Ok(fragment) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                return false;
+            };
+            artifact.resolved_destinations().iter().any(|d| {
+                std::fs::read_to_string(self.working_dir.join(d))
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                    .and_then(|doc| value_at(&doc, key).cloned())
+                    .is_some_and(|landed| contains_value(&landed, &fragment))
+            })
+        })
+    }
+}
+
+/// The value at a dotted key path, or `None` if any segment is absent.
+fn value_at<'a>(doc: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
+    key.split('.').try_fold(doc, |node, seg| node.get(seg))
+}
+
+/// Whether `whole` carries everything `part` declares.
+///
+/// Objects match key-wise so a shared map holds every contributor; arrays
+/// match element-wise and unordered, because a merge appends and the order two
+/// fragments land in is not a property either of them declares.
+fn contains_value(whole: &serde_json::Value, part: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match (whole, part) {
+        (Value::Object(w), Value::Object(p)) => p
+            .iter()
+            .all(|(k, v)| w.get(k).is_some_and(|got| contains_value(got, v))),
+        (Value::Array(w), Value::Array(p)) => {
+            p.iter().all(|v| w.iter().any(|got| contains_value(got, v)))
+        }
+        _ => whole == part,
+    }
+}
+
+#[cfg(test)]
+mod containment_tests {
+    use super::{contains_value, value_at};
+    use serde_json::json;
+
+    #[test]
+    fn a_fragment_is_found_beside_another_contributors_entries() {
+        // Two tiers merge into `hooks`, and an operator's own entries sit
+        // beside both. Containment is the question; equality would report the
+        // foundation's contribution missing the moment a language tier landed.
+        let settings = json!({"hooks": {
+            "SessionStart": [{"matcher": "startup"}],
+            "Stop": [{}],
+            "PostToolUse": [{"matcher": "Edit|Write"}],
+            "PreToolUse": [{"matcher": "operator's own"}],
+        }});
+        let foundation = json!({"SessionStart": [{"matcher": "startup"}], "Stop": [{}]});
+        let language = json!({"PostToolUse": [{"matcher": "Edit|Write"}]});
+        let landed = value_at(&settings, "hooks").unwrap();
+        assert!(contains_value(landed, &foundation));
+        assert!(contains_value(landed, &language));
+    }
+
+    #[test]
+    fn a_fragment_that_never_merged_is_not_found() {
+        // The foundation-only case. The destination exists because the
+        // foundation wrote it, which is exactly why its existence cannot
+        // answer for the language tier.
+        let settings = json!({"hooks": {"SessionStart": [{"matcher": "startup"}]}});
+        let language = json!({"PostToolUse": [{"matcher": "Edit|Write"}]});
+        let landed = value_at(&settings, "hooks").unwrap();
+        assert!(!contains_value(landed, &language));
+    }
+
+    #[test]
+    fn an_array_matches_element_wise_and_unordered() {
+        // A merge appends, and the order two fragments land in is a property
+        // neither of them declares.
+        let whole = json!(["Bash(git commit *)", "Read", "Bash(uv *)"]);
+        assert!(contains_value(&whole, &json!(["Bash(uv *)", "Read"])));
+        assert!(!contains_value(&whole, &json!(["Bash(poe *)"])));
+    }
+
+    #[test]
+    fn an_absent_key_path_is_absent_rather_than_empty() {
+        let doc = json!({"permissions": {"deny": []}});
+        assert!(value_at(&doc, "permissions.deny").is_some());
+        assert!(value_at(&doc, "permissions.allow").is_none());
+        assert!(value_at(&doc, "hooks.SessionStart").is_none());
     }
 }
 

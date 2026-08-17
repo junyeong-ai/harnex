@@ -1,11 +1,12 @@
 //! harnex runs the harness it ships.
 //!
 //! Adopting a scaffold artifact into this repo makes it the same fact in two
-//! places, and the manifest already says which artifacts have no project-owned
-//! region: a `merge` fragment contributes one key to a shared JSON file, and a
-//! `managed` artifact owns everything outside its sentinels, so neither is
-//! comparable whole. Everything else is a byte copy and is held to its
-//! template here (Constitution IX).
+//! places, and the manifest already says which artifacts are held to their
+//! template: `content.kind = "copy"` is machinery whose template is the only
+//! statement of what it does. The other kinds are comparable by a different
+//! rule or not at all — a `merge` fragment contributes one key to a shared
+//! file, a `managed` artifact owns everything outside its sentinels, and a
+//! `seed` is handed over to the project outright (Constitution IX).
 //!
 //! Not hypothetical. The commit that adopted the foundation hooks left
 //! `hooks/post-format.sh` six comment lines behind its template, and every
@@ -21,7 +22,7 @@
 use std::path::{Path, PathBuf};
 
 use harness_core::policy::PermissionProfile;
-use harness_core::scaffold::{Artifact, ScaffoldManifest};
+use harness_core::scaffold::{Artifact, Content, ScaffoldManifest};
 
 /// Scaffold destinations this repo authored itself rather than adopting.
 ///
@@ -67,7 +68,7 @@ fn every_adopted_scaffold_artifact_matches_its_template() {
 
     let mut compared = 0usize;
     for artifact in manifest.artifacts() {
-        if artifact.merge.is_some() || artifact.managed {
+        if artifact.content != Content::Copy {
             continue;
         }
         let langs = candidate_languages(artifact);
