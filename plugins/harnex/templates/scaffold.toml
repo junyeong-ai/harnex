@@ -68,6 +68,12 @@ destination = ".claude/rules/constitution.md"
 [[artifact]]
 tier = "foundation"
 content = { kind = "seed" }
+template = "common/rules/agent-conduct.md"
+destination = ".claude/rules/agent-conduct.md"
+
+[[artifact]]
+tier = "foundation"
+content = { kind = "seed" }
 template = "common/rules/governance.md"
 destination = ".claude/rules/governance.md"
 

@@ -32,5 +32,5 @@ auth flow").
 | Medium | One human reviewer |
 | High | Two reviewers + explicit test plan |
 
-<!-- Customize: add project-specific sections (e.g., "Deploy steps",
+<!-- harnex-fill: add project-specific sections (e.g., "Deploy steps",
      "Database migration", "Feature flag") as your team needs them. -->

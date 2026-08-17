@@ -40,5 +40,5 @@ Common to both:
 - **No zombie deprecations**: a marker without a date is invalid. Every
   deprecation has a planned end.
 
-<!-- Customize: keep the regime matching your consumer surface; adjust the
+<!-- harnex-fill: keep the regime matching your consumer surface; adjust the
      marker format and severity to your team's tolerance. -->

@@ -15,36 +15,36 @@ practice.
 
 ## Errors
 
-- Observed: <exception discipline in use — checked exceptions, a sealed
-  result type, Kotlin `Result`, a library such as Arrow or Vavr>.
+- <!-- harnex-fill: exception discipline in use — checked exceptions, a sealed
+  result type, Kotlin `Result`, a library such as Arrow or Vavr -->
 - Common default: unchecked exceptions carry a message naming the input that
   failed; a caller that can act on the failure gets a typed exception rather
   than a boolean or a null return.
 
 ## Nullability
 
-- Observed: <how absence is expressed — `Optional`, `@Nullable`/`@NonNull`
-  annotations, Kotlin's own null types, none>.
+- <!-- harnex-fill: how absence is expressed — `Optional`, `@Nullable`/`@NonNull`
+  annotations, Kotlin's own null types, none -->
 - Common default: absence is expressed in the type, not by a documented
   `null`. In mixed Java/Kotlin code, annotate the Java side so Kotlin sees a
   platform type as nullable rather than inferring a non-null it cannot hold.
 
 ## Testing
 
-- Observed: <framework and assertion library — JUnit 5, JUnit 4, Kotest,
-  Spock; AssertJ, Truth, Hamcrest, kotlin.test>.
+- <!-- harnex-fill: framework and assertion library — JUnit 5, JUnit 4, Kotest,
+  Spock; AssertJ, Truth, Hamcrest, kotlin.test -->
 - Common default: one behaviour per test, named for the behaviour rather
   than the method under test. Fixtures build through the project's existing
   builder or factory rather than a new one per test class.
 
 ## Dependencies
 
-- Observed: <how versions are declared — Gradle version catalog
+- <!-- harnex-fill: how versions are declared — Gradle version catalog
   (`gradle/libs.versions.toml`), a BOM / dependency-management block,
-  inline coordinates>.
+  inline coordinates -->
 - Common default: versions are declared in one place and referenced by
   alias; a module never pins a version its aggregator already fixes.
 
-<!-- Scaffold: detect the real conventions from existing code and replace the
-     "Observed:" lines. If a section has no signal yet, keep the default and
-     note "none observed yet". -->
+<!-- Replace every `harnex-fill` marker with what this codebase actually
+     does. A section with no signal yet takes an explicit "none observed yet"
+     plus the default that applies until one appears. -->
