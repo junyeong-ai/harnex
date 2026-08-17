@@ -242,7 +242,12 @@ operator to re-phrase using a verb from this list.
     file types the project has.
   - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
     If found, adapt template structure to match existing layout instead of
-    overwriting. Map CI stages to gates if CI config exists.
+    overwriting. Map CI stages to gates if CI config exists. `specs/_template/`
+    holds one file per artifact-producing phase, so a pipeline customized in
+    the rule is customized there in the same install — a phase added gains its
+    template file, a phase dropped loses it. The `<...>` placeholders inside
+    those files are filled per spec by whoever starts one and are not
+    install-time fill markers.
   - `observability` — detect logging/tracing framework (structlog, winston,
     tracing, OpenTelemetry SDK). Pre-fill namespace prefix from the project
     name. Adapt span naming examples to the detected framework.

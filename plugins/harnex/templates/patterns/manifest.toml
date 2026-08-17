@@ -27,6 +27,9 @@ slug = "spec-workflow"
 analyze = ["existing specs/ or docs/adr/ layout", "CI stages → gates"]
 files = [
   { template = "spec-workflow.md", destination = ".claude/rules/spec-workflow.md" },
+  { template = "specs/spec.md", destination = "specs/_template/spec.md" },
+  { template = "specs/plan.md", destination = "specs/_template/plan.md" },
+  { template = "specs/wrapup.md", destination = "specs/_template/wrapup.md" },
 ]
 
 [[pattern]]
