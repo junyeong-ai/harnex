@@ -1,0 +1,27 @@
+# harnex, checked by the oracle harnex ships.
+#
+# Only the validators that have a subject here are enabled: this repo declares
+# rules and settings, and carries no skills, sub-agents, or output styles yet —
+# their sections stay on so the first one added is checked from its first
+# commit rather than whenever someone remembers to widen this file.
+#
+# The feature sections (evidence, telemetry, policy, codegen, lifecycle) are
+# absent because this repo runs none of those loops on itself. `harness check`
+# reports each as skipped with its reason, which is the honest answer; enabling
+# a section to look thorough would assert a subject that is not there.
+
+[meta]
+harnex_version = ">=0.1, <0.2"
+
+[validate.rules]
+# The Claude Code memory budget applies to what loads every turn. Every other
+# rule here is path-scoped and costs context only on the files it governs, so
+# `max_scoped_lines` stays unset — a cohesive long rule is not a defect.
+max_lines = 200
+always_loaded_slugs = ["constitution"]
+
+[validate.skills]
+
+[validate.agents]
+
+[validate.output_styles]
