@@ -52,8 +52,11 @@ so it clears a HIGHER bar: the four above PLUS
 
 ## Surfacing candidates (the loop)
 
-With the oracle adopted, run these periodically (e.g. at a retro) — they are
-deterministic, never inventing text:
+`/harness-curate` runs this whole section: it drives the commands below, brings
+each candidate to the promotion gate above, lands the decision, and records it.
+Reach for it rather than working the steps by hand.
+
+The commands are deterministic and never invent text:
 
 - `harness lifecycle candidates` — observations that crossed the configured
   instance + age thresholds.

@@ -269,17 +269,20 @@ fn run_scaffold_validation(lang: &str) {
         );
     }
 
-    // --- Rule validation, under the policy the scaffold itself ships ---
-    // Restating the policy here would make this fixture pass against a
+    // --- Validation, under the policy the scaffold itself ships ---
+    // Restating a policy here would make this fixture pass against a
     // configuration no scaffolded project has: an always-loaded rule the
     // manifest emits and `harness.toml` never declares would be a finding in
     // every real project and green in this test.
     let scaffolded = harness_core::config::Config::load_from(&proj_root.join("harness.toml"))
         .unwrap_or_else(|e| panic!("[{lang}] scaffolded harness.toml: {e}"));
-    let rule_policy = scaffolded
+    let declared = scaffolded
         .validate
         .as_ref()
-        .and_then(|v| v.rules.clone())
+        .unwrap_or_else(|| panic!("[{lang}] the scaffold's harness.toml declares no validators"));
+    let rule_policy = declared
+        .rules
+        .clone()
         .unwrap_or_else(|| panic!("[{lang}] the scaffold's harness.toml declares no rule policy"));
     let rv = RuleValidator::new(&rule_policy);
     for rule_path in glob_under(&proj_root.join(".claude/rules"), "*.md") {
@@ -291,23 +294,49 @@ fn run_scaffold_validation(lang: &str) {
         );
     }
 
+    // --- Skill validation: every skill the manifest emitted ---
+    // Discovered from the tree rather than named here, so a skill added to
+    // `scaffold.toml` is validated without an edit, and one dropped fails the
+    // emptiness check below instead of quietly reducing coverage to zero. The
+    // policy comes from the same scaffolded config for the same reason as the
+    // rules above.
+    let skill_policy = declared
+        .skills
+        .clone()
+        .unwrap_or_else(|| panic!("[{lang}] the scaffold's harness.toml declares no skill policy"));
+    let emitted = glob_under(&proj_root.join(".claude/skills"), "*/SKILL.md");
+    assert!(
+        !emitted.is_empty(),
+        "[{lang}] the scaffold emitted no skill; `[validate.skills]` would have no subject and \
+         the loop `governance.md` describes would have no entry point"
+    );
+    for skill in &emitted {
+        let findings = SkillValidator::new(&skill_policy)
+            .validate_file(skill)
+            .unwrap();
+        assert_no_findings(
+            lang,
+            &format!("validate.skills({})", skill.display()),
+            &findings,
+        );
+    }
+
     // --- Skill validation: the harnex SKILL.md itself must validate ---
     // The skill ships with the plugin; we copy it into the project tree's
     // canonical location (mirroring how an installed plugin's skill would be
     // discovered) and run SkillValidator. This exercises the full closed-set
-    // surface against the plugin's own contract.
+    // surface against the plugin's own contract. Its description names the
+    // modes it drives, so the side-effect heuristic is off for this one file.
     let plugin_skill =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/SKILL.md");
     if plugin_skill.exists() {
         let dst = proj_root.join(".claude/skills/harnex/SKILL.md");
         copy_file(&plugin_skill, &dst);
-        let skill_policy = SkillsPolicy {
-            max_skill_md_lines: 500,
-            max_description_chars: 1536,
-            reject_unknown_keys: true,
+        let lenient = SkillsPolicy {
             flag_side_effect_verbs: false,
+            ..skill_policy.clone()
         };
-        let sv = SkillValidator::new(&skill_policy);
+        let sv = SkillValidator::new(&lenient);
         let findings = sv.validate_file(&dst).unwrap();
         assert_no_findings(lang, "validate.skills(harnex SKILL.md)", &findings);
     }
@@ -319,12 +348,6 @@ fn run_scaffold_validation(lang: &str) {
     let skill_template = plugin_templates().join("common/skill-template.md");
     let dst = proj_root.join(".claude/skills/example-skill/SKILL.md");
     copy_file(&skill_template, &dst);
-    let skill_policy = SkillsPolicy {
-        max_skill_md_lines: 500,
-        max_description_chars: 1536,
-        reject_unknown_keys: true,
-        flag_side_effect_verbs: true,
-    };
     let findings = SkillValidator::new(&skill_policy)
         .validate_file(&dst)
         .unwrap();
