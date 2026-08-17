@@ -89,3 +89,10 @@ jobs:
         run: |
           cargo run -p harness-cli --quiet --locked -- \
             audit --plugin-root plugins/harnex
+
+      # The oracle over its own surfaces. Without this the repo declares
+      # rules and settings that its own validators have never read, and a
+      # rule shipped without `paths:` costs every session its whole body
+      # with nothing to say so.
+      - name: run harness check
+        run: cargo run -p harness-cli --quiet --locked -- check
