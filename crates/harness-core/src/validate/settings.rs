@@ -440,16 +440,29 @@ impl SettingsValidator {
     /// Hold a `SessionStart` matcher's alternatives to the documented source
     /// set.
     ///
-    /// Only a matcher whose every alternative is a plain word is judged. A
-    /// matcher is a JS regex, so `.*` or `st.*` matches sources this set can
-    /// never enumerate, and testing membership on it would flag a working
-    /// configuration — the same restriction the MCP-matcher audit makes, for
-    /// the same reason.
+    /// A matcher carrying no regex metacharacter is judged; one that does is
+    /// left alone. `.*` or `st.*` matches sources this set cannot enumerate,
+    /// and testing membership on it would flag a working configuration.
     ///
-    /// A misspelled source is silent: the alternative matches no session and
-    /// the hook simply never fires for it, which reads as the hook working
-    /// because the other alternatives still do.
+    /// Everything else is a literal, whatever characters it holds. A space, a
+    /// hyphen, a comma and an underscore have no regex meaning, so
+    /// `startup resume` and `startup-resume` are literal strings that equal no
+    /// session source under any matching semantics — they fire for nothing,
+    /// which is precisely the defect this check exists to name. Trimming the
+    /// alternatives, or bailing out on any non-alphanumeric character, erased
+    /// exactly those cases while claiming to catch them.
+    ///
+    /// A dead alternative is otherwise silent: it matches no session and the
+    /// hook simply never fires for it, which reads as the hook working because
+    /// the other alternatives still do.
     fn session_start_sources(&self, entries: &Value, path: &Path) -> Vec<Finding> {
+        /// Characters that give a matcher regex power. `|` is absent: it is the
+        /// alternation this check reads, and the spec's own exact-string form
+        /// is a `|`-separated list.
+        const REGEX_METACHARACTERS: &[char] = &[
+            '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '\\',
+        ];
+
         let mut findings = Vec::new();
         let Some(entries) = entries.as_array() else {
             return findings;
@@ -458,15 +471,11 @@ impl SettingsValidator {
             let Some(matcher) = entry.get("matcher").and_then(Value::as_str) else {
                 continue;
             };
-            let alternatives: Vec<&str> = matcher.split('|').map(str::trim).collect();
-            if alternatives
-                .iter()
-                .any(|a| a.is_empty() || !a.chars().all(|c| c.is_ascii_alphanumeric()))
-            {
+            if matcher.contains(REGEX_METACHARACTERS) {
                 continue;
             }
-            for unknown in alternatives
-                .iter()
+            for unknown in matcher
+                .split('|')
                 .filter(|a| !KNOWN_SESSION_START_SOURCES.contains(a))
             {
                 findings.push(Finding {

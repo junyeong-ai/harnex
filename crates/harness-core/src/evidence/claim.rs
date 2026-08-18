@@ -47,25 +47,26 @@ static CONTEXT7: LazyLock<Regex> =
 
 static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expect("MEMORY regex"));
 
-// A backtick-wrapped project-relative path with a line: `some/where.ext:42`.
+// `[file: path/to/thing.rs:42]` — an internal claim, marked like every other.
 //
-// A directory separator is required, not incidental. `name.ext:digits` is also
-// the shape of a host and port, so `api.example.com:8080` or `db.internal:5432`
-// — ordinary things for a deployment or integration rule to name — would parse
-// as claims and fail Blocker against a file that was never meant to exist. No
-// extension test separates the two: `.sh`, `.rs`, `.io` and `.dev` are file
-// extensions and top-level domains both.
+// The line is optional: `[file: pyproject.toml]` asserts the file, which is
+// what a rule naming a config section as its owner needs.
 //
-// The cost is that a repo-root file must be written `./harness.toml:1` to be
-// cited with a line. That is the rarer form — a root manifest is usually cited
-// whole, which was never a claim — and it is a spelling rather than a
-// limitation.
+// Marked rather than inferred, because inference here has no floor. The shape
+// of a file and a line is also the shape of a host and a port, and no test
+// separates them: `.sh`, `.rs`, `.io` and `.dev` are file extensions and
+// top-level domains both. Requiring a directory separator excluded
+// `api.example.com:8080` and left `imagePullSecrets/registry.io:5000`; the next
+// tightening would leave the one after that. Each is ordinary prose in a
+// deployment rule, and each failed Blocker in a gate that is on by default.
 //
-// Absolute paths stay excluded: the first segment cannot be empty, so
-// `/etc/passwd:1` never matches.
-static FILE_LINE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"`((?:[A-Za-z0-9_.\-]+/)+[A-Za-z0-9_.\-]*\.[A-Za-z0-9]{1,8}):(\d+)`")
-        .expect("FILE_LINE regex")
+// The other three provenances were always marked (`[fetched: …]`,
+// `[context7: …]`, `[memory]`). This one being the exception is what put a
+// pattern-match over prose in a blocking tier, which `keep-soften-cut` refuses.
+// A marker also tells a reader which references the gate checks, where a bare
+// backtick path says nothing.
+static FILE_CLAIM: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[file:\s*([^\]\s:]+)(?::(\d+))?\s*\]").expect("FILE_CLAIM regex")
 });
 
 /// Parse every recognised claim out of `markdown`. Order within a line is
@@ -76,18 +77,33 @@ static FILE_LINE: LazyLock<Regex> = LazyLock::new(|| {
 /// the toolkit should verify.
 pub fn parse_claims(markdown: &str) -> Vec<Claim> {
     let mut out = Vec::new();
-    let mut in_fence = false;
+    let mut in_fence: Option<(char, usize)> = None;
     for (idx, line) in markdown.lines().enumerate() {
         let line_no = (idx as u32) + 1;
 
-        // Fenced code block delimiter (``` or ~~~ at the start of a trimmed line).
-        // Toggle fence state and skip the delimiter line itself.
+        // Fence delimiters, per CommonMark: a closing fence must be at least
+        // as long as the one that opened it. Toggling on any run of three
+        // meant a four-backtick block quoting three-backtick examples — how a
+        // rule about writing rules is spelled — closed itself at the first
+        // inner fence and read the rest of the block as prose.
         let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            in_fence = !in_fence;
+        let run = |c: char| trimmed.chars().take_while(|&x| x == c).count();
+        let fence = [('`', run('`')), ('~', run('~'))]
+            .into_iter()
+            .find(|&(_, len)| len >= 3);
+        if let Some((char, len)) = fence {
+            match in_fence {
+                Some((open_char, open_len)) if char == open_char && len >= open_len => {
+                    in_fence = None;
+                }
+                Some(_) => {}
+                None => in_fence = Some((char, len)),
+            }
             continue;
         }
-        if in_fence {
+        // A four-space indent is a code block too, and markdown does not
+        // require a fence for one.
+        if in_fence.is_some() || line.starts_with("    ") || line.starts_with('\t') {
             continue;
         }
 
@@ -123,18 +139,18 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             });
         }
 
-        for cap in FILE_LINE.captures_iter(line) {
+        for cap in FILE_CLAIM.captures_iter(line) {
             out.push(Claim {
                 raw: cap[0].to_string(),
                 provenance: Some("internal".to_string()),
                 kind: ClaimKind::FilePathLine {
                     path: cap[1].to_string(),
-                    // The regex guarantees `cap[2]` is all digits, so the
+                    // The regex guarantees the group is all digits, so the
                     // only parse failure is OVERFLOW of u32 — a line number
                     // far beyond any file. Map it to u32::MAX so the verifier
                     // reports it as out-of-range, never silently as "no line
                     // to check" (which would let a bogus claim pass).
-                    line: Some(cap[2].parse().unwrap_or(u32::MAX)),
+                    line: cap.get(2).map(|m| m.as_str().parse().unwrap_or(u32::MAX)),
                 },
                 line: line_no,
             });
@@ -149,43 +165,40 @@ mod tests {
 
     #[test]
     fn a_host_and_port_is_not_a_file_claim() {
-        // `name.ext:digits` is also how a host and port are written, and a
-        // deployment or integration rule names them routinely. Reading one as
-        // a claim fails Blocker against a file nobody meant to exist — the
-        // worst outcome available to a check that is on by default.
+        // `name.ext:digits` is also how a host and port are written, with or
+        // without a directory-looking prefix, and a deployment rule names them
+        // routinely. Reading one as a claim fails Blocker against a file
+        // nobody meant to exist — the worst outcome available to a check that
+        // is on by default. A marker is what removes the class rather than
+        // narrowing it: nothing here is a claim.
         for md in [
             "The gateway is at `api.example.com:8080`.",
             "Point it at `db.internal:5432`.",
-            "Registry `ghcr.io:443` needs auth.",
+            "Pull from `imagePullSecrets/registry.io:5000`.",
+            "Route via `api/gateway.io:8443`.",
+            "Cache at `cache/redis.internal:6379`.",
             "Fetch `https://api.example.com:8080/v1` for the payload.",
+            "A plain backtick path `src/lib.rs:42` is prose, not a claim.",
         ] {
             assert!(
                 parse_claims(md).is_empty(),
-                "host:port parsed as a file claim: {md}"
+                "prose parsed as a file claim: {md}"
             );
         }
     }
 
     #[test]
-    fn a_repo_root_file_is_cited_with_an_explicit_relative_prefix() {
-        // The separator requirement is what excludes a host and port, so a
-        // root-level file carries `./` to be cited with a line.
-        assert!(parse_claims("See `harness.toml:1`.").is_empty());
-        match &parse_claims("See `./harness.toml:1`.")[0].kind {
+    fn a_file_claim_carries_an_optional_line() {
+        // A rule naming a config section as its owner asserts the file; one
+        // naming an item asserts the line too.
+        match &parse_claims("Owned by [file: pyproject.toml].")[0].kind {
             ClaimKind::FilePathLine { path, line } => {
-                assert_eq!(path, "./harness.toml");
-                assert_eq!(*line, Some(1));
+                assert_eq!(path, "pyproject.toml");
+                assert_eq!(*line, None);
             }
             _ => panic!("expected FilePathLine"),
         }
-    }
-
-    #[test]
-    fn extracts_file_path_line() {
-        let md = "See `src/lib.rs:42` for context.";
-        let claims = parse_claims(md);
-        assert_eq!(claims.len(), 1);
-        match &claims[0].kind {
+        match &parse_claims("See [file: src/lib.rs:42] for context.")[0].kind {
             ClaimKind::FilePathLine { path, line } => {
                 assert_eq!(path, "src/lib.rs");
                 assert_eq!(*line, Some(42));
@@ -227,23 +240,27 @@ mod tests {
 
     #[test]
     fn line_numbers_are_one_indexed() {
-        let md = "intro line\n\n`src/lib.rs:10` is on line 3.";
+        let md = "intro line\n\n[file: src/lib.rs:10] is on line 3.";
         let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].line, 3);
     }
 
     #[test]
-    fn skips_backtick_paths_inside_fenced_code_blocks() {
+    fn skips_claims_inside_code_blocks_however_they_are_written() {
         let md = "\
-Inline `src/real.rs:5` is a claim.
+Inline [file: src/real.rs:5] is a claim.
 
+````markdown
+Quoting a rule that itself opens a fence:
 ```rust
-// Example code, not a claim:
-let x = `src/inside.rs:99`;
+let x = [file: src/inside.rs:99];
 ```
+````
 
-Back outside: `src/after.rs:7`.
+    An indented block also holds [file: src/indented.rs:1].
+
+Back outside: [file: src/after.rs:7].
 ";
         let claims = parse_claims(md);
         let paths: Vec<&str> = claims
@@ -260,10 +277,10 @@ Back outside: `src/after.rs:7`.
     fn supports_tilde_fenced_blocks() {
         let md = "\
 ~~~text
-`src/inside.txt:1`
+[file: src/inside.txt:1]
 ~~~
 
-`src/outside.md:2`
+[file: src/outside.md:2]
 ";
         let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);

@@ -32,7 +32,7 @@ what makes a partial harness expressible instead of an all-or-nothing refusal.
 
 ## Content kinds
 
-`content.kind` (`crates/harness-core/src/scaffold.rs:99`) decides three answers
+`content.kind` ([file: crates/harness-core/src/scaffold.rs:99]) decides three answers
 that must agree — how the artifact is emitted, how its presence is tested, what
 counts as drift — so it is one field rather than three flags. Independent booleans could also spell "merged and
 managed", a state that named nothing and had to be rejected at load.
@@ -61,7 +61,10 @@ Depth is the rule, not a refinement of it. `hooks` is an object whose values are
 arrays, so a union that stops at the merge key drops an operator's own
 `SessionStart` entry and leaves a file every validator accepts. Arrays append
 rather than sort: hook entries under one event run in order, and a merge that
-never owns its destination may not renumber what it found there.
+never owns its destination may not renumber what it found there. Where two
+shapes disagree, nothing is written and the collision is reported — replacing a
+malformed `"SessionStart": {…}` to land the fragment drops the one hook it
+holds, and the result still validates.
 
 `seed` exists because a project's governance is its own. Holding it to the
 template would make tailoring — the intended use — read as drift.

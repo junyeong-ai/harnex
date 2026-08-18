@@ -8,9 +8,9 @@ paths:
 Every write to a project file routes through one of two
 `harness_core::path_guard` functions:
 
-- `write_atomic` (`crates/harness-core/src/path_guard.rs:81`) — full-file
+- `write_atomic` ([file: crates/harness-core/src/path_guard.rs:81]) — full-file
   replace via same-directory temp file + rename.
-- `append_line` (`crates/harness-core/src/path_guard.rs:118`) — append-only
+- `append_line` ([file: crates/harness-core/src/path_guard.rs:118]) — append-only
   ledgers (observation, decision JSONL).
 
 Direct `std::fs::write`, `File::create + write_all`, `OpenOptions::append`,

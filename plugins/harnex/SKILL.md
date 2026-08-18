@@ -69,10 +69,13 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
    idiom; an audit flags edits inside managed regions for operator review.
    For `.claude/settings.json` (JSON, no comments), ownership is **item-level
    within** `permissions` and `hooks`, NOT whole-key: harnex owns only the
-   entries it generated — the baseline + `<lang>-dev` permission rules and the
-   base hook entries (SessionStart `startup|resume`, PostToolUse `Edit|Write`,
-   Stop), each identified by its template shape (event + matcher + runner
-   script). Entries an operator added via `extend`, and any incumbent
+   entries it generated — the baseline + `workspace` + `<lang>-dev` permission
+   rules and the base hook entries, each identified by its template shape
+   (event + matcher + runner script). Read those shapes from
+   `templates/common/hooks.json` and `templates/{lang}/hooks.format.json`
+   rather than from a copy here: a matcher restated in prose is the one that
+   goes stale, and a stale one makes regenerate read harnex's own entry as
+   project-owned and write a second beside it. Entries an operator added via `extend`, and any incumbent
    hand-rolled entries, are project-owned and survive regenerate. Every other
    top-level key is project-owned.
 
@@ -109,9 +112,10 @@ list.** Read it and emit every artifact it declares, dispatching on
 `content.kind` — into a destination that does not exist, `copy`, `seed` and
 `managed` are written verbatim and `merge` contributes its JSON fragment at
 `content.key` as a **recursive** union: objects merge key-wise at every depth,
-arrays gain the elements they lack in the order they arrive, scalars are
-replaced (the manifest header states the rule and why depth is not optional —
-`hooks` is an object whose values are arrays). `chmod 0o755` where `executable` is set. Emit the
+arrays gain the elements they lack in the order they arrive, an empty slot
+takes the fragment whole, and where two shapes disagree nothing is written and
+the collision is reported (the manifest header states the rule and why depth is
+not optional — `hooks` is an object whose values are arrays). `chmod 0o755` where `executable` is set. Emit the
 `foundation` tier always, and the `language` tier once per detected stack,
 resolving `{lang}` to that language each time. The manifest is the single home
 for that set — a second list here would be the one that drifts, and the
@@ -246,7 +250,8 @@ operator to re-phrase using a verb from this list.
   This is what keeps derivation from becoming invention, and it is not a
   matter of judgment — no enforcer, no bullet.
 
-  Every bullet names its enforcer as `path/to/file.ext:line`, so the evidence
+  Every bullet names its enforcer as a marked claim — `[file: path/to/x.py:42]`,
+  the line optional — so the evidence
   check resolves it and a rename fails the gate instead of leaving a rule that
   points nowhere. Report what you moved to the ledger as well as what you
   wrote; the observations are usually the more interesting half.
@@ -287,11 +292,15 @@ operator to re-phrase using a verb from this list.
   4. Write each `files` entry's `template` to its declared `destination`
      under `${CLAUDE_PROJECT_DIR}` (the manifest owns destinations).
   The template provides proven structure + defaults; the LLM replaces
-  generic defaults with project-specific observations. Every `<!-- Fill in
-  -->` / `<!-- Customize -->` marker MUST be replaced — with an observed
-  value, or an explicit "none observed yet — <default behavior>" note.
-  Never leave a raw fill-in marker in a generated file; a placeholder that
-  ships is the blank-page problem in disguise.
+  generic defaults with project-specific observations. Every
+  `<!-- harnex-fill: … -->` marker MUST be replaced — with an observed value,
+  or an explicit "none observed yet — <default behavior>" note. That token is
+  the only marker the templates carry and the only one `harness audit` reads;
+  a marker may wrap across lines, so search for `harnex-fill` rather than for
+  a whole one-line comment. Never leave one in a generated file: a placeholder
+  that ships is the blank-page problem in disguise, and
+  `audit-fill-marker-unresolved` reports each survivor with the line and what
+  it asked for.
 
   **Per-pattern analysis instructions:**
   - `naming-decisions` — every section is read out of the repository, never

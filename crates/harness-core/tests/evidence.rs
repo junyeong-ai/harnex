@@ -47,7 +47,7 @@ fn passes_when_file_path_line_resolves() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "line1\nline2\nline3\n").unwrap();
 
-    let markdown = "See `src/lib.rs:2`.";
+    let markdown = "See [file: src/lib.rs:2].";
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
     assert!(findings.is_empty(), "unexpected findings: {findings:?}");
@@ -63,7 +63,7 @@ fn rejects_path_traversal_outside_project() {
     // A real file just outside the project root.
     std::fs::write(tmp.path().join("secret.txt"), "x\n").unwrap();
 
-    let markdown = "See `../secret.txt:1`.";
+    let markdown = "See [file: ../secret.txt:1].";
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), &project);
     assert_eq!(findings.len(), 1, "traversal claim must be a finding");
@@ -78,7 +78,7 @@ fn rejects_path_traversal_outside_project() {
 #[test]
 fn rejects_nonexistent_path() {
     let tmp = TempDir::new().unwrap();
-    let markdown = "See `src/missing.rs:5`.";
+    let markdown = "See [file: src/missing.rs:5].";
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1);
@@ -93,7 +93,7 @@ fn rejects_line_out_of_range() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "only one line\n").unwrap();
 
-    let markdown = "See `src/lib.rs:99`.";
+    let markdown = "See [file: src/lib.rs:99].";
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1);
@@ -110,7 +110,7 @@ fn rejects_overflowing_line_number() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "only one line\n").unwrap();
 
-    let markdown = "See `src/lib.rs:999999999999999999999`.";
+    let markdown = "See [file: src/lib.rs:999999999999999999999].";
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1, "overflowing line must be a finding");
