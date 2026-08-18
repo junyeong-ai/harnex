@@ -42,9 +42,11 @@ end with something that matters, it goes into one of the three first.
    and to the same tie in a working tree the moment anything writes the file.
    Commit timestamps are history and survive both.
 
-   Neither key is injective: one commit lands two specs, and a squash merge
-   lands every spec at one timestamp. Where first place is shared, the tree
-   records no difference between those specs and they are concurrent — the
+   Neither key is injective. One commit lands two specs, and a squash merge
+   lands every spec at one timestamp; two specs scaffolded in one session share
+   an mtime, and a filesystem recording whole seconds widens that window.
+   Where first place is shared, the tree records no difference between those
+   specs and they are concurrent — the
    concurrency check [SKILL.md](SKILL.md) defines, reached from a resume rather
    than from a new spec. Name the tied slugs and ask which. Never settle it on
    slug order: a fixed tiebreak is wrong in the same direction every session,
