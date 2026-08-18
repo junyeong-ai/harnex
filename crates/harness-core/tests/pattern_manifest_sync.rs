@@ -198,6 +198,9 @@ enum Surface {
     Agent,
     /// A path-scoped rule.
     Rule,
+    /// An output style. The oracle validates one; the classifier had no arm for
+    /// it, so a pattern shipping one was rejected as unclassifiable.
+    OutputStyle,
     /// A file a skill reads on demand. The spec declares no shape for one, so
     /// nothing can validate it — its correctness is the review's, not a gate's.
     SkillResource,
@@ -211,16 +214,39 @@ enum Surface {
 }
 
 impl Surface {
-    /// Ordered and total. `SKILL.md` is tested before the skill-resource arm
-    /// that would otherwise swallow it, which is the ordering the previous
-    /// two-list version could not express.
+    /// Ordered and total. The validated arms ask each validator's own `GLOB`
+    /// rather than restating it: the classifier was a third hand-written copy
+    /// of "which validator covers which path", and it had already drifted from
+    /// two of them — `RuleValidator` and `AgentValidator` discover recursively
+    /// (`**/*.md`) where this matched one level, and `OutputStyleValidator`
+    /// had no arm at all, so a pattern shipping an output style the oracle can
+    /// validate was rejected as unclassifiable.
+    ///
+    /// `SKILL.md` is still tested before the skill-resource arm that would
+    /// otherwise swallow it — the skill glob is `*/SKILL.md`, so a sibling
+    /// resource matches no validator and needs an arm of its own.
     fn of(destination: &str) -> Option<Self> {
+        use harness_core::validate::{
+            AgentValidator, OutputStyleValidator, RuleValidator, SkillValidator, SurfaceValidator,
+        };
+        fn covers<'p, V: SurfaceValidator<'p>>(destination: &str) -> bool {
+            glob::Pattern::new(V::GLOB).is_ok_and(|p| p.matches(destination))
+        }
+        if covers::<SkillValidator>(destination) {
+            return Some(Self::Skill);
+        }
+        if covers::<AgentValidator>(destination) {
+            return Some(Self::Agent);
+        }
+        if covers::<RuleValidator>(destination) {
+            return Some(Self::Rule);
+        }
+        if covers::<OutputStyleValidator>(destination) {
+            return Some(Self::OutputStyle);
+        }
         let seg: Vec<&str> = destination.split('/').collect();
         Some(match seg.as_slice() {
-            [".claude", "skills", _, "SKILL.md"] => Self::Skill,
             [".claude", "skills", _, f] if f.ends_with(".md") => Self::SkillResource,
-            [".claude", "agents", f] if f.ends_with(".md") => Self::Agent,
-            [".claude", "rules", f] if f.ends_with(".md") => Self::Rule,
             [".claude", "lenses", f] if f.ends_with(".md") => Self::Lens,
             ["specs", "_template", f] if f.ends_with(".md") => Self::SpecTemplate,
             [".github", "pull_request_template.md"] => Self::OutsideClaudeCode,
@@ -232,7 +258,9 @@ impl Surface {
 
 #[test]
 fn every_pattern_surface_file_validates() {
-    use harness_core::validate::{AgentValidator, RuleValidator, SkillValidator};
+    use harness_core::validate::{
+        AgentValidator, OutputStyleValidator, RuleValidator, SkillValidator,
+    };
 
     let templates = patterns_dir().parent().unwrap().to_path_buf();
     let config = harness_core::config::Config::load_from(&templates.join("common/harness.toml"))
@@ -249,6 +277,9 @@ fn every_pattern_surface_file_validates() {
     let agents = validate
         .agents
         .expect("scaffolded config declares validate.agents");
+    let output_styles = validate
+        .output_styles
+        .expect("scaffolded config declares validate.output_styles");
 
     let mut seen: BTreeSet<&'static str> = BTreeSet::new();
     for pattern in &load_manifest().pattern {
@@ -280,6 +311,10 @@ fn every_pattern_surface_file_validates() {
                     seen.insert("rule");
                     RuleValidator::new(&rules).validate_text(&body, &landed)
                 }
+                Surface::OutputStyle => {
+                    seen.insert("output-style");
+                    OutputStyleValidator::new(&output_styles).validate_text(&body, &landed)
+                }
                 // No oracle validator declares a shape for these. Saying so is
                 // what keeps the gap from reading as coverage.
                 Surface::SkillResource
@@ -298,16 +333,30 @@ fn every_pattern_surface_file_validates() {
         }
     }
 
-    // Each validated surface was actually exercised. A classifier arm that
-    // stopped matching entirely would empty its bucket here rather than let the
-    // count quietly shrink — though only total loss of a surface, which is why
-    // `every_skill_directory_has_its_entry_point_at_install_time` exists.
-    assert_eq!(
-        seen,
-        ["agent", "rule", "skill"]
-            .into_iter()
-            .collect::<BTreeSet<_>>(),
-        "the pattern library must exercise every validator surface"
+    // The library exercises at least one validator, and everything it exercised
+    // is a surface an oracle validator covers.
+    //
+    // Not an equality against a fixed set: that hardcodes the surfaces the
+    // library happens to ship today, and adding a legitimate one — an output
+    // style, which the oracle validates — failed the test for shipping it.
+    //
+    // A classifier arm that stops matching is caught without this. A rule,
+    // agent or output-style destination falling out of its arm classifies as
+    // nothing and panics above; a `SKILL.md` falling out of its arm lands in
+    // `SkillResource`, where `every_skill_directory_has_its_entry_point_at_install_time`
+    // counts zero entry points and fails. This assertion is the floor, not the
+    // guard.
+    assert!(
+        !seen.is_empty(),
+        "the pattern library must exercise at least one validator surface"
+    );
+    let known: BTreeSet<&str> = ["agent", "output-style", "rule", "skill"]
+        .into_iter()
+        .collect();
+    assert!(
+        seen.is_subset(&known),
+        "exercised an unknown surface: {:?}",
+        seen.difference(&known).collect::<Vec<_>>()
     );
 }
 
