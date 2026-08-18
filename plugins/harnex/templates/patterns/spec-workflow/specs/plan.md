@@ -25,5 +25,7 @@ by dependency, not by size.>
 
 ## Outstanding issues
 
-<Findings from the review gate that are not yet resolved. Empty at plan time;
-the gate writes here. A non-empty list blocks the next phase.>
+<Findings a gate transcribed and nobody has resolved. Empty at plan time; the
+gates write here. A non-empty list does NOT block: `review` passes on zero
+Critical and zero Blocker, and Major and Minor stay here as follow-up signal.
+This is what the next session reads instead of rediscovering it.>

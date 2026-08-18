@@ -1,6 +1,6 @@
 ---
 id: naming
-applies_to: [code, design, spec, plan]
+applies_to: [code, prose, spec, plan]
 anchors:
   - constitution
   # On install, if the `naming-decisions` rule is present, add it here.
