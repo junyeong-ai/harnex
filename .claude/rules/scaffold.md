@@ -51,11 +51,17 @@ foundation tier wrote the file they name. `scaffold::fragment_landed` is that
 predicate, and both the auditor's coverage check and the self-dogfood test
 read it — a second containment rule would be the one that drifts.
 
-The union is by fragment shape: an object contributes its keys, an array its
-elements as a sorted set. `hooks` and `permissions.allow` are each claimed by
-both tiers, and a replacing merge would erase the foundation's Stop hook, or
-its `Edit`/`Write` grants, the moment the language fragment landed —
-validating clean while running nothing.
+The union recurses: objects merge key-wise at every depth, arrays gain the
+elements they lack, scalars are replaced. `hooks` and `permissions.allow` are
+each claimed by both tiers, and a replacing merge would erase the foundation's
+Stop hook, or its `Edit`/`Write` grants, the moment the language fragment
+landed — validating clean while running nothing.
+
+Depth is the rule, not a refinement of it. `hooks` is an object whose values are
+arrays, so a union that stops at the merge key drops an operator's own
+`SessionStart` entry and leaves a file every validator accepts. Arrays append
+rather than sort: hook entries under one event run in order, and a merge that
+never owns its destination may not renumber what it found there.
 
 `seed` exists because a project's governance is its own. Holding it to the
 template would make tailoring — the intended use — read as drift.

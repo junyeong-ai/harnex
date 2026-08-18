@@ -108,8 +108,10 @@ flattens real per-package differences.
 list.** Read it and emit every artifact it declares, dispatching on
 `content.kind` — into a destination that does not exist, `copy`, `seed` and
 `managed` are written verbatim and `merge` contributes its JSON fragment at
-`content.key` as a union where two artifacts name the same key (the manifest
-header states the rule). `chmod 0o755` where `executable` is set. Emit the
+`content.key` as a **recursive** union: objects merge key-wise at every depth,
+arrays gain the elements they lack in the order they arrive, scalars are
+replaced (the manifest header states the rule and why depth is not optional —
+`hooks` is an object whose values are arrays). `chmod 0o755` where `executable` is set. Emit the
 `foundation` tier always, and the `language` tier once per detected stack,
 resolving `{lang}` to that language each time. The manifest is the single home
 for that set — a second list here would be the one that drifts, and the

@@ -33,13 +33,19 @@
 //!   file this crate can resolve, and treating it as one would answer for a
 //!   string the runtime never expands.
 //! - Never guess whether a quoted word carrying spaces is one long filename or
-//!   a nested command. `-c` settles it, and failing that a second anchor does,
-//!   because one path cannot hold the project root twice. Nothing else does.
+//!   a nested command. Three things settle it and nothing else does: `-c`; a
+//!   second anchor, because one path cannot hold the project root twice; and
+//!   command substitution, because `$(` and a backtick run what follows even
+//!   inside double quotes, so a name spelled with either would be substituted
+//!   rather than opened.
 //! - Never re-lex a second level of shell. Inside `sh -c "… \"a b\" …"` the
 //!   inner shell would re-quote and recover `a b`; this module reads one level
-//!   and stops, so such a token truncates at the space. Truncation only ever
-//!   loses a match — a shortened token cannot collide with an artifact whose
-//!   name has no space in it — and modelling nested quoting is how a parser
+//!   and stops, so such a token truncates at the space. An anchor sitting
+//!   *inside* a substitution is the other direction: `"$(cat …/x.sh)"` yields
+//!   `x.sh)`, extended by the paren that closes a construct this module does
+//!   not track. Both are the same trade — a token that is not exactly the
+//!   artifact's name matches no artifact, so either way the answer is a missing
+//!   match and never a wrong one, and modelling nested quoting is how a parser
 //!   starts answering for strings it cannot see.
 //! - Never treat non-ASCII whitespace as a word separator's equal. `-c` is
 //!   found by ASCII-shaped splitting, so a no-break space around it reads as a
@@ -98,10 +104,14 @@ fn scan(source: &str, initial: Quoting, commanded: bool) -> Vec<String> {
         let region = &tail[..end];
         // A quoted word is either one filename that may contain spaces or a
         // whole command string, and the string says which. `sh -c` says it
-        // outright; failing that, a second anchor says it, because one path
-        // cannot hold the project root twice. Absent both, it is a filename.
+        // outright; a second anchor says it, because one path cannot hold the
+        // project root twice; and command substitution says it, because the
+        // shell runs what follows rather than opening it. Absent all three, it
+        // is a filename.
         let commanded = commanded || occurrence.nested;
-        if occurrence.quote.is_some() && (commanded || contains_variable(region)) {
+        if occurrence.quote.is_some()
+            && (commanded || contains_variable(region) || contains_substitution(region))
+        {
             let first = unquoted_end(region);
             out.extend(shell_token(&region[..first]));
             out.extend(scan(&region[first..], Quoting::Double, commanded));
@@ -230,6 +240,18 @@ fn contains_variable(source: &str) -> bool {
     ANCHORS.iter().any(|a| source.contains(a))
 }
 
+/// Whether a double-quoted region runs a command inside itself.
+///
+/// `$(` and a backtick are command substitution to the shell even inside double
+/// quotes, so a region carrying one is a command by the shell's own grammar
+/// rather than by inference. It is the third thing that settles the
+/// one-filename-or-a-command question, and it settles it as flatly as `-c`
+/// does: a name containing either would be substituted rather than opened, so
+/// no real filename is lost by splitting there.
+fn contains_substitution(source: &str) -> bool {
+    source.contains("$(") || source.contains('`')
+}
+
 /// End of an unquoted token: the first terminator that a backslash does not
 /// escape. `bash ${CLAUDE_PROJECT_DIR}/my\ dir/x.sh` names one path, and
 /// cutting at the escaped space would report a truncated name as missing.
@@ -311,6 +333,34 @@ fn literal_token(candidate: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_substitution_ends_a_quoted_path() {
+        // Without this, the quoted region reads as one filename and the token
+        // grows to `hooks/run.sh `date +%s``, which matches no artifact — a
+        // missing match rather than a wrong one, but a corrupted value either
+        // way. `$(` and a backtick are command substitution inside double
+        // quotes, so the shell itself says this region is a command.
+        assert_eq!(
+            paths_in_command("bash \"${CLAUDE_PROJECT_DIR}/hooks/run.sh `date +%s`\""),
+            vec!["hooks/run.sh"]
+        );
+        assert_eq!(
+            paths_in_command("bash \"${CLAUDE_PROJECT_DIR}/hooks/run.sh $(date +%s)\""),
+            vec!["hooks/run.sh"]
+        );
+    }
+
+    #[test]
+    fn a_quoted_filename_keeps_the_metacharacters_a_shell_leaves_literal() {
+        // The split above must not reach parentheses or semicolons: inside
+        // double quotes the shell leaves them literal, so a directory really
+        // can be named `acme (v2)`. Splitting there would drop a correct path.
+        assert_eq!(
+            paths_in_command("bash \"${CLAUDE_PROJECT_DIR}/acme (v2)/run.sh\""),
+            vec!["acme (v2)/run.sh"]
+        );
+    }
 
     #[test]
     fn extracts_every_anchored_path_from_one_command() {
