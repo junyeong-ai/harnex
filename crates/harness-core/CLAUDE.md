@@ -79,8 +79,10 @@ table — never invent a new one without extending this table first.
 Every `Finding` must carry an actionable `hint`. There are no
 `hint: None` production sites — the audit guard is that the absence is
 visible at code review time. If a finding is `auto_fixable`, its
-`fix_command` MUST be a `FixCommand::*.as_str()` value (not a free
-string), because `ProjectChecker::try_fix` dispatches via the enum.
+`fix_command` is `Option<FixCommand>` — a closed set, not a string —
+because `ProjectChecker::try_fix` dispatches via the enum. It was prose
+asking for `FixCommand::*.as_str()` until two emit sites ignored it and
+shipped commands no dispatcher recognised and no CLI accepted.
 
 ### Trait abstractions in use
 

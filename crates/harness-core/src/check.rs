@@ -25,7 +25,7 @@ use serde::Serialize;
 
 use crate::codegen::SentinelSyncer;
 use crate::config::Config;
-use crate::envelope::{Finding, Location, Severity, SkippedRule};
+use crate::envelope::{Finding, FixCommand, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
@@ -59,7 +59,7 @@ pub struct FixReport {
 
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FixAttempt {
-    pub fix_command: String,
+    pub fix_command: FixCommand,
     /// Slugs of findings this fix targeted.
     pub finding_slugs: Vec<String>,
     pub outcome: FixOutcome,
@@ -74,35 +74,6 @@ pub enum FixOutcome {
     Failed { reason: String },
     /// Fix command is not in the safe-fix registry; never executed.
     Unrecognized,
-}
-
-/// Closed set of auto-fix commands the safe-fix registry recognises.
-///
-/// Single source of truth for both validator emit sites (which must
-/// produce `fix_command: Some(FixCommand::X.as_str().into())`) and
-/// [`ProjectChecker::try_fix`] (which dispatches via exhaustive `match`
-/// on this enum). Adding a new variant forces both sites to update at
-/// compile time — there is no drift class.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FixCommand {
-    CodegenSync,
-}
-
-impl FixCommand {
-    pub const ALL: &'static [Self] = &[Self::CodegenSync];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "harness codegen sync" => Self::CodegenSync,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::CodegenSync => "harness codegen sync",
-        }
-    }
 }
 
 pub struct ProjectChecker<'a> {
@@ -132,12 +103,16 @@ impl<'a> ProjectChecker<'a> {
         use std::collections::BTreeMap;
 
         let before = self.run()?;
-        let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut grouped: BTreeMap<&'static str, (FixCommand, Vec<String>)> = BTreeMap::new();
         for f in &before.findings {
             if f.auto_fixable
-                && let Some(cmd) = &f.fix_command
+                && let Some(cmd) = f.fix_command
             {
-                grouped.entry(cmd.clone()).or_default().push(f.slug.clone());
+                grouped
+                    .entry(cmd.as_str())
+                    .or_insert_with(|| (cmd, Vec::new()))
+                    .1
+                    .push(f.slug.clone());
             }
         }
         if grouped.is_empty() {
@@ -150,8 +125,8 @@ impl<'a> ProjectChecker<'a> {
         }
         let mut attempts: Vec<FixAttempt> = grouped
             .into_iter()
-            .map(|(cmd, slugs)| {
-                let outcome = self.try_fix(&cmd);
+            .map(|(_, (cmd, slugs))| {
+                let outcome = self.try_fix(cmd);
                 FixAttempt {
                     fix_command: cmd,
                     finding_slugs: slugs,
@@ -159,7 +134,7 @@ impl<'a> ProjectChecker<'a> {
                 }
             })
             .collect();
-        attempts.sort_by(|a, b| a.fix_command.cmp(&b.fix_command));
+        attempts.sort_by_key(|a| a.fix_command);
         let after = self.run()?;
         Ok(FixReport {
             before,
@@ -176,11 +151,8 @@ impl<'a> ProjectChecker<'a> {
     /// 3. Add a match arm here (the compiler enforces exhaustiveness on
     ///    `FixCommand`, so missing this step is a build error).
     /// 4. Add a test asserting drift → fix → 0 findings.
-    fn try_fix(&self, cmd: &str) -> FixOutcome {
-        let Some(parsed) = FixCommand::from_str(cmd) else {
-            return FixOutcome::Unrecognized;
-        };
-        match parsed {
+    fn try_fix(&self, cmd: FixCommand) -> FixOutcome {
+        match cmd {
             FixCommand::CodegenSync => {
                 let Some(cfg) = self.config.codegen.as_ref() else {
                     return FixOutcome::Failed {
@@ -462,7 +434,7 @@ impl<'a> ProjectChecker<'a> {
                         FixCommand::CodegenSync.as_str()
                     )),
                     auto_fixable: true,
-                    fix_command: Some(FixCommand::CodegenSync.as_str().into()),
+                    fix_command: Some(FixCommand::CodegenSync),
                 });
             }
         }
@@ -566,10 +538,10 @@ impl<'a> ProjectChecker<'a> {
                         .unwrap_or_else(|| "--profile baseline".into())
                 )),
                 auto_fixable: false,
-                fix_command: pf
-                    .rule
-                    .as_ref()
-                    .map(|r| format!("# add to permissions.deny: {r}")),
+                // No fix command: nothing in the safe-fix registry writes a
+                // permission rule, and a rule to paste is what the hint above
+                // already carries.
+                fix_command: None,
             });
         }
         run.push("policy.permissions".into());

@@ -140,6 +140,74 @@ mod severity_tests {
     }
 }
 
+/// Closed set of auto-fix commands the safe-fix registry recognises.
+///
+/// Lives here because it is the value of a [`Finding`] field: making the field
+/// `Option<FixCommand>` is what keeps an emit site from inventing a command,
+/// which prose asking for `FixCommand::X.as_str()` did not — one finding
+/// shipped `harness policy permissions generate --profile baseline`, a string
+/// no dispatcher recognises and no CLI accepts. The wire form is unchanged:
+/// the enum serialises as the command string a consumer would run.
+///
+/// [`crate::check::ProjectChecker::try_fix`] dispatches via exhaustive `match`,
+/// so adding a variant forces both sides to update at compile time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FixCommand {
+    CodegenSync,
+}
+
+impl FixCommand {
+    pub const ALL: &'static [Self] = &[Self::CodegenSync];
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "harness codegen sync" => Self::CodegenSync,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CodegenSync => "harness codegen sync",
+        }
+    }
+}
+
+impl std::fmt::Display for FixCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FixCommand {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        Self::from_str(&raw).ok_or_else(|| {
+            serde::de::Error::custom(format!("'{raw}' is not in the safe-fix registry"))
+        })
+    }
+}
+
+impl serde::Serialize for FixCommand {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl schemars::JsonSchema for FixCommand {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "FixCommand".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "Command from the safe-fix registry; the only values `--fix` dispatches.",
+            "enum": Self::ALL.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+        })
+    }
+}
+
 /// Single finding produced by a validator / verifier / classifier.
 ///
 /// Designed for AI consumption: `slug` is grep-able to the rule, `hint`
@@ -156,7 +224,7 @@ pub struct Finding {
     #[serde(default)]
     pub auto_fixable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fix_command: Option<String>,
+    pub fix_command: Option<FixCommand>,
 }
 
 /// A rule that loaded but did not fire on this input, with the reason.
