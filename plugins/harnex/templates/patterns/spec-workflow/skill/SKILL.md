@@ -87,7 +87,7 @@ later reader needs â€” to <!-- harnex-fill: where this project keeps learnings â
 a docs directory, an ADR folder, the commit body if it keeps none -->, retarget
 any reference to the spec onto it, and remove the directory. The two differ
 only in what the record says. `superseded` keeps the directory:
-they are pointers, and a pointer with no target is worse than the file.
+it is now a pointer, and a pointer with no target is worse than the file.
 
 A terminal spec is never edited again, and never re-enters a terminal state.
 

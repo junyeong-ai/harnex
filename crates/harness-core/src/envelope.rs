@@ -146,36 +146,48 @@ mod severity_tests {
 /// `Option<FixCommand>` is what keeps an emit site from inventing a command,
 /// which prose asking for `FixCommand::X.as_str()` did not — one finding
 /// shipped `harness policy permissions generate --profile baseline`, a string
-/// no dispatcher recognises and no CLI accepts. The wire form is unchanged:
-/// the enum serialises as the command string a consumer would run.
+/// no dispatcher recognises and no CLI accepts.
+///
+/// The variants and their wire strings are ONE declaration. A hand-written
+/// `ALL` beside an exhaustive `as_str` is two representations of the same fact,
+/// and the compiler only forces the second: a variant missing from `ALL`
+/// serialised through `as_str` while the schema (built from `ALL`) did not
+/// describe it and `Deserialize` (also from `ALL`) rejected the value the
+/// binary had just emitted. Nothing failed. Generating both from the macro
+/// below removes the state rather than testing for it.
 ///
 /// [`crate::check::ProjectChecker::try_fix`] dispatches via exhaustive `match`,
-/// so adding a variant forces both sides to update at compile time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum FixCommand {
-    CodegenSync,
+/// so adding a variant still forces the dispatcher to handle it.
+macro_rules! fix_commands {
+    ($($variant:ident => $wire:literal),+ $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum FixCommand {
+            $($variant),+
+        }
+
+        impl FixCommand {
+            /// Every command, in declaration order.
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            /// The wire string. Exhaustive over the same declaration that built
+            /// `ALL`, so the two cannot disagree.
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $wire),+
+                }
+            }
+
+            /// Derived from [`Self::ALL`] — the inverse of `as_str` by
+            /// construction rather than by a second match kept in step by hand.
+            pub fn from_str(s: &str) -> Option<Self> {
+                Self::ALL.iter().copied().find(|c| c.as_str() == s)
+            }
+        }
+    };
 }
 
-impl FixCommand {
-    pub const ALL: &'static [Self] = &[Self::CodegenSync];
-
-    /// Derived from [`Self::ALL`], not a second match.
-    ///
-    /// The three surfaces that answer "which commands exist" — this, the
-    /// `Deserialize` impl, and the emitted schema's enum — all read `ALL`, so a
-    /// variant missing from it is absent from every one of them consistently
-    /// rather than accepted by one and undescribed by another. `as_str` stays
-    /// an exhaustive match, so the compiler still forces a new variant to
-    /// declare its wire string.
-    pub fn from_str(s: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|c| c.as_str() == s)
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::CodegenSync => "harness codegen sync",
-        }
-    }
+fix_commands! {
+    CodegenSync => "harness codegen sync",
 }
 
 impl std::fmt::Display for FixCommand {

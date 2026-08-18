@@ -19,8 +19,8 @@ Two things, and neither is telling the model what to do:
    puts structured facts in a structured file — for a spec, this directory is
    that file.
 
-Read the artifacts that way. `spec.md`'s acceptance criteria are what the
-validation gate checks against, not a briefing. `plan.md`'s Outstanding issues
+Read the artifacts that way. `spec.md`'s acceptance criteria are what
+wrapup answers against, not a briefing. `plan.md`'s Outstanding issues
 is where the review gate writes, so the next session reads what the last one
 found instead of rediscovering it.
 

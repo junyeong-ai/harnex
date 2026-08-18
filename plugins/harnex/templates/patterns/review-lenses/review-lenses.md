@@ -10,12 +10,6 @@ A convergent review loop walks every registered lens over a change set,
 ranks findings by severity, proposes fixes for the high-severity ones, and
 re-walks the (possibly grown) scope until convergence or a stall limit.
 
-Lens findings are advisory JUDGMENTS, not mechanically-verifiable checks — a
-lens calls "premature abstraction" or "wrong name" by reasoning, not by a
-deterministic rule. Per keep-soften-cut, a prose judgment must never drive a
-silent auto-edit: severity here is PRIORITY, not auto-fixability. The loop
-proposes; the operator (or the agent, with the change visible and approved)
-applies. Reserve unattended auto-fix for the formatter / linter, never a lens.
 
 ## Where the procedure lives
 

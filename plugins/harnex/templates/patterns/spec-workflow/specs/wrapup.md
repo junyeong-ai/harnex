@@ -1,6 +1,6 @@
 # <title> — Wrapup
 
-Written at the wrapup phase, after the validation gate passes. Set the
+Written at the wrapup phase, after the review gate passes. Set the
 `spec.md` frontmatter `status` to `completed` in the same commit.
 
 ## Result

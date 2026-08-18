@@ -20,7 +20,7 @@ must fit, decisions already made elsewhere that bind this one.>
 
 ## Acceptance criteria
 
-<Numbered, each independently checkable. The validation gate reads exactly
+<Numbered, each independently checkable. Wrapup answers exactly
 this list, so a criterion nobody can check is one that will be waved through.>
 
 1. <observable outcome>
