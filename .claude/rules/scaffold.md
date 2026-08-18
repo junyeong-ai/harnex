@@ -70,6 +70,12 @@ result still validates.
 `seed` exists because a project's governance is its own. Holding it to the
 template would make tailoring — the intended use — read as drift.
 
+`content.kind` also decides what happens when the destination is already
+occupied, and the manifest header states that rule. Its shape: every kind
+except `merge` keeps the incumbent and reports, which is the common case and
+not the exceptional one. `emit_tier` in the fixture asserts it for all four
+kinds — a scaffold that overwrites is the one failure the operator cannot undo.
+
 ## Operability
 
 A scaffold must be runnable, not merely well-formed. `harness.toml` is a

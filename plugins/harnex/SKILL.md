@@ -52,10 +52,10 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
    cross-wire (biome for TS, ruff for Python, rustfmt for Rust), and never
    resolve two present stacks by row order: that is the wrong-profile failure
    with extra steps. When no supported stack matches, emit the manifest's
-   **foundation tier** — the
-   permission floor, the foundation rules, the hook wrappers, the secret-scan
-   git hook, all language-agnostic — and report exactly which language-tier
-   artifacts are unavailable and why. What is forbidden is a *wrong* profile,
+   **foundation tier** — every artifact it marks language-agnostic, read from
+   the manifest rather than from a list here — and report exactly which
+   language-tier artifacts are unavailable and why. What is forbidden is a
+   *wrong* profile,
    not an absent one: guessing a formatter is the meta-failure, while
    withholding a floor the stack never needed a profile for helps nobody.
    Never emit `node -e` / `python3 -c` into permissions. Never grant built-in
@@ -384,6 +384,11 @@ finding is a defect against the spec or against the harness's own wiring:
   project has already built it, and `node_modules/.bin/*` or `target/release/*`
   are correct wirings that are simply absent on a fresh clone. The cost is
   that this protects harnex-generated wiring, not an operator's own scripts.
+- `audit-hook-not-executable` — a hook spawns a scaffold artifact directly
+  (the entry carries `args`, so the runtime runs `command` itself with no
+  shell) and the file's exec bit is off. Every invocation of that hook fails
+  before the script starts, so the wrapper's own fail-open never runs. Remedy
+  is `chmod +x`; `scaffold` Step 3 exists to keep this from happening.
 - `audit-managed-region-edited` — content inside a `harnex-managed`
   region diverges from the corresponding template.
 - `audit-managed-region-missing` — a managed artifact is on disk with its

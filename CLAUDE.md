@@ -30,15 +30,15 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::envelope` | JSON envelope contract every command emits |
 | `harness-core::error` | typed `Error` + stable `ErrorCode` wire codes |
 | `harness-core::path_guard` | safe write paths: `write_atomic` + `append_line` |
-| `harness-core::sentinel` | managed-region marker extraction (`<!-- harnex-managed:start/end -->`) |
+| `harness-core::sentinel` | the two reserved marker grammars harnex writes — managed regions + fill markers |
 | `harness-core::evidence` | provenance verifier (strategy enum per claim shape) |
 | `harness-core::telemetry` | append-only JSONL ledger with closed payload schema |
 | `harness-core::codegen` | sentinel-block source → target sync |
 | `harness-core::policy` | permission profiles + version pins |
 | `harness-core::scaffold` | composition manifest (`scaffold.toml`) + tier model |
 | `harness-core::spec` | measurement stamps for the Claude Code vocabularies |
-| `harness-core::validate` | rule / skill / settings / commit-msg checks + `SettingsScope` enum |
-| `harness-core::audit` | harness-engineering compliance gate (spec drift, managed-region integrity) |
+| `harness-core::validate` | rule / skill / agent / output-style / settings / commit-msg checks |
+| `harness-core::audit` | harness-engineering compliance gate; `AuditCheckKind` is the check set |
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
 | `harness-core::guard` | Claude Code hook adapter + Stop auditor |
 | `harness-core::export` | JSON Schema emission |

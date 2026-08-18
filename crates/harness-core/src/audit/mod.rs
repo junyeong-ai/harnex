@@ -4,22 +4,9 @@
 //! correctness, `audit` evaluates *engineering quality* of the generated
 //! harness against spec-facts and the keep-soften-cut policy.
 //!
-//! Three classes of finding:
-//!
-//! - **Spec drift** — values that look plausible but violate the live
-//!   Claude Code spec (millisecond `timeout`, incomplete `mcp__server`
-//!   matcher).
-//! - **Hook wiring** — a hook naming a scaffold artifact that is not on disk.
-//!   The handler then errors and the action proceeds, so the harness reads as
-//!   wired while enforcing nothing. Scoped to the manifest's artifacts because
-//!   an anchored path the project *builds* — a bundler output, an installed
-//!   binary — is legitimately absent before that build runs.
-//! - **Managed-region edit** — content inside a `harnex-managed`
-//!   sentinel block that diverges from the plugin's template.
-//! - **Copy drift** — a `copy` artifact whose bytes differ from the template
-//!   that emits it. The manifest calls that a defect by definition, and it is
-//!   how a project's own file ends up at a destination the hook fragments wire
-//!   into: ownership is decided per artifact, the wiring lives in another one.
+//! Every check is a variant of [`AuditCheckKind`], which carries what that
+//! check asks and why. Restating the set here is what left this doc claiming
+//! three classes while five ran, so the enum is the only list.
 //!
 //! Spec-vocabulary staleness is deliberately NOT a finding here. It is a
 //! property of the binary rather than of the project under audit, so it rides
@@ -47,9 +34,9 @@
 //!
 //! - `check` runs validators that the project configures
 //!   (rules / skills / settings shape, codegen drift, permission auditor).
-//! - `audit` runs harness-engineering checks — spec drift, managed-region
-//!   integrity. Operators add `audit` to CI when they want enforcement
-//!   beyond structural validation.
+//! - `audit` holds the generated harness to the composition it was generated
+//!   from, and to the live Claude Code spec. Operators add `audit` to CI when
+//!   they want enforcement beyond structural validation.
 
 mod copy_drift;
 mod fill_marker;
@@ -83,16 +70,39 @@ pub(crate) fn normalize(body: &str) -> String {
     body.replace("\r\n", "\n").trim().to_string()
 }
 
-/// Closed set of audit checks the `harness audit` command dispatches.
-/// `AuditCheckKind::ALL` drives [`ProjectAuditor::run`]'s exhaustive match
-/// — adding a variant requires updating the `from_str`, `as_str`, and the
-/// match arm in `run`, all enforced by the compiler.
+/// Closed set of audit checks the `harness audit` command dispatches, and the
+/// only statement of what an audit covers — the module doc points here rather
+/// than repeating it, because a restated list is what drifts.
+///
+/// `AuditCheckKind::ALL` drives [`ProjectAuditor::run`]'s exhaustive match —
+/// adding a variant requires updating the `from_str`, `as_str`, and the match
+/// arm in `run`, all enforced by the compiler. Document the new variant here
+/// in the same edit: this is the doc every other surface defers to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuditCheckKind {
+    /// Values in `.claude/settings.json` that look plausible and violate the
+    /// live Claude Code spec — a millisecond `timeout`, an `mcp__server`
+    /// matcher missing the suffix that makes it match anything.
     SettingsDrift,
+    /// A hook naming a scaffold artifact that is not on disk. The handler then
+    /// errors and the action proceeds, so the harness reads as wired while
+    /// enforcing nothing. Scoped to the manifest's artifacts because an
+    /// anchored path the project *builds* — a bundler output, an installed
+    /// binary — is legitimately absent before that build runs.
     HookWiring,
+    /// Content inside a `harnex-managed` sentinel block that diverges from the
+    /// plugin's template, and a managed artifact whose sentinels are gone —
+    /// regenerate then has nothing to write into.
     ManagedRegion,
+    /// A `copy` artifact whose bytes differ from the template that emits it.
+    /// The manifest calls that a defect by definition, and it is how a
+    /// project's own file ends up at a destination the hook fragments wire
+    /// into: ownership is decided per artifact, the wiring lives in another
+    /// one.
     CopyDrift,
+    /// A `harnex-fill` marker the generating step left behind, over `CLAUDE.md`
+    /// and `.claude/**/*.md`. A placeholder that ships is the blank page the
+    /// templates exist to avoid, arriving as a finished-looking file.
     FillMarker,
 }
 
@@ -123,6 +133,65 @@ impl AuditCheckKind {
             Self::ManagedRegion => "managed-region",
             Self::CopyDrift => "copy-drift",
             Self::FillMarker => "fill-marker",
+        }
+    }
+}
+
+/// Closed set of slugs an audit finding can carry.
+///
+/// A slug is a wire contract — CI greps it, the plugin's audit mode explains
+/// it to an operator — so it is a vocabulary, not a string literal at the emit
+/// site. The literals had no owner, and the check added most recently reached
+/// two shipped documents in neither: an operator saw a finding the skill could
+/// not name. `audit_slug_sync` holds this list against those documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditFindingSlug {
+    MsTimeout,
+    McpMatcherIncomplete,
+    HookScriptMissing,
+    HookNotExecutable,
+    ManagedRegionEdited,
+    ManagedRegionMissing,
+    CopyDrift,
+    FillMarkerUnresolved,
+}
+
+impl AuditFindingSlug {
+    pub const ALL: &'static [Self] = &[
+        Self::MsTimeout,
+        Self::McpMatcherIncomplete,
+        Self::HookScriptMissing,
+        Self::HookNotExecutable,
+        Self::ManagedRegionEdited,
+        Self::ManagedRegionMissing,
+        Self::CopyDrift,
+        Self::FillMarkerUnresolved,
+    ];
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "audit-ms-timeout" => Self::MsTimeout,
+            "audit-mcp-matcher-incomplete" => Self::McpMatcherIncomplete,
+            "audit-hook-script-missing" => Self::HookScriptMissing,
+            "audit-hook-not-executable" => Self::HookNotExecutable,
+            "audit-managed-region-edited" => Self::ManagedRegionEdited,
+            "audit-managed-region-missing" => Self::ManagedRegionMissing,
+            "audit-copy-drift" => Self::CopyDrift,
+            "audit-fill-marker-unresolved" => Self::FillMarkerUnresolved,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MsTimeout => "audit-ms-timeout",
+            Self::McpMatcherIncomplete => "audit-mcp-matcher-incomplete",
+            Self::HookScriptMissing => "audit-hook-script-missing",
+            Self::HookNotExecutable => "audit-hook-not-executable",
+            Self::ManagedRegionEdited => "audit-managed-region-edited",
+            Self::ManagedRegionMissing => "audit-managed-region-missing",
+            Self::CopyDrift => "audit-copy-drift",
+            Self::FillMarkerUnresolved => "audit-fill-marker-unresolved",
         }
     }
 }

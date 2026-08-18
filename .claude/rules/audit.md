@@ -37,6 +37,12 @@ Sub-auditor slugs (current):
   The grammar itself lives in `guard::project_dir` (`.claude/rules/guard.md`),
   read by this auditor and by the scaffold-manifest test alike — a second
   scanner would drift on the first edit to either's shell vocabulary.
+  Also `audit-hook-not-executable` (Major), scoped to the one file the mode
+  matters for: the executable a handler spawns *directly*, which is what
+  `args` being present says. A shell-form `command` is left alone because
+  `bash <script>` runs a non-executable file. The bit is missed by
+  `hook-script-missing` — the path resolves — and it fails earlier than any
+  wrapper, so the harness reads as wired while every hook dies at spawn.
 - `managed-region` — sentinel-block integrity vs the plugin templates
   declared by the `managed` artifacts of `plugins/harnex/templates/scaffold.toml`
   (`audit-managed-region-edited`, `audit-managed-region-missing`).

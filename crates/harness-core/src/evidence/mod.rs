@@ -9,9 +9,10 @@
 //! - Never make a network call at verify time. URL-based strategies check
 //!   format + recorded fetch timestamp only. The actual fetch is the
 //!   author's job; the provenance marker is a contract, not an oracle.
-//! - Never invent provenance. Unmarked free text is not a claim; only
-//!   recognised marker syntaxes (`[fetched: …]`, `[context7: …]`,
-//!   `[memory]`, `file:`) produce claims.
+//! - Never invent provenance. Unmarked free text is not a claim; every claim
+//!   carries one of the bracketed markers [`parse_claims`] recognises, the
+//!   internal one included — a bare backtick path is documentation and
+//!   stays so.
 //! - Never silently downgrade severity. The block / warn distinction
 //!   derives from the configured `block_on_memory_only` flag.
 

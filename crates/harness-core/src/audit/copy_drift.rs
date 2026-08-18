@@ -37,7 +37,7 @@
 
 use std::path::Path;
 
-use crate::audit::normalize;
+use crate::audit::{AuditFindingSlug, normalize};
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::Result;
 use crate::scaffold::{Content, ScaffoldManifest};
@@ -70,7 +70,7 @@ impl CopyDriftAuditor {
                     continue;
                 }
                 findings.push(Finding {
-                    slug: "audit-copy-drift".into(),
+                    slug: AuditFindingSlug::CopyDrift.as_str().into(),
                     severity: Severity::Minor,
                     location: Location::file(landed),
                     message: format!(

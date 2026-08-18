@@ -26,6 +26,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::audit::AuditFindingSlug;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 use crate::sentinel;
@@ -57,7 +58,7 @@ impl FillMarkerAuditor {
             files_scanned += 1;
             for marker in sentinel::fill_markers(&body) {
                 findings.push(Finding {
-                    slug: "audit-fill-marker-unresolved".into(),
+                    slug: AuditFindingSlug::FillMarkerUnresolved.as_str().into(),
                     severity: Severity::Major,
                     location: Location::line(path.clone(), marker.line as u32),
                     message: format!(

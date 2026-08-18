@@ -46,5 +46,7 @@ is adopted; otherwise verify them by hand at a retro):
 
 ## Exempt artifacts
 
-Foundation artifacts are exempt from retirement: constitution, governance,
-artifact-lifecycle. Their removal requires an explicit governance vote.
+Foundation artifacts are exempt from retirement — the always-loaded rules
+(constitution, agent-conduct) and the ones that define this loop itself
+(governance, artifact-lifecycle). Their removal requires an explicit
+governance vote.

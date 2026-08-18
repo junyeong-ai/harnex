@@ -19,12 +19,12 @@
 //! destination existing.
 //!
 //! [`Tier`] is what makes a partial harness expressible. `Foundation`
-//! artifacts carry no language dependency: the permission floor, the
-//! foundation rules, the hook wrappers, the secret-scan git hook. `Language`
-//! artifacts need a detected stack, because a formatter and a toolchain allow
-//! list cannot be chosen without one. A repo whose stack has no profile can
-//! therefore receive the foundation tier and be told exactly what is absent,
-//! rather than receiving nothing.
+//! artifacts carry no language dependency; `Language` artifacts need a
+//! detected stack, because a formatter and a toolchain allow list cannot be
+//! chosen without one. A repo whose stack has no profile can therefore receive
+//! the foundation tier and be told exactly what is absent, rather than
+//! receiving nothing. Which artifacts sit in which tier is the manifest's
+//! answer, never a list restated in prose.
 //!
 //! ## What this module refuses to do
 //!

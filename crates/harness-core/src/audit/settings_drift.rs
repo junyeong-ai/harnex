@@ -29,6 +29,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use crate::audit::AuditFindingSlug;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 
@@ -105,7 +106,7 @@ impl SettingsDriftAuditor {
                 .is_some_and(|(server, tool)| !server.is_empty() && !tool.is_empty());
             if !is_regex && !well_formed {
                 findings.push(Finding {
-                    slug: "audit-mcp-matcher-incomplete".into(),
+                    slug: AuditFindingSlug::McpMatcherIncomplete.as_str().into(),
                     severity: Severity::Major,
                     location: Location::file(path.to_path_buf()),
                     message: format!(
@@ -141,7 +142,7 @@ impl SettingsDriftAuditor {
                 && t >= TIMEOUT_MS_SUSPICION_THRESHOLD
             {
                 findings.push(Finding {
-                    slug: "audit-ms-timeout".into(),
+                    slug: AuditFindingSlug::MsTimeout.as_str().into(),
                     severity: Severity::Minor,
                     location: Location::file(path.to_path_buf()),
                     message: format!(
