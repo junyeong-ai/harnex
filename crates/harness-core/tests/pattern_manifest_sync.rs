@@ -376,24 +376,31 @@ fn every_pattern_surface_file_validates() {
 /// skill when that one is installed alone. The foundation tier is the exception
 /// and not a hole in the rule: the scaffold emits it before any pattern runs, so
 /// its skill directory is present by the time a pattern could extend it.
-#[test]
-fn every_skill_directory_has_its_entry_point_at_install_time() {
+/// Skill directories the scaffold emits before any pattern runs.
+fn foundation_skill_dirs() -> BTreeSet<String> {
     // Through the crate's own loader, not a second parser. `scaffold.toml` is a
-    // closed schema and `ScaffoldManifest::load` is what enforces that; an
-    // ad-hoc struct here would be a second representation of the same shape —
-    // and the one written first accepted unknown fields, so it would have
-    // passed exactly the manifests the real loader rejects.
-    let scaffold: BTreeSet<String> = {
-        let templates = patterns_dir().parent().unwrap().to_path_buf();
-        harness_core::scaffold::ScaffoldManifest::load(&templates)
-            .expect("scaffold.toml loads")
-            .tier(harness_core::scaffold::Tier::Foundation)
-            .filter_map(|a| skill_dir_of(&a.destination).map(str::to_string))
-            .collect()
-    };
+    // closed schema and `ScaffoldManifest::load` is what enforces that.
+    let templates = patterns_dir().parent().unwrap().to_path_buf();
+    harness_core::scaffold::ScaffoldManifest::load(&templates)
+        .expect("scaffold.toml loads")
+        .tier(harness_core::scaffold::Tier::Foundation)
+        .filter_map(|a| skill_dir_of(&a.destination).map(str::to_string))
+        .collect()
+}
 
+/// A pattern is the install unit, so its own entry point must be there when it
+/// installs alone. `Err` names what is wrong.
+///
+/// Pure over the manifest so the escapes found in earlier rounds are unit tests
+/// below rather than mutations someone has to remember to re-run. That is the
+/// check the round-four regression needed and did not get: each round's fix ran
+/// its own new reproduction and not the previous ones.
+fn entry_point_available_at_install(
+    patterns: &[Pattern],
+    foundation: &BTreeSet<String>,
+) -> Result<usize, String> {
     let mut checked = 0usize;
-    for pattern in &load_manifest().pattern {
+    for pattern in patterns {
         let mut dirs: std::collections::BTreeMap<&str, Vec<&String>> =
             std::collections::BTreeMap::new();
         for file in &pattern.files {
@@ -402,25 +409,59 @@ fn every_skill_directory_has_its_entry_point_at_install_time() {
             }
         }
         for (dir, files) in &dirs {
-            if scaffold.contains(*dir) {
+            if foundation.contains(*dir) {
                 continue;
             }
             let heads = files
                 .iter()
                 .filter(|d| Surface::of(d) == Some(Surface::Skill))
                 .count();
-            assert_eq!(
-                heads, 1,
-                "pattern '{}' writes into .claude/skills/{dir}/ and declares {heads} entry \
-                 points there, among {files:?}. Installed alone — which is how a pattern \
-                 installs — that leaves a skill Claude Code does not load, or a resource \
-                 belonging to no skill. The scaffold's own skill directories are exempt \
-                 because the scaffold emits them first.",
-                pattern.slug
-            );
+            if heads != 1 {
+                return Err(format!(
+                    "pattern '{}' writes into .claude/skills/{dir}/ and declares {heads} entry \
+                     points there, among {files:?}. Installed alone — which is how a pattern \
+                     installs — that leaves a skill Claude Code does not load, or a resource \
+                     belonging to no skill. The scaffold's own skill directories are exempt \
+                     because the scaffold emits them first.",
+                    pattern.slug
+                ));
+            }
             checked += 1;
         }
     }
+    Ok(checked)
+}
+
+/// Two patterns installed together must not write over each other's skill.
+/// A different question from the one above, and it needs its own answer.
+fn no_shared_skill_directory(patterns: &[Pattern]) -> Result<(), String> {
+    let mut owner: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for pattern in patterns {
+        for file in &pattern.files {
+            if Surface::of(&file.destination) == Some(Surface::Skill)
+                && let Some(dir) = skill_dir_of(&file.destination)
+            {
+                owner.entry(dir).or_default().push(&pattern.slug);
+            }
+        }
+    }
+    for (dir, slugs) in &owner {
+        if slugs.len() != 1 {
+            return Err(format!(
+                "patterns {slugs:?} each declare an entry point at .claude/skills/{dir}/. \
+                 Installing both writes one over the other, and the project keeps whichever \
+                 ran last."
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn every_skill_directory_has_its_entry_point_at_install_time() {
+    let checked =
+        entry_point_available_at_install(&load_manifest().pattern, &foundation_skill_dirs())
+            .unwrap_or_else(|e| panic!("{e}"));
     assert!(
         checked > 0,
         "the pattern library must ship a skill of its own"
@@ -431,37 +472,15 @@ fn every_skill_directory_has_its_entry_point_at_install_time() {
 ///
 /// The companion test asks whether a pattern's own entry point is there when it
 /// installs alone. This asks the other half — whether two patterns collide when
-/// both are installed — and the two are not the same question. Grouping per
-/// pattern to answer the first silently gave up the second: two patterns each
-/// declaring `.claude/skills/shared/SKILL.md` each hold exactly one entry point
-/// in their own bucket, so the per-pattern check passes and one file overwrites
-/// the other in any project that takes both.
+/// both are installed. Grouping per pattern to answer the first silently gave up
+/// the second, and nothing noticed for a round.
 ///
 /// Short directory names make this reachable rather than exotic — `spec` and
 /// `review` are already taken, and the ninth pattern picks from the same small
 /// vocabulary.
 #[test]
 fn no_two_patterns_claim_the_same_skill_directory() {
-    let mut owner: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
-    let manifest = load_manifest();
-    for pattern in &manifest.pattern {
-        for file in &pattern.files {
-            if Surface::of(&file.destination) == Some(Surface::Skill)
-                && let Some(dir) = skill_dir_of(&file.destination)
-            {
-                owner.entry(dir).or_default().push(&pattern.slug);
-            }
-        }
-    }
-    for (dir, patterns) in &owner {
-        assert_eq!(
-            patterns.len(),
-            1,
-            "patterns {patterns:?} each declare an entry point at .claude/skills/{dir}/. \
-             Installing both writes one over the other, and the project keeps whichever \
-             ran last."
-        );
-    }
+    no_shared_skill_directory(&load_manifest().pattern).unwrap_or_else(|e| panic!("{e}"));
 }
 
 /// The skill directory a destination lands in, if it lands in one.
@@ -473,5 +492,147 @@ fn skill_dir_of(destination: &str) -> Option<&str> {
     match *destination.split('/').collect::<Vec<_>>().as_slice() {
         [".claude", "skills", dir, _] => Some(dir),
         _ => None,
+    }
+}
+
+/// The escapes found in rounds three through six, as tests rather than as
+/// mutations someone has to remember to re-run.
+///
+/// Every one of these was found by editing `manifest.toml` by hand and watching
+/// the suite stay green. Each round then fixed its own escape and ran only its
+/// own reproduction — which is how round four closed one hole and reopened
+/// another that round three had closed, with nothing failing for a full round.
+/// Held here, giving one up is a failing test rather than a discovery two
+/// rounds later.
+mod escapes {
+    use super::*;
+
+    fn pattern(slug: &str, destinations: &[&str]) -> Pattern {
+        Pattern {
+            slug: slug.to_string(),
+            analyze: vec!["something".into()],
+            files: destinations
+                .iter()
+                .map(|d| FileEntry {
+                    template: "t.md".into(),
+                    destination: (*d).to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    fn none() -> BTreeSet<String> {
+        BTreeSet::new()
+    }
+
+    fn scaffold_ships(dir: &str) -> BTreeSet<String> {
+        [dir.to_string()].into_iter().collect()
+    }
+
+    /// Round 5: two patterns racing for one skill directory. Round 4's
+    /// per-pattern grouping accepted this — each holds exactly one entry point
+    /// in its own bucket — and installing both writes one over the other.
+    #[test]
+    fn two_patterns_may_not_share_a_skill_directory() {
+        let ps = [
+            pattern("alpha", &[".claude/skills/shared/SKILL.md"]),
+            pattern("beta", &[".claude/skills/shared/SKILL.md"]),
+        ];
+        assert!(no_shared_skill_directory(&ps).is_err());
+        // and the per-pattern check alone does NOT catch it — the reason both exist
+        assert!(entry_point_available_at_install(&ps, &none()).is_ok());
+    }
+
+    /// Round 4: a pattern writing a resource into another pattern's skill
+    /// directory. Installed alone it leaves a resource belonging to no skill.
+    #[test]
+    fn a_pattern_may_not_write_into_another_patterns_skill_directory() {
+        let ps = [
+            pattern("owner", &[".claude/skills/spec/SKILL.md"]),
+            pattern("guest", &[".claude/skills/spec/extra.md"]),
+        ];
+        assert!(entry_point_available_at_install(&ps, &none()).is_err());
+    }
+
+    /// Round 3: a one-character filename typo. The directory then has no entry
+    /// point, and Claude Code loads nothing from it.
+    #[test]
+    fn a_skill_entry_point_filename_typo_is_caught() {
+        let ps = [pattern(
+            "spec-workflow",
+            &[
+                ".claude/skills/spec/Skill.md",
+                ".claude/skills/spec/gates.md",
+            ],
+        )];
+        assert!(entry_point_available_at_install(&ps, &none()).is_err());
+    }
+
+    /// A skill directory shipping only resources.
+    #[test]
+    fn a_skill_directory_needs_an_entry_point() {
+        let ps = [pattern("p", &[".claude/skills/spec/gates.md"])];
+        assert!(entry_point_available_at_install(&ps, &none()).is_err());
+    }
+
+    /// Two entry points in one directory: the second overwrites the first.
+    #[test]
+    fn a_skill_directory_holds_only_one_entry_point() {
+        let ps = [pattern(
+            "p",
+            &[
+                ".claude/skills/spec/SKILL.md",
+                ".claude/skills/spec/SKILL.md",
+            ],
+        )];
+        assert!(entry_point_available_at_install(&ps, &none()).is_err());
+    }
+
+    /// Extending a skill directory the scaffold emits is legitimate: the
+    /// foundation tier runs before any pattern, so the entry point is there.
+    #[test]
+    fn extending_a_scaffold_skill_directory_is_allowed() {
+        let ps = [pattern("p", &[".claude/skills/harness-curate/extra.md"])];
+        assert!(entry_point_available_at_install(&ps, &scaffold_ships("harness-curate")).is_ok());
+    }
+
+    /// A skill with an entry point and no resources at all.
+    #[test]
+    fn a_skill_with_no_resources_is_allowed() {
+        let ps = [pattern("p", &[".claude/skills/solo/SKILL.md"])];
+        assert!(entry_point_available_at_install(&ps, &none()).unwrap() == 1);
+    }
+
+    /// Round 6: the validators discover recursively, so a nested rule or agent
+    /// is a destination the oracle validates and the classifier must accept.
+    #[test]
+    fn the_classifier_accepts_what_the_validators_cover() {
+        for (destination, expected) in [
+            (".claude/rules/observability.md", Surface::Rule),
+            (".claude/rules/nested/observability.md", Surface::Rule),
+            (".claude/agents/reviewer.md", Surface::Agent),
+            (".claude/agents/team/reviewer.md", Surface::Agent),
+            (".claude/output-styles/terse.md", Surface::OutputStyle),
+            (".claude/skills/spec/SKILL.md", Surface::Skill),
+            (".claude/skills/spec/gates.md", Surface::SkillResource),
+        ] {
+            assert_eq!(
+                Surface::of(destination),
+                Some(expected),
+                "{destination} classified wrongly"
+            );
+        }
+    }
+
+    /// A destination no surface covers fails loudly rather than passing unseen.
+    #[test]
+    fn an_unclassifiable_destination_is_not_silently_excused() {
+        for destination in [".claude/hooks/x.sh", "README.md", ".claude/skills/x/y/z.md"] {
+            assert_eq!(
+                Surface::of(destination),
+                None,
+                "{destination} was classified"
+            );
+        }
     }
 }
