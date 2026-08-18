@@ -48,7 +48,7 @@ placeholders. Read the source, not the whole tree.
 | CI pipeline + gates | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `turbo.json` | hook event selection; suggested `extend pattern` |
 | Test framework | `vitest.config`, `pytest.ini`, Cargo test layout | `<lang>-conventions.md` testing section |
 | Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners in deps/CI | suggested `gcp-strict`/`aws-strict` profile; secret-scan recommendation |
-| **Enforced invariants** | project lint scripts + CI steps + pre-commit entries; closed enums / registries / allowlists with an exhaustive match; structural tests (enumerate members, hold two representations in sync, pin a naming shape) | `extend rule` bodies; the scaffold report's rule candidates |
+| **Enforced invariants** | the enforcer sweep below — run it, do not sample it | `extend rule` bodies; the scaffold report's rule candidates |
 
 A concern with no signal keeps its template default and is noted "none
 observed yet" — never a guessed value. `extend` runs only the rows its verb
@@ -70,6 +70,43 @@ toolchain or test framework — a single root profile flattens real
 per-package differences. The Phase-3 fan-out (below) supplies the
 per-module facts; synthesis writes per-package `<lang>-conventions.md` only
 where a package genuinely diverges from the repo default.
+
+### The enforcer sweep
+
+The single highest-value output of Phase 2, and the one that degrades quietly:
+noticing four invariants in a repository that runs thirty produces a harness
+that looks finished and governs an eighth of what the project already decided.
+
+**Enumerate first, judge second.** The enumeration is mechanical — read each
+source and list every entry, do not filter while reading:
+
+| Source | What to list |
+|---|---|
+| CI workflow | every job, and every step that runs a project script rather than a stock tool |
+| Task runner / package scripts | every target whose name says check, audit, verify, lint, parity, drift, guard |
+| Aggregate gate target | the ordered chain a `gate` / `check` / `verify` target expands to |
+| Pre-commit config and versioned git hooks | every hook, and whether `core.hooksPath` actually points at them |
+| Lint configuration | every rule set to deny / error, and every entry in a disallowed-symbol list |
+| Structural tests | every test that enumerates members, pins a name shape, holds two representations in sync, or asserts a boundary |
+| Closed vocabularies in source | every enum, registry, or allowlist with an exhaustive match or a round-trip test |
+| Generated-file guards | every check that regenerates and diffs |
+
+**Then report the count, not a selection.** `N enforcers found; M became rules;
+the remaining N−M with the reason each was not one.` A sweep with no total is
+indistinguishable from a sweep that stopped early, and the total is what tells
+an operator whether the harness covers their project or a corner of it.
+
+Most of N−M has one of three reasons, and each is legitimate: the tool already
+owns it (formatter, type checker — keep-soften-cut CUT tier), a rule already
+names it, or the invariant is real but nothing in the tree enforces it — that
+last one is `harness lifecycle observe`, not a rule.
+
+**Group before writing.** One rule per *decision the project made*, not one per
+enforcer: three i18n audits guarding one catalogue contract are one rule naming
+three enforcers, and splitting them writes three thin rules where the project
+has one idea. Equally, one enforcer covering two unrelated decisions is two
+rules. The count above is of enforcers considered; the rule count is smaller
+and that is correct.
 
 ## Phase 3 — module exploration (fan out ONLY when it pays)
 
