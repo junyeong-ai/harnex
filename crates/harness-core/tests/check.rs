@@ -298,18 +298,14 @@ fn fix_is_noop_when_no_auto_fixable_findings() {
 }
 
 #[test]
-fn fix_unrecognized_command_outcome() {
-    // Manually craft a "fix command not in registry" via the registry's
-    // own match. Direct path: invoke try_fix through fix() with no
-    // findings; verify branch is reachable via match arms.
-    // Since auto_fixable + fix_command currently only triggers codegen,
-    // the Unrecognized outcome path is reserved for future validators.
-    // This test documents the API surface exists.
+fn fix_with_nothing_to_do_attempts_nothing() {
+    // `fix()` filters on `auto_fixable`, so a config that produces no fixable
+    // finding must attempt no fix rather than dispatching an empty batch.
+    // There is no unrecognized-command branch to test: `try_fix` takes a typed
+    // `FixCommand` and matches it exhaustively, so no string reaches it.
     let tmp = TempDir::new().unwrap();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
-    // No fixes attempted means no Unrecognized outcomes surface today;
-    // this test pins behaviour for documentation.
     assert!(outcome.fixes_attempted.is_empty());
 }
 
@@ -337,5 +333,50 @@ fn files_scanned_counts_only_passing_filter() {
         outcome.files_scanned >= 5,
         "files_scanned = {}",
         outcome.files_scanned
+    );
+}
+
+/// The three surfaces that answer "which fix commands exist" agree.
+///
+/// `Serialize`, `Deserialize` and the emitted schema are hand-written for
+/// [`FixCommand`] — a derive would have kept them in step, so nothing but this
+/// holds them together. All three read `ALL` + `as_str`, and this asserts they
+/// actually do rather than that they were written to.
+#[test]
+fn fix_command_serialises_round_trips_and_matches_its_schema() {
+    use harness_core::envelope::FixCommand;
+
+    let schema = serde_json::to_value(schemars::schema_for!(FixCommand)).unwrap();
+    let declared: Vec<String> = schema["enum"]
+        .as_array()
+        .expect("FixCommand schema declares an enum of wire strings")
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+
+    let mut emitted = Vec::new();
+    for c in FixCommand::ALL {
+        let json = serde_json::to_value(c).unwrap();
+        let wire = json
+            .as_str()
+            .expect("a FixCommand serialises as a bare string")
+            .to_string();
+        assert_eq!(wire, c.as_str(), "Serialize disagrees with as_str");
+        assert_eq!(
+            serde_json::from_value::<FixCommand>(json).unwrap(),
+            *c,
+            "Deserialize is not the inverse of Serialize"
+        );
+        emitted.push(wire);
+    }
+    assert_eq!(
+        declared, emitted,
+        "the schema does not describe what Serialize emits"
+    );
+
+    let outside = serde_json::json!("harness policy permissions generate --profile baseline");
+    assert!(
+        serde_json::from_value::<FixCommand>(outside).is_err(),
+        "a command outside the registry must not deserialize — that is the class this type exists to reject"
     );
 }

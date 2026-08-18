@@ -72,8 +72,6 @@ pub enum FixOutcome {
     Applied,
     /// Fix function ran but returned an error.
     Failed { reason: String },
-    /// Fix command is not in the safe-fix registry; never executed.
-    Unrecognized,
 }
 
 pub struct ProjectChecker<'a> {
@@ -134,7 +132,7 @@ impl<'a> ProjectChecker<'a> {
                 }
             })
             .collect();
-        attempts.sort_by_key(|a| a.fix_command);
+        attempts.sort_by_key(|a| a.fix_command.as_str());
         let after = self.run()?;
         Ok(FixReport {
             before,
@@ -518,25 +516,20 @@ impl<'a> ProjectChecker<'a> {
                     PermissionFindingKind::MissingBaselineDeny => {
                         "permission-missing-baseline-deny".into()
                     }
-                    PermissionFindingKind::ContradictoryRule => "permission-contradictory-rule".into(),
+                    PermissionFindingKind::ContradictoryRule => {
+                        "permission-contradictory-rule".into()
+                    }
                 },
                 severity: Severity::Major,
                 location: Location::file(settings_path.clone()),
                 message: pf.message.clone(),
-                hint: Some(format!(
-                    "regenerate from canonical profiles: `harness policy permissions generate {} > .claude/settings.json`",
-                    self.config
-                        .policy
-                        .as_ref()
-                        .and_then(|p| p.permissions.as_ref())
-                        .map(|p| p
-                            .profiles
-                            .iter()
-                            .map(|s| format!("--profile {s}"))
-                            .collect::<Vec<_>>()
-                            .join(" "))
-                        .unwrap_or_else(|| "--profile baseline".into())
-                )),
+                hint: Some(
+                    "regenerate from the canonical profiles: run `harness policy permissions \
+                     generate` and copy its `data` under `permissions` in .claude/settings.json. \
+                     The profiles come from `[policy.permissions] profiles` in harness.toml — \
+                     the subcommand takes no arguments."
+                        .into(),
+                ),
                 auto_fixable: false,
                 // No fix command: nothing in the safe-fix registry writes a
                 // permission rule, and a rule to paste is what the hint above

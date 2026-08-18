@@ -230,8 +230,11 @@ impl SettingsValidator {
                     location: Location::line(path.to_path_buf(), e.line() as u32),
                     message: format!("json parse: {e}"),
                     hint: Some(
-                        "fix the JSON syntax; if the file is empty or corrupted, regenerate via \
-                         `harness policy permissions generate --profile baseline > .claude/settings.json`"
+                        "fix the JSON syntax. To rebuild the permissions block, declare \
+                         `[policy.permissions] profiles` in harness.toml, run `harness policy \
+                         permissions generate`, and copy its `data` under the `permissions` key \
+                         — the command emits an envelope, so redirecting it into this file \
+                         would leave the file invalid a second time"
                             .into(),
                     ),
                     auto_fixable: false,

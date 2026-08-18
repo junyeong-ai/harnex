@@ -20,7 +20,7 @@ Two things, and neither is telling the model what to do:
    that file.
 
 Read the artifacts that way. `spec.md`'s acceptance criteria are what the
-validation gate checks against, not a briefing. `plan.md`'s Outstanding Issues
+validation gate checks against, not a briefing. `plan.md`'s Outstanding issues
 is where the review gate writes, so the next session reads what the last one
 found instead of rediscovering it.
 
@@ -48,7 +48,7 @@ specs/
 │   └── wrapup.md
 └── <slug>/
     ├── spec.md      # REQUIRED — problem + constraints + acceptance criteria
-    ├── plan.md      # decisions + touched files + task list + Outstanding Issues
+    ├── plan.md      # decisions + touched files + task list + Outstanding issues
     └── wrapup.md    # REQUIRED at the end — what the criteria got, what is left
 ```
 
@@ -60,7 +60,7 @@ exist.
 
 `plan.md` is optional for a change small enough that its decisions fit in the
 spec, and every gate then reports to the conversation instead of to
-`## Outstanding Issues`. Take that branch deliberately: a spec with no plan has
+`## Outstanding issues`. Take that branch deliberately: a spec with no plan has
 nowhere to leave a finding for the next session.
 
 ## `spec.md` frontmatter
@@ -101,5 +101,5 @@ the lifecycle words mean.
 
 Phase is **not** stored in frontmatter. It is read off which artifacts exist,
 so a fresh session re-derives it from disk and there is no second copy to go
-stale. Findings land in `plan.md ## Outstanding Issues`, which is what makes
+stale. Findings land in `plan.md ## Outstanding issues`, which is what makes
 the next session read what the last one found.
