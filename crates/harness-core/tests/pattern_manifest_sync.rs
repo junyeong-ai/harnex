@@ -165,3 +165,71 @@ fn walk_files(dir: &std::path::Path) -> Vec<PathBuf> {
     }
     out
 }
+
+/// Every pattern file that lands on a Claude Code surface passes the oracle's
+/// validator for that surface, under the policy a harnex-scaffolded project
+/// actually runs.
+///
+/// harnex ships skills and a sub-agent now, not only rules, and a template that
+/// is wrong is wrong in every project that installs it — the failure mode the
+/// whole plugin exists to prevent, arriving from harnex itself. Manual checking
+/// caught it once; that is not a guard.
+///
+/// The policy is read from the `harness.toml` the scaffold emits rather than
+/// from a literal, for the reason `.claude/rules/scaffold.md` gives: a restated
+/// policy is one no real project has, so the templates would be held to
+/// settings harnex does not ship. That file turns `reject_unknown_keys` on for
+/// three surfaces, so a stray frontmatter key here is a finding.
+#[test]
+fn every_pattern_surface_file_validates() {
+    use harness_core::validate::{AgentValidator, RuleValidator, SkillValidator};
+
+    let templates = patterns_dir().parent().unwrap().to_path_buf();
+    let config = harness_core::config::Config::load_from(&templates.join("common/harness.toml"))
+        .expect("the scaffolded harness.toml must load");
+    let validate = config
+        .validate
+        .expect("scaffolded config declares validate");
+    let rules = validate
+        .rules
+        .expect("scaffolded config declares validate.rules");
+    let skills = validate
+        .skills
+        .expect("scaffolded config declares validate.skills");
+    let agents = validate
+        .agents
+        .expect("scaffolded config declares validate.agents");
+
+    let mut checked = 0usize;
+    for pattern in &load_manifest().pattern {
+        for file in &pattern.files {
+            let src = patterns_dir().join(&pattern.slug).join(&file.template);
+            let body = std::fs::read_to_string(&src).unwrap();
+            let dest = std::path::Path::new(&file.destination);
+            let landed = std::path::Path::new("/proj").join(dest);
+
+            let findings = if file.destination.ends_with("/SKILL.md") {
+                SkillValidator::new(&skills).validate_text(&body, &landed)
+            } else if file.destination.starts_with(".claude/agents/") {
+                AgentValidator::new(&agents).validate_text(&body, &landed)
+            } else if file.destination.starts_with(".claude/rules/") {
+                RuleValidator::new(&rules).validate_text(&body, &landed)
+            } else {
+                continue;
+            };
+            checked += 1;
+            assert!(
+                findings.is_empty(),
+                "pattern '{}' file '{}' would land at '{}' and fail the project's own \
+                 validator: {findings:#?}",
+                pattern.slug,
+                file.template,
+                file.destination
+            );
+        }
+    }
+    assert!(
+        checked >= 3,
+        "expected the pattern library to carry rule, skill and agent surfaces; validated {checked}"
+    );
+}

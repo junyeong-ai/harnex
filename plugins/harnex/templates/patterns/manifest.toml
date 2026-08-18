@@ -11,9 +11,12 @@
 
 [[pattern]]
 slug = "review-lenses"
-analyze = ["existing .claude/rules/ for anchors", "file types present for applies_to"]
+analyze = ["existing .claude/rules/ for anchors", "file types present for applies_to", "re-runnable authorities a finding may cite — lint codes, named CI gates, schema checks"]
 files = [
   { template = "review-lenses.md", destination = ".claude/rules/review-lenses.md" },
+  { template = "skill/SKILL.md", destination = ".claude/skills/review/SKILL.md" },
+  { template = "skill/convergence.md", destination = ".claude/skills/review/convergence.md" },
+  { template = "agent/reviewer.md", destination = ".claude/agents/reviewer.md" },
   { template = "lenses/completeness.md", destination = ".claude/lenses/completeness.md" },
   { template = "lenses/best-practice.md", destination = ".claude/lenses/best-practice.md" },
   { template = "lenses/extensibility.md", destination = ".claude/lenses/extensibility.md" },
@@ -24,9 +27,12 @@ files = [
 
 [[pattern]]
 slug = "spec-workflow"
-analyze = ["existing specs/ or docs/adr/ layout", "CI stages → gates"]
+analyze = ["existing specs/ or docs/adr/ layout", "CI stages → gates", "blast-radius signals that should fire design_review", "where the project keeps learnings a retired spec retargets onto"]
 files = [
   { template = "spec-workflow.md", destination = ".claude/rules/spec-workflow.md" },
+  { template = "skill/SKILL.md", destination = ".claude/skills/spec/SKILL.md" },
+  { template = "skill/gates.md", destination = ".claude/skills/spec/gates.md" },
+  { template = "skill/resume.md", destination = ".claude/skills/spec/resume.md" },
   { template = "specs/spec.md", destination = "specs/_template/spec.md" },
   { template = "specs/plan.md", destination = "specs/_template/plan.md" },
   { template = "specs/wrapup.md", destination = "specs/_template/wrapup.md" },

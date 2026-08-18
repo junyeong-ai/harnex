@@ -319,18 +319,26 @@ operator to re-phrase using a verb from this list.
     register and terminology with observations.
   - `review-lenses` — auto-link lens `anchors:` to the project's existing
     `.claude/rules/` files. Customize each lens's `applies_to:` based on what
-    file types the project has.
+    file types the project has. Name this project's **re-runnable authorities**
+    in the rule: a finding may only be auto-fixed when something other than the
+    loop confirms it, so the list of lint codes, named gates and structural
+    tests is what decides the fix/report split. Take it from the enforcer sweep
+    (exploration Phase 2) — it is the same list.
   - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
-    If found, adapt template structure to match existing layout instead of
-    overwriting. Map CI stages to gates if CI config exists. Drop any phase
-    whose artifact nobody on this project would review and no later session
-    would read — the pipeline is checkpoints and state, and a phase that is
-    neither is ceremony the project pays for on every spec. `specs/_template/`
-    holds one file per artifact-producing phase, so a pipeline customized in
-    the rule is customized there in the same install — a phase added gains its
-    template file, a phase dropped loses it. The `<...>` placeholders inside
-    those files are filled per spec by whoever starts one and are not
-    install-time fill markers.
+    If found, adapt to the existing layout instead of overwriting. Drop any
+    phase whose artifact nobody on this project would review and no later
+    session would read — the pipeline is checkpoints and state, and a phase
+    that is neither is ceremony paid on every spec. `specs/_template/` holds
+    one file per artifact-producing phase, so a phase dropped loses its
+    template file in the same install; the orchestrator derives the phase from
+    which of them exist, so the two cannot disagree. Two fills carry the
+    project: the **blast-radius signals** that fire the design_review gate
+    (take them from the enforcer sweep — a migration surface, a wire contract
+    with a parity gate, an auth or tenancy path, a generated-file guard), and
+    **where a retired spec's learning lands** (an ADR directory, a learnings
+    folder, or the commit body when the project keeps neither). The `<...>`
+    placeholders inside the template files are filled per spec by whoever
+    starts one and are not install-time fill markers.
   - `observability` — detect logging/tracing framework (structlog, winston,
     tracing, OpenTelemetry SDK). Pre-fill namespace prefix from the project
     name. Adapt span naming examples to the detected framework.
@@ -348,9 +356,12 @@ operator to re-phrase using a verb from this list.
     to `.claude/settings.json` dispatching through `_runner.sh`.
 
   Available patterns:
-  - `review-lenses` — convergent review loop + 6 default lens files.
-  - `spec-workflow` — 5-phase spec pipeline (specify → plan → implement →
-    validate → wrapup) + optional preview/deploy.
+  - `review-lenses` — the convergent review loop as a **skill**, a
+    fresh-context reviewer **agent** for its terminal pass, the severity ×
+    citation rule that decides what may be fixed unattended, and 6 lens files.
+  - `spec-workflow` — the spec orchestrator as a **skill** (four gate events, a
+    closed decision-token enum, resume from disk), the threshold-and-lifecycle
+    rule, and `specs/_template/`.
   - `observability` — span naming, PII boundary, baseline-before-alert.
   - `deprecation` — allow-marker grammar with sunset dates.
   - `pr-conventions` — PR template + AI-fill discipline.
