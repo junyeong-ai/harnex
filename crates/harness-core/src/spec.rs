@@ -67,8 +67,8 @@ impl SpecSurface {
         Self {
             name: "hooks",
             doc: "/en/hooks",
-            measured: "2026-08-17",
-            digest: 0x115e_9208_4732_18a3,
+            measured: "2026-08-18",
+            digest: 0x1d26_4061_6878_90c5,
         },
         Self {
             name: "skills",

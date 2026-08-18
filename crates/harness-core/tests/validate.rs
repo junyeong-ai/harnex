@@ -298,6 +298,59 @@ fn settings_validator_flags_unknown_hook_event() {
 }
 
 #[test]
+fn settings_validator_flags_a_session_start_source_that_starts_no_session() {
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "hooks": {
+            "SessionStart": [
+                {"matcher": "startup|resume|clear|compact|fork"},
+                {"matcher": "startup|resumed"}
+            ]
+        }
+    }"#;
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
+    let unknowns: Vec<_> = findings
+        .iter()
+        .filter(|f| f.slug == "settings-unknown-session-start-source")
+        .collect();
+    assert_eq!(unknowns.len(), 1);
+    assert!(unknowns[0].message.contains("resumed"));
+}
+
+#[test]
+fn settings_validator_leaves_a_regex_session_start_matcher_alone() {
+    // A matcher is a JS regex, so an alternative carrying a metacharacter
+    // matches sources no closed set can enumerate. Testing membership on one
+    // would flag a working configuration — the cost of a blocking-gate false
+    // positive is operator distrust, which is why the check judges plain words
+    // only. A matcher-less entry (every source) is likewise not a claim about
+    // any source.
+    let v = SettingsValidator::new();
+    for json in [
+        r#"{"hooks": {"SessionStart": [{"matcher": ".*"}]}}"#,
+        r#"{"hooks": {"SessionStart": [{"matcher": "st.*|resume"}]}}"#,
+        r#"{"hooks": {"SessionStart": [{"matcher": "compact$"}]}}"#,
+        r#"{"hooks": {"SessionStart": [{"hooks": []}]}}"#,
+    ] {
+        let findings = v.validate_text(
+            json,
+            Path::new(".claude/settings.json"),
+            SettingsScope::Project,
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "settings-unknown-session-start-source"),
+            "regex or matcher-less SessionStart entry was flagged: {json}"
+        );
+    }
+}
+
+#[test]
 fn settings_validator_warns_on_empty_deny() {
     let v = SettingsValidator::new();
     let json = r#"{"permissions": {"allow": ["Bash(ls *)"]}}"#;
