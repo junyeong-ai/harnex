@@ -742,6 +742,39 @@ fn a_two_stack_repo_gets_both_language_tiers() {
         .validate_file(&settings_path, SettingsScope::Project)
         .unwrap();
     assert_no_findings("python+typescript", "validate.settings", &findings);
+
+    let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex");
+    let auditor = || {
+        ProjectAuditor::new(proj_root)
+            .with_plugin_root(plugin_root.clone())
+            .run()
+            .unwrap()
+    };
+    assert_no_findings("python+typescript", "audit", &auditor().findings);
+    assert_scaffold_is_operable("python+typescript", proj_root);
+
+    // An anchored reference to a language-tier script must be judged like any
+    // other. The wiring check ranged only over destinations that resolve
+    // without a language, so the formatter — the one language-tier script a
+    // hook points at — was the one it could never judge, and at runtime a
+    // missing verifier makes `_runner.sh` skip and exit 0.
+    let settings_path = proj_root.join(".claude/settings.json");
+    let mut wired: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+    wired["hooks"]["PostToolUse"][0]["hooks"][0]["command"] =
+        serde_json::json!("${CLAUDE_PROJECT_DIR}/hooks/post-format-typescript.sh");
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&wired).unwrap(),
+    )
+    .unwrap();
+    fs::remove_file(proj_root.join("hooks/post-format-typescript.sh")).unwrap();
+    let missing = auditor().findings;
+    assert!(
+        missing.iter().any(|f| f.slug == "audit-hook-script-missing"
+            && f.message.contains("post-format-typescript.sh")),
+        "a wired language-tier script that is absent went unreported: {missing:?}"
+    );
 }
 
 #[test]

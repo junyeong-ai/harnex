@@ -27,9 +27,13 @@ editing it, not using it):
   `<!-- harnex-managed:start <slug> -->` / `<!-- harnex-managed:end <slug> -->`
   sentinels bounding the harnex-owned region. `regenerate` overwrites only
   inside sentinels; everything outside is project-authored. `.claude/settings.json`
-  is JSON (no comments), so its partition is by top-level key:
-  `permissions` and `hooks` are harnex-managed; every other key is
-  project-owned and must survive regenerate.
+  is JSON (no comments), so its partition is **item-level within** `permissions`
+  and `hooks` — harnex owns the entries it generated, each identified by its
+  template shape, and an operator's `extend` additions and any incumbent
+  hand-rolled entries are project-owned and survive regenerate. Reading that as
+  whole-key ownership is what would erase them. Every other top-level key is
+  project-owned. `SKILL.md` § Invariants states the same partition; this is the
+  editing contract's echo of it, not a second rule.
 - **Budgets:** `SKILL.md` body < 500 lines; `description` + `when_to_use`
   ≤ 1536 chars, key use case first.
 - **`templates/scaffold.toml` is the composition.** Which artifacts a harness

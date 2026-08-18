@@ -138,9 +138,22 @@ fn baseline() -> PermissionProfile {
             "Bash(git clean -fd *)",
             "Bash(git clean -fdx *)",
             "Bash(git rebase -i *)",
+            // Blanket staging, enumerated rather than approximated: `git add`
+            // has exactly these spellings for "everything", and a deny that
+            // covers three of five leaves `workspace`'s `Bash(git add *)`
+            // approving the other two. Enumerating a documented flag set is
+            // exhaustive, not a guess at what someone might type.
             "Bash(git add .)",
             "Bash(git add -A *)",
+            "Bash(git add --all *)",
             "Bash(git add -u *)",
+            "Bash(git add --update *)",
+            "Bash(git add :/ *)",
+            // Irreversible stash subcommands. `git stash` itself is a save and
+            // stays allowed; these two discard work with no reflog to recover
+            // it, which is the property that earns a deny.
+            "Bash(git stash clear *)",
+            "Bash(git stash drop *)",
             // --- filesystem destruction ---
             "Bash(rm -rf /)",
             "Bash(rm -rf /*)",
@@ -411,8 +424,21 @@ mod tests {
         assert!(p.deny.contains(&"Bash(git push -f *)"));
         assert!(p.deny.contains(&"Bash(git reset --hard *)"));
         assert!(p.deny.contains(&"Bash(git checkout .)"));
-        assert!(p.deny.contains(&"Bash(git add .)"));
-        assert!(p.deny.contains(&"Bash(git add -A *)"));
+        // Every spelling of "stage everything", because `workspace` grants
+        // `Bash(git add *)` to every scaffolded repo and a partial deny leaves
+        // the rest auto-approved.
+        for blanket in [
+            "Bash(git add .)",
+            "Bash(git add -A *)",
+            "Bash(git add --all *)",
+            "Bash(git add -u *)",
+            "Bash(git add --update *)",
+            "Bash(git add :/ *)",
+        ] {
+            assert!(p.deny.contains(&blanket), "missing deny {blanket}");
+        }
+        assert!(p.deny.contains(&"Bash(git stash clear *)"));
+        assert!(p.deny.contains(&"Bash(git stash drop *)"));
         assert!(p.deny.contains(&"Bash(git clean -fd *)"));
         assert!(p.deny.contains(&"Bash(git rebase -i *)"));
         assert!(p.deny.contains(&"Bash(rm -rf .git*)"));
