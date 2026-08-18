@@ -20,10 +20,11 @@ stops being queryable.
 
 ## Recording
 
-Append one bullet per firing to `## Decision Log` in `specs/<slug>/spec.md`:
+Append one bullet per firing to `## Decision log` in `specs/<slug>/spec.md` —
+the section `specs/_template/spec.md` ships for exactly this:
 
 ```
-- 2026-01-15 · review · needs_revision · two Blockers in the migration path; see plan.md ## Outstanding Issues
+- 2026-01-15 · review · needs_revision · two Blockers in the migration path; see plan.md ## Outstanding issues
 ```
 
 Append-only. A gate that fires three times leaves three bullets in order — the
@@ -47,7 +48,7 @@ to reverse, and firing it on all of them teaches everyone to click through.
 Spawn a reviewer with fresh context over `plan.md`'s decisions. Tell it to
 refute, not to approve. On a Critical or Blocker: record `needs_revision`,
 revise, re-fire. On a clean report: transcribe what remains into
-`## Outstanding Issues`, record `approved`, proceed.
+`## Outstanding issues`, record `approved`, proceed.
 
 Judge the round on the verdict the reviewer delivered, never on the spawn
 having finished. A reviewer that returned nothing has produced no report;
@@ -55,11 +56,13 @@ re-fire rather than approve.
 
 ## review — blocking, end of implement
 
-Delegate to the review loop (`.claude/skills/review/`) over the spec's diff.
-The loop converges or reports why it stopped.
+Delegate to <!-- harnex-fill: what this project reviews a diff with — the
+`.claude/skills/review/` loop when the review-lenses pattern is installed,
+otherwise the project's own review command or a fresh-context reviewer --> over
+the spec's diff. It converges or reports why it stopped.
 
 Zero Critical and zero Blocker passes the gate. Write what remains to
-`plan.md ## Outstanding Issues` — Major and Minor are follow-up signal, not
+`plan.md ## Outstanding issues` — Major and Minor are follow-up signal, not
 blockers — and record `approved`. Otherwise record `needs_revision` with the
 count, and the work goes back.
 

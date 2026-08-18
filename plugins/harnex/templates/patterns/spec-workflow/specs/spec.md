@@ -30,3 +30,9 @@ this list, so a criterion nobody can check is one that will be waved through.>
 
 <What a reader might reasonably expect here and will not find, so the review
 gate does not read an omission as an oversight.>
+
+## Decision log
+
+<!-- One bullet per gate firing, appended, never rewritten. The orchestrator
+     writes these; the format is `<date> · <gate> · <token> · <rationale>` and
+     the token is one of approved | rejected | needs_revision | deferred. -->

@@ -21,12 +21,16 @@ resume.
 
 There is no `phase:` field. Which phase the work is in is read off the tree:
 
+**The first row that matches**, checked top to bottom. Ordered most-advanced
+first so a spec with no `plan.md` — which the rule allows — still reads as
+`implement` once its commits exist, rather than as `specify` forever:
+
 | On disk | Phase |
 |---|---|
-| `spec.md` only | specify |
-| `spec.md` + `plan.md`, no implementation commits | plan |
-| implementation commits tagged for this slug | implement |
 | `wrapup.md` present | wrapup |
+| implementation commits tagged for this slug | implement |
+| `plan.md` present | plan |
+| `spec.md` present | specify |
 
 A stored phase is a second copy of a fact the directory already states, and it
 is the copy that goes stale the moment someone writes a file without updating
@@ -59,7 +63,7 @@ are not criteria; rewrite them until they can be.
 
 **plan** — write `plan.md`: the decisions and why, the files this touches, the
 task list, and the risks. Findings from any gate land in
-`plan.md ## Outstanding Issues`, so the next session reads what the last one
+`plan.md ## Outstanding issues`, so the next session reads what the last one
 found instead of rediscovering it. A plan crossing <!-- harnex-fill: this
 project's blast-radius signals — a migration, a public API, an auth path, a
 deploy surface --> fires the `design_review` gate before any code.
@@ -82,7 +86,7 @@ On wrapup or abandonment: write the durable half — what was learned, what a
 later reader needs — to <!-- harnex-fill: where this project keeps learnings —
 a docs directory, an ADR folder, the commit body if it keeps none -->, retarget
 any reference to the spec onto it, and remove the directory. The two differ
-only in what the record says. `superseded` and `deprecated` keep the directory:
+only in what the record says. `superseded` keeps the directory:
 they are pointers, and a pointer with no target is worse than the file.
 
 A terminal spec is never edited again, and never re-enters a terminal state.

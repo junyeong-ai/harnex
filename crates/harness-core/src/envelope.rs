@@ -159,11 +159,16 @@ pub enum FixCommand {
 impl FixCommand {
     pub const ALL: &'static [Self] = &[Self::CodegenSync];
 
+    /// Derived from [`Self::ALL`], not a second match.
+    ///
+    /// The three surfaces that answer "which commands exist" — this, the
+    /// `Deserialize` impl, and the emitted schema's enum — all read `ALL`, so a
+    /// variant missing from it is absent from every one of them consistently
+    /// rather than accepted by one and undescribed by another. `as_str` stays
+    /// an exhaustive match, so the compiler still forces a new variant to
+    /// declare its wire string.
     pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "harness codegen sync" => Self::CodegenSync,
-            _ => return None,
-        })
+        Self::ALL.iter().copied().find(|c| c.as_str() == s)
     }
 
     pub fn as_str(self) -> &'static str {

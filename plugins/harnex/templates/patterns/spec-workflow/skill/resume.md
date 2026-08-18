@@ -21,7 +21,7 @@ end with something that matters, it goes into one of the three first.
 
 1. Pick the spec: the named slug, or the most recently updated non-terminal one.
 2. Derive the phase from artifact presence.
-3. Read `plan.md ## Outstanding Issues` — this is what the last pass found, and
+3. Read `plan.md ## Outstanding issues` — this is what the last pass found, and
    re-finding it is the waste this file exists to prevent.
 4. Check the worktree. Dirty fires the `resume` gate.
 5. Continue from the derived phase.
