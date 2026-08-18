@@ -126,12 +126,7 @@ fn emit_tier(
     }
 }
 
-/// Set `value` at a dotted key path, unioning when a fragment already
-/// occupies it — objects key-wise, arrays as a sorted set. Both tiers
-/// contribute to `hooks` and to `permissions.allow`, and neither may erase the
-/// other: a replacement would drop the foundation's Stop hook the moment the
-/// language fragment landed, and the harness would validate clean while
-/// running nothing.
+/// Contribute `value` at a dotted key path, unioning with whatever is there.
 fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Value) {
     let mut cursor = root;
     let keys: Vec<&str> = key_path.split('.').collect();
@@ -148,16 +143,39 @@ fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Val
         .unwrap()
         .entry(last)
         .or_insert(serde_json::Value::Null);
-    match (&mut *slot, value) {
+    union_into(slot, value);
+}
+
+/// Union `incoming` into `slot`: objects key-wise **at every depth**, arrays by
+/// appending what is not already present, scalars by replacement.
+///
+/// The recursion is the whole contract. A one-level union looks correct
+/// because the merge keys are one level deep, and then the `hooks` fragment —
+/// an object whose values are arrays — replaces `hooks.SessionStart` wholesale
+/// and an operator's own entry at that event disappears with no finding
+/// anywhere. Depth is not a special case of the rule; it is the rule.
+///
+/// Appending rather than sorting is what keeps a merge from rewriting a file it
+/// does not own. Hook entries under one event run in order, so normalising that
+/// order would change behaviour the project chose, and the destination is
+/// shared by construction. Appending is still idempotent — a second pass finds
+/// every entry present — and still deterministic, because the emission order is.
+fn union_into(slot: &mut serde_json::Value, incoming: serde_json::Value) {
+    match (&mut *slot, incoming) {
         (serde_json::Value::Object(existing), serde_json::Value::Object(incoming)) => {
-            for (k, v) in incoming {
-                existing.insert(k, v);
+            for (key, value) in incoming {
+                union_into(
+                    existing.entry(key).or_insert(serde_json::Value::Null),
+                    value,
+                );
             }
         }
         (serde_json::Value::Array(existing), serde_json::Value::Array(incoming)) => {
-            existing.extend(incoming);
-            existing.sort_by_key(serde_json::Value::to_string);
-            existing.dedup();
+            for value in incoming {
+                if !existing.contains(&value) {
+                    existing.push(value);
+                }
+            }
         }
         (_, incoming) => *slot = incoming,
     }
@@ -540,9 +558,20 @@ fn scaffolding_over_an_incumbent_preserves_it() {
         fs::write(&path, body).unwrap();
     }
 
+    // `hooks` is the one object-shaped fragment in the manifest, and its values
+    // are arrays. A union that stops at the merge key replaces
+    // `hooks.SessionStart` wholesale and the operator's own entry at that event
+    // disappears — structurally valid afterwards, so no validator and no audit
+    // says anything. Pre-populating an array under `permissions` alone cannot
+    // reach that shape.
+    let incumbent_hook = serde_json::json!({
+        "matcher": "startup",
+        "hooks": [{"type": "command", "command": "./scripts/acme-context.sh"}],
+    });
     let mut settings = serde_json::json!({
         "permissions": {"allow": ["Bash(acme *)"]},
         "env": {"ACME": "1"},
+        "hooks": {"SessionStart": [incumbent_hook]},
     });
     for tier in [Tier::Foundation, Tier::Language] {
         emit_tier(
@@ -576,12 +605,29 @@ fn scaffolding_over_an_incumbent_preserves_it() {
         "a `managed` artifact edited a CLAUDE.md the project had written"
     );
 
-    // `merge`: the project's own entries survive beside both tiers'.
+    // `merge`: the project's own entries survive beside both tiers', at every
+    // depth of the fragment.
     let allow = settings["permissions"]["allow"].as_array().unwrap();
     assert!(allow.iter().any(|v| v == "Bash(acme *)"));
     assert!(allow.iter().any(|v| v == "Bash(cargo *)"));
     assert!(allow.iter().any(|v| v == "Edit"));
     assert_eq!(settings["env"]["ACME"], "1");
+
+    let session_start = settings["hooks"]["SessionStart"].as_array().unwrap();
+    assert!(
+        session_start.contains(&incumbent_hook),
+        "the project's own SessionStart entry was erased by the foundation \
+         fragment: {session_start:?}"
+    );
+    assert!(
+        session_start.len() > 1,
+        "harnex contributed no SessionStart entry beside the incumbent"
+    );
+    assert_eq!(
+        session_start[0], incumbent_hook,
+        "the incumbent's position moved; hook entries under one event run in \
+         order, so a merge that reorders them changes behaviour the project chose"
+    );
 
     // Emission is idempotent: a second pass changes nothing.
     let before: Vec<(PathBuf, String)> = glob_under(proj_root, "**/*")
