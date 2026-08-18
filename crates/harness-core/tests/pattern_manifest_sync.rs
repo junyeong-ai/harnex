@@ -103,9 +103,15 @@ fn manifest_destinations_are_project_relative() {
             let dest = std::path::Path::new(&file.destination);
             assert!(
                 dest.is_relative()
-                    && !file.destination.contains("..")
+                    && !file
+                        .destination
+                        .split('/')
+                        .any(|seg| seg == "." || seg == ".." || seg.is_empty())
                     && !file.destination.is_empty(),
-                "pattern '{}' destination '{}' must be a project-relative path without `..`",
+                "pattern '{}' destination '{}' must be project-relative with no `.`, `..` \
+                 or empty segment. `Path::file_name` normalizes a lone `.`, so the shipped \
+                 SkillValidator and this file's own path splitters would disagree about \
+                 which directory the file lands in.",
                 pattern.slug,
                 file.destination
             );
@@ -370,6 +376,43 @@ fn every_skill_directory_has_its_entry_point_at_install_time() {
         checked > 0,
         "the pattern library must ship a skill of its own"
     );
+}
+
+/// No two patterns claim the same skill directory.
+///
+/// The companion test asks whether a pattern's own entry point is there when it
+/// installs alone. This asks the other half — whether two patterns collide when
+/// both are installed — and the two are not the same question. Grouping per
+/// pattern to answer the first silently gave up the second: two patterns each
+/// declaring `.claude/skills/shared/SKILL.md` each hold exactly one entry point
+/// in their own bucket, so the per-pattern check passes and one file overwrites
+/// the other in any project that takes both.
+///
+/// Short directory names make this reachable rather than exotic — `spec` and
+/// `review` are already taken, and the ninth pattern picks from the same small
+/// vocabulary.
+#[test]
+fn no_two_patterns_claim_the_same_skill_directory() {
+    let mut owner: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    let manifest = load_manifest();
+    for pattern in &manifest.pattern {
+        for file in &pattern.files {
+            if Surface::of(&file.destination) == Some(Surface::Skill)
+                && let Some(dir) = skill_dir_of(&file.destination)
+            {
+                owner.entry(dir).or_default().push(&pattern.slug);
+            }
+        }
+    }
+    for (dir, patterns) in &owner {
+        assert_eq!(
+            patterns.len(),
+            1,
+            "patterns {patterns:?} each declare an entry point at .claude/skills/{dir}/. \
+             Installing both writes one over the other, and the project keeps whichever \
+             ran last."
+        );
+    }
 }
 
 /// The skill directory a destination lands in, if it lands in one.

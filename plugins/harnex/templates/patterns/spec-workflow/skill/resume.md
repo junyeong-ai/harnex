@@ -21,13 +21,17 @@ end with something that matters, it goes into one of the three first.
 
 ## The procedure
 
-1. Pick the spec. Given a slug, that one. Otherwise, among the non-terminal
-   ones: a spec whose directory `git log -1 --format=%ct -- specs/<slug>/`
-   reports nothing for has never been committed, so it has not landed and is the
-   one in flight — take it. If several are uncommitted, or none is, order the
-   candidates by that timestamp and ask rather than guess. This is the case the
-   `resume` gate already covers, and it is the common one: a session that ended
-   mid-spec ended before the commit.
+1. Pick the spec. Given a slug, that one. Otherwise the most recently touched
+   non-terminal one, where touched is the later of two things: the last commit
+   over its directory (`git log -1 --format=%ct -- specs/<slug>/`) and the mtime
+   of its `spec.md`.
+
+   Both, because neither alone answers. A spec created in the session that just
+   ended has no commit at all — and that is the likeliest one to resume — so
+   git returns nothing for it and would sort it last. Its mtime is exactly when
+   someone last wrote to it. One key over both sources is deterministic, so
+   this step never asks: `SKILL.md` allows a question at four gates and this is
+   not one of them.
 2. Derive the phase from artifact presence.
 3. Read `plan.md ## Outstanding issues` — this is what the last pass found, and
    re-finding it is the waste this file exists to prevent.
