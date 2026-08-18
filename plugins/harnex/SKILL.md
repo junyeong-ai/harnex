@@ -331,12 +331,15 @@ operator to re-phrase using a verb from this list.
     that is neither is ceremony paid on every spec. `specs/_template/` holds
     one file per artifact-producing phase, so a phase dropped loses its
     template file in the same install; the orchestrator derives the phase from
-    which of them exist, so the two cannot disagree. Two fills carry the
-    project: the **blast-radius signals** that fire the design_review gate
-    (take them from the enforcer sweep — a migration surface, a wire contract
-    with a parity gate, an auth or tenancy path, a generated-file guard), and
-    **where a retired spec's learning lands** (an ADR directory, a learnings
-    folder, or the commit body when the project keeps neither). The `<...>`
+    which of them exist, so the two cannot disagree. Its fills each need a
+    judgment rather than a lookup — the **blast-radius signals** that fire the
+    design_review gate (take them from the enforcer sweep: a migration surface,
+    a wire contract with a parity gate, an auth or tenancy path, a
+    generated-file guard), **where a retired spec's learning lands** (an ADR
+    directory, a learnings folder, or the commit body when the project keeps
+    neither), and **what the review gate delegates to** (the review skill when
+    that pattern is installed, otherwise this project's own review command).
+    Resolve every marker the pattern ships, not a count stated here. The `<...>`
     placeholders inside the template files are filled per spec by whoever
     starts one and are not install-time fill markers.
   - `observability` — detect logging/tracing framework (structlog, winston,

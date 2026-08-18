@@ -8,8 +8,10 @@ was doing, because the previous session is gone and its answer was never state.
 
 Three sources, and nothing else:
 
-1. **`spec.md` frontmatter** — `status`, `created`, `updated`, and the
-   supersession links. The single source for lifecycle.
+1. **`spec.md` frontmatter** — `status`, `created`, and the supersession
+   links. The single source for lifecycle. There is no `updated:` field, for
+   the reason there is no `phase:` one: git already knows when the directory
+   last changed, and a hand-written date is the copy that goes stale.
 2. **Artifact presence** — which of `spec.md` / `plan.md` / `wrapup.md` exist.
    This is what the phase is derived from; there is no stored phase.
 3. **`git log`** — the timeline, and which commits carry this slug.
@@ -19,7 +21,8 @@ end with something that matters, it goes into one of the three first.
 
 ## The procedure
 
-1. Pick the spec: the named slug, or the most recently updated non-terminal one.
+1. Pick the spec: the named slug, or — among the non-terminal ones — whichever
+   `git log -1 --format=%ct -- specs/<slug>/` reports most recently touched.
 2. Derive the phase from artifact presence.
 3. Read `plan.md ## Outstanding issues` — this is what the last pass found, and
    re-finding it is the waste this file exists to prevent.
