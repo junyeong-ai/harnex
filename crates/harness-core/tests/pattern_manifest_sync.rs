@@ -495,6 +495,154 @@ fn skill_dir_of(destination: &str) -> Option<&str> {
     }
 }
 
+/// Every cross-reference `body` makes, as (target as written, destination it
+/// resolves to). `from` is the destination the prose itself lands at.
+///
+/// Two grammars and only two, each unambiguous so the check never guesses: an
+/// inline link, resolved against the directory `from` lands in; and an inline
+/// code span holding a concrete project-relative path, which is already a
+/// destination. A glob, a `{param}`, a `<placeholder>`, or prose inside a span
+/// is not a path and is not read as one — those are the forms this library
+/// actually writes, and reading them as paths is the false positive that would
+/// make the check unusable. Fenced blocks are examples, not references.
+fn cross_references(from: &str, body: &str) -> Vec<(String, String)> {
+    let mut refs = Vec::new();
+    let mut fenced = false;
+    for line in body.lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(open) = rest.find("](") {
+            let after = &rest[open + 2..];
+            let Some(close) = after.find(')') else { break };
+            if let Some(resolved) = resolve_relative(from, &after[..close]) {
+                refs.push((after[..close].to_string(), resolved));
+            }
+            rest = &after[close + 1..];
+        }
+        let mut rest = line;
+        while let Some(open) = rest.find('`') {
+            let after = &rest[open + 1..];
+            let Some(close) = after.find('`') else { break };
+            let span = &after[..close];
+            if is_project_path(span) {
+                refs.push((span.to_string(), span.to_string()));
+            }
+            rest = &after[close + 1..];
+        }
+    }
+    refs
+}
+
+/// The destination a link written inside `from` points at, or `None` when the
+/// target is not a relative reference to a markdown file.
+fn resolve_relative(from: &str, target: &str) -> Option<String> {
+    let path = target.split('#').next().unwrap_or(target);
+    if path.is_empty() || path.contains("://") || path.starts_with('/') || !path.ends_with(".md") {
+        return None;
+    }
+    let mut segments: Vec<&str> = from.split('/').collect();
+    segments.pop();
+    for segment in path.split('/') {
+        match segment {
+            "." | "" => {}
+            ".." => {
+                segments.pop()?;
+            }
+            other => segments.push(other),
+        }
+    }
+    Some(segments.join("/"))
+}
+
+/// Whether a code span is a concrete project-relative path to a markdown file.
+fn is_project_path(span: &str) -> bool {
+    span.contains('/')
+        && span.ends_with(".md")
+        && !span
+            .chars()
+            .any(|c| c.is_whitespace() || "*<>{}".contains(c))
+}
+
+/// Every destination the scaffold emits before any pattern runs.
+fn foundation_destinations() -> BTreeSet<String> {
+    let templates = patterns_dir().parent().unwrap().to_path_buf();
+    harness_core::scaffold::ScaffoldManifest::load(&templates)
+        .expect("scaffold.toml loads")
+        .tier(harness_core::scaffold::Tier::Foundation)
+        .map(|a| a.destination.clone())
+        .collect()
+}
+
+/// Prose a pattern ships may only point at a file the reader will have.
+///
+/// A pattern installs alone, so its own destinations plus the foundation tier
+/// are the whole of what it may name. `Err` says which reference dangles.
+fn cross_references_resolve(
+    patterns: &[Pattern],
+    foundation: &BTreeSet<String>,
+    body: impl Fn(&str, &str) -> String,
+) -> Result<usize, String> {
+    let mut checked = 0usize;
+    for pattern in patterns {
+        let installed: BTreeSet<&str> = pattern
+            .files
+            .iter()
+            .map(|f| f.destination.as_str())
+            .collect();
+        for file in &pattern.files {
+            if !file.destination.ends_with(".md") {
+                continue;
+            }
+            for (written, resolved) in
+                cross_references(&file.destination, &body(&pattern.slug, &file.template))
+            {
+                if !installed.contains(resolved.as_str()) && !foundation.contains(&resolved) {
+                    return Err(format!(
+                        "pattern '{}' ships {} naming '{written}', which resolves to \
+                         '{resolved}' — a destination neither this pattern nor the foundation \
+                         tier installs. A pattern installs alone, so a reader following that \
+                         reference finds nothing.",
+                        pattern.slug, file.destination
+                    ));
+                }
+                checked += 1;
+            }
+        }
+    }
+    Ok(checked)
+}
+
+/// A cross-reference in shipped prose resolves to a file the reader will have.
+///
+/// These references are what single-ownership costs: prose that would restate a
+/// rule names the owner instead, and the name is worth no more than the file it
+/// still points at. Nothing else in the suite reads them, so a renamed resource
+/// left a dangling pointer in every install and stayed green.
+#[test]
+fn every_cross_reference_in_shipped_prose_resolves() {
+    let manifest = load_manifest();
+    let checked = cross_references_resolve(
+        &manifest.pattern,
+        &foundation_destinations(),
+        |slug, template| {
+            let path = patterns_dir().join(slug).join(template);
+            std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        },
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        checked > 0,
+        "the pattern library must cross-reference at least one of its own files"
+    );
+}
+
 /// The escapes found in rounds three through six, as tests rather than as
 /// mutations someone has to remember to re-run.
 ///
@@ -523,6 +671,30 @@ mod escapes {
 
     fn none() -> BTreeSet<String> {
         BTreeSet::new()
+    }
+
+    fn prose(slug: &str, files: &[(&str, &str)]) -> Pattern {
+        Pattern {
+            slug: slug.to_string(),
+            analyze: vec!["something".into()],
+            files: files
+                .iter()
+                .map(|(template, destination)| FileEntry {
+                    template: (*template).to_string(),
+                    destination: (*destination).to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    fn body_of(entries: &'static [(&'static str, &'static str)]) -> impl Fn(&str, &str) -> String {
+        move |_slug: &str, template: &str| {
+            entries
+                .iter()
+                .find(|(t, _)| *t == template)
+                .map(|(_, b)| (*b).to_string())
+                .unwrap_or_default()
+        }
     }
 
     fn scaffold_ships(dir: &str) -> BTreeSet<String> {
@@ -634,5 +806,105 @@ mod escapes {
                 "{destination} was classified"
             );
         }
+    }
+
+    /// A link naming a resource the pattern stopped shipping. Every install
+    /// carries the dangling pointer and nothing else in the suite looks.
+    #[test]
+    fn a_reference_to_a_file_the_pattern_does_not_install_is_caught() {
+        let ps = [prose(
+            "spec-workflow",
+            &[("skill/SKILL.md", ".claude/skills/spec/SKILL.md")],
+        )];
+        let body = body_of(&[("skill/SKILL.md", "Read [resume.md](resume.md) on a resume.")]);
+        assert!(cross_references_resolve(&ps, &none(), body).is_err());
+    }
+
+    /// Two files side by side in the template tree, landing in different
+    /// directories. Resolved in template space the link looks fine; the reader
+    /// is in the installed tree, where it dangles.
+    #[test]
+    fn a_link_resolved_in_template_space_is_not_the_readers_link() {
+        let ps = [prose(
+            "spec-workflow",
+            &[
+                ("skill/SKILL.md", ".claude/skills/spec/SKILL.md"),
+                ("spec-workflow.md", ".claude/rules/spec-workflow.md"),
+            ],
+        )];
+        assert!(
+            cross_references_resolve(
+                &ps,
+                &none(),
+                body_of(&[("skill/SKILL.md", "The rule is [it](spec-workflow.md).")])
+            )
+            .is_err()
+        );
+        assert!(
+            cross_references_resolve(
+                &ps,
+                &none(),
+                body_of(&[(
+                    "skill/SKILL.md",
+                    "The rule is [it](../../rules/spec-workflow.md).",
+                )])
+            )
+            .is_ok()
+        );
+    }
+
+    /// Naming an owner by its project-relative path is the other half of the
+    /// same reference, and it dangles the same way.
+    #[test]
+    fn a_backticked_path_is_a_reference_too() {
+        let ps = [prose("p", &[("s.md", ".claude/skills/review/SKILL.md")])];
+        let body = body_of(&[(
+            "s.md",
+            "The table in `.claude/rules/review-lenses.md` decides.",
+        )]);
+        assert!(cross_references_resolve(&ps, &none(), body).is_err());
+    }
+
+    /// The foundation tier is installed before any pattern runs, so prose may
+    /// point at it.
+    #[test]
+    fn a_reference_to_a_foundation_file_is_allowed() {
+        let ps = [prose("p", &[("s.md", ".claude/skills/spec/SKILL.md")])];
+        let foundation: BTreeSet<String> = [".claude/rules/constitution.md".to_string()]
+            .into_iter()
+            .collect();
+        let body = body_of(&[(
+            "s.md",
+            "See [it](../../rules/constitution.md) and `.claude/rules/constitution.md`.",
+        )]);
+        assert!(cross_references_resolve(&ps, &foundation, body).is_ok());
+    }
+
+    /// The forms this library writes that are not paths. Reading any of them as
+    /// one is the false positive that would make the check unusable, so each is
+    /// pinned rather than left to the grammar.
+    #[test]
+    fn a_glob_a_placeholder_and_prose_are_not_references() {
+        let ps = [prose("p", &[("s.md", ".claude/skills/spec/SKILL.md")])];
+        let body = body_of(&[(
+            "s.md",
+            "`.claude/rules/*.md` and `.claude/lenses/<id>.md` and \
+             `.claude/rules/{lang}-conventions.md` and `plan.md ## Outstanding issues` \
+             and [docs](https://example.invalid/x.md) and [run](run.sh) and [a](#anchor)\n\
+             ```\n\
+             `.claude/skills/gone/SKILL.md`\n\
+             ```",
+        )]);
+        assert_eq!(cross_references_resolve(&ps, &none(), body).unwrap(), 0);
+    }
+
+    /// A `..` climbing past the project root resolves to nothing rather than to
+    /// a path that happens to match.
+    #[test]
+    fn a_reference_climbing_past_the_root_is_not_resolved() {
+        assert_eq!(
+            resolve_relative(".claude/skills/spec/SKILL.md", "../../../../escape.md"),
+            None
+        );
     }
 }
