@@ -323,25 +323,16 @@ fn every_pattern_surface_file_validates() {
 /// its skill directory is present by the time a pattern could extend it.
 #[test]
 fn every_skill_directory_has_its_entry_point_at_install_time() {
+    // Through the crate's own loader, not a second parser. `scaffold.toml` is a
+    // closed schema and `ScaffoldManifest::load` is what enforces that; an
+    // ad-hoc struct here would be a second representation of the same shape —
+    // and the one written first accepted unknown fields, so it would have
+    // passed exactly the manifests the real loader rejects.
     let scaffold: BTreeSet<String> = {
-        #[derive(serde::Deserialize)]
-        struct Scaffold {
-            artifact: Vec<Artifact>,
-        }
-        #[derive(serde::Deserialize)]
-        struct Artifact {
-            tier: String,
-            destination: String,
-            #[serde(flatten)]
-            _rest: toml::Table,
-        }
-        let raw = std::fs::read_to_string(patterns_dir().parent().unwrap().join("scaffold.toml"))
-            .expect("scaffold.toml");
-        toml::from_str::<Scaffold>(&raw)
-            .expect("scaffold.toml parses")
-            .artifact
-            .into_iter()
-            .filter(|a| a.tier == "foundation")
+        let templates = patterns_dir().parent().unwrap().to_path_buf();
+        harness_core::scaffold::ScaffoldManifest::load(&templates)
+            .expect("scaffold.toml loads")
+            .tier(harness_core::scaffold::Tier::Foundation)
             .filter_map(|a| skill_dir_of(&a.destination).map(str::to_string))
             .collect()
     };
