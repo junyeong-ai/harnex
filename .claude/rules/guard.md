@@ -26,6 +26,14 @@ Variants:
   hook non-zero exits trigger re-stop). Non-zero observations emit a
   `[harness-stop-advisory]` line to stderr for operator visibility.
 
+Each is discovery over a root-taking form — `run_at` / `run_stop_at` — and the
+exit-code contract lives there, as a working directory is a parameter
+everywhere else in this crate. Fused, that contract was only reachable from
+inside a git working tree, so it failed for anyone building from a source
+release while the product behaved correctly. The fail-open branch belongs to
+discovery alone: given a root there is nothing to fail open about, so
+`SkippedFailOpen` is unreachable from the root-taking forms by construction.
+
 `project_dir` owns the `${CLAUDE_PROJECT_DIR}` grammar — the one token form in
 a hook that denotes a repository path by construction. Both anchor spellings
 are read. A glob or a token carrying a second variable is not a path and is
