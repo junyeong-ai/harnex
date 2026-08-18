@@ -47,7 +47,7 @@ fails to resolve the ref, the entire check surfaces `CheckGitFailure`
 — never silently degrades to scanning everything.
 
 Codegen drift is reported with `auto_fixable: true` and
-`fix_command: FixCommand::CodegenSync.as_str().into()` — downstream
+`fix_command: Some(FixCommand::CodegenSync)` — downstream
 agents (CI, pre-commit) can execute the fix without operator intervention.
 
 `harness check --fix` (and `ProjectChecker::fix`) close the loop: groups
@@ -60,7 +60,8 @@ Adding a new auto-fixable finding requires three coordinated edits:
 1. Add a `FixCommand` variant + its `as_str()` arm (the enum is the
    single source of truth — exhaustive match enforces sites 2+3).
 2. Emit the finding with
-   `fix_command: Some(FixCommand::X.as_str().into())`.
+   `fix_command: Some(FixCommand::X)`. The field is typed, so this
+   step is the compiler's, not a review's.
 3. Add a match arm in `ProjectChecker::try_fix` — the compiler enforces
    this is exhaustive across `FixCommand` variants.
 4. Add a test that asserts convergence (drift before → 0 findings after).

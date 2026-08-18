@@ -265,13 +265,22 @@ impl SettingsValidator {
         // No-deny advisory: fires whether `permissions` is absent entirely
         // (no guardrails at all — the riskiest case) or present with an
         // empty/missing deny array.
+        //
+        // Project scope only. A deny floor is a team guarantee and the
+        // committed file is the only scope that carries one; permission rules
+        // merge across scopes, so an empty deny in `settings.local.json`
+        // withholds nothing — the project deny still applies. Local scope is
+        // where a developer records an override, which is exactly what the
+        // generated `governance.md` sends them there for, and flagging it made
+        // the harness scold an operator for following its own instructions.
+        // User and managed scope are outside this project's authority.
         let perms = parsed.get("permissions").and_then(|v| v.as_object());
         let deny_empty = perms
             .and_then(|p| p.get("deny"))
             .and_then(|v| v.as_array())
             .map(|a| a.is_empty())
             .unwrap_or(true);
-        if deny_empty {
+        if deny_empty && scope == SettingsScope::Project {
             findings.push(Finding {
                 slug: "settings-no-deny-rules".into(),
                 severity: Severity::Minor,
@@ -279,7 +288,7 @@ impl SettingsValidator {
                 message: "permissions.deny is missing or empty".into(),
                 hint: Some("seed it via `harness policy permissions generate`".into()),
                 auto_fixable: false,
-                fix_command: Some("harness policy permissions generate --profile baseline".into()),
+                fix_command: None,
             });
         }
 

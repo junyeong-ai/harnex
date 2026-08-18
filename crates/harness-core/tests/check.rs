@@ -157,8 +157,8 @@ name = "allowed"
     assert_eq!(drift[0].severity, harness_core::envelope::Severity::Blocker);
     assert!(drift[0].auto_fixable);
     assert_eq!(
-        drift[0].fix_command.as_deref(),
-        Some("harness codegen sync")
+        drift[0].fix_command,
+        Some(harness_core::envelope::FixCommand::CodegenSync)
     );
 }
 
@@ -271,7 +271,7 @@ name = "allowed"
     assert_eq!(outcome.fixes_attempted.len(), 1);
     assert_eq!(
         outcome.fixes_attempted[0].fix_command,
-        "harness codegen sync"
+        harness_core::envelope::FixCommand::CodegenSync
     );
     assert!(matches!(
         outcome.fixes_attempted[0].outcome,

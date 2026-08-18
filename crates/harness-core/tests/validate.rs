@@ -874,6 +874,43 @@ fn settings_validator_flags_absent_permissions_as_no_deny() {
 }
 
 #[test]
+fn the_no_deny_advisory_is_project_scope_only() {
+    // A deny floor is a team guarantee, and the committed file is the only
+    // scope that carries one. Permission rules merge across scopes, so an empty
+    // deny in `settings.local.json` withholds nothing — and that file is where
+    // the generated `governance.md` sends a developer to record an override, so
+    // flagging it made the harness scold an operator for following its own
+    // instructions. Measured against two real harnesses, this was the only
+    // finding either of them drew.
+    let v = SettingsValidator::new();
+    let json = r#"{ "permissions": { "allow": ["Bash(pnpm *)"] } }"#;
+    for (scope, path) in [
+        (SettingsScope::Local, ".claude/settings.local.json"),
+        (SettingsScope::User, "~/.claude/settings.json"),
+        (
+            SettingsScope::Managed,
+            "/etc/claude-code/managed-settings.json",
+        ),
+    ] {
+        let findings = v.validate_text(json, Path::new(path), scope);
+        assert!(
+            !findings.iter().any(|f| f.slug == "settings-no-deny-rules"),
+            "{} scope must not demand a deny floor: {findings:?}",
+            scope.as_str()
+        );
+    }
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
+    assert!(
+        findings.iter().any(|f| f.slug == "settings-no-deny-rules"),
+        "project scope still carries the floor: {findings:?}"
+    );
+}
+
+#[test]
 fn settings_validator_warns_overly_permissive_allow() {
     let v = SettingsValidator::new();
     let json = r#"{
