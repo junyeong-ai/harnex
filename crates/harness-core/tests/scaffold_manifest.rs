@@ -119,6 +119,33 @@ fn every_non_scaffold_template_exists() {
     }
 }
 
+/// The manifest's `executable` flag is the only source of a landed hook's
+/// mode, so no template carries the bit itself.
+///
+/// Two candidate owners is one too many. A template that happens to be 0o755
+/// makes a consumer copying with `cp -p` land a runnable hook the manifest
+/// never marked, and the same reader then reads a 0o644 sibling as a mistake.
+/// The failure this prevents is not cosmetic: harnex's hooks are wired in exec
+/// form, so the runtime spawns the wrapper itself and a missing bit is EACCES
+/// before the script starts — every hook in the harness dies at once, which is
+/// what `audit-hook-not-executable` reports after the fact.
+#[cfg(unix)]
+#[test]
+fn no_template_carries_its_own_exec_bit() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = templates_root();
+    let wearing: Vec<String> = walk(&root)
+        .into_iter()
+        .filter(|p| std::fs::metadata(p).is_ok_and(|m| m.permissions().mode() & 0o111 != 0))
+        .map(|p| p.strip_prefix(&root).unwrap().display().to_string())
+        .collect();
+    assert!(
+        wearing.is_empty(),
+        "{wearing:?} carry an exec bit; scaffold.toml's `executable` decides the landed mode"
+    );
+}
+
 #[test]
 fn no_two_merge_fragments_claim_the_same_contribution() {
     // Merging is a union — of keys for an object fragment, of elements for an
