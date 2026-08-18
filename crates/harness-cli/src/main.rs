@@ -82,7 +82,8 @@ enum Command {
     Completions(commands::completions::CompletionsArgs),
     /// Unified validation gate — runs every enabled validator
     Check(commands::check::CheckArgs),
-    /// Harness-engineering compliance gate — spec drift + managed-region integrity
+    /// Harness-engineering compliance gate — holds a generated harness to the
+    /// composition it came from and to the live Claude Code spec
     Audit(commands::audit::AuditArgs),
 }
 

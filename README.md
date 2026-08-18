@@ -40,11 +40,12 @@ at `.claude-plugin/marketplace.json`. Install, then drive it by mode:
 It detects the stack from lockfile + manifest (TypeScript/pnpm, Python/uv,
 Rust/cargo, JVM/Gradle-Maven for Java and Kotlin) and composes the harness
 from `templates/scaffold.toml`, which declares every artifact in two tiers: a
-**foundation** tier with no language dependency — the permission floor, the
-foundation rules, the hook wrappers, the gitleaks pre-commit hook — and a
-**language** tier that needs a detected profile. A stack harnex has no profile
-for still receives the foundation tier and a report of what is missing. It
-never free-generates a hook or permission rule. Knowledge lives in
+**foundation** tier with no language dependency, and a **language** tier that
+needs a detected profile. The manifest is the only list of what a harness
+contains — read it rather than a summary. A stack harnex has no profile for
+still receives the foundation tier and a report of what is missing, and a repo
+holding two stacks receives the language tier once per stack. It never
+free-generates a hook or permission rule. Knowledge lives in
 `reference/` (the spec facts, the enforced-vs-advisory split, the
 keep/soften/cut principle, the language matrix, the exploration procedure).
 
@@ -106,7 +107,7 @@ project grows.
 
 ```
 harness check [--since <ref>] [--fix]                  # unified validation gate
-harness audit [--plugin-root <path>]                   # spec drift + managed-region integrity
+harness audit [--plugin-root <path>]                   # generated harness vs. its composition
 
 harness evidence verify <files...>
 harness telemetry append --kind K --payload <json>
@@ -158,15 +159,28 @@ The `harness` binary covers the universal Claude Code harness patterns;
 the plugin generates the project-native wiring that uses them. Universal
 patterns covered out of the box:
 
-- Provenance verification on docs
+- Provenance verification on docs — a rule citing an owner marks it, and the
+  gate resolves every marker against the tree, so a rename fails CI instead of
+  leaving a rule that points nowhere:
+
+  ```
+  [file: crates/harness-core/src/path_guard.rs:81]   file must exist and hold that line
+  [file: pyproject.toml]                             file must exist
+  ```
+
 - Append-only telemetry with a closed payload schema
 - Sentinel-block enum codegen across many files
-- Permission profiles (`baseline`, `git-strict`, `gcp-strict`, `aws-strict`,
-  and per-language `*-dev`) for Claude Code settings
+- Permission profiles for Claude Code settings: two floors (`baseline` deny,
+  `workspace` allow), the tool surfaces (`git-strict`, `gcp-strict`,
+  `aws-strict`), and one `*-dev` toolchain profile per supported language
 - Claude Code spec compliance (rules / skills / agents / output-styles /
   settings frontmatter)
 - Hook wiring integrity — every `${CLAUDE_PROJECT_DIR}` path a hook names
-  resolves, so a handler cannot fail open while the harness reads as wired
+  resolves and the script it spawns directly is executable, so a handler
+  cannot fail open while the harness reads as wired
+- Generated-artifact integrity — edits inside a managed region, a `copy`
+  artifact whose bytes drifted from its template, a fill marker the generating
+  step left behind
 - Promotion + retirement lifecycle for learnings
 - Settings.json hook adapter (the documented hook events)
 - Single-command CI gate

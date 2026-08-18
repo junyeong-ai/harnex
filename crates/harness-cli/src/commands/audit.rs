@@ -12,9 +12,10 @@ use super::write_envelope_success;
 #[derive(Args)]
 pub struct AuditArgs {
     /// Plugin root containing `templates/scaffold.toml`. The manifest is the
-    /// only statement of what a harness should contain, so the managed-region,
-    /// hook-wiring, and coverage checks all need it; without it only the
-    /// spec-drift auditor runs.
+    /// only statement of what a harness should contain, so every check that
+    /// compares the project against it — hook wiring, managed regions, copy
+    /// drift — and the coverage block are skipped without this, each reporting
+    /// why. The checks that read only the project still run.
     #[arg(long)]
     pub plugin_root: Option<PathBuf>,
 }

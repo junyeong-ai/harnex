@@ -59,6 +59,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use crate::audit::AuditFindingSlug;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 use crate::guard::{path_in_argument, paths_in_command};
@@ -135,7 +136,7 @@ impl<'a> HookWiringAuditor<'a> {
                         let landed = project_root.join(&rel);
                         if !landed.exists() {
                             findings.push(Finding {
-                                slug: "audit-hook-script-missing".into(),
+                                slug: AuditFindingSlug::HookScriptMissing.as_str().into(),
                                 severity: Severity::Major,
                                 location: Location::file(path.to_path_buf()),
                                 message: format!(
@@ -160,7 +161,7 @@ impl<'a> HookWiringAuditor<'a> {
                             && !is_executable(&landed)
                         {
                             findings.push(Finding {
-                                slug: "audit-hook-not-executable".into(),
+                                slug: AuditFindingSlug::HookNotExecutable.as_str().into(),
                                 severity: Severity::Major,
                                 location: Location::file(path.to_path_buf()),
                                 message: format!(

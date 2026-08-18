@@ -32,7 +32,7 @@
 
 use std::path::Path;
 
-use crate::audit::normalize;
+use crate::audit::{AuditFindingSlug, normalize};
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 use crate::scaffold::{Content, ScaffoldManifest};
@@ -122,7 +122,7 @@ impl<'a> ManagedRegionAuditor<'a> {
         for (slug, template_body) in &template_regions {
             let Some(project_body) = project_regions.get(slug) else {
                 findings.push(Finding {
-                    slug: "audit-managed-region-missing".into(),
+                    slug: AuditFindingSlug::ManagedRegionMissing.as_str().into(),
                     severity: Severity::Major,
                     location: Location::file(project_path.to_path_buf()),
                     message: format!(
@@ -140,7 +140,7 @@ impl<'a> ManagedRegionAuditor<'a> {
             };
             if normalize(project_body) != normalize(template_body) {
                 findings.push(Finding {
-                    slug: "audit-managed-region-edited".into(),
+                    slug: AuditFindingSlug::ManagedRegionEdited.as_str().into(),
                     severity: Severity::Info,
                     location: Location::file(project_path.to_path_buf()),
                     message: format!(
