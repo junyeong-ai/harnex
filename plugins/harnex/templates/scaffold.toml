@@ -61,8 +61,9 @@
 # `hooks.SessionStart` whole and drop an entry the project wrote, leaving a
 # structurally valid file no validator objects to.
 #
-# Where the two shapes DISAGREE, nothing is written and the collision is
-# reported. An operator who spelled `"SessionStart": {…}` instead of `[{…}]`
+# Where the two shapes DISAGREE, that node is left exactly as it was and the
+# collision is reported; every sibling key still merges, so one malformed event
+# does not withhold the rest. An operator who spelled `"SessionStart": {…}` instead of `[{…}]`
 # has one real hook in a malformed file; replacing it to land the fragment
 # drops their hook and the result still validates. Keeping theirs costs only a
 # contribution they can re-apply once the shape is fixed, and it is the

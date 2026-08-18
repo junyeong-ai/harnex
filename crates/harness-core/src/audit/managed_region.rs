@@ -32,6 +32,7 @@
 
 use std::path::Path;
 
+use crate::audit::normalize;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 use crate::scaffold::{Content, ScaffoldManifest};
@@ -158,11 +159,6 @@ impl<'a> ManagedRegionAuditor<'a> {
         }
         Ok(())
     }
-}
-
-/// Normalize a region body for comparison: trim, collapse internal CR/LF.
-fn normalize(body: &str) -> String {
-    body.replace("\r\n", "\n").trim().to_string()
 }
 
 #[cfg(test)]
