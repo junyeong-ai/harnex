@@ -45,14 +45,23 @@ that is the process working. What is enforced is the gates, not the order.
 | Argument | Mode |
 |---|---|
 | a description | new spec |
-| `resume` | most recent in-flight spec |
+| `resume` | the in-flight spec [resume.md](resume.md) ranks first |
 | `resume <slug>` | that spec |
 | `<slug> phase=<name>` | run one phase only |
 
-Before starting a new spec, list the in-flight ones (`specs/*/spec.md` with a
-non-terminal `status`). If any exist, ask whether to resume one, retire one, or
-run both — concurrent specs are allowed, and silently starting a second is how
-two sessions edit the same files.
+**The concurrency check.** Concurrent specs are allowed; silence about them is
+not, because that is how two sessions edit the same files. Two moments reach
+the same question:
+
+- Before starting a new spec, list the in-flight ones (`specs/*/spec.md` with a
+  non-terminal `status`). If any exist, ask whether to resume one, retire one,
+  or run both.
+- When [resume.md](resume.md)'s order ties for first place, name the tied slugs
+  and ask which. A tie means the repository records no difference between them,
+  so no reading of the tree can settle it.
+
+Both are sanctioned asks and neither is a gate event: no decision token, and
+nothing appended to the decision log.
 
 ## The phases
 

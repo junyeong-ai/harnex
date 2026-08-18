@@ -54,11 +54,13 @@ this addition surfaces, and one no lens can reach if the file is not open.
    **down-calibrates** rather than drops: keep it, note what blocked the check,
    and cap it at Major. Critical and Blocker are the tier that edits files and
    stops a gate, and neither may rest on a claim this pass could not establish.
-4. **Fix only what an authority can re-run.** The severity table in the rule
-   decides: a Critical or Blocker citing a rule slug, a lint code, or a named
-   test is fixable here, because something other than this loop's own opinion
-   confirms the result. A finding citing judgment is reported, never edited —
-   that citation is the author's own opt-out.
+4. **Fix only what an authority can re-run.** The severity table in
+   `.claude/rules/review-lenses.md` decides, and that file is also where a
+   re-runnable authority is defined — including the ones this project added to
+   the definition at install. Re-listing them here would be the copy that
+   refuses a finding citing an authority the project declared. A finding citing
+   judgment is reported, never edited: that citation is the author's own
+   opt-out.
 5. **Grow the scope by what the fixes touched**, never shrink it.
 
 ## Termination

@@ -13,8 +13,12 @@ Three sources, and nothing else:
    the reason there is no `phase:` one: git already knows when the directory
    last changed, and a hand-written date is the copy that goes stale.
 2. **Artifact presence** — which of `spec.md` / `plan.md` / `wrapup.md` exist.
-   This is what the phase is derived from; there is no stored phase.
 3. **`git log`** — the timeline, and which commits carry this slug.
+
+The phase comes off 2 and 3 together, and [SKILL.md](SKILL.md)'s table is where
+that reading lives. A second copy of it here is a copy that drifts, and the row
+it would lose is the commit-trail one — the row that keeps a spec with no
+`plan.md` from reading as `specify` forever.
 
 Anything held only in the conversation is not state. If a session is about to
 end with something that matters, it goes into one of the three first.
@@ -38,12 +42,21 @@ end with something that matters, it goes into one of the three first.
    and to the same tie in a working tree the moment anything writes the file.
    Commit timestamps are history and survive both.
 
-   The order is total, so this step never asks: `SKILL.md` allows a question at
-   four gates and this is not one of them.
-2. Derive the phase from artifact presence.
-3. Read `plan.md ## Outstanding issues` — this is what the last pass found, and
-   re-finding it is the waste this file exists to prevent.
-4. Check the worktree. Dirty fires the `resume` gate.
+   Neither key is injective: one commit lands two specs, and a squash merge
+   lands every spec at one timestamp. Where first place is shared, the tree
+   records no difference between those specs and they are concurrent — the
+   concurrency check [SKILL.md](SKILL.md) defines, reached from a resume rather
+   than from a new spec. Name the tied slugs and ask which. Never settle it on
+   slug order: a fixed tiebreak is wrong in the same direction every session,
+   and under a squash-merged history it is wrong every time.
+2. Derive the phase: [SKILL.md](SKILL.md)'s table, first row that matches.
+3. Read `plan.md ## Outstanding issues` where there is a `plan.md` — this is
+   what the last pass found, and re-finding it is the waste this file exists to
+   prevent. A spec that took the no-plan branch left its findings in a
+   conversation that is gone; start the phase expecting to re-derive them.
+4. Check the worktree. Dirty fires the `resume` gate — after 1–3, because what
+   changed is only legible once the spec it belongs to is known, and because
+   discarding first would delete the very evidence step 1 keys on.
 5. Continue from the derived phase.
 
 ## Compaction is a checkpoint

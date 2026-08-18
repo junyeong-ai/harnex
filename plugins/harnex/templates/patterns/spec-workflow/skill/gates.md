@@ -69,8 +69,12 @@ count, and the work goes back.
 ## resume — inline, on a dirty worktree
 
 Fires when a resume finds uncommitted changes: the previous session left work
-in flight and what it intended is not on disk. Show what changed, ask whether
-to keep going, land it first, or discard, and record the answer. Then follow
-[resume.md](resume.md).
+in flight and what it intended is not on disk. Show what changed and ask
+whether to keep going, land it first, or discard. All three continue the
+resume, so all three record `approved` with which was chosen; `deferred` when
+the answer is to stop and look first.
+
+The procedure resumes at the step that fired this — like every gate here, this
+section ends at the decision and does not hand the order back.
 
 A clean worktree resumes without this gate.
