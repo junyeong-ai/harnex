@@ -46,18 +46,18 @@ reject_unknown_keys = true
 
 # A rule is worth its context only while what it describes is still there, and
 # the drift that makes one actively misleading is the artifact it cites moving
-# or disappearing. `harness check` reads `CLAUDE.md` and `.claude/rules/*.md`
-# and resolves every `` `path/to/file.ext:42` `` against the tree.
+# or disappearing. `harness check` reads `CLAUDE.md` and `.claude/rules/**/*.md`
+# and resolves every marked claim against the tree:
 #
-# A rule opts in per claim: only a backtick-wrapped project-relative path WITH
-# a directory separator and a line becomes one, so prose that mentions a file
-# never fires, and neither does `api.example.com:8080` — a host and port share
-# the shape of a file and a line, and no extension test tells them apart. Cite
-# a root file as `./harness.toml:1`.
+#   [file: path/to/thing.py:42]   the file must exist and hold that line
+#   [file: pyproject.toml]        the file must exist
 #
-# Write the pointer whenever a rule states something the code is the truth for.
-# The two harnesses this scaffold is modelled on name an owner in every single
-# rule they carry.
+# Marked rather than inferred, which is what keeps the check out of prose. A
+# bare backtick path is documentation and stays documentation; `api/gateway.io:8443`
+# is a host and a port, and nothing distinguishes that shape from a file and a
+# line. Write the marker whenever a rule states something the code is the truth
+# for — the two harnesses this scaffold is modelled on name an owner in every
+# single rule they carry.
 [evidence]
 default_provenance = "internal"
 

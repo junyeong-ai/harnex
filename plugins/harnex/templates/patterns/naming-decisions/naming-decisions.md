@@ -21,7 +21,8 @@ belongs in a commit body as well as here.
 
 Name the file that settles each answer. A table with no owner drifts the first
 time someone renames a directory; a pointer can be checked, and `harness check`
-resolves the `path.ext:line` form against the tree.
+resolves a marked claim — `[file: tools/naming-lint.ts:1]`, the line optional —
+against the tree.
 
 ## File naming
 

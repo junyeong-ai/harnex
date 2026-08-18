@@ -58,8 +58,10 @@ editing it, not using it):
   skeleton files + a `[[pattern]]` entry in `templates/patterns/manifest.toml`
   (slug, files, analyze steps). The `pattern_manifest_sync` test fails on
   drift between manifest and directories. Pattern files ship CONCRETE proven
-  defaults, never blank fill-ins — every `<!-- Fill in -->` is replaced at
-  install time by the skill from project analysis.
+  defaults, never blank fill-ins — every `<!-- harnex-fill: … -->` is replaced
+  at install time by the skill from project analysis. That is the one marker
+  token; `sentinel::fill_markers` owns its grammar and `audit-fill-marker-
+  unresolved` reports any that ship.
 - **Extend mode is a closed verb menu.** When adding a new extend verb,
   add its bullet to the `## Mode: extend` menu in `SKILL.md`, add a tested
   composition path in templates, and (if the verb mutates a SSoT) extend

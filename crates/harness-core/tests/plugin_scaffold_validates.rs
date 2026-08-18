@@ -105,7 +105,12 @@ fn emit_tier(
                 let fragment: serde_json::Value =
                     serde_json::from_str(&fs::read_to_string(&src).unwrap())
                         .unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
-                merge_at(settings, key, fragment);
+                assert!(
+                    merge_at(settings, key, fragment),
+                    "the incumbent's shape at '{key}' blocked {}; the skill reports that \
+                     rather than replacing what the project wrote",
+                    artifact.template
+                );
             }
             // An incumbent is the project's file, and every non-merge kind
             // keeps it. `managed` included: its partition governs a file
@@ -127,27 +132,38 @@ fn emit_tier(
 }
 
 /// Contribute `value` at a dotted key path, unioning with whatever is there.
-fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Value) {
+///
+/// Returns false when a segment of the path is occupied by something that is
+/// not an object — `{"permissions": []}` merged at `permissions.deny` — in
+/// which case nothing is written. Walking into it would have panicked; writing
+/// through it would have replaced whatever the project had there.
+fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Value) -> bool {
     let mut cursor = root;
     let keys: Vec<&str> = key_path.split('.').collect();
     for key in &keys[..keys.len() - 1] {
-        cursor = cursor
-            .as_object_mut()
-            .unwrap()
+        if cursor.is_null() {
+            *cursor = serde_json::json!({});
+        }
+        let Some(object) = cursor.as_object_mut() else {
+            return false;
+        };
+        cursor = object
             .entry((*key).to_string())
             .or_insert_with(|| serde_json::json!({}));
     }
     let last = keys[keys.len() - 1].to_string();
-    let slot = cursor
-        .as_object_mut()
-        .unwrap()
-        .entry(last)
-        .or_insert(serde_json::Value::Null);
-    union_into(slot, value);
+    if cursor.is_null() {
+        *cursor = serde_json::json!({});
+    }
+    let Some(object) = cursor.as_object_mut() else {
+        return false;
+    };
+    union_into(object.entry(last).or_insert(serde_json::Value::Null), value)
 }
 
 /// Union `incoming` into `slot`: objects key-wise **at every depth**, arrays by
-/// appending what is not already present, scalars by replacement.
+/// appending what is not already present. An empty slot takes the fragment
+/// whole. Returns false when the two shapes disagree, leaving the slot untouched.
 ///
 /// The recursion is the whole contract. A one-level union looks correct
 /// because the merge keys are one level deep, and then the `hooks` fragment —
@@ -160,24 +176,40 @@ fn merge_at(root: &mut serde_json::Value, key_path: &str, value: serde_json::Val
 /// order would change behaviour the project chose, and the destination is
 /// shared by construction. Appending is still idempotent — a second pass finds
 /// every entry present — and still deterministic, because the emission order is.
-fn union_into(slot: &mut serde_json::Value, incoming: serde_json::Value) {
+///
+/// A shape disagreement is the collision rule reaching the inside of a
+/// fragment. An operator who wrote `"SessionStart": {…}` instead of `[{…}]`
+/// has one hook entry and a malformed file; replacing it drops their hook to
+/// land harnex's, and the result validates clean. Keeping theirs and reporting
+/// loses only a contribution the operator can re-apply once the shape is
+/// fixed, which is the direction `regenerate` already takes on a conflict.
+fn union_into(slot: &mut serde_json::Value, incoming: serde_json::Value) -> bool {
     match (&mut *slot, incoming) {
-        (serde_json::Value::Object(existing), serde_json::Value::Object(incoming)) => {
-            for (key, value) in incoming {
+        (serde_json::Value::Object(existing), serde_json::Value::Object(incoming)) => incoming
+            .into_iter()
+            .map(|(key, value)| {
                 union_into(
                     existing.entry(key).or_insert(serde_json::Value::Null),
                     value,
-                );
-            }
-        }
+                )
+            })
+            // Every key is attempted rather than stopping at the first clash:
+            // one malformed event must not withhold the rest.
+            .reduce(|ok, merged| ok && merged)
+            .unwrap_or(true),
         (serde_json::Value::Array(existing), serde_json::Value::Array(incoming)) => {
             for value in incoming {
                 if !existing.contains(&value) {
                     existing.push(value);
                 }
             }
+            true
         }
-        (_, incoming) => *slot = incoming,
+        (serde_json::Value::Null, incoming) => {
+            *slot = incoming;
+            true
+        }
+        _ => false,
     }
 }
 
@@ -527,6 +559,40 @@ fn foundation_only_scaffold_is_coherent_without_a_language() {
         "every foundation artifact must report present: {:?}",
         outcome.coverage
     );
+}
+
+#[test]
+fn a_fragment_never_replaces_an_incumbent_of_a_different_shape() {
+    // `"SessionStart": {…}` instead of `[{…}]` is a malformed settings file
+    // with one real hook in it — an easy mistake, since most published hook
+    // examples show a single entry. Replacing it to land harnex's array drops
+    // the operator's hook and the result validates clean. And a scalar at an
+    // intermediate segment used to panic the walk outright.
+    for (incumbent, key, fragment) in [
+        (
+            serde_json::json!({"hooks": {"SessionStart": {"matcher": "startup"}}}),
+            "hooks",
+            serde_json::json!({"SessionStart": [{"matcher": "startup|resume"}]}),
+        ),
+        (
+            serde_json::json!({"permissions": []}),
+            "permissions.deny",
+            serde_json::json!(["Read(.env)"]),
+        ),
+        (
+            serde_json::json!({"permissions": "none"}),
+            "permissions.allow",
+            serde_json::json!(["Edit"]),
+        ),
+    ] {
+        let mut settings = incumbent.clone();
+        let merged = merge_at(&mut settings, key, fragment);
+        assert!(!merged, "a shape clash at '{key}' reported success");
+        assert_eq!(
+            settings, incumbent,
+            "a shape clash at '{key}' changed the project's file"
+        );
+    }
 }
 
 /// Scaffolding a repo that already has files at the manifest's destinations

@@ -15,14 +15,14 @@ harnex_version = ">=0.1, <0.2"
 
 # The rules here name the module that owns each fact, which is the whole of
 # Article IX, and a name is only worth more than prose while it still resolves.
-# `harness check` reads `CLAUDE.md` and `.claude/rules/*.md` and holds every
-# `` `path/to/file.ext:line` `` pointer to the tree.
+# `harness check` reads `CLAUDE.md` and `.claude/rules/**/*.md` and holds every
+# marked claim — `[file: path/to/thing.rs:42]`, the line optional — to the tree.
 #
 # The subject is real: this is the check a generated harness now ships, and a
-# rule pointing at a module that was renamed is exactly the drift the
-# retirement sweep looks for by hand. Opting in is per-claim — the backtick
-# `path/to/file.ext:line` form is the only shape that becomes one — so prose that
-# merely mentions a file never fires it.
+# rule pointing at a module that was renamed is exactly the drift the retirement
+# sweep looks for by hand. The marker is what keeps it out of prose — a bare
+# backtick path is documentation, and a host and port share the shape of a file
+# and a line.
 [evidence]
 default_provenance = "internal"
 

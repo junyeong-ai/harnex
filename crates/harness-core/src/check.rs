@@ -412,7 +412,10 @@ impl<'a> ProjectChecker<'a> {
         };
         let verifier = EvidenceVerifier::new(cfg)?;
         let mut candidates: Vec<PathBuf> = vec![self.working_dir.join("CLAUDE.md")];
-        candidates.extend(self.discover_glob(".claude/rules/*.md")?);
+        // The same glob the rule validator discovers with, because it is the
+        // same set of files. A nested rule was validated for frontmatter and
+        // budget while its claims went unchecked, which reads as verified.
+        candidates.extend(self.discover_glob(<RuleValidator as SurfaceValidator>::GLOB)?);
         for path in &candidates {
             if !path.is_file() {
                 continue;

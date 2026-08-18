@@ -322,6 +322,36 @@ fn settings_validator_flags_a_session_start_source_that_starts_no_session() {
 }
 
 #[test]
+fn settings_validator_flags_a_dead_literal_session_start_matcher() {
+    // A space, a hyphen and an underscore carry no regex meaning, so each of
+    // these is a literal string equalling no session source — the hook fires
+    // for nothing. Trimming the alternatives, or refusing to judge anything
+    // non-alphanumeric, erased exactly these while claiming to catch them.
+    let v = SettingsValidator::new();
+    for (matcher, dead) in [
+        ("startup | resume", "startup "),
+        ("startup-resume", "startup-resume"),
+        ("sesion_start", "sesion_start"),
+        ("startup,resume", "startup,resume"),
+    ] {
+        let json = format!(r#"{{"hooks": {{"SessionStart": [{{"matcher": "{matcher}"}}]}}}}"#);
+        let findings = v.validate_text(
+            &json,
+            Path::new(".claude/settings.json"),
+            SettingsScope::Project,
+        );
+        let unknowns: Vec<_> = findings
+            .iter()
+            .filter(|f| f.slug == "settings-unknown-session-start-source")
+            .collect();
+        assert!(
+            unknowns.iter().any(|f| f.message.contains(dead)),
+            "matcher '{matcher}' fires for no session and went unreported: {findings:?}"
+        );
+    }
+}
+
+#[test]
 fn settings_validator_leaves_a_regex_session_start_matcher_alone() {
     // A matcher is a JS regex, so an alternative carrying a metacharacter
     // matches sources no closed set can enumerate. Testing membership on one

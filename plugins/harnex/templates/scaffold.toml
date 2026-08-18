@@ -55,11 +55,18 @@
 # existing.
 #
 # UNION — recursive. Objects merge key-wise AT EVERY DEPTH, arrays gain the
-# elements they lack, scalars are replaced. Depth is not a refinement of the
-# rule but the rule itself: `hooks` is an object whose values are arrays, so a
-# union that stopped at the merge key would replace `hooks.SessionStart` whole
-# and drop an entry the project wrote, leaving a structurally valid file no
-# validator objects to.
+# elements they lack, an empty slot takes the fragment whole. Depth is not a
+# refinement of the rule but the rule itself: `hooks` is an object whose values
+# are arrays, so a union that stopped at the merge key would replace
+# `hooks.SessionStart` whole and drop an entry the project wrote, leaving a
+# structurally valid file no validator objects to.
+#
+# Where the two shapes DISAGREE, nothing is written and the collision is
+# reported. An operator who spelled `"SessionStart": {…}` instead of `[{…}]`
+# has one real hook in a malformed file; replacing it to land the fragment
+# drops their hook and the result still validates. Keeping theirs costs only a
+# contribution they can re-apply once the shape is fixed, and it is the
+# direction `regenerate` already takes on a conflict.
 #
 # Arrays gain elements at the end rather than being sorted. Hook entries under
 # one event run in order, and a merge that never owns its destination may not
