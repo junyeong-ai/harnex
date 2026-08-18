@@ -21,17 +21,25 @@ end with something that matters, it goes into one of the three first.
 
 ## The procedure
 
-1. Pick the spec. Given a slug, that one. Otherwise the most recently touched
-   non-terminal one, where touched is the later of two things: the last commit
-   over its directory (`git log -1 --format=%ct -- specs/<slug>/`) and the mtime
-   of its `spec.md`.
+1. Pick the spec. Given a slug, that one. Otherwise, among the non-terminal
+   ones, in this order:
 
-   Both, because neither alone answers. A spec created in the session that just
-   ended has no commit at all — and that is the likeliest one to resume — so
-   git returns nothing for it and would sort it last. Its mtime is exactly when
-   someone last wrote to it. One key over both sources is deterministic, so
-   this step never asks: `SKILL.md` allows a question at four gates and this is
-   not one of them.
+   - **Any spec `git log -1 --format=%ct -- specs/<slug>/` reports nothing
+     for.** No commit means it has not landed, so it is the one in flight —
+     and it is the likeliest resume target, because a session that ended
+     mid-spec ended before the commit. Several of them: the newest `spec.md`
+     mtime wins, which is meaningful here precisely because these files were
+     written by a session rather than by a checkout.
+   - **Otherwise the largest of those timestamps.**
+
+   git first and mtime only where git is silent, never the two combined.
+   A checkout writes every file's mtime to the moment it ran, so `max(commit,
+   mtime)` collapses every candidate to a tie in a fresh clone or worktree —
+   and to the same tie in a working tree the moment anything writes the file.
+   Commit timestamps are history and survive both.
+
+   The order is total, so this step never asks: `SKILL.md` allows a question at
+   four gates and this is not one of them.
 2. Derive the phase from artifact presence.
 3. Read `plan.md ## Outstanding issues` — this is what the last pass found, and
    re-finding it is the waste this file exists to prevent.
