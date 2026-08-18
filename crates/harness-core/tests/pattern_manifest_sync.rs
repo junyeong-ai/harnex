@@ -166,24 +166,64 @@ fn walk_files(dir: &std::path::Path) -> Vec<PathBuf> {
     out
 }
 
-/// Every pattern file is either validated by the oracle, or accounted for as a
-/// destination no validator covers. Nothing is skipped silently.
+/// Every destination the manifest declares classifies into exactly one surface,
+/// and every surface an oracle validator covers is validated.
 ///
 /// harnex ships skills and a sub-agent now, not only rules, and a template that
 /// is wrong is wrong in every project that installs it — the failure the whole
 /// plugin exists to prevent, arriving from harnex itself.
 ///
-/// The first version dispatched on three destination shapes and dropped
-/// everything else through an unremarked `continue`. Eleven of twenty-five
-/// files were checked and the docstring claimed all of them, so three content
-/// defects shipped in exactly the files it was not looking at. The uncovered
-/// set is now declared: a destination outside both lists fails here rather than
-/// passing unexamined, which is the only part of this a test can guarantee.
+/// One ordered classifier rather than a dispatch plus an excuse list. The first
+/// attempt had both, and the excuse `.claude/skills/{}/{}.md` also matched
+/// `.claude/skills/<name>/SKILL.md` — so breaking the dispatch moved the two
+/// shipped skills into the excused bucket and every assertion still passed.
+/// Two overlapping lists cannot express "everything else"; an ordered total
+/// function can, and a destination it cannot classify fails here.
 ///
 /// Policy comes from the `harness.toml` the scaffold emits rather than a
 /// literal, for the reason `.claude/rules/scaffold.md` gives — a restated policy
 /// is one no real project has. That file turns `reject_unknown_keys` on for
 /// three surfaces, so a stray frontmatter key here is a finding.
+#[derive(Debug, PartialEq, Eq)]
+enum Surface {
+    /// `SKILL.md` frontmatter — the spec declares its shape.
+    Skill,
+    /// A sub-agent definition.
+    Agent,
+    /// A path-scoped rule.
+    Rule,
+    /// A file a skill reads on demand. The spec declares no shape for one, so
+    /// nothing can validate it — its correctness is the review's, not a gate's.
+    SkillResource,
+    /// A lens. Its contract is stated in the review-lenses rule, which is prose.
+    Lens,
+    /// A spec artifact template — the project's own document, not a Claude
+    /// Code surface.
+    SpecTemplate,
+    /// A GitHub template or a hook script: neither is a Claude Code surface.
+    OutsideClaudeCode,
+}
+
+impl Surface {
+    /// Ordered and total. `SKILL.md` is tested before the skill-resource arm
+    /// that would otherwise swallow it, which is the ordering the previous
+    /// two-list version could not express.
+    fn of(destination: &str) -> Option<Self> {
+        let seg: Vec<&str> = destination.split('/').collect();
+        Some(match seg.as_slice() {
+            [".claude", "skills", _, "SKILL.md"] => Self::Skill,
+            [".claude", "skills", _, f] if f.ends_with(".md") => Self::SkillResource,
+            [".claude", "agents", f] if f.ends_with(".md") => Self::Agent,
+            [".claude", "rules", f] if f.ends_with(".md") => Self::Rule,
+            [".claude", "lenses", f] if f.ends_with(".md") => Self::Lens,
+            ["specs", "_template", f] if f.ends_with(".md") => Self::SpecTemplate,
+            [".github", "pull_request_template.md"] => Self::OutsideClaudeCode,
+            ["hooks", f] if f.ends_with(".sh") => Self::OutsideClaudeCode,
+            _ => return None,
+        })
+    }
+}
+
 #[test]
 fn every_pattern_surface_file_validates() {
     use harness_core::validate::{AgentValidator, RuleValidator, SkillValidator};
@@ -204,37 +244,43 @@ fn every_pattern_surface_file_validates() {
         .agents
         .expect("scaffolded config declares validate.agents");
 
-    let mut checked = 0usize;
-    let mut unvalidated = 0usize;
+    let mut seen: BTreeSet<&'static str> = BTreeSet::new();
     for pattern in &load_manifest().pattern {
         for file in &pattern.files {
-            let src = patterns_dir().join(&pattern.slug).join(&file.template);
-            let body = std::fs::read_to_string(&src).unwrap();
-            let dest = std::path::Path::new(&file.destination);
-            let landed = std::path::Path::new("/proj").join(dest);
+            let surface = Surface::of(&file.destination).unwrap_or_else(|| {
+                panic!(
+                    "pattern '{}' declares destination '{}', which `Surface::of` cannot classify. \
+                     Add its arm — either a validator surface, or one that says why none exists. \
+                     A destination nothing classifies is how three defects shipped in files the \
+                     earlier version of this test was not looking at.",
+                    pattern.slug, file.destination
+                )
+            });
+            let body =
+                std::fs::read_to_string(patterns_dir().join(&pattern.slug).join(&file.template))
+                    .unwrap();
+            let landed = std::path::Path::new("/proj").join(&file.destination);
 
-            let findings = if file.destination.ends_with("/SKILL.md") {
-                SkillValidator::new(&skills).validate_text(&body, &landed)
-            } else if file.destination.starts_with(".claude/agents/") {
-                AgentValidator::new(&agents).validate_text(&body, &landed)
-            } else if file.destination.starts_with(".claude/rules/") {
-                RuleValidator::new(&rules).validate_text(&body, &landed)
-            } else {
-                assert!(
-                    UNVALIDATED_DESTINATIONS
-                        .iter()
-                        .any(|shape| matches_shape(&file.destination, shape)),
-                    "pattern '{}' declares destination '{}', which no validator covers and \
-                     UNVALIDATED_DESTINATIONS does not account for. Add a validator, or add the \
-                     shape with the reason none exists — a silent skip is how three defects \
-                     shipped in files this test was not looking at.",
-                    pattern.slug,
-                    file.destination
-                );
-                unvalidated += 1;
-                continue;
+            let findings = match surface {
+                Surface::Skill => {
+                    seen.insert("skill");
+                    SkillValidator::new(&skills).validate_text(&body, &landed)
+                }
+                Surface::Agent => {
+                    seen.insert("agent");
+                    AgentValidator::new(&agents).validate_text(&body, &landed)
+                }
+                Surface::Rule => {
+                    seen.insert("rule");
+                    RuleValidator::new(&rules).validate_text(&body, &landed)
+                }
+                // No oracle validator declares a shape for these. Saying so is
+                // what keeps the gap from reading as coverage.
+                Surface::SkillResource
+                | Surface::Lens
+                | Surface::SpecTemplate
+                | Surface::OutsideClaudeCode => continue,
             };
-            checked += 1;
             assert!(
                 findings.is_empty(),
                 "pattern '{}' file '{}' would land at '{}' and fail the project's own \
@@ -245,51 +291,15 @@ fn every_pattern_surface_file_validates() {
             );
         }
     }
-    // Every declared file landed in exactly one of the two buckets, and both
-    // are non-empty — a dispatch that stopped recognising a surface would move
-    // its files into the uncovered bucket, and the assertion above would name
-    // them rather than let the count quietly shrink.
-    let declared: usize = load_manifest().pattern.iter().map(|p| p.files.len()).sum();
+
+    // Each validated surface was actually exercised. A classifier arm that
+    // stopped matching would empty its bucket here rather than let the count
+    // quietly shrink — the failure the excuse-list version could not see.
     assert_eq!(
-        checked + unvalidated,
-        declared,
-        "every manifest file must be validated or accounted for"
+        seen,
+        ["agent", "rule", "skill"]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        "the pattern library must exercise every validator surface"
     );
-    assert!(checked > 0 && unvalidated > 0);
-}
-
-/// Destination shapes no oracle validator covers, each with the reason.
-///
-/// `{}` matches one path segment. This is the honest half of the test: harnex
-/// ships these files and cannot mechanically check them, and saying so is what
-/// keeps the gap from reading as coverage.
-const UNVALIDATED_DESTINATIONS: &[&str] = &[
-    // Skill resource files. The spec validates `SKILL.md` frontmatter; a
-    // sibling procedure file the skill reads on demand has no declared shape.
-    ".claude/skills/{}/{}.md",
-    // Lens files. Their contract is stated in the review-lenses rule, which is
-    // prose, so it is the review loop that reads them and not a validator.
-    ".claude/lenses/{}.md",
-    // Spec artifact templates — a project's own documents, not a Claude Code
-    // surface.
-    "specs/_template/{}.md",
-    // A GitHub template and a hook script: neither is a Claude Code surface.
-    ".github/pull_request_template.md",
-    "hooks/{}.sh",
-];
-
-/// `{}` stands for exactly one path segment.
-fn matches_shape(destination: &str, shape: &str) -> bool {
-    let d: Vec<&str> = destination.split('/').collect();
-    let s: Vec<&str> = shape.split('/').collect();
-    if d.len() != s.len() {
-        return false;
-    }
-    d.iter().zip(&s).all(|(dseg, sseg)| match sseg.find("{}") {
-        None => dseg == sseg,
-        Some(i) => {
-            let (pre, post) = (&sseg[..i], &sseg[i + 2..]);
-            dseg.len() >= pre.len() + post.len() && dseg.starts_with(pre) && dseg.ends_with(post)
-        }
-    })
 }

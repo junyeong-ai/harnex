@@ -27,7 +27,7 @@ files = [
 
 [[pattern]]
 slug = "spec-workflow"
-analyze = ["existing specs/ or docs/adr/ layout", "CI stages → gates", "blast-radius signals that should fire design_review", "where the project keeps learnings a retired spec retargets onto"]
+analyze = ["existing specs/ or docs/adr/ layout", "blast-radius signals that should fire design_review", "where the project keeps learnings a retired spec retargets onto"]
 files = [
   { template = "spec-workflow.md", destination = ".claude/rules/spec-workflow.md" },
   { template = "skill/SKILL.md", destination = ".claude/skills/spec/SKILL.md" },

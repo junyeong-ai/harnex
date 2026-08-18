@@ -145,7 +145,8 @@ impl<'a> ProjectChecker<'a> {
     /// single source of truth for both validator emit sites and the
     /// match below. Adding a new auto-fixable finding requires:
     /// 1. Add a [`FixCommand`] variant + its `as_str()` mapping.
-    /// 2. Emit findings with `fix_command: Some(FixCommand::X.as_str().into())`.
+    /// 2. Emit findings with `fix_command: Some(FixCommand::X)` — the field is
+    ///    typed, so this step is the compiler's rather than a review's.
     /// 3. Add a match arm here (the compiler enforces exhaustiveness on
     ///    `FixCommand`, so missing this step is a build error).
     /// 4. Add a test asserting drift → fix → 0 findings.

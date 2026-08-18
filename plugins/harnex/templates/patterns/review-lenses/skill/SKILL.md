@@ -38,9 +38,12 @@ this addition surfaces, and one no lens can reach if the file is not open.
 
 ## One iteration
 
-1. **Walk every lens** in `.claude/lenses/` over every file in scope. A lens
-   that fires produces findings in the rule's format; a lens that fires on
-   nothing is a result, not a skipped step.
+1. **Walk each lens** in `.claude/lenses/` over the files in scope its
+   `applies_to:` covers — a lens scoped to source has nothing to say about a
+   spec, and walking it there is how a loop manufactures findings. A lens that
+   fires produces findings in the rule's format; a lens that fires on nothing is
+   a result, not a skipped step. Say which lenses were walked over what, since
+   a narrowed lens is a narrowed pass.
 2. **State the coverage before the verdict.** Name what was actually read —
    the files opened, the symbol search that ran, what a search could not reach.
    A pass that reports zero findings with its coverage shown is a complete
