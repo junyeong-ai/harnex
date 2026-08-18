@@ -3,7 +3,7 @@
 //! Extracts provenance-marked claims from arbitrary markdown text.
 //! Recognised syntaxes (all whitespace-tolerant):
 //!
-//! - `` `path/to/file.ext:42` `` → internal file/line claim
+//! - `[file: path/to/file.ext:42]` → internal file claim; the `:line` optional
 //! - `[fetched: YYYY-MM-DD] https://...` → fetched-url claim
 //! - `[context7: <library-id>]` → context7 claim
 //! - `[memory]` → unverified memory claim
@@ -65,16 +65,67 @@ static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expe
 // pattern-match over prose in a blocking tier, which `keep-soften-cut` refuses.
 // A marker also tells a reader which references the gate checks, where a bare
 // backtick path says nothing.
-static FILE_CLAIM: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[file:\s*([^\]\s:]+)(?::(\d+))?\s*\]").expect("FILE_CLAIM regex")
-});
+const FILE_MARKER: &str = "[file:";
+
+/// The interior of each `[file: …]` on `line`, brackets balanced.
+///
+/// Scanned rather than matched, because a path may hold `]` and a regex cannot
+/// count. `app/[id]/page.tsx` is idiomatic in a stack this toolkit ships a
+/// profile for, and a character class that stops at the first `]` reads it as
+/// `app/[id` — the real claim goes unverified and the truncation fails Blocker
+/// against a path nobody wrote.
+fn file_claim_bodies(line: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = line;
+    while let Some(open) = rest.find(FILE_MARKER) {
+        let interior = &rest[open + FILE_MARKER.len()..];
+        let mut depth = 0usize;
+        let end = interior.char_indices().find_map(|(i, c)| match c {
+            '[' => {
+                depth += 1;
+                None
+            }
+            ']' if depth == 0 => Some(i),
+            ']' => {
+                depth -= 1;
+                None
+            }
+            _ => None,
+        });
+        let Some(end) = end else {
+            break;
+        };
+        out.push(interior[..end].trim());
+        rest = &interior[end + 1..];
+    }
+    out
+}
+
+/// Split a claim body into its path and optional line.
+///
+/// The line is the trailing `:<digits>`, so a path may itself contain a colon
+/// — a Windows drive letter reaches the verifier intact. An empty path is not
+/// a claim: `[file: ]` says nothing to check.
+fn split_file_claim(body: &str) -> Option<(&str, Option<u32>)> {
+    if let Some((path, tail)) = body.rsplit_once(':')
+        && !tail.is_empty()
+        && tail.chars().all(|c| c.is_ascii_digit())
+    {
+        return (!path.is_empty()).then(|| {
+            // All digits, so the only parse failure is OVERFLOW of u32 — a line
+            // far beyond any file. Map it to u32::MAX so the verifier reports
+            // it out of range rather than silently as "no line to check".
+            (path, Some(tail.parse().unwrap_or(u32::MAX)))
+        });
+    }
+    (!body.is_empty()).then_some((body, None))
+}
 
 /// Parse every recognised claim out of `markdown`. Order within a line is
-/// the order discovered by the per-pattern regex pass.
+/// the order discovered by the per-pattern pass.
 ///
-/// Lines inside fenced code blocks (` ``` ` … ` ``` `) are skipped — the
-/// backtick path syntax inside code samples is documentation, not a claim
-/// the toolkit should verify.
+/// Code blocks are skipped, fenced and four-space-indented alike: a marker in
+/// a sample is documentation of the syntax, not a claim about this project.
 pub fn parse_claims(markdown: &str) -> Vec<Claim> {
     let mut out = Vec::new();
     let mut in_fence: Option<(char, usize)> = None;
@@ -92,8 +143,13 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             .into_iter()
             .find(|&(_, len)| len >= 3);
         if let Some((char, len)) = fence {
+            // A closing fence carries nothing but its own characters, per
+            // CommonMark. Without that, a line like "``` note: still inside"
+            // closes the block a renderer keeps open, and the claim below it
+            // is read as live.
+            let bare = trimmed[len..].trim().is_empty();
             match in_fence {
-                Some((open_char, open_len)) if char == open_char && len >= open_len => {
+                Some((open_char, open_len)) if bare && char == open_char && len >= open_len => {
                     in_fence = None;
                 }
                 Some(_) => {}
@@ -139,18 +195,16 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             });
         }
 
-        for cap in FILE_CLAIM.captures_iter(line) {
+        for body in file_claim_bodies(line) {
+            let Some((path, cited)) = split_file_claim(body) else {
+                continue;
+            };
             out.push(Claim {
-                raw: cap[0].to_string(),
+                raw: format!("{FILE_MARKER} {body}]"),
                 provenance: Some("internal".to_string()),
                 kind: ClaimKind::FilePathLine {
-                    path: cap[1].to_string(),
-                    // The regex guarantees the group is all digits, so the
-                    // only parse failure is OVERFLOW of u32 — a line number
-                    // far beyond any file. Map it to u32::MAX so the verifier
-                    // reports it as out-of-range, never silently as "no line
-                    // to check" (which would let a bogus claim pass).
-                    line: cap.get(2).map(|m| m.as_str().parse().unwrap_or(u32::MAX)),
+                    path: path.to_string(),
+                    line: cited,
                 },
                 line: line_no,
             });
@@ -185,6 +239,80 @@ mod tests {
                 "prose parsed as a file claim: {md}"
             );
         }
+    }
+
+    #[test]
+    fn a_path_may_hold_brackets_a_colon_and_a_space() {
+        // `app/[id]/page.tsx` is idiomatic in a stack this toolkit ships a
+        // profile for. A character class that stops at the first `]` read it
+        // as `app/[id`: the real claim went unverified and the truncation
+        // failed Blocker against a path nobody wrote — both directions at once.
+        for (md, want_path, want_line) in [
+            (
+                "See [file: app/[id]/page.tsx:10] for the handler.",
+                "app/[id]/page.tsx",
+                Some(10),
+            ),
+            (
+                "Catch-all [file: app/[[...slug]]/route.ts] is registered.",
+                "app/[[...slug]]/route.ts",
+                None,
+            ),
+            (
+                "On Windows [file: C:/repo/x.rs:4].",
+                "C:/repo/x.rs",
+                Some(4),
+            ),
+            (
+                "Spaces survive [file: My Docs/notes.md:2].",
+                "My Docs/notes.md",
+                Some(2),
+            ),
+        ] {
+            let claims = parse_claims(md);
+            assert_eq!(claims.len(), 1, "no claim parsed from: {md}");
+            match &claims[0].kind {
+                ClaimKind::FilePathLine { path, line } => {
+                    assert_eq!(path, want_path, "from: {md}");
+                    assert_eq!(*line, want_line, "from: {md}");
+                }
+                _ => panic!("expected FilePathLine"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_marker_with_nothing_to_check_is_not_a_claim() {
+        for md in [
+            "An empty one [file: ] says nothing.",
+            "An unterminated [file: src/lib.rs:1 never closes.",
+            "A link [file](https://example.com) is not a marker.",
+        ] {
+            assert!(parse_claims(md).is_empty(), "parsed a claim from: {md}");
+        }
+    }
+
+    #[test]
+    fn a_closing_fence_carries_nothing_but_its_own_characters() {
+        // Per CommonMark a fence line with trailing prose does not close the
+        // block, so a claim under it is still inside code.
+        let md = "\
+```markdown
+Text
+``` note: trailing prose, so the block stays open
+[file: src/hidden.rs:99]
+```
+
+[file: src/after.rs:1]
+";
+        let paths: Vec<String> = parse_claims(md)
+            .iter()
+            .filter_map(|c| match &c.kind {
+                ClaimKind::FilePathLine { path, .. } => Some(path.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(paths, vec!["src/after.rs"]);
     }
 
     #[test]

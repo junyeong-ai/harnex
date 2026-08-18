@@ -26,9 +26,13 @@
 //! - Never repair. The finding names the template to copy across; which side
 //!   is right is the operator's call, because a deliberate fork of a runner is
 //!   a decision this auditor cannot see the reason for.
+//! - Never read a line ending as a difference. Comparison goes through
+//!   [`crate::audit::normalize`], the same helper the managed-region auditor
+//!   uses, so a Windows checkout does not report every shell hook as drifted.
 
 use std::path::Path;
 
+use crate::audit::normalize;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::Result;
 use crate::scaffold::{Content, ScaffoldManifest};
@@ -57,7 +61,7 @@ impl CopyDriftAuditor {
                 let Ok(canonical) = std::fs::read_to_string(templates.join(&template)) else {
                     continue;
                 };
-                if body == canonical {
+                if normalize(&body) == normalize(&canonical) {
                     continue;
                 }
                 findings.push(Finding {

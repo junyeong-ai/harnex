@@ -72,6 +72,17 @@ use hook_wiring::HookWiringAuditor;
 use managed_region::ManagedRegionAuditor;
 use settings_drift::SettingsDriftAuditor;
 
+/// Normalize generated content for comparison: collapse CRLF, trim the edges.
+///
+/// One owner because two auditors compare a project's copy of a template
+/// against that template, and a line ending is not a difference either of them
+/// means. A Windows checkout with `core.autocrlf` on, or a `.gitattributes`
+/// that normalizes, otherwise reports every shell hook as drifted with no fix
+/// short of committing different bytes than the template.
+pub(crate) fn normalize(body: &str) -> String {
+    body.replace("\r\n", "\n").trim().to_string()
+}
+
 /// Closed set of audit checks the `harness audit` command dispatches.
 /// `AuditCheckKind::ALL` drives [`ProjectAuditor::run`]'s exhaustive match
 /// — adding a variant requires updating the `from_str`, `as_str`, and the

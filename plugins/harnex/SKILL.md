@@ -113,8 +113,9 @@ list.** Read it and emit every artifact it declares, dispatching on
 `managed` are written verbatim and `merge` contributes its JSON fragment at
 `content.key` as a **recursive** union: objects merge key-wise at every depth,
 arrays gain the elements they lack in the order they arrive, an empty slot
-takes the fragment whole, and where two shapes disagree nothing is written and
-the collision is reported (the manifest header states the rule and why depth is
+takes the fragment whole, and where two shapes disagree that node is left
+exactly as it was and the collision is reported — the siblings around it still
+merge, so one malformed event does not withhold the rest (the manifest header states the rule and why depth is
 not optional — `hooks` is an object whose values are arrays). `chmod 0o755` where `executable` is set. Emit the
 `foundation` tier always, and the `language` tier once per detected stack,
 resolving `{lang}` to that language each time. The manifest is the single home

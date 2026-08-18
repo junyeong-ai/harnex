@@ -62,9 +62,10 @@ arrays, so a union that stops at the merge key drops an operator's own
 `SessionStart` entry and leaves a file every validator accepts. Arrays append
 rather than sort: hook entries under one event run in order, and a merge that
 never owns its destination may not renumber what it found there. Where two
-shapes disagree, nothing is written and the collision is reported — replacing a
-malformed `"SessionStart": {…}` to land the fragment drops the one hook it
-holds, and the result still validates.
+shapes disagree, that node is left exactly as it was and the collision is
+reported; the siblings around it still merge. Replacing a malformed
+`"SessionStart": {…}` to land the fragment drops the one hook it holds, and the
+result still validates.
 
 `seed` exists because a project's governance is its own. Holding it to the
 template would make tailoring — the intended use — read as drift.
