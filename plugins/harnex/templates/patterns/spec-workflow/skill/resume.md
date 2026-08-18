@@ -21,8 +21,13 @@ end with something that matters, it goes into one of the three first.
 
 ## The procedure
 
-1. Pick the spec: the named slug, or — among the non-terminal ones — whichever
-   `git log -1 --format=%ct -- specs/<slug>/` reports most recently touched.
+1. Pick the spec. Given a slug, that one. Otherwise, among the non-terminal
+   ones: a spec whose directory `git log -1 --format=%ct -- specs/<slug>/`
+   reports nothing for has never been committed, so it has not landed and is the
+   one in flight — take it. If several are uncommitted, or none is, order the
+   candidates by that timestamp and ask rather than guess. This is the case the
+   `resume` gate already covers, and it is the common one: a session that ended
+   mid-spec ended before the commit.
 2. Derive the phase from artifact presence.
 3. Read `plan.md ## Outstanding issues` — this is what the last pass found, and
    re-finding it is the waste this file exists to prevent.

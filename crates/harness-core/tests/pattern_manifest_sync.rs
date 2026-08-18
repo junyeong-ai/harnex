@@ -293,8 +293,9 @@ fn every_pattern_surface_file_validates() {
     }
 
     // Each validated surface was actually exercised. A classifier arm that
-    // stopped matching would empty its bucket here rather than let the count
-    // stopped matching entirely would empty its bucket here.
+    // stopped matching entirely would empty its bucket here rather than let the
+    // count quietly shrink — though only total loss of a surface, which is why
+    // `every_skill_directory_has_its_entry_point_at_install_time` exists.
     assert_eq!(
         seen,
         ["agent", "rule", "skill"]
@@ -304,45 +305,90 @@ fn every_pattern_surface_file_validates() {
     );
 }
 
-/// Every skill directory a pattern installs into carries exactly one entry
-/// point, and that entry point is classified as a skill.
+/// Every skill directory a pattern installs into has its entry point available
+/// when that pattern installs — from the pattern itself, or from the scaffold.
 ///
 /// Presence-per-surface is not coverage-per-file. With two skills shipped, one
 /// escaping validation leaves the other in `seen` and the set assertion notices
 /// nothing — reproduced two ways: a one-character typo in the manifest
-/// (`Skill.md`), and a classifier arm narrowed to one skill name. Both left six
-/// green tests while a skill shipped that Claude Code does not load as one, and
-/// that no validator had read.
+/// (`Skill.md`), and a classifier arm narrowed to one skill name. Both left
+/// green tests while a skill shipped that Claude Code does not load as one.
 ///
-/// The shape is what closes it: a directory under `.claude/skills/` exists to
-/// hold a skill, so exactly one of its files is the entry point. That is
-/// checkable per directory rather than per surface, and it does not weaken as
-/// the library ships more skills.
+/// Grouped per pattern, because a pattern is the install unit: `extend pattern
+/// <slug>` installs one and nothing else. Grouping across all of them accepted
+/// a pattern shipping a file into another pattern's skill directory, which
+/// composes fine when both are installed and leaves a resource belonging to no
+/// skill when that one is installed alone. The foundation tier is the exception
+/// and not a hole in the rule: the scaffold emits it before any pattern runs, so
+/// its skill directory is present by the time a pattern could extend it.
 #[test]
-fn every_skill_directory_declares_exactly_one_entry_point() {
-    let mut dirs: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
+fn every_skill_directory_has_its_entry_point_at_install_time() {
+    let scaffold: BTreeSet<String> = {
+        #[derive(serde::Deserialize)]
+        struct Scaffold {
+            artifact: Vec<Artifact>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Artifact {
+            tier: String,
+            destination: String,
+            #[serde(flatten)]
+            _rest: toml::Table,
+        }
+        let raw = std::fs::read_to_string(patterns_dir().parent().unwrap().join("scaffold.toml"))
+            .expect("scaffold.toml");
+        toml::from_str::<Scaffold>(&raw)
+            .expect("scaffold.toml parses")
+            .artifact
+            .into_iter()
+            .filter(|a| a.tier == "foundation")
+            .filter_map(|a| skill_dir_of(&a.destination).map(str::to_string))
+            .collect()
+    };
+
+    let mut checked = 0usize;
     for pattern in &load_manifest().pattern {
+        let mut dirs: std::collections::BTreeMap<&str, Vec<&String>> =
+            std::collections::BTreeMap::new();
         for file in &pattern.files {
-            let seg: Vec<&str> = file.destination.split('/').collect();
-            if let [".claude", "skills", dir, _] = seg.as_slice() {
-                dirs.entry((*dir).to_string())
-                    .or_default()
-                    .push(file.destination.clone());
+            if let Some(dir) = skill_dir_of(&file.destination) {
+                dirs.entry(dir).or_default().push(&file.destination);
             }
         }
+        for (dir, files) in &dirs {
+            if scaffold.contains(*dir) {
+                continue;
+            }
+            let heads = files
+                .iter()
+                .filter(|d| Surface::of(d) == Some(Surface::Skill))
+                .count();
+            assert_eq!(
+                heads, 1,
+                "pattern '{}' writes into .claude/skills/{dir}/ and declares {heads} entry \
+                 points there, among {files:?}. Installed alone — which is how a pattern \
+                 installs — that leaves a skill Claude Code does not load, or a resource \
+                 belonging to no skill. The scaffold's own skill directories are exempt \
+                 because the scaffold emits them first.",
+                pattern.slug
+            );
+            checked += 1;
+        }
     }
-    assert!(!dirs.is_empty(), "the pattern library must ship a skill");
-    for (dir, files) in &dirs {
-        let heads = files
-            .iter()
-            .filter(|d| Surface::of(d) == Some(Surface::Skill))
-            .count();
-        assert_eq!(
-            heads, 1,
-            ".claude/skills/{dir}/ declares {heads} entry points among {files:?}. A skill \
-             directory holds exactly one, and it is the file Claude Code loads — a \
-             destination that misses it installs a skill nothing runs and nothing reads."
-        );
+    assert!(
+        checked > 0,
+        "the pattern library must ship a skill of its own"
+    );
+}
+
+/// The skill directory a destination lands in, if it lands in one.
+///
+/// Four segments exactly, matching `Surface::of` — a deeper path is not a skill
+/// layout Claude Code loads, and that test panics on it rather than this one
+/// silently ignoring it.
+fn skill_dir_of(destination: &str) -> Option<&str> {
+    match *destination.split('/').collect::<Vec<_>>().as_slice() {
+        [".claude", "skills", dir, _] => Some(dir),
+        _ => None,
     }
 }
