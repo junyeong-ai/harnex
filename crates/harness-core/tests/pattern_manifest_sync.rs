@@ -225,23 +225,28 @@ impl Surface {
     /// `SKILL.md` is still tested before the skill-resource arm that would
     /// otherwise swallow it — the skill glob is `*/SKILL.md`, so a sibling
     /// resource matches no validator and needs an arm of its own.
+    ///
+    /// Asking is `V::covers`, not a `Pattern::matches` over `V::GLOB`: the
+    /// string alone does not carry discovery's semantics, and matching it with
+    /// the default options lets a `*` cross a separator. That read this
+    /// classifier's own escapes as covered — a `SKILL.md` nested a level too
+    /// deep classified as a skill while `skill_dir_of` saw no directory — and
+    /// it left the round that introduced it with a mutation test that could not
+    /// fail, since `**` and `*` had become the same thing.
     fn of(destination: &str) -> Option<Self> {
         use harness_core::validate::{
             AgentValidator, OutputStyleValidator, RuleValidator, SkillValidator, SurfaceValidator,
         };
-        fn covers<'p, V: SurfaceValidator<'p>>(destination: &str) -> bool {
-            glob::Pattern::new(V::GLOB).is_ok_and(|p| p.matches(destination))
-        }
-        if covers::<SkillValidator>(destination) {
+        if SkillValidator::covers(destination) {
             return Some(Self::Skill);
         }
-        if covers::<AgentValidator>(destination) {
+        if AgentValidator::covers(destination) {
             return Some(Self::Agent);
         }
-        if covers::<RuleValidator>(destination) {
+        if RuleValidator::covers(destination) {
             return Some(Self::Rule);
         }
-        if covers::<OutputStyleValidator>(destination) {
+        if OutputStyleValidator::covers(destination) {
             return Some(Self::OutputStyle);
         }
         let seg: Vec<&str> = destination.split('/').collect();
@@ -794,6 +799,37 @@ mod escapes {
                 "{destination} classified wrongly"
             );
         }
+    }
+
+    /// Round 7: the classifier and `skill_dir_of` must answer the same question
+    /// the same way.
+    ///
+    /// `entry_point_available_at_install` counts entry points among the files
+    /// `skill_dir_of` places in a directory, so a destination the classifier
+    /// calls a skill and `skill_dir_of` does not place is a skill that check
+    /// never sees — it returns "nothing to check", which reads exactly like a
+    /// pattern shipping no skill at all. That was live: a `SKILL.md` nested one
+    /// directory too deep, which Claude Code loads no skill from, matched
+    /// `.claude/skills/*/SKILL.md` because the classifier read the glob with a
+    /// `*` that crossed separators.
+    #[test]
+    fn every_skill_the_classifier_names_has_a_skill_directory() {
+        for destination in [
+            ".claude/skills/spec/SKILL.md",
+            ".claude/skills/spec/sub/SKILL.md",
+            ".claude/skills/spec/gates.md",
+            ".claude/skills/a/b/c/SKILL.md",
+            ".claude/rules/nested/x.md",
+        ] {
+            if Surface::of(destination) == Some(Surface::Skill) {
+                assert!(
+                    skill_dir_of(destination).is_some(),
+                    "{destination} classifies as a skill entry point that no \
+                     skill directory holds, so the install-time check skips it"
+                );
+            }
+        }
+        assert_eq!(Surface::of(".claude/skills/spec/sub/SKILL.md"), None);
     }
 
     /// A destination no surface covers fails loudly rather than passing unseen.
