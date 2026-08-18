@@ -25,11 +25,13 @@ impl Verifier for FilePathLineVerifier {
             _ => {
                 return VerifyOutcome::Violation {
                     message: format!(
-                        "provenance '{}' expects a `path:line` claim shape",
+                        "provenance '{}' expects a file claim",
                         self.provenance
                     ),
                     hint: Some(
-                        "use the `path/to/file.ext:line` backtick form for internal claims".into(),
+                        "mark it as an internal claim: a `file:` marker in square brackets around a \
+                         project-relative path, with an optional `:line`"
+                            .into(),
                     ),
                 };
             }

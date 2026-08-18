@@ -31,12 +31,12 @@ they match the project's actual practice.
   raises them; never bare strings.
 
 <!-- Replace every `harnex-fill` marker with what this codebase actually
-     does AND where that is declared, as a backtick path — `ruff` —
-     `pyproject.toml`. A convention with no named owner is prose that drifts
-     the day someone changes the tool, and nothing catches it; a pointer can be
-     checked by a reader, and `harness check` resolves a marked claim —
-     `[file: path/to/thing.py:42]`, the line optional — against the tree. Both harnesses this template is modelled on name an
-     owner in every rule they carry.
+     does AND the file that declares it, named in a `file:` marker — square
+     brackets, a project-relative path, optionally a `:line`. A convention with
+     no named owner is prose that drifts the day someone changes the tool, and
+     nothing catches it; a marked claim is checked by a reader and resolved
+     against the tree by `harness check`. Both harnesses this template is
+     modelled on name an owner in every rule they carry.
 
      A section with no signal yet takes an explicit "none observed yet" plus
      the default that applies until one appears. -->

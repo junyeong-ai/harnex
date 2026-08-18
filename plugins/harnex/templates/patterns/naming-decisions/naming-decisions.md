@@ -21,8 +21,10 @@ belongs in a commit body as well as here.
 
 Name the file that settles each answer. A table with no owner drifts the first
 time someone renames a directory; a pointer can be checked, and `harness check`
-resolves a marked claim — `[file: tools/naming-lint.ts:1]`, the line optional —
-against the tree.
+resolves a marked claim against the tree — the `file:` marker in square
+brackets, holding a project-relative path and optionally a `:line`. Write it
+around each owner named below; the marker is a reserved token, so an example of
+the syntax belongs in a fenced block or a comment, never in prose.
 
 ## File naming
 

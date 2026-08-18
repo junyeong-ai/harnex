@@ -9,6 +9,7 @@
 //!
 //! Checks:
 //! - A `command` handler naming a scaffold artifact that is absent.
+//! - A scaffold artifact a handler spawns DIRECTLY that is not executable.
 //!
 //! ## What this module refuses to do
 //!
@@ -41,9 +42,13 @@
 //!   `mcp_tool`, `prompt`, and `agent` types carry no path this auditor can
 //!   resolve, and their fields happening to hold an anchored string says
 //!   nothing about a file.
-//! - Never check the executable bit. `bash <script>` runs a non-executable
-//!   file, and the bit does not survive every checkout configuration, so a
-//!   mode check would report a working hook as broken.
+//! - Never check the executable bit on a script something else runs. `bash
+//!   <script>` runs a non-executable file, and the bit does not survive every
+//!   checkout configuration, so a mode check there would report a working hook
+//!   as broken. The executable a handler spawns ITSELF is the other case and is
+//!   checked: `args` present means the runtime runs `command` with no shell, so
+//!   a missing bit is EACCES before the script starts. The wrapper's own
+//!   fail-open cannot cover that — it never runs — and nothing else reports it.
 //! - Never interpret a runner's own dispatch convention. `args[0]` naming a
 //!   verifier relative to a wrapper's directory is a contract the wrapper
 //!   owns, not the spec. Whether such an artifact is present is reported by
@@ -59,8 +64,10 @@ use crate::error::{Error, Result};
 use crate::guard::{path_in_argument, paths_in_command};
 
 pub(crate) struct HookWiringAuditor<'a> {
-    /// Destinations the scaffold manifest declares, `{lang}`-parameterized
-    /// ones excluded because they cannot be named without a detected stack.
+    /// Every destination the scaffold manifest declares, one concrete path per
+    /// language. The formatter hook is the only language-tier script a handler
+    /// points at, so excluding the parameterized ones exempted the one that
+    /// most needed judging.
     artifacts: &'a BTreeSet<String>,
 }
 
@@ -122,29 +129,70 @@ impl<'a> HookWiringAuditor<'a> {
                         );
                     }
                     for rel in referenced {
-                        if !self.artifacts.contains(&rel) || project_root.join(&rel).exists() {
+                        if !self.artifacts.contains(&rel) {
                             continue;
                         }
-                        findings.push(Finding {
-                            slug: "audit-hook-script-missing".into(),
-                            severity: Severity::Major,
-                            location: Location::file(path.to_path_buf()),
-                            message: format!(
-                                "hook '{event_name}'[{entry_idx}].hooks[{handler_idx}] names the scaffold artifact '{rel}', which is not in the project — \
-                                 whatever the handler wanted it for is not there"
-                            ),
-                            hint: Some(format!(
-                                "restore {rel}, or remove the hook entry that points at it"
-                            )),
-                            auto_fixable: false,
-                            fix_command: None,
-                        });
+                        let landed = project_root.join(&rel);
+                        if !landed.exists() {
+                            findings.push(Finding {
+                                slug: "audit-hook-script-missing".into(),
+                                severity: Severity::Major,
+                                location: Location::file(path.to_path_buf()),
+                                message: format!(
+                                    "hook '{event_name}'[{entry_idx}].hooks[{handler_idx}] names the scaffold artifact '{rel}', which is not in the project — \
+                                     whatever the handler wanted it for is not there"
+                                ),
+                                hint: Some(format!(
+                                    "restore {rel}, or remove the hook entry that points at it"
+                                )),
+                                auto_fixable: false,
+                                fix_command: None,
+                            });
+                            continue;
+                        }
+                        // Only the executable a handler spawns DIRECTLY needs
+                        // the bit, and `args` is what says it does: the runtime
+                        // then runs `command` itself with no shell. A verifier
+                        // reached through `exec bash "$VERIFIER"` does not, and
+                        // a shell-form `command` does not either.
+                        if command.is_some_and(|c| path_in_argument(c).as_deref() == Some(&rel))
+                            && args.is_some()
+                            && !is_executable(&landed)
+                        {
+                            findings.push(Finding {
+                                slug: "audit-hook-not-executable".into(),
+                                severity: Severity::Major,
+                                location: Location::file(path.to_path_buf()),
+                                message: format!(
+                                    "hook '{event_name}'[{entry_idx}].hooks[{handler_idx}] spawns '{rel}' directly, and it is not executable — \
+                                     every invocation fails before the script runs, so the wrapper's own fail-open cannot help"
+                                ),
+                                hint: Some(format!("chmod +x {rel}")),
+                                auto_fixable: false,
+                                fix_command: None,
+                            });
+                        }
                     }
                 }
             }
         }
         findings
     }
+}
+
+/// Whether the file carries an executable bit for anyone.
+///
+/// Unix-only by construction: on a platform without the concept the answer is
+/// yes, because a mode that does not exist cannot be the reason a hook failed.
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable(_path: &Path) -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -193,16 +241,62 @@ mod tests {
         assert_eq!(findings[0].severity, Severity::Major);
     }
 
+    /// Write a hook script the way the scaffold does — `chmod 0o755`.
+    fn write_runner(root: &Path, executable: bool) {
+        std::fs::create_dir_all(root.join("hooks")).unwrap();
+        let path = root.join("hooks/_runner.sh");
+        std::fs::write(&path, "exit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = if executable { 0o755 } else { 0o644 };
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+        }
+        let _ = executable;
+    }
+
+    fn runner_hook() -> String {
+        command_hook(serde_json::json!({
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/hooks/_runner.sh",
+            "args": ["post-format.sh"]
+        }))
+    }
+
     #[test]
     fn accepts_a_declared_artifact_that_exists() {
         let tmp = TempDir::new().unwrap();
-        std::fs::create_dir_all(tmp.path().join("hooks")).unwrap();
-        std::fs::write(tmp.path().join("hooks/_runner.sh"), "exit 0\n").unwrap();
+        write_runner(tmp.path(), true);
+        let findings = audit(&runner_hook(), tmp.path());
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn flags_a_directly_spawned_script_without_its_bit() {
+        // `args` present means the runtime runs `command` itself with no shell,
+        // so a missing bit is EACCES before the script starts. The wrapper's
+        // own fail-open cannot cover that — it never runs — and every hook in
+        // the harness dies at once with nothing reporting it.
+        let tmp = TempDir::new().unwrap();
+        write_runner(tmp.path(), false);
+        let findings = audit(&runner_hook(), tmp.path());
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].slug, "audit-hook-not-executable");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn leaves_a_shell_form_command_alone() {
+        // Without `args`, `command` is a shell string: `bash <script>` runs a
+        // file with no bit, so a mode check there would report a working hook
+        // as broken.
+        let tmp = TempDir::new().unwrap();
+        write_runner(tmp.path(), false);
         let findings = audit(
             &command_hook(serde_json::json!({
                 "type": "command",
-                "command": "${CLAUDE_PROJECT_DIR}/hooks/_runner.sh",
-                "args": ["post-format.sh"]
+                "command": "bash ${CLAUDE_PROJECT_DIR}/hooks/_runner.sh post-format.sh"
             })),
             tmp.path(),
         );

@@ -101,6 +101,38 @@ fn file_claim_bodies(line: &str) -> Vec<&str> {
     out
 }
 
+/// The part of `line` outside HTML comments, carrying comment state across
+/// lines.
+///
+/// A four-space indent used to be treated as a code block, which is only true
+/// at the top level: inside a list it is a nested item, and a bullet list
+/// naming an owner per item is exactly what the rule template asks an author to
+/// write. Those claims were skipped and `check` reported clean — a gate that
+/// verifies nothing while saying it verified. Fenced blocks still cover a
+/// deliberate sample; a comment covers a template's instructions; nothing else
+/// is exempt.
+fn strip_comments(line: &str, in_comment: &mut bool) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    loop {
+        if *in_comment {
+            let Some(close) = rest.find("-->") else {
+                return out;
+            };
+            rest = &rest[close + 3..];
+            *in_comment = false;
+            continue;
+        }
+        let Some(open) = rest.find("<!--") else {
+            out.push_str(rest);
+            return out;
+        };
+        out.push_str(&rest[..open]);
+        rest = &rest[open + 4..];
+        *in_comment = true;
+    }
+}
+
 /// Split a claim body into its path and optional line.
 ///
 /// The line is the trailing `:<digits>`, so a path may itself contain a colon
@@ -124,11 +156,14 @@ fn split_file_claim(body: &str) -> Option<(&str, Option<u32>)> {
 /// Parse every recognised claim out of `markdown`. Order within a line is
 /// the order discovered by the per-pattern pass.
 ///
-/// Code blocks are skipped, fenced and four-space-indented alike: a marker in
-/// a sample is documentation of the syntax, not a claim about this project.
+/// Two exemptions and no others: a fenced code block, which is a deliberate
+/// sample of the syntax, and an HTML comment, which is an instruction. Prose,
+/// tables, blockquotes and every depth of list item carry live claims — a
+/// nested bullet is where a rule names its owners.
 pub fn parse_claims(markdown: &str) -> Vec<Claim> {
     let mut out = Vec::new();
     let mut in_fence: Option<(char, usize)> = None;
+    let mut in_comment = false;
     for (idx, line) in markdown.lines().enumerate() {
         let line_no = (idx as u32) + 1;
 
@@ -157,11 +192,15 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
             }
             continue;
         }
-        // A four-space indent is a code block too, and markdown does not
-        // require a fence for one.
-        if in_fence.is_some() || line.starts_with("    ") || line.starts_with('\t') {
+        if in_fence.is_some() {
             continue;
         }
+        // An HTML comment is instruction rather than assertion. Every template
+        // that teaches this grammar writes an example inside one, and a rule
+        // carrying a `harnex-fill` block would otherwise report the example as
+        // a claim about the project.
+        let live = strip_comments(line, &mut in_comment);
+        let line = live.as_str();
 
         for cap in FETCHED_URL.captures_iter(line) {
             out.push(Claim {
@@ -375,7 +414,7 @@ Text
     }
 
     #[test]
-    fn skips_claims_inside_code_blocks_however_they_are_written() {
+    fn a_claim_is_live_unless_it_is_a_sample_or_an_instruction() {
         let md = "\
 Inline [file: src/real.rs:5] is a claim.
 
@@ -386,7 +425,11 @@ let x = [file: src/inside.rs:99];
 ```
 ````
 
-    An indented block also holds [file: src/indented.rs:1].
+- A nested bullet is not code:
+    - and its claim [file: src/nested.rs:1] is live.
+
+<!-- An instruction, though, is not an assertion:
+     [file: src/commented.rs:1] -->
 
 Back outside: [file: src/after.rs:7].
 ";
@@ -398,7 +441,12 @@ Back outside: [file: src/after.rs:7].
                 _ => None,
             })
             .collect();
-        assert_eq!(paths, vec!["src/real.rs", "src/after.rs"]);
+        assert_eq!(
+            paths,
+            vec!["src/real.rs", "src/nested.rs", "src/after.rs"],
+            "a nested bullet is where a rule names its owners; a comment is an \
+             instruction and a fence is a sample"
+        );
     }
 
     #[test]
