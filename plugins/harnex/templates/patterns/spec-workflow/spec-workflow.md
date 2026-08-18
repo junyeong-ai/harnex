@@ -55,8 +55,7 @@ specs/
 Start a spec by copying `specs/_template/` to `specs/<slug>/` and filling the
 `<...>` placeholders. The template carries one file per artifact-producing
 phase, so the file set IS the pipeline — dropping a phase drops its template in
-the same commit, and the orchestrator derives the phase from which of these
-exist.
+the same commit.
 
 `plan.md` is optional for a change small enough that its decisions fit in the
 spec, and every gate then reports to the conversation instead of to
@@ -94,12 +93,13 @@ spec is not an exception to that, it is the clearest case of it.
 ## Where the procedure lives
 
 Running a spec is a workflow, so it is a skill: `.claude/skills/spec/`. The
-orchestrator derives the phase from artifact presence, fires four gate events,
-and records each decision. This file is the part that is guidance rather than
-procedure — when to reach for a spec at all, what the directory holds, and what
-the lifecycle words mean.
+orchestrator derives the phase, fires four gate events, and records each
+decision. This file is the part that is guidance rather than procedure — when
+to reach for a spec at all, what the directory holds, and what the lifecycle
+words mean.
 
-Phase is **not** stored in frontmatter. It is read off which artifacts exist,
-so a fresh session re-derives it from disk and there is no second copy to go
-stale. Findings land in `plan.md ## Outstanding issues`, which is what makes
-the next session read what the last one found.
+Phase is **not** stored in frontmatter. The skill derives it, so a fresh session
+re-reads it from the repository and there is no second copy to go stale; the
+table that does the reading is in `.claude/skills/spec/SKILL.md`. Findings land
+in `plan.md ## Outstanding issues`, which is what makes the next session read
+what the last one found.
