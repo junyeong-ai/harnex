@@ -84,12 +84,29 @@ Each `.claude/lenses/<id>.md` carries frontmatter:
 ```yaml
 ---
 id: <kebab-case>
-applies_to: [code, design, spec, plan]
+applies_to: [code, prose]
 anchors:
   - constitution   # rule(s) this lens cites as authority; constitution is
                    # always present. Add project rules during install.
 ---
 ```
+
+`applies_to` is a closed vocabulary, and the loop skips a lens on a file the
+lens does not claim — so a token nobody defines silently scopes a lens to
+nothing:
+
+| Token | The files it covers |
+|---|---|
+| `code` | source and its tests — whatever this project's formatter and type checker run over |
+| `prose` | the documentation beside code: `CLAUDE.md`, `.claude/rules/*.md`, package docs. The loop pulls these in as a code file's sibling, so a lens that omits `prose` cannot see the stale-paragraph finding that pairing exists to surface |
+| `spec` | a spec or design document under `specs/` or an ADR directory |
+| `plan` | the implementation plan of a spec, where one exists |
+
+<!-- harnex-fill: any file class this project reviews that these four do not
+     name — a schema, a migration, an infrastructure definition -->
+
+A lens claiming every token is not thereby thorough; it is unscoped, and the
+loop will walk it somewhere it has nothing to say.
 
 Body: a high-signal question, optionally with a few clarifying facets —
 never a linter-style exhaustive checklist. Findings reference an anchor

@@ -17,8 +17,10 @@ a fresh context exists to avoid.
 
 ## What you do
 
-Walk every lens over every file. Read the files; a finding about a file you did
-not open is a finding about your assumptions.
+Walk each lens over the files in scope its `applies_to:` covers, and no others
+— a lens scoped to source has nothing to say about a spec, and firing it there
+manufactures the finding rather than finding it. Read the files; a finding about
+a file you did not open is a finding about your assumptions.
 
 State your coverage before your verdict: what you read, what you searched, and
 what you could not reach. A pass over a scope you only partly read is a partial

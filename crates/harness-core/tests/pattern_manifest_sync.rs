@@ -294,7 +294,7 @@ fn every_pattern_surface_file_validates() {
 
     // Each validated surface was actually exercised. A classifier arm that
     // stopped matching would empty its bucket here rather than let the count
-    // quietly shrink — the failure the excuse-list version could not see.
+    // stopped matching entirely would empty its bucket here.
     assert_eq!(
         seen,
         ["agent", "rule", "skill"]
@@ -302,4 +302,47 @@ fn every_pattern_surface_file_validates() {
             .collect::<BTreeSet<_>>(),
         "the pattern library must exercise every validator surface"
     );
+}
+
+/// Every skill directory a pattern installs into carries exactly one entry
+/// point, and that entry point is classified as a skill.
+///
+/// Presence-per-surface is not coverage-per-file. With two skills shipped, one
+/// escaping validation leaves the other in `seen` and the set assertion notices
+/// nothing — reproduced two ways: a one-character typo in the manifest
+/// (`Skill.md`), and a classifier arm narrowed to one skill name. Both left six
+/// green tests while a skill shipped that Claude Code does not load as one, and
+/// that no validator had read.
+///
+/// The shape is what closes it: a directory under `.claude/skills/` exists to
+/// hold a skill, so exactly one of its files is the entry point. That is
+/// checkable per directory rather than per surface, and it does not weaken as
+/// the library ships more skills.
+#[test]
+fn every_skill_directory_declares_exactly_one_entry_point() {
+    let mut dirs: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for pattern in &load_manifest().pattern {
+        for file in &pattern.files {
+            let seg: Vec<&str> = file.destination.split('/').collect();
+            if let [".claude", "skills", dir, _] = seg.as_slice() {
+                dirs.entry((*dir).to_string())
+                    .or_default()
+                    .push(file.destination.clone());
+            }
+        }
+    }
+    assert!(!dirs.is_empty(), "the pattern library must ship a skill");
+    for (dir, files) in &dirs {
+        let heads = files
+            .iter()
+            .filter(|d| Surface::of(d) == Some(Surface::Skill))
+            .count();
+        assert_eq!(
+            heads, 1,
+            ".claude/skills/{dir}/ declares {heads} entry points among {files:?}. A skill \
+             directory holds exactly one, and it is the file Claude Code loads — a \
+             destination that misses it installs a skill nothing runs and nothing reads."
+        );
+    }
 }

@@ -1,6 +1,6 @@
 ---
 id: completeness
-applies_to: [code, spec, plan]
+applies_to: [code, prose, spec, plan]
 anchors:
   - constitution
 ---
