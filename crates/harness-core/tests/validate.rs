@@ -365,6 +365,11 @@ fn settings_validator_leaves_a_regex_session_start_matcher_alone() {
         r#"{"hooks": {"SessionStart": [{"matcher": "st.*|resume"}]}}"#,
         r#"{"hooks": {"SessionStart": [{"matcher": "compact$"}]}}"#,
         r#"{"hooks": {"SessionStart": [{"hooks": []}]}}"#,
+        // `*`, `""` and an absent matcher are the spec's three spellings of
+        // "every source". An empty alternative widens the matcher, so it can
+        // never be the dead branch this check names.
+        r#"{"hooks": {"SessionStart": [{"matcher": ""}]}}"#,
+        r#"{"hooks": {"SessionStart": [{"matcher": "startup|resume|"}]}}"#,
     ] {
         let findings = v.validate_text(
             json,

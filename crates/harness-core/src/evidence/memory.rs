@@ -28,7 +28,9 @@ impl Verifier for MemoryOnlyVerifier {
         VerifyOutcome::Violation {
             message: "claim is memory-only — provide a verifiable source".into(),
             hint: Some(
-                "replace [memory] with [context7: <lib>] or [fetched: YYYY-MM-DD] https://… or a `path:line` internal citation".into(),
+                "replace [memory] with a context7, fetched-url, or internal file claim — the \
+                 marked forms this verifier can check"
+                    .into(),
             ),
         }
     }

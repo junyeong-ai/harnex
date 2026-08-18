@@ -42,16 +42,22 @@ Sub-auditor slugs (current):
   (`audit-managed-region-edited`, `audit-managed-region-missing`).
 - `copy-drift` — a `copy` artifact whose bytes differ from the template that
   emits it, paired by language so a destination is held to the template that
-  produced it rather than to any harnex ships (`audit-copy-drift`). The
-  manifest calls a `copy` difference a defect by definition, and this is also
-  how a project's own file at a claimed destination becomes visible: a scaffold
-  keeps it, and merges the hook fragments that wire into it anyway, because
-  ownership is decided per artifact while the wiring lives in another one.
+  produced it rather than to any harnex ships (`audit-copy-drift`, Minor). This
+  is how a project's own file at a claimed destination becomes visible: the
+  scaffold keeps it, and merges the hook fragments that wire into it anyway,
+  because ownership is decided per artifact while the wiring lives in another
+  one. Advisory rather than gating because three states produce the same bytes —
+  the kept incumbent, an edit to harnex's copy, and a harness generated at an
+  older plugin version — and the collision rule *instructs* the first, so a
+  gating finding would make the manifest contradict itself.
 - `fill-marker` — a fill marker the generating step left behind
   (`audit-fill-marker-unresolved`), over `CLAUDE.md` and `.claude/**/*.md`.
-  Both reserved grammars are exact-match tokens, so writing one literally in a
-  rule file makes that file a finding; paraphrase, as `sentinel.rs` already
-  requires for managed sentinels.
+  Three reserved grammars now exist — the managed sentinel, the fill marker,
+  and the evidence `file:` claim — and each is an exact-match token. Writing one
+  literally in prose that a scan reaches makes that file a finding, so an
+  example of the syntax goes in a fenced block or an HTML comment, both of which
+  the parsers skip, or is paraphrased. The commit that introduced the claim
+  grammar tripped over this in its own template.
 
 Spec-vocabulary staleness is deliberately not an audit finding: it describes
 this binary's knowledge, not the project under audit, so it rides the

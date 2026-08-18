@@ -11,7 +11,7 @@
 //!   author's job; the provenance marker is a contract, not an oracle.
 //! - Never invent provenance. Unmarked free text is not a claim; only
 //!   recognised marker syntaxes (`[fetched: …]`, `[context7: …]`,
-//!   `[memory]`, ``` `path:line` ```) produce claims.
+//!   `[memory]`, `file:`) produce claims.
 //! - Never silently downgrade severity. The block / warn distinction
 //!   derives from the configured `block_on_memory_only` flag.
 

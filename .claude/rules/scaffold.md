@@ -52,10 +52,10 @@ predicate, and both the auditor's coverage check and the self-dogfood test
 read it — a second containment rule would be the one that drifts.
 
 The union recurses: objects merge key-wise at every depth, arrays gain the
-elements they lack, scalars are replaced. `hooks` and `permissions.allow` are
-each claimed by both tiers, and a replacing merge would erase the foundation's
-Stop hook, or its `Edit`/`Write` grants, the moment the language fragment
-landed — validating clean while running nothing.
+elements they lack, an empty slot takes the fragment whole. `hooks` and
+`permissions.allow` are each claimed by both tiers, and a replacing merge would
+erase the foundation's Stop hook, or its `Edit`/`Write` grants, the moment the
+language fragment landed — validating clean while running nothing.
 
 Depth is the rule, not a refinement of it. `hooks` is an object whose values are
 arrays, so a union that stops at the merge key drops an operator's own

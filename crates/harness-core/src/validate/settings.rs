@@ -471,7 +471,12 @@ impl SettingsValidator {
             let Some(matcher) = entry.get("matcher").and_then(Value::as_str) else {
                 continue;
             };
-            if matcher.contains(REGEX_METACHARACTERS) {
+            // `*`, `""` and an absent matcher all mean every source, so an
+            // empty alternative widens the matcher rather than dying. Reading
+            // one as a dead source inverted the truth: the entry it flagged
+            // fires for everything, and the equivalent spelling — omitting the
+            // key — was already skipped two lines up.
+            if matcher.contains(REGEX_METACHARACTERS) || matcher.split('|').any(str::is_empty) {
                 continue;
             }
             for unknown in matcher

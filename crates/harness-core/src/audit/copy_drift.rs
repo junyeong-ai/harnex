@@ -23,9 +23,14 @@
 //! - Never judge an absent file. Absence is coverage's answer, and a hook
 //!   pointing at one is `hook-wiring`'s; reporting it here would say the same
 //!   thing a third time with a worse name.
-//! - Never repair. The finding names the template to copy across; which side
-//!   is right is the operator's call, because a deliberate fork of a runner is
-//!   a decision this auditor cannot see the reason for.
+//! - Never repair, and never rank the reasons. Three states produce the same
+//!   bytes — the project's own file kept by the collision rule, an edit to
+//!   harnex's copy, and a harness generated at an older plugin version — and
+//!   the file cannot tell them apart. That is why the finding is `Minor`
+//!   rather than gating: the collision rule instructs the scaffold to keep an
+//!   incumbent, so a gating finding would make the manifest contradict itself
+//!   and leave a correct project permanently red with no suppression. The
+//!   message names all three and the operator picks.
 //! - Never read a line ending as a difference. Comparison goes through
 //!   [`crate::audit::normalize`], the same helper the managed-region auditor
 //!   uses, so a Windows checkout does not report every shell hook as drifted.
@@ -66,17 +71,20 @@ impl CopyDriftAuditor {
                 }
                 findings.push(Finding {
                     slug: "audit-copy-drift".into(),
-                    severity: Severity::Major,
+                    severity: Severity::Minor,
                     location: Location::file(landed),
                     message: format!(
-                        "'{}' differs from the template that emits it ('{template}'), and the \
-                         manifest declares this artifact byte-identical — whatever is wired at \
-                         that path is not what harnex generated",
+                        "'{}' is not what '{template}' says it should be. Three ways to reach \
+                         this and the file cannot tell them apart: the project already had its \
+                         own file there and the scaffold kept it, someone edited harnex's copy, \
+                         or the harness was generated at an older plugin version",
                         destination.display()
                     ),
                     hint: Some(format!(
-                        "re-copy '{template}' over it, or move the project's own version to a \
-                         path the scaffold does not claim and repoint the hooks that name it"
+                        "re-copy '{template}' to take harnex's version; keep yours and move it \
+                         to a path the scaffold does not claim if the hooks should reach your \
+                         own script; or ignore this if the difference is a version you have not \
+                         regenerated to yet"
                     )),
                     auto_fixable: false,
                     fix_command: None,

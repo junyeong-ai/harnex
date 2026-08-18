@@ -87,11 +87,19 @@ Settings validator:
   (sourced from /en/hooks). The set is a permissive superset for typo
   detection — it errs toward accepting, never asserts an exact count.
 - A `SessionStart` matcher's alternatives must be in
-  `KNOWN_SESSION_START_SOURCES` (Major), judged only when every alternative is
-  a plain word: a matcher is a JS regex, so one carrying a metacharacter
-  matches sources the set cannot enumerate and is left alone — the same
-  restriction the MCP-matcher audit makes. A misspelled source is otherwise
-  silent, since the other alternatives keep firing.
+  `KNOWN_SESSION_START_SOURCES` (Major), judged only when the matcher carries
+  no regex metacharacter and no empty alternative. A metacharacter matches
+  sources the set cannot enumerate; an empty alternative — like `*` and an
+  absent matcher — means every source. Everything else is a literal, and a
+  literal that is not a source fires for nothing, which is otherwise silent
+  because the surviving alternatives keep working.
+
+  This is a different question from the MCP-matcher audit's, which asks whether
+  a matcher is the spec's exact-string form (`[A-Za-z0-9_|]`) so that a bare
+  `mcp__server` can be called a no-op. A space is a regex character to that
+  question and a literal to this one; both verdicts are sound because a literal
+  containing a space equals no source either way. The sets are deliberately not
+  shared.
 - `permissions.deny` empty raises a Minor advisory.
 - `permissions.defaultMode` must be in `KNOWN_DEFAULT_MODE_VALUES`
   (`default|acceptEdits|plan|auto|dontAsk|bypassPermissions`) if present (Major).
