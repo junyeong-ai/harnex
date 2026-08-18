@@ -86,6 +86,12 @@ Settings validator:
 - Every hook event in `hooks` keys must be in `KNOWN_HOOK_EVENTS`
   (sourced from /en/hooks). The set is a permissive superset for typo
   detection — it errs toward accepting, never asserts an exact count.
+- A `SessionStart` matcher's alternatives must be in
+  `KNOWN_SESSION_START_SOURCES` (Major), judged only when every alternative is
+  a plain word: a matcher is a JS regex, so one carrying a metacharacter
+  matches sources the set cannot enumerate and is left alone — the same
+  restriction the MCP-matcher audit makes. A misspelled source is otherwise
+  silent, since the other alternatives keep firing.
 - `permissions.deny` empty raises a Minor advisory.
 - `permissions.defaultMode` must be in `KNOWN_DEFAULT_MODE_VALUES`
   (`default|acceptEdits|plan|auto|dontAsk|bypassPermissions`) if present (Major).

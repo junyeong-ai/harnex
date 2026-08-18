@@ -180,7 +180,19 @@ pub const KNOWN_HOOK_EVENTS: &[&str] = &[
 /// The hooks page's own vocabulary, stamped separately from the settings sets
 /// because it is read from a different document. It lives beside its constant
 /// like every other `SPEC_SETS`, rather than inline in `spec.rs`.
-pub const HOOK_SPEC_SETS: &[(&str, &[&str])] = &[("hook-events", KNOWN_HOOK_EVENTS)];
+/// How a session can start, which is what a `SessionStart` matcher selects.
+///
+/// The set matters because three of these are context-loss boundaries: after
+/// `compact`, `clear`, or `fork`, the model holds none of what a SessionStart
+/// hook injected the first time. A matcher naming only `startup|resume` is
+/// well-formed and silently absent at exactly the moments its context is worth
+/// most.
+pub const KNOWN_SESSION_START_SOURCES: &[&str] = &["startup", "resume", "clear", "compact", "fork"];
+
+pub const HOOK_SPEC_SETS: &[(&str, &[&str])] = &[
+    ("hook-events", KNOWN_HOOK_EVENTS),
+    ("session-start-sources", KNOWN_SESSION_START_SOURCES),
+];
 
 /// Every closed set this validator reads from the settings page, labelled.
 /// The measurement stamp digests exactly this list, so a value moved from one
@@ -230,7 +242,7 @@ impl SettingsValidator {
         };
 
         if let Some(hooks) = parsed.get("hooks").and_then(|v| v.as_object()) {
-            for event_name in hooks.keys() {
+            for (event_name, entries) in hooks {
                 if !KNOWN_HOOK_EVENTS.contains(&event_name.as_str()) {
                     findings.push(Finding {
                         slug: "settings-unknown-hook-event".into(),
@@ -243,6 +255,9 @@ impl SettingsValidator {
                         auto_fixable: false,
                         fix_command: None,
                     });
+                }
+                if event_name == "SessionStart" {
+                    findings.extend(self.session_start_sources(entries, path));
                 }
             }
         }
@@ -419,6 +434,58 @@ impl SettingsValidator {
             }
         }
 
+        findings
+    }
+
+    /// Hold a `SessionStart` matcher's alternatives to the documented source
+    /// set.
+    ///
+    /// Only a matcher whose every alternative is a plain word is judged. A
+    /// matcher is a JS regex, so `.*` or `st.*` matches sources this set can
+    /// never enumerate, and testing membership on it would flag a working
+    /// configuration — the same restriction the MCP-matcher audit makes, for
+    /// the same reason.
+    ///
+    /// A misspelled source is silent: the alternative matches no session and
+    /// the hook simply never fires for it, which reads as the hook working
+    /// because the other alternatives still do.
+    fn session_start_sources(&self, entries: &Value, path: &Path) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        let Some(entries) = entries.as_array() else {
+            return findings;
+        };
+        for entry in entries {
+            let Some(matcher) = entry.get("matcher").and_then(Value::as_str) else {
+                continue;
+            };
+            let alternatives: Vec<&str> = matcher.split('|').map(str::trim).collect();
+            if alternatives
+                .iter()
+                .any(|a| a.is_empty() || !a.chars().all(|c| c.is_ascii_alphanumeric()))
+            {
+                continue;
+            }
+            for unknown in alternatives
+                .iter()
+                .filter(|a| !KNOWN_SESSION_START_SOURCES.contains(a))
+            {
+                findings.push(Finding {
+                    slug: "settings-unknown-session-start-source".into(),
+                    severity: Severity::Major,
+                    location: Location::file(path.to_path_buf()),
+                    message: format!(
+                        "SessionStart matcher '{matcher}' names source '{unknown}', which starts no \
+                         session — that alternative never fires"
+                    ),
+                    hint: Some(format!(
+                        "known sources: {}",
+                        KNOWN_SESSION_START_SOURCES.join(", ")
+                    )),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
+            }
+        }
         findings
     }
 }

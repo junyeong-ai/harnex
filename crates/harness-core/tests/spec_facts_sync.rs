@@ -15,7 +15,9 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use harness_core::sentinel;
-use harness_core::validate::{KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS, KNOWN_SKILL_KEYS};
+use harness_core::validate::{
+    KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS, KNOWN_SESSION_START_SOURCES, KNOWN_SKILL_KEYS,
+};
 
 fn spec_facts_content() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -61,6 +63,50 @@ fn spec_facts_hook_events_match_known_events() {
         parsed, canonical,
         "spec-facts.md hook-events block drifted from KNOWN_HOOK_EVENTS — \
          update the sentinel block to match Rust SSoT"
+    );
+}
+
+#[test]
+fn spec_facts_session_start_sources_match_known_sources() {
+    let regions = sentinel::extract_regions(&spec_facts_content());
+    let block = regions
+        .get("spec-facts-session-start-sources")
+        .expect("missing managed region 'spec-facts-session-start-sources' in spec-facts.md");
+    let parsed = parse_identifier_csv(block);
+    let canonical: BTreeSet<String> = KNOWN_SESSION_START_SOURCES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        parsed, canonical,
+        "spec-facts.md session-start-sources block drifted from \
+         KNOWN_SESSION_START_SOURCES — update the sentinel block to match Rust SSoT"
+    );
+}
+
+/// The scaffolded `SessionStart` hook must match every documented source.
+///
+/// Three of the five are context-loss boundaries, and a hook that injects
+/// branch, dirty-file count and recent commits is worth most precisely there.
+/// A matcher of `startup|resume` is well-formed, so no validator flags it —
+/// only this test holds the template to the reason it exists.
+#[test]
+fn the_scaffolded_session_start_hook_matches_every_source() {
+    let raw = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/harnex/templates/common/hooks.json"),
+    )
+    .expect("read common/hooks.json");
+    let fragment: serde_json::Value = serde_json::from_str(&raw).expect("hooks.json parses");
+    let matcher = fragment["SessionStart"][0]["matcher"]
+        .as_str()
+        .expect("SessionStart entry declares a matcher");
+    let declared: BTreeSet<&str> = matcher.split('|').collect();
+    let canonical: BTreeSet<&str> = KNOWN_SESSION_START_SOURCES.iter().copied().collect();
+    assert_eq!(
+        declared, canonical,
+        "the scaffolded SessionStart matcher '{matcher}' does not cover every source; \
+         the session-state injection is silent for the ones it omits"
     );
 }
 

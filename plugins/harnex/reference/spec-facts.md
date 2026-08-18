@@ -22,6 +22,16 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   WorktreeCreate, WorktreeRemove, TaskCreated, TaskCompleted, TeammateIdle,
   Elicitation, ElicitationResult.
   <!-- harnex-managed:end spec-facts-hook-events -->
+- **`SessionStart` matcher selects how the session started**, and three of the
+  five sources are context-loss boundaries — after `compact`, `clear` or
+  `fork` the model holds none of what the hook injected the first time. A
+  matcher of `startup|resume` is well-formed and silent at exactly the moments
+  its context is worth most, so a hook that injects session state matches all
+  five. SSoT is
+  `crates/harness-core/src/validate/settings.rs::KNOWN_SESSION_START_SOURCES`.
+  <!-- harnex-managed:start spec-facts-session-start-sources -->
+  startup, resume, clear, compact, fork.
+  <!-- harnex-managed:end spec-facts-session-start-sources -->
 - **Exit codes.** 0 = success, stdout JSON parsed for control fields (stdout
   reaches Claude as context only for UserPromptSubmit, UserPromptExpansion,
   SessionStart). 1 = non-blocking error, action proceeds. 2 = blocking; stderr
