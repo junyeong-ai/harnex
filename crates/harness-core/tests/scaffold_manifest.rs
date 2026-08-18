@@ -126,14 +126,29 @@ fn no_two_merge_fragments_claim_the_same_contribution() {
     // silently absorbing the other. `scaffold.toml` has two artifacts
     // contributing under `hooks` and two to `permissions.allow`, one per tier.
     //
-    // Contributions are compared by their FULL dotted path, not by the merge
-    // key plus a bare name. `hooks` carrying a `PostToolUse` object key and
-    // `hooks.PostToolUse` carrying elements are the same JSON location reached
-    // two ways, and comparing the keys as written would let the pair through.
+    // Contributions are compared by their FULL dotted path, so `hooks` carrying
+    // a `PostToolUse` object key and `hooks.PostToolUse` carrying elements are
+    // recognised as the same JSON location reached two ways. That pair is legal
+    // — both contribute an array there and the union merges them — which is why
+    // the second assertion below is about SHAPE: two fragments meeting at one
+    // location with different shapes fall through the union's object and array
+    // arms to replacement, and the first one written disappears.
     let root = templates_root();
     let m = manifest();
     for lang in languages() {
         let mut claimed: BTreeSet<String> = BTreeSet::new();
+        let mut shape_at: std::collections::BTreeMap<String, &'static str> =
+            std::collections::BTreeMap::new();
+        let mut expect_shape = |location: String, shape: &'static str| {
+            if let Some(prior) = shape_at.insert(location.clone(), shape) {
+                assert_eq!(
+                    prior, shape,
+                    "two scaffold.toml fragments contribute different shapes at '{location}' \
+                     for language '{lang}'; the union replaces rather than merges across shapes, \
+                     so whichever lands first is lost"
+                );
+            }
+        };
         for artifact in m.artifacts() {
             let Content::Merge { key: merge } = &artifact.content else {
                 continue;
@@ -148,21 +163,24 @@ fn no_two_merge_fragments_claim_the_same_contribution() {
                 // An object fragment contributes keys; two artifacts may share
                 // the destination key as long as no single key is claimed twice.
                 Some(object) => {
-                    for key in object.keys() {
+                    for (key, nested) in object {
+                        expect_shape(format!("{merge}.{key}"), shape_of(nested));
                         assert!(
                             claimed.insert(format!("{merge}.{key}")),
                             "two scaffold.toml fragments both contribute '{merge}.{key}' for \
-                             language '{lang}'; the union would silently drop the first"
+                             language '{lang}'; one grant with two owners is a duplicated \
+                             declaration even where the union merges it cleanly"
                         );
                     }
                 }
                 // An array fragment — every permission list is one —
-                // contributes its elements, and the union is a sorted set. Two
-                // fragments naming the same rule would collapse silently and
-                // leave one grant with two owners. Any other scalar replaces
-                // its slot outright, so the path may be claimed only once.
+                // contributes its elements. Two fragments naming the same rule
+                // would collapse into one on union and leave that grant with
+                // two owners. Any other scalar replaces its slot outright, so
+                // the path may be claimed only once.
                 None => match value.as_array() {
                     Some(elements) => {
+                        expect_shape(merge.clone(), "array");
                         for element in elements {
                             let rule = element.to_string();
                             assert!(
@@ -322,4 +340,15 @@ fn walk(dir: &PathBuf) -> Vec<PathBuf> {
     }
     out.sort();
     out
+}
+
+/// The JSON shape a fragment contributes at a location. Two fragments meeting
+/// at one location must agree, because the union merges objects into objects
+/// and arrays into arrays and replaces across the two.
+fn shape_of(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Object(_) => "object",
+        serde_json::Value::Array(_) => "array",
+        _ => "scalar",
+    }
 }

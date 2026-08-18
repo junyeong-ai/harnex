@@ -145,12 +145,34 @@ impl Artifact {
     /// Every template this artifact can be emitted from: one per shipped
     /// language when the manifest parameterizes it, otherwise exactly one.
     pub fn resolved_templates(&self) -> Vec<String> {
-        if self.template.contains(LANG_PLACEHOLDER) {
+        self.resolved_pairs().into_iter().map(|(t, _)| t).collect()
+    }
+
+    /// Every `(template, destination)` this artifact resolves to, paired by the
+    /// language that produced both.
+    ///
+    /// Pairing is what separates "this file matches some template harnex ships"
+    /// from "this file matches the template that emits it". While the formatter
+    /// landed at one fixed `hooks/post-format.sh`, the language was not
+    /// recoverable from the destination and matching any template was the
+    /// honest answer; now that the destination carries it, the union would let
+    /// a Rust project hold the Python formatter and call it undrifted.
+    pub fn resolved_pairs(&self) -> Vec<(String, PathBuf)> {
+        if self.template.contains(LANG_PLACEHOLDER) || self.destination_is_language_parameterized()
+        {
             PermissionProfile::languages()
-                .filter_map(|lang| self.template_for(Some(lang)))
+                .filter_map(|lang| {
+                    Some((
+                        self.template_for(Some(lang))?,
+                        self.destination_for(Some(lang))?,
+                    ))
+                })
                 .collect()
         } else {
-            self.template_for(None).into_iter().collect()
+            self.template_for(None)
+                .zip(self.destination_for(None))
+                .into_iter()
+                .collect()
         }
     }
 

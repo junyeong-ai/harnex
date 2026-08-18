@@ -19,9 +19,10 @@
 //! ## What this module refuses to do
 //!
 //! - Never own settings.json — that JSON file has no comment syntax for
-//!   sentinels; its managed-region contract is by-top-level-key
-//!   (`permissions`, `hooks` are managed), enforced in the scaffold /
-//!   regenerate skill flow rather than here.
+//!   sentinels. Its ownership is item-level within `permissions` and `hooks`:
+//!   harnex owns the entries it generated and an operator's own survive, which
+//!   is a partition no sentinel can express and the scaffold / regenerate skill
+//!   flow enforces rather than this module.
 //! - Never write. Findings only — restoration is the regenerate flow's job.
 //! - Never interpret prose. Bytes-equal-modulo-line-ending is the entire
 //!   semantic; anything richer (semantic diff, paraphrase tolerance) is

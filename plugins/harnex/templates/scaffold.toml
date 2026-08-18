@@ -24,14 +24,17 @@
 #   seed     a starting point the project takes ownership of. Written once,
 #            never held to the template afterwards: a project's governance is
 #            its own, and tailoring it is the intended use, not drift.
-#   managed  partitioned by `<!-- harnex-managed -->` sentinels — harnex owns
-#            what they bound, the project owns everything outside them.
+#   managed  partitioned by `harnex-managed` sentinels — harnex owns what they
+#            bound, the project owns everything outside them.
+#   merge    one JSON fragment among several at a shared destination, unioned
+#            at `key`. See UNION below for the rule and MERGE for why this kind
+#            alone writes into an occupied destination.
 #
-# A DESTINATION THAT ALREADY EXISTS is the project's file, and every kind above
-# keeps it: emit nothing there and report the collision. This is the common case
-# rather than the exceptional one — a repo with no `.claude/` usually still has
-# a `CLAUDE.md`, because Claude Code reads one without any `.claude/` directory
-# at all, and a repo with git hooks already has `hooks/`.
+# COLLISION — a destination that already exists is the project's file, and
+# every kind except `merge` keeps it: emit nothing there and report it. This is
+# the common case rather than the exceptional one — a repo with no `.claude/`
+# usually still has a `CLAUDE.md`, because Claude Code reads one without any
+# `.claude/` directory at all, and a repo with git hooks already has `hooks/`.
 #
 # `managed` is no exception, though it looks like one. Its partition governs a
 # file harnex created and will regenerate; it is not standing to append to a
@@ -40,34 +43,32 @@
 # `constitution.md` the project already wrote — and a rule that needs the file's
 # meaning to decide is not a rule.
 #
-# `merge` is the one kind that writes into an occupied destination, because it
-# never owns one: the union at `key` is defined against whatever is there,
-# including entries the project wrote itself.
-#
 # Emission is therefore idempotent: running a scaffold twice changes nothing
 # the second time.
-#   merge    a JSON fragment contributed at `key`. Several artifacts may name
-#            the same key — `hooks` and `permissions.allow` are each claimed by
-#            both tiers — and the contribution is a UNION, never a replacement:
-#            the language tier adds its PostToolUse entry beside the
-#            foundation's SessionStart and Stop rather than erasing them.
 #
-#            The union recurses. Objects merge key-wise AT EVERY DEPTH, arrays
-#            gain the elements they lack, scalars are replaced. Depth is not a
-#            refinement of the rule but the rule itself: `hooks` is an object
-#            whose values are arrays, so a union that stopped at the merge key
-#            would replace `hooks.SessionStart` whole and drop an entry the
-#            project wrote, leaving a structurally valid file no validator
-#            objects to.
+# MERGE — the one kind that writes into an occupied destination, because it
+# never owns one. Several artifacts may name the same key (`hooks` and
+# `permissions.allow` are each claimed by both tiers) and the contribution is a
+# UNION, never a replacement: the language tier adds its PostToolUse entry
+# beside the foundation's SessionStart and Stop rather than erasing them.
+# Presence is the fragment landing at its key, not the shared destination
+# existing.
 #
-#            Arrays gain elements at the end rather than being sorted. Hook
-#            entries under one event run in order, and a merge that never owns
-#            its destination may not renumber what it found there. Appending is
-#            idempotent regardless — a second pass finds every element present.
+# UNION — recursive. Objects merge key-wise AT EVERY DEPTH, arrays gain the
+# elements they lack, scalars are replaced. Depth is not a refinement of the
+# rule but the rule itself: `hooks` is an object whose values are arrays, so a
+# union that stopped at the merge key would replace `hooks.SessionStart` whole
+# and drop an entry the project wrote, leaving a structurally valid file no
+# validator objects to.
 #
-#            No contribution may be claimed twice, so the result does not depend
-#            on which tier lands first. Presence is the fragment landing at its
-#            key, not the shared destination existing.
+# Arrays gain elements at the end rather than being sorted. Hook entries under
+# one event run in order, and a merge that never owns its destination may not
+# renumber what it found there. Appending is idempotent regardless — a second
+# pass finds every element present.
+#
+# No contribution may be claimed twice and two fragments meeting at one location
+# must contribute the same shape, so the result does not depend on which tier
+# lands first.
 #
 # Adding a language means adding its `<lang>-dev` profile plus the three
 # `{lang}` template files — never an edit here. The language set derives from

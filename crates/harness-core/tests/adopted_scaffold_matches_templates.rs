@@ -15,11 +15,13 @@
 //! gate — full suite, clippy, `harness audit` — stayed green, because the
 //! mechanism built to catch drift only reads artifacts marked `managed`.
 //!
-//! Which language's template a fixed destination came from is not knowable
-//! here without detecting the stack, and detecting it to satisfy a test would
-//! put project vocabulary in the assertion (Constitution VII). Matching *any*
-//! shipped language's template is the honest question: drift makes a copy
-//! match none of them.
+//! Each destination is held to the template that emits IT, paired by the
+//! language that produced both (`Artifact::resolved_pairs`). While the
+//! formatter landed at one fixed `hooks/post-format.sh` the language was not
+//! recoverable from the destination, and matching any shipped template was the
+//! honest question; now that the destination carries it, the union would call
+//! this repo undrifted while holding another language's formatter — ruff in a
+//! Rust repo, which is the meta-failure the language matrix exists to prevent.
 
 use std::path::{Path, PathBuf};
 
@@ -87,45 +89,26 @@ fn every_adopted_scaffold_artifact_matches_its_template() {
         if artifact.content != Content::Copy {
             continue;
         }
-        let langs = candidate_languages(artifact);
-        let candidates: Vec<PathBuf> = langs
-            .iter()
-            .filter_map(|l| artifact.template_for(*l))
-            .map(|t| templates.join(t))
-            .filter(|p| p.exists())
-            .collect();
-        let mut destinations: Vec<PathBuf> = langs
-            .iter()
-            .filter_map(|l| artifact.destination_for(*l))
-            .collect();
-        destinations.sort();
-        destinations.dedup();
-
-        for destination in destinations {
+        for (template, destination) in artifact.resolved_pairs() {
             let adopted = root.join(&destination);
             if !adopted.exists() || AUTHORED.contains(&destination.to_string_lossy().as_ref()) {
                 continue;
             }
+            let source = templates.join(&template);
+            if !source.exists() {
+                continue;
+            }
             compared += 1;
-            let body = read(&adopted);
-            assert!(
-                candidates.iter().any(|c| read(c) == body),
-                "{} has drifted from every template that emits it.\n\
-                 Templates checked: {:?}\n\
+            assert_eq!(
+                read(&adopted),
+                read(&source),
+                "{} has drifted from '{template}', the template that emits it.\n\
                  Either this repo has stopped shipping what it runs — re-copy \
                  the template — or this file is this repo's own work that \
                  happens to sit at a scaffold destination, in which case name \
                  it in AUTHORED. Do not reach for `managed` in scaffold.toml: \
                  that changes the shipped product to describe a local choice.",
                 destination.display(),
-                candidates
-                    .iter()
-                    .map(|c| c
-                        .strip_prefix(&templates)
-                        .unwrap_or(c)
-                        .display()
-                        .to_string())
-                    .collect::<Vec<_>>(),
             );
         }
     }

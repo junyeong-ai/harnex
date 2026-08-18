@@ -16,6 +16,10 @@
 //!   binary — is legitimately absent before that build runs.
 //! - **Managed-region edit** — content inside a `harnex-managed`
 //!   sentinel block that diverges from the plugin's template.
+//! - **Copy drift** — a `copy` artifact whose bytes differ from the template
+//!   that emits it. The manifest calls that a defect by definition, and it is
+//!   how a project's own file ends up at a destination the hook fragments wire
+//!   into: ownership is decided per artifact, the wiring lives in another one.
 //!
 //! Spec-vocabulary staleness is deliberately NOT a finding here. It is a
 //! property of the binary rather than of the project under audit, so it rides
@@ -47,6 +51,7 @@
 //!   integrity. Operators add `audit` to CI when they want enforcement
 //!   beyond structural validation.
 
+mod copy_drift;
 mod fill_marker;
 mod hook_wiring;
 mod managed_region;
@@ -61,6 +66,7 @@ use crate::envelope::{Finding, SkippedRule};
 use crate::error::Result;
 use crate::scaffold::{self, Artifact, Content, ScaffoldManifest};
 
+use copy_drift::CopyDriftAuditor;
 use fill_marker::FillMarkerAuditor;
 use hook_wiring::HookWiringAuditor;
 use managed_region::ManagedRegionAuditor;
@@ -75,6 +81,7 @@ pub enum AuditCheckKind {
     SettingsDrift,
     HookWiring,
     ManagedRegion,
+    CopyDrift,
     FillMarker,
 }
 
@@ -83,6 +90,7 @@ impl AuditCheckKind {
         Self::SettingsDrift,
         Self::HookWiring,
         Self::ManagedRegion,
+        Self::CopyDrift,
         Self::FillMarker,
     ];
 
@@ -91,6 +99,7 @@ impl AuditCheckKind {
             "settings-drift" => Self::SettingsDrift,
             "hook-wiring" => Self::HookWiring,
             "managed-region" => Self::ManagedRegion,
+            "copy-drift" => Self::CopyDrift,
             "fill-marker" => Self::FillMarker,
             _ => return None,
         })
@@ -101,6 +110,7 @@ impl AuditCheckKind {
             Self::SettingsDrift => "settings-drift",
             Self::HookWiring => "hook-wiring",
             Self::ManagedRegion => "managed-region",
+            Self::CopyDrift => "copy-drift",
             Self::FillMarker => "fill-marker",
         }
     }
@@ -117,6 +127,14 @@ pub struct CoverageEntry {
     pub tier: String,
     /// The destination as the manifest declares it, `{lang}` unresolved.
     pub destination: String,
+    /// The key a `merge` fragment contributes at; `None` for every other kind.
+    ///
+    /// Five artifacts land in `.claude/settings.json` and the destination is
+    /// the same string for all of them, so without the key the block is rows
+    /// that differ only in `tier` and a reader cannot tell which contribution
+    /// is the one reporting absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contributes: Option<String>,
     pub present: bool,
 }
 
@@ -171,11 +189,14 @@ impl<'a> ProjectAuditor<'a> {
             Some(root) => Some(ScaffoldManifest::load(&root.join("templates"))?),
             None => None,
         };
+        // Every destination the manifest can name, one concrete path per
+        // language. Skipping the `{lang}` artifacts would exempt the formatter
+        // hook — the one language-tier script a hook entry points at — from the
+        // check that exists to catch a hook wired at a file that is not there.
         let declared_artifacts: BTreeSet<String> = manifest
             .iter()
             .flat_map(|m| m.artifacts())
-            .filter(|a| !a.destination_is_language_parameterized())
-            .filter_map(|a| a.destination_for(None))
+            .flat_map(Artifact::resolved_destinations)
             .map(|d| d.to_string_lossy().to_string())
             .collect();
 
@@ -231,6 +252,17 @@ impl<'a> ProjectAuditor<'a> {
                     let outcome = ManagedRegionAuditor::new(plugin_root).audit(self.working_dir)?;
                     files_scanned += outcome.files_scanned;
                     findings.extend(outcome.findings);
+                    run.push(kind.as_str().to_string());
+                }
+                AuditCheckKind::CopyDrift => {
+                    let Some(plugin_root) = self.plugin_root.as_ref() else {
+                        skipped.push(SkippedRule {
+                            slug: kind.as_str().to_string(),
+                            reason: "no plugin root supplied (use --plugin-root)".into(),
+                        });
+                        continue;
+                    };
+                    findings.extend(CopyDriftAuditor.audit(self.working_dir, plugin_root)?);
                     run.push(kind.as_str().to_string());
                 }
                 AuditCheckKind::FillMarker => {
@@ -293,6 +325,10 @@ impl<'a> ProjectAuditor<'a> {
             entries.push(CoverageEntry {
                 tier: artifact.tier.as_str().to_string(),
                 destination: artifact.destination.clone(),
+                contributes: match &artifact.content {
+                    Content::Merge { key } => Some(key.clone()),
+                    _ => None,
+                },
                 present,
             });
         }

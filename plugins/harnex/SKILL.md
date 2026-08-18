@@ -378,6 +378,15 @@ finding is a defect against the spec or against the harness's own wiring:
   region diverges from the corresponding template.
 - `audit-managed-region-missing` — a managed artifact is on disk with its
   `harnex-managed` sentinels gone, so regenerate has nothing to write into.
+- `audit-copy-drift` — a `copy` artifact whose bytes differ from the template
+  that emits it. Usually this is the project's own file at a destination the
+  scaffold claims: it was kept, correctly, and the hook fragments that name
+  that path were merged anyway, so two Claude Code events now dispatch to a
+  script harnex did not write.
+- `audit-fill-marker-unresolved` — a `<!-- harnex-fill: … -->` the generating
+  step left behind. Expect several on any harness scaffolded without the Step-1
+  analysis: `CLAUDE.md` and every `<lang>-conventions.md` ship them, and each
+  names the observation the file is waiting for.
 
 **2 — Run the exploration Phase-1 fingerprint** (exploration.md) and compare
 its `existing_harness` block against what a scaffold for the detected stack

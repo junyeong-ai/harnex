@@ -177,9 +177,6 @@ pub const KNOWN_HOOK_EVENTS: &[&str] = &[
     "ElicitationResult",
 ];
 
-/// The hooks page's own vocabulary, stamped separately from the settings sets
-/// because it is read from a different document. It lives beside its constant
-/// like every other `SPEC_SETS`, rather than inline in `spec.rs`.
 /// How a session can start, which is what a `SessionStart` matcher selects.
 ///
 /// The set matters because three of these are context-loss boundaries: after
@@ -189,6 +186,9 @@ pub const KNOWN_HOOK_EVENTS: &[&str] = &[
 /// most.
 pub const KNOWN_SESSION_START_SOURCES: &[&str] = &["startup", "resume", "clear", "compact", "fork"];
 
+/// The hooks page's own vocabulary, stamped separately from the settings sets
+/// because it is read from a different document. It lives beside its constants
+/// like every other `SPEC_SETS`, rather than inline in `spec.rs`.
 pub const HOOK_SPEC_SETS: &[(&str, &[&str])] = &[
     ("hook-events", KNOWN_HOOK_EVENTS),
     ("session-start-sources", KNOWN_SESSION_START_SOURCES),

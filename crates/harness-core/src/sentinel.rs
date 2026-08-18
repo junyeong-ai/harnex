@@ -41,7 +41,8 @@ use std::collections::BTreeMap;
 
 const START_PREFIX: &str = "<!-- harnex-managed:start ";
 const SUFFIX: &str = " -->";
-const FILL_PREFIX: &str = "<!-- harnex-fill:";
+const FILL_PREFIX: &str = "<!--";
+const FILL_TAG: &str = "harnex-fill:";
 
 /// One unresolved fill marker: its 1-based line, and what the template asked
 /// the generating step to observe.
@@ -53,25 +54,46 @@ pub struct FillMarker {
 
 /// Every `<!-- harnex-fill: … -->` left in `content`.
 ///
-/// Line-oriented and prefix-exact, like [`extract_regions`] — a marker is
-/// harnex's own token, so finding one is a fact rather than an interpretation
-/// of prose. A line carrying more than one marker reports the first: the
-/// finding is that the file is unfinished, and one per line is enough to say
-/// so without turning a report into a concordance.
+/// A marker is harnex's own token, so finding one is a fact rather than an
+/// interpretation of prose. Whitespace between `<!--` and the tag is not part
+/// of that token: `<!--harnex-fill:` is the same marker to every reader and to
+/// every markdown renderer, and requiring the space made a template author's
+/// spacing decide whether the check ran at all.
+///
+/// A marker whose `-->` sits on a later line is reported at its opening line —
+/// several of the shipped templates spell a long instruction that way, and
+/// stopping at the newline meant the longest markers, the ones asking for the
+/// most work, were the ones the check could not see. `wanted` is then the whole
+/// instruction with its line breaks flattened, because a finding is read on one
+/// line.
+///
+/// A line carrying more than one marker reports the first: the finding is that
+/// the file is unfinished, and one per line is enough to say so without turning
+/// a report into a concordance.
 pub fn fill_markers(content: &str) -> Vec<FillMarker> {
-    content
-        .lines()
-        .enumerate()
-        .filter_map(|(i, line)| {
-            let start = line.find(FILL_PREFIX)?;
-            let rest = &line[start + FILL_PREFIX.len()..];
-            let end = rest.find("-->")?;
-            Some(FillMarker {
-                line: i + 1,
-                wanted: rest[..end].trim().to_string(),
-            })
-        })
-        .collect()
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(rel) = content[cursor..].find(FILL_PREFIX) {
+        let open = cursor + rel;
+        let after_open = open + FILL_PREFIX.len();
+        let rest = &content[after_open..];
+        let Some(tagged) = rest.trim_start().strip_prefix(FILL_TAG) else {
+            cursor = after_open;
+            continue;
+        };
+        let Some(end) = tagged.find("-->") else {
+            break;
+        };
+        out.push(FillMarker {
+            line: content[..open].matches('\n').count() + 1,
+            wanted: tagged[..end]
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        });
+        cursor = after_open + (rest.len() - tagged.len()) + end + "-->".len();
+    }
+    out
 }
 
 /// Extract every `harnex-managed` block from `content` keyed by slug.
@@ -96,8 +118,18 @@ pub fn extract_regions(content: &str) -> BTreeMap<String, String> {
         };
         let header_pos = cursor + rel_start;
         let after_prefix = header_pos + START_PREFIX.len();
-        let Some(rel_suffix) = content[after_prefix..].find(SUFFIX) else {
-            break;
+        // A marker is one HTML comment on one line, so the closing `-->` is
+        // looked for on that line and nowhere else. Searching forward without
+        // the bound turned a single typo — `:start notes-->`, one space short —
+        // into a slug spanning the rest of the document: the malformed header
+        // swallowed every well-formed region below it, and the auditor reported
+        // an intact managed region as missing.
+        let line_end = content[after_prefix..]
+            .find('\n')
+            .map_or(content.len(), |n| after_prefix + n);
+        let Some(rel_suffix) = content[after_prefix..line_end].find(SUFFIX) else {
+            cursor = line_end;
+            continue;
         };
         let header_end = after_prefix + rel_suffix + SUFFIX.len();
         let slug = content[after_prefix..after_prefix + rel_suffix]
@@ -108,9 +140,14 @@ pub fn extract_regions(content: &str) -> BTreeMap<String, String> {
             continue;
         }
         let end_marker = format!("<!-- harnex-managed:end {slug} -->");
+        // An unterminated start records its slug with an empty body so a drift
+        // check still fires, and scanning continues past the header rather than
+        // stopping: one region an operator forgot to close must not hide every
+        // region after it.
         let Some(rel_end) = content[header_end..].find(&end_marker) else {
             out.insert(slug, String::new());
-            break;
+            cursor = header_end;
+            continue;
         };
         let body = &content[header_end..header_end + rel_end];
         // A body that itself contains a start marker means malformed nesting
@@ -133,6 +170,70 @@ pub fn extract_regions(content: &str) -> BTreeMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fill_marker_is_found_however_it_is_spaced_and_wrapped() {
+        // Seven shipped templates spell a long instruction across lines, and
+        // the whitespace after `<!--` is an author's habit rather than part of
+        // the token. Requiring either made the longest markers — the ones
+        // asking for the most work — the ones the check could not see.
+        let found = fill_markers(
+            "a\n<!--harnex-fill: no space -->\nb\n<!-- harnex-fill: spread\n   over lines -->\n",
+        );
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].line, 2);
+        assert_eq!(found[0].wanted, "no space");
+        assert_eq!(found[1].line, 4);
+        assert_eq!(found[1].wanted, "spread over lines");
+    }
+
+    #[test]
+    fn a_comment_that_is_not_a_fill_marker_is_left_alone() {
+        assert!(fill_markers("<!-- an ordinary note -->").is_empty());
+        assert!(fill_markers("<!-- harnex-managed:start x -->").is_empty());
+        assert!(fill_markers("prose mentioning harnex-fill: without a comment").is_empty());
+    }
+
+    #[test]
+    fn a_malformed_marker_does_not_swallow_the_regions_below_it() {
+        // One missing space in an operator's own marker. Searching for the
+        // closing `-->` past the newline made the whole rest of the document
+        // one slug, hid the well-formed region under it, and the auditor
+        // reported an intact managed region as missing — a Major finding on a
+        // file nobody had touched.
+        let content = "\
+# proj
+<!-- harnex-managed:start notes-->
+my note
+<!-- harnex-managed:end notes -->
+<!-- harnex-managed:start enforcement-summary -->
+canonical
+<!-- harnex-managed:end enforcement-summary -->
+";
+        let regions = extract_regions(content);
+        assert_eq!(
+            regions.keys().collect::<Vec<_>>(),
+            vec!["enforcement-summary"]
+        );
+        assert_eq!(
+            regions.get("enforcement-summary").map(String::as_str),
+            Some("\ncanonical\n")
+        );
+    }
+
+    #[test]
+    fn an_unterminated_region_does_not_hide_the_ones_after_it() {
+        let content = "\
+<!-- harnex-managed:start opened -->
+never closed
+<!-- harnex-managed:start closed -->
+body
+<!-- harnex-managed:end closed -->
+";
+        let regions = extract_regions(content);
+        assert_eq!(regions.get("opened").map(String::as_str), Some(""));
+        assert_eq!(regions.get("closed").map(String::as_str), Some("\nbody\n"));
+    }
 
     #[test]
     fn extracts_single_region() {
