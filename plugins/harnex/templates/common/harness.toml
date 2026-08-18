@@ -49,11 +49,15 @@ reject_unknown_keys = true
 # or disappearing. `harness check` reads `CLAUDE.md` and `.claude/rules/*.md`
 # and resolves every `` `path/to/file.ext:42` `` against the tree.
 #
-# The check has no false-positive surface: the backtick `path.ext:line` form is
-# the only shape that becomes a claim, so a rule opts in by pointing at its
-# owner and prose that merely mentions a file never does. Write the pointer
-# whenever a rule states something the code is the truth for — the two harnesses
-# this scaffold is modelled on name an owner in every single rule they carry.
+# A rule opts in per claim: only a backtick-wrapped project-relative path WITH
+# a directory separator and a line becomes one, so prose that mentions a file
+# never fires, and neither does `api.example.com:8080` — a host and port share
+# the shape of a file and a line, and no extension test tells them apart. Cite
+# a root file as `./harness.toml:1`.
+#
+# Write the pointer whenever a rule states something the code is the truth for.
+# The two harnesses this scaffold is modelled on name an owner in every single
+# rule they carry.
 [evidence]
 default_provenance = "internal"
 

@@ -47,12 +47,25 @@ static CONTEXT7: LazyLock<Regex> =
 
 static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expect("MEMORY regex"));
 
-// A backtick-wrapped path that looks like `something/with.ext:42`.
-// Restricted to relative-looking paths (no leading `/`) and to file
-// extensions of 1–8 alphanumerics, to avoid matching prose like
-// `foo:42` (no extension) or absolute /etc/passwd:42.
+// A backtick-wrapped project-relative path with a line: `some/where.ext:42`.
+//
+// A directory separator is required, not incidental. `name.ext:digits` is also
+// the shape of a host and port, so `api.example.com:8080` or `db.internal:5432`
+// — ordinary things for a deployment or integration rule to name — would parse
+// as claims and fail Blocker against a file that was never meant to exist. No
+// extension test separates the two: `.sh`, `.rs`, `.io` and `.dev` are file
+// extensions and top-level domains both.
+//
+// The cost is that a repo-root file must be written `./harness.toml:1` to be
+// cited with a line. That is the rarer form — a root manifest is usually cited
+// whole, which was never a claim — and it is a spelling rather than a
+// limitation.
+//
+// Absolute paths stay excluded: the first segment cannot be empty, so
+// `/etc/passwd:1` never matches.
 static FILE_LINE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"`([A-Za-z0-9_./\-]+\.[A-Za-z0-9]{1,8}):(\d+)`").expect("FILE_LINE regex")
+    Regex::new(r"`((?:[A-Za-z0-9_.\-]+/)+[A-Za-z0-9_.\-]*\.[A-Za-z0-9]{1,8}):(\d+)`")
+        .expect("FILE_LINE regex")
 });
 
 /// Parse every recognised claim out of `markdown`. Order within a line is
@@ -133,6 +146,39 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_host_and_port_is_not_a_file_claim() {
+        // `name.ext:digits` is also how a host and port are written, and a
+        // deployment or integration rule names them routinely. Reading one as
+        // a claim fails Blocker against a file nobody meant to exist — the
+        // worst outcome available to a check that is on by default.
+        for md in [
+            "The gateway is at `api.example.com:8080`.",
+            "Point it at `db.internal:5432`.",
+            "Registry `ghcr.io:443` needs auth.",
+            "Fetch `https://api.example.com:8080/v1` for the payload.",
+        ] {
+            assert!(
+                parse_claims(md).is_empty(),
+                "host:port parsed as a file claim: {md}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_repo_root_file_is_cited_with_an_explicit_relative_prefix() {
+        // The separator requirement is what excludes a host and port, so a
+        // root-level file carries `./` to be cited with a line.
+        assert!(parse_claims("See `harness.toml:1`.").is_empty());
+        match &parse_claims("See `./harness.toml:1`.")[0].kind {
+            ClaimKind::FilePathLine { path, line } => {
+                assert_eq!(path, "./harness.toml");
+                assert_eq!(*line, Some(1));
+            }
+            _ => panic!("expected FilePathLine"),
+        }
+    }
 
     #[test]
     fn extracts_file_path_line() {

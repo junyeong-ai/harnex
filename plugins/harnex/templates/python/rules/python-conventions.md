@@ -39,7 +39,7 @@ they match the project's actual practice.
      does AND where that is declared, as a backtick path — `ruff` —
      `pyproject.toml`. A convention with no named owner is prose that drifts
      the day someone changes the tool, and nothing catches it; a pointer can be
-     checked by a reader, and `harness check` resolves the `path.ext:line` form
+     checked by a reader, and `harness check` resolves the `path/to/file.ext:line` form
      against the tree. Both harnesses this template is modelled on name an
      owner in every rule they carry.
 
