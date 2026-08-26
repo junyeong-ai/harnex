@@ -173,6 +173,9 @@ patterns covered out of the box:
 - Permission profiles for Claude Code settings: two floors (`baseline` deny,
   `workspace` allow), the tool surfaces (`git-strict`, `gcp-strict`,
   `aws-strict`), and one `*-dev` toolchain profile per supported language
+- Permission rules Claude Code accepts and never consults — a path rule for a
+  tool the file permission checks skip, or one naming a tool's primary content
+  field — refused at every boundary one can be written
 - Claude Code spec compliance (rules / skills / agents / output-styles /
   settings frontmatter)
 - Hook wiring integrity — every `${CLAUDE_PROJECT_DIR}` path a hook names

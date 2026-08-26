@@ -60,9 +60,11 @@ impl PermissionProfile {
 /// this profile.
 ///
 /// Rule grammar follows the Claude Code permission spec: Bash uses the
-/// canonical space-then-`*` wildcard (`Bash(cmd *)`); Read/Edit/Write use
+/// canonical space-then-`*` wildcard (`Bash(cmd *)`); Read/Edit use
 /// gitignore-style globs where a bare pattern matches at any depth
-/// (`Read(.env)` ≡ `Read(**/.env)`). Two redundancy rules the spec lets us
+/// (`Read(.env)` ≡ `Read(**/.env)`). Which rules a permission check actually
+/// reads is [`super::rule`]'s to say, and `every_profile_rule_is_consulted`
+/// holds every rule below to it. Two redundancy rules the spec lets us
 /// drop: Read deny rules already cover `cat`/`head`/`tail`/`sed` of the same
 /// path, so no `Bash(cat .env *)` mirror is needed; and built-in read-only
 /// commands (`ls`, `grep`, `find`, read-only `git`, …) never prompt, so they
@@ -89,10 +91,13 @@ fn baseline() -> PermissionProfile {
             "Read(/secrets/**)",
             "Read(~/.ssh/*)",
             "Read(~/.aws/credentials)",
-            // --- sensitive file writes + edits (corruption guard). Write/Edit
-            // denies are PRECISE deployment shapes — not broad `.env.*` —
+            // --- sensitive file edits (corruption guard). `Edit` is the
+            // whole write floor; [`super::rule`] holds why a `Write(path)`
+            // twin beside it would be inert.
+            //
+            // Shapes are PRECISE deployment names — not broad `.env.*` —
             // because `deny > allow` makes broad denies unoverridable, so a
-            // blanket `Write(.env.*)` would block legitimate scaffolding of
+            // blanket `Edit(.env.*)` would block legitimate scaffolding of
             // `.env.example` / `.env.sample` / `.env.template` with no
             // project-level escape hatch. The read denies above are broader
             // because exfiltration is the concern there, and reading
@@ -101,18 +106,6 @@ fn baseline() -> PermissionProfile {
             // Deployment-env deny shapes cover the common naming conventions;
             // projects with additional deployment env names add them via
             // `[policy.permissions].extra_deny`. ---
-            "Write(.env)",
-            "Write(.env.local)",
-            "Write(.env.development)",
-            "Write(.env.staging)",
-            "Write(.env.production)",
-            "Write(*.pem)",
-            "Write(*.key)",
-            "Write(*.p12)",
-            "Write(*.pfx)",
-            "Write(/secrets/**)",
-            "Write(~/.ssh/*)",
-            "Write(~/.aws/credentials)",
             "Edit(.env)",
             "Edit(.env.local)",
             "Edit(.env.development)",
@@ -392,6 +385,7 @@ fn jvm_dev() -> PermissionProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::policy::{PermissionRule, RuleEffect};
 
     /// Every `<lang>-dev` profile, derived from the registry rather than
     /// listed. A language added to `ALL` then fails here instead of passing
@@ -460,25 +454,12 @@ mod tests {
         ] {
             assert!(p.deny.contains(&r), "missing deny {r}");
         }
-        // Write + Edit (corruption). Denies are PRECISE deployment shapes,
-        // not broad `.env.*`, because `deny > allow` makes broad denies
-        // unoverridable — scaffolding `.env.example` would be blocked with
-        // no project-level escape hatch. `*credentials*.json` is
-        // intentionally Read-only (mock credential fixtures for tests are a
-        // legitimate Write target).
+        // Edit (corruption). Shapes are PRECISE deployment names, not broad
+        // `.env.*`, because `deny > allow` makes broad denies unoverridable —
+        // scaffolding `.env.example` would be blocked with no project-level
+        // escape hatch. `*credentials*.json` is intentionally Read-only (mock
+        // credential fixtures for tests are a legitimate write target).
         for shape in [
-            "Write(.env)",
-            "Write(.env.local)",
-            "Write(.env.development)",
-            "Write(.env.staging)",
-            "Write(.env.production)",
-            "Write(*.pem)",
-            "Write(*.key)",
-            "Write(*.p12)",
-            "Write(*.pfx)",
-            "Write(/secrets/**)",
-            "Write(~/.ssh/*)",
-            "Write(~/.aws/credentials)",
             "Edit(.env)",
             "Edit(.env.local)",
             "Edit(.env.development)",
@@ -498,9 +479,9 @@ mod tests {
         // able to create `.env.example` / `.env.sample` / `.env.template`
         // without a project-level override.
         for safe in [
-            "Write(.env.example)",
-            "Write(.env.sample)",
-            "Write(.env.template)",
+            "Edit(.env.example)",
+            "Edit(.env.sample)",
+            "Edit(.env.template)",
         ] {
             assert!(
                 !p.deny.contains(&safe),
@@ -539,6 +520,25 @@ mod tests {
         // floor uses precise shapes instead and must never carry these.
         assert!(!p.deny.contains(&"Read(*secret*)"));
         assert!(!p.deny.contains(&"Read(*credentials*)"));
+    }
+
+    /// Every rule a profile ships must be one Claude Code consults. A rule it
+    /// accepts and never reads is worse than a missing one: the profile
+    /// promises a floor and the settings file it generates enforces nothing.
+    #[test]
+    fn every_profile_rule_is_consulted() {
+        for name in PermissionProfile::ALL {
+            let p = PermissionProfile::from_str(name).unwrap();
+            for rule in p.allow.iter().chain(&p.ask).chain(&p.deny) {
+                if let RuleEffect::Inert(inert) = PermissionRule::parse(rule).effect() {
+                    panic!(
+                        "profile '{name}' rule '{rule}' is never consulted — {}; {}",
+                        inert.reason_text(),
+                        inert.hint()
+                    );
+                }
+            }
+        }
     }
 
     #[test]

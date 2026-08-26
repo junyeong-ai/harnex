@@ -3,7 +3,8 @@
 The perishable knowledge harnex centralizes. Every generated artifact must
 obey these. Re-verify against the live docs before a release; the upstream
 surface evolves and freezing it is the failure mode harnex exists to prevent.
-Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
+Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
+/en/plugins.
 
 ## Hooks (/en/hooks)
 
@@ -95,8 +96,8 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
   handled separately by the `SettingsScope` check.) Never emit these into a
   generated `.claude/settings.json` — they become no-ops.
 - **Pattern syntax:** `Bash(npm run *)`, `Read(.env)`, `Read(./secrets/**)`,
-  `Edit(...)`, `Write(...)`, `PowerShell(Get-ChildItem *)`,
-  `WebFetch(domain:github.com)`, `Skill(name)`, `Agent(Explore)`.
+  `Edit(...)`, `PowerShell(Get-ChildItem *)`, `WebFetch(domain:github.com)`,
+  `Skill(name)`, `Agent(Explore)`.
   MCP uses double-underscore, NOT a parenthesized form:
   `mcp__<server>` (all its tools), `mcp__<server>__<tool>`, or `mcp__<server>__*`.
 - **Bash matching:** a single `*` matches any run of characters *including
@@ -121,6 +122,37 @@ Sources: /en/hooks, /en/settings, /en/skills, /en/memory, /en/plugins.
 - **Read-only built-ins never prompt** (`ls cat echo pwd head tail grep find wc
   which diff stat du cd` + read-only `git`): an allow rule for them is a no-op —
   never emit one. To force a prompt, add an `ask`/`deny` rule.
+- **File permission checks consult `Read(path)` and `Edit(path)` only**, and
+  `Edit` covers every built-in tool that edits files. A path rule written for
+  any tool below is accepted, merges across scopes, and is never read — it
+  reads as a floor and enforces nothing, and Claude Code warns at startup
+  (`… is not matched by file permission checks`). Canonical SSoT is
+  `crates/harness-core/src/policy/rule.rs`; the mirrors below are held in sync
+  by the `spec_facts_*` integration tests, and both `harness validate settings`
+  and `harness.toml` load reject such a rule where it is written.
+  Path rules `Edit(...)` owns:
+  <!-- harnex-managed:start spec-facts-covered-by-edit-rules -->
+  MultiEdit, NotebookEdit, Write.
+  <!-- harnex-managed:end spec-facts-covered-by-edit-rules -->
+  Path rules `Read(...)` owns:
+  <!-- harnex-managed:start spec-facts-covered-by-read-rules -->
+  Glob.
+  <!-- harnex-managed:end spec-facts-covered-by-read-rules -->
+  A bare tool-name rule with no path (`"Write"`) is a tool-level rule, matches
+  everywhere, and is never warned about — `Tool(*)` is the same rule. A `Read`
+  deny also blocks Edit and Write on that path, but NOT NotebookEdit, so a
+  path no tool may change needs the `Edit` deny in its own right.
+- **`Tool(param:value)` matches one top-level input parameter** on a deny/ask
+  rule (`Agent(model:opus)`, `Bash(run_in_background:true)`); allow rules keep
+  each tool's own specifier syntax. The value takes `*`; an omitted parameter
+  never matches. Each tool's primary content field is refused — a content
+  match is bypassable by a compound command — so a rule naming one is ignored
+  and warned about:
+  <!-- harnex-managed:start spec-facts-primary-content-fields -->
+  Bash:command, Edit:file_path, Glob:path, Grep:path,
+  NotebookEdit:notebook_path, PowerShell:command, Read:file_path,
+  WebFetch:url, Write:file_path.
+  <!-- harnex-managed:end spec-facts-primary-content-fields -->
 - **Read/Edit denies extend to Bash file commands** `cat`/`head`/`tail`/`sed`,
   so `Read(.env)` deny already blocks `cat .env` — no `Bash(cat …)` mirror
   needed. They do NOT reach arbitrary subprocesses (a Python/Node script).

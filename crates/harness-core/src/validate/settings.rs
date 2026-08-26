@@ -16,6 +16,8 @@
 //!   effective but become no-ops.
 //! - `skillOverrides` values are valid trigger modes.
 //! - Overly permissive `permissions.allow` patterns without a corresponding deny.
+//! - Permission rules Claude Code accepts and never consults, per
+//!   `harness_core::policy::rule`.
 
 use std::path::Path;
 
@@ -23,6 +25,7 @@ use serde_json::Value;
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
+use crate::policy::{PermissionRule, RuleEffect};
 
 /// Valid values for `skillOverrides` per Claude Code spec.
 pub const KNOWN_SKILL_OVERRIDE_VALUES: &[&str] = &["on", "name-only", "user-invocable-only", "off"];
@@ -123,19 +126,15 @@ impl SettingsScope {
 /// `Bash(curl https://api *)` normalizes to a longer base and is not flagged.
 const DANGEROUS_ALLOW_BASES: &[&str] = &["rm", "rm -rf", "curl", "sudo"];
 
-/// Reduce a `Bash(...)` rule to its command base by stripping the wrapper and
-/// the equivalent trailing wildcard forms (`:*`, ` *`, bare). Non-Bash rules
-/// return `None`. Per the Claude Code spec, `Bash(cmd:*)` ≡ `Bash(cmd *)`, so
-/// both must collapse to the same base for style-independent matching.
-fn bash_command_base(rule: &str) -> Option<String> {
-    let inner = rule.strip_prefix("Bash(")?.strip_suffix(')')?;
-    Some(
-        inner
-            .trim_end_matches('*')
-            .trim_end_matches(':')
-            .trim()
-            .to_string(),
-    )
+/// The string rules under one `permissions` array. A non-string entry is
+/// dropped rather than reported: the settings schema is Claude Code's to
+/// enforce, and this validator speaks about rules.
+fn rule_array<'a>(perms: &'a serde_json::Map<String, Value>, array: &str) -> Vec<&'a str> {
+    perms
+        .get(array)
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default()
 }
 
 /// Documented hook event names per Claude Code spec /en/hooks.
@@ -295,21 +294,38 @@ impl SettingsValidator {
             });
         }
 
-        // Overly permissive allow patterns are only meaningful when a
-        // permissions block exists.
+        // Rule-level checks are only meaningful when a permissions block
+        // exists at all.
         if let Some(perms) = perms {
-            let allow_strs: Vec<&str> = perms
-                .get("allow")
-                .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-                .unwrap_or_default();
-            let deny_strs: Vec<&str> = perms
-                .get("deny")
-                .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-                .unwrap_or_default();
+            let allow_strs = rule_array(perms, "allow");
+            let ask_strs = rule_array(perms, "ask");
+            let deny_strs = rule_array(perms, "deny");
+
+            for (array, rules) in [
+                ("allow", &allow_strs),
+                ("ask", &ask_strs),
+                ("deny", &deny_strs),
+            ] {
+                for rule in rules {
+                    let RuleEffect::Inert(inert) = PermissionRule::parse(rule).effect() else {
+                        continue;
+                    };
+                    findings.push(Finding {
+                        slug: "settings-inert-permission-rule".into(),
+                        severity: Severity::Major,
+                        location: Location::file(path.to_path_buf()),
+                        message: format!(
+                            "'{rule}' in permissions.{array} is never consulted — {}",
+                            inert.reason_text()
+                        ),
+                        hint: Some(inert.hint()),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                }
+            }
             for allow in &allow_strs {
-                let Some(base) = bash_command_base(allow) else {
+                let Some(base) = PermissionRule::parse(allow).bash_base() else {
                     continue;
                 };
                 if !DANGEROUS_ALLOW_BASES.contains(&base.as_str()) {
@@ -318,9 +334,9 @@ impl SettingsValidator {
                 // Excused only by a deny of the same command base — matched
                 // independent of wildcard spelling, so a `Bash(rm *)` allow is
                 // covered by a `Bash(rm:*)` deny and vice versa.
-                let covered = deny_strs
-                    .iter()
-                    .any(|d| bash_command_base(d).as_deref() == Some(base.as_str()));
+                let covered = deny_strs.iter().any(|d| {
+                    PermissionRule::parse(d).bash_base().as_deref() == Some(base.as_str())
+                });
                 if !covered {
                     findings.push(Finding {
                         slug: "settings-overly-permissive".into(),

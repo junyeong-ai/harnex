@@ -14,6 +14,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use harness_core::policy::rule;
 use harness_core::sentinel;
 use harness_core::validate::{
     KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS, KNOWN_SESSION_START_SOURCES, KNOWN_SKILL_KEYS,
@@ -160,4 +161,61 @@ fn spec_stamps_match_live_vocabularies() {
             surface.live_digest()
         );
     }
+}
+
+/// Tokenize a `Tool:field` block, preserving the colon that pairs them
+/// (`Bash:command, Read:file_path` → {"Bash:command", "Read:file_path"}).
+/// The pairing is the fact — a field read against the wrong tool is the
+/// drift this block exists to catch.
+fn parse_pair_csv(block: &str) -> BTreeSet<String> {
+    block
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(|t| t.trim_matches(|c: char| c == '.' || c.is_whitespace()))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn spec_facts_covered_by_edit_rules_match_the_rule_grammar() {
+    assert_region_matches(
+        "spec-facts-covered-by-edit-rules",
+        rule::COVERED_BY_EDIT_RULES,
+        parse_identifier_csv,
+    );
+}
+
+#[test]
+fn spec_facts_covered_by_read_rules_match_the_rule_grammar() {
+    assert_region_matches(
+        "spec-facts-covered-by-read-rules",
+        rule::COVERED_BY_READ_RULES,
+        parse_identifier_csv,
+    );
+}
+
+#[test]
+fn spec_facts_primary_content_fields_match_the_rule_grammar() {
+    assert_region_matches(
+        "spec-facts-primary-content-fields",
+        rule::PRIMARY_CONTENT_FIELDS,
+        parse_pair_csv,
+    );
+}
+
+fn assert_region_matches(region: &str, canonical: &[&str], tokenize: fn(&str) -> BTreeSet<String>) {
+    let content = spec_facts_content();
+    let regions = sentinel::extract_regions(&content);
+    let block = regions
+        .get(region)
+        .unwrap_or_else(|| panic!("missing managed region '{region}' in spec-facts.md"));
+    assert_eq!(
+        tokenize(block),
+        canonical
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<_>>(),
+        "spec-facts.md '{region}' block drifted from policy::rule — update the \
+         sentinel block to match Rust SSoT"
+    );
 }

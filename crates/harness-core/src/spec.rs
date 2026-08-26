@@ -37,6 +37,7 @@ use jiff::tz::TimeZone;
 
 use crate::envelope::Warning;
 
+use crate::policy::rule;
 use crate::validate::{agents, output_styles, settings, skills};
 
 /// Age past which a surface is reported unverified. Generous on purpose: the
@@ -94,6 +95,12 @@ impl SpecSurface {
             measured: "2026-08-17",
             digest: 0xd0c3_9c78_19f1_90e2,
         },
+        Self {
+            name: "permissions",
+            doc: "/en/permissions",
+            measured: "2026-08-26",
+            digest: 0x64e6_167e_a93b_6289,
+        },
     ];
 
     /// Every closed set this surface stamps, labelled, as the owning validator
@@ -121,6 +128,7 @@ impl SpecSurface {
             "sub-agents" => agents::SPEC_SETS,
             "output-styles" => output_styles::SPEC_SETS,
             "settings" => settings::SPEC_SETS,
+            "permissions" => rule::SPEC_SETS,
             _ => NONE,
         }
     }

@@ -959,6 +959,63 @@ fn settings_validator_accepts_scoped_allow() {
 }
 
 #[test]
+fn settings_validator_flags_a_rule_no_permission_check_consults() {
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "permissions": {
+            "allow": ["Glob(src/**)"],
+            "ask": ["NotebookEdit(notebooks/**)"],
+            "deny": ["Write(*.pem)", "Edit(*.pem)", "Bash(command:rm -rf *)"]
+        }
+    }"#;
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
+    let inert: Vec<_> = findings
+        .iter()
+        .filter(|f| f.slug == "settings-inert-permission-rule")
+        .collect();
+    assert_eq!(inert.len(), 4, "expected 4 inert rules: {findings:?}");
+    let write = inert
+        .iter()
+        .find(|f| f.message.contains("Write(*.pem)"))
+        .expect("the Write path rule is flagged");
+    assert_eq!(write.severity, Severity::Major);
+    assert_eq!(write.hint.as_deref(), Some("state it as `Edit(*.pem)`"));
+    assert!(
+        inert
+            .iter()
+            .any(|f| f.message.contains("permissions.allow"))
+    );
+    assert!(inert.iter().any(|f| f.message.contains("permissions.ask")));
+}
+
+#[test]
+fn settings_validator_accepts_the_rules_permission_checks_read() {
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "permissions": {
+            "allow": ["Bash(cargo *)", "Edit", "Write"],
+            "ask": ["Agent(model:opus)"],
+            "deny": ["Read(.env)", "Edit(~/.ssh/*)", "WebFetch(domain:example.com)", "Bash(sudo *)"]
+        }
+    }"#;
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
+    assert!(
+        !findings
+            .iter()
+            .any(|f| f.slug == "settings-inert-permission-rule"),
+        "consulted rules must not be flagged: {findings:?}"
+    );
+}
+
+#[test]
 fn settings_validator_flags_space_wildcard_dangerous_allow() {
     // The canonical spelling the permission dialog writes is the space form
     // `Bash(rm -rf *)`, equivalent to `Bash(rm -rf:*)`. Detection must catch it

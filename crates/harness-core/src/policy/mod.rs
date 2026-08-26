@@ -1,6 +1,9 @@
-//! # policy — permission profiles + version pins
+//! # policy — permission rules, profiles + version pins
 //!
-//! Two surfaces:
+//! Three surfaces:
+//! - [`rule`] owns the permission rule grammar and answers the one question
+//!   every other surface asks of a rule string: does a permission check read
+//!   it, or does Claude Code accept it and never consult it.
 //! - [`permissions`] composes canonical deny/ask/allow rules for
 //!   `.claude/settings.json` from named built-in profiles plus
 //!   project-local extras.
@@ -16,6 +19,7 @@
 
 pub mod permissions;
 pub mod profiles;
+pub mod rule;
 pub mod versions;
 
 pub use permissions::{
@@ -23,4 +27,5 @@ pub use permissions::{
     PermissionsBlock,
 };
 pub use profiles::PermissionProfile;
+pub use rule::{InertReason, InertRule, PermissionRule, RuleEffect};
 pub use versions::{VersionCheckOutcome, VersionChecker};

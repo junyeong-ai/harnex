@@ -3,7 +3,7 @@ paths:
   - "crates/harness-core/src/policy/**"
 ---
 
-# policy — permissions + versions
+# policy — permission rules, profiles + versions
 
 Permission profiles are static data. Each `PermissionProfile` carries
 `name`, `allow`, `ask`, `deny`. Composition is set-union with sort+dedup.
@@ -40,9 +40,18 @@ regenerate the matching template (`harness policy permissions generate` with
 that profile selected) and copy the array across — never hand-edit one side.
 A new `<lang>-dev` profile MUST ship its template.
 
-Rule grammar follows the Claude Code spec: Bash uses space-then-`*`
-(`Bash(cmd *)`); never grant built-in read-only commands (no-op); a Read deny
-already covers `cat`/`head`/`tail`/`sed`, so emit no `Bash(cat …)` mirror.
+Rule grammar has one owner: `policy/rule.rs`. Ask `PermissionRule::effect`
+whether a permission check reads a rule — never match on the rule string.
+Bash uses space-then-`*` (`Bash(cmd *)`); never grant built-in read-only
+commands (no-op); a Read deny already covers `cat`/`head`/`tail`/`sed`, so
+emit no `Bash(cat …)` mirror.
+
+A rule Claude Code accepts and never consults is refused at every boundary
+one can be written: `every_profile_rule_is_consulted` for a profile,
+`Config::validate` for `[policy.permissions]` extras, `SettingsValidator`
+for a settings file. After changing a vocabulary in `rule.rs`, re-read
+/en/permissions, then move the `permissions` stamp in `spec.rs` and the
+mirrored blocks in `spec-facts.md`.
 
 Version strategies (`exact`/`minor`/`major`/`rolling`) are the only
 permitted values; `Config::validate` rejects others. The checker never
