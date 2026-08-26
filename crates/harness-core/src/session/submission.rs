@@ -20,11 +20,21 @@
 //!   time-ordered list, so a window always yields the same subset and the
 //!   subset spans the window rather than its beginning.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
 use super::record::{Authorship, Citation, Record, UserTurn};
+
+/// The tool the runtime records when the agent stops and asks the operator
+/// rather than choosing for them.
+///
+/// An exact floor on ambiguity, not a count of it: the tool resolves 257 times
+/// over the local corpus while a question asked in prose carries no marker at
+/// all. Zero here means the agent never used the tool, never that it never
+/// asked.
+const CLARIFYING_QUESTION_TOOL: &str = "AskUserQuestion";
 
 /// The submission boundary, and the only place it is decided.
 #[derive(Default)]
@@ -78,6 +88,17 @@ pub struct Submission {
     pub chars: usize,
     /// Agent turns taken while this was the standing instruction.
     pub agent_turns: usize,
+    /// Times the agent stopped to ask rather than choose — a floor, see
+    /// [`CLARIFYING_QUESTION_TOOL`].
+    pub questions: usize,
+    /// File edits the agent made under it.
+    pub edits: usize,
+    /// Distinct files those edits touched.
+    pub files: usize,
+    /// Commits reported under it. Sparse by design: the agent commits when
+    /// asked, so most instructions end without one and an absent commit is not
+    /// a failed instruction.
+    pub commits: usize,
     /// Interruptions the runtime marked while it stood — a floor, for the
     /// reason [`super::InterventionKind`] gives.
     pub interrupts: usize,
@@ -97,6 +118,9 @@ pub struct SubmissionAnalyzer {
     /// Session to the index in `out` of the instruction still standing in it,
     /// and the id that instruction was assigned.
     active: HashMap<String, (u64, usize)>,
+    /// Distinct files each instruction touched, held apart from the record so
+    /// the result carries a count rather than a copy of the tree.
+    touched: HashMap<usize, HashSet<PathBuf>>,
 }
 
 impl SubmissionAnalyzer {
@@ -113,9 +137,14 @@ impl SubmissionAnalyzer {
                 Some(id) => self.observe_instruction(turn, id),
                 None => self.observe_event(turn),
             },
-            Record::Assistant(_) => {
-                if let Some((_, at)) = self.active.get(session) {
-                    self.out[*at].agent_turns += 1;
+            Record::Assistant(turn) => {
+                if let Some((_, at)) = self.active.get(session).copied() {
+                    self.out[at].agent_turns += 1;
+                    self.out[at].questions += turn
+                        .actions
+                        .iter()
+                        .filter(|a| a.tool == CLARIFYING_QUESTION_TOOL)
+                        .count();
                 }
             }
             Record::RuleLoad(_) | Record::StopSummary(_) => {}
@@ -146,6 +175,10 @@ impl SubmissionAnalyzer {
             turns: 1,
             chars: text.chars().count(),
             agent_turns: 0,
+            questions: 0,
+            edits: 0,
+            files: 0,
+            commits: 0,
             interrupts: 0,
             denials: 0,
             steered_away: false,
@@ -163,9 +196,19 @@ impl SubmissionAnalyzer {
         if turn.denial.is_some() {
             self.out[at].denials += 1;
         }
+        if turn.commit.is_some() {
+            self.out[at].commits += 1;
+        }
+        if let Some(file) = &turn.edited_file {
+            self.out[at].edits += 1;
+            self.touched.entry(at).or_default().insert(file.clone());
+        }
     }
 
     pub fn finish(mut self, with_text: bool) -> Vec<Submission> {
+        for (at, files) in &self.touched {
+            self.out[*at].files = files.len();
+        }
         self.out.sort_by_key(|s| s.citation.timestamp);
         if !with_text {
             for s in &mut self.out {
@@ -285,6 +328,10 @@ mod sample_tests {
             turns: 1,
             chars: 1,
             agent_turns: 0,
+            questions: 0,
+            edits: 0,
+            files: 0,
+            commits: 0,
             interrupts: 0,
             denials: 0,
             steered_away: false,
