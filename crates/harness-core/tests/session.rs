@@ -75,7 +75,7 @@ fn the_paragraph_typed_into_the_most_sessions_ranks_first_with_every_citation() 
 
     let facts = session::collect(&config, &CollectOptions::default()).unwrap();
 
-    assert_eq!(facts.prompts.authored_prompts, 4);
+    assert_eq!(facts.prompts.authored_turns, 4);
     let blocks = &facts.prompts.repeated_blocks;
     assert_eq!(blocks.len(), 2);
 
@@ -107,7 +107,7 @@ fn turns_the_runtime_attributed_to_nobody_leave_the_statistics_alone() {
 
     let facts = session::collect(&config, &CollectOptions::default()).unwrap();
 
-    assert_eq!(facts.prompts.authored_prompts, 1);
+    assert_eq!(facts.prompts.authored_turns, 1);
     assert_eq!(
         facts
             .coverage
@@ -190,7 +190,7 @@ fn a_record_type_this_binary_does_not_know_is_counted_and_the_run_continues() {
 
     let facts = session::collect(&config, &CollectOptions::default()).unwrap();
 
-    assert_eq!(facts.prompts.authored_prompts, 1);
+    assert_eq!(facts.prompts.authored_turns, 1);
     assert_eq!(
         facts
             .coverage
@@ -200,4 +200,92 @@ fn a_record_type_this_binary_does_not_know_is_counted_and_the_run_continues() {
     );
     assert_eq!(facts.coverage.records_malformed, 0);
     assert!(session::require_coverage(&facts.coverage, config.coverage_floor).is_ok());
+}
+
+/// A tool-result record reporting an edit, as `Edit` and `Write` write one.
+fn edit(session: &str, uuid: &str, ts: &str, path: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","version":"2.1.246","message":{{"content":[{{"type":"tool_result","content":"ok"}}]}},"toolUseResult":{{"filePath":"{path}","structuredPatch":[]}}}}"#
+    )
+}
+
+/// A tool-result record reporting a commit, as a `Bash` git commit writes one.
+fn commit(session: &str, uuid: &str, ts: &str, sha: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","version":"2.1.246","message":{{"content":[{{"type":"tool_result","content":"ok"}}]}},"toolUseResult":{{"gitOperation":{{"commit":{{"sha":"{sha}","kind":"commit","branch":"main"}}}}}}}}"#
+    )
+}
+
+/// A read of a file reports its path without a patch.
+fn read_only(session: &str, uuid: &str, ts: &str, path: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","version":"2.1.246","message":{{"content":[{{"type":"tool_result","content":"ok"}}]}},"toolUseResult":{{"filePath":"{path}"}}}}"#
+    )
+}
+
+#[test]
+fn a_file_touched_again_after_its_commit_surfaces_with_the_commit_that_shipped_it() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            edit("s1", "e1", "2026-08-01T09:05:00Z", "/repo/loader.rs"),
+            commit("s1", "c1", "2026-08-01T09:10:00Z", "1111111"),
+            edit("s1", "e2", "2026-08-01T09:20:00Z", "/repo/loader.rs"),
+            edit("s1", "e3", "2026-08-01T09:25:00Z", "/repo/loader.rs"),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.rework.commits, 1);
+    assert_eq!(facts.rework.post_commit_reedits.len(), 1);
+    let r = &facts.rework.post_commit_reedits[0];
+    assert_eq!(r.commit, "1111111");
+    assert_eq!(r.reedits, 2);
+    assert_eq!(r.citations[0].uuid, "e2");
+}
+
+#[test]
+fn reading_a_committed_file_is_not_touching_it_again() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            edit("s1", "e1", "2026-08-01T09:05:00Z", "/repo/loader.rs"),
+            commit("s1", "c1", "2026-08-01T09:10:00Z", "1111111"),
+            read_only("s1", "r1", "2026-08-01T09:20:00Z", "/repo/loader.rs"),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert!(facts.rework.post_commit_reedits.is_empty());
+    assert_eq!(facts.rework.reedits_after_a_later_commit, 0);
+}
+
+#[test]
+fn queued_turns_fold_into_one_instruction_end_to_end() {
+    let queued = |uuid: &str, ts: &str, text: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","version":"2.1.246","origin":{{"kind":"human"}},"promptSource":"queued","message":{{"content":{}}}}}"#,
+            serde_json::to_string(text).unwrap()
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            queued("a2", "2026-08-01T09:00:03Z", STANDING),
+            typed("s1", "a3", "2026-08-01T11:00:00Z", STANDING),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.prompts.authored_turns, 3);
+    assert_eq!(facts.prompts.submissions, 2);
+    assert_eq!(
+        facts.prompts.restated_blocks[0].submissions, 2,
+        "the queued copy rides along; the later one is the restatement"
+    );
 }
