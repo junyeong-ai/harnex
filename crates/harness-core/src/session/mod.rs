@@ -44,6 +44,7 @@ pub mod harness;
 pub mod intervention;
 pub mod prompt;
 pub mod record;
+pub mod repository;
 pub mod rework;
 pub mod submission;
 
@@ -64,6 +65,7 @@ pub use harness::{
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock};
 pub use record::{Authorship, Citation, Compaction, Coverage, TokenUse};
+pub use repository::{CommitFate, CommitOutcome, RepositoryFacts};
 pub use rework::{PostCommitReedit, ReworkFacts};
 pub use submission::{Submission, SubmissionIndex, systematic_sample};
 
@@ -99,6 +101,11 @@ pub struct SessionFacts {
     /// What the window spent, whether or not the caller asked for the
     /// instruction list.
     pub tokens: TokenUse,
+    /// What became of the commits the window produced. Present only for a
+    /// window scoped to a project, and only when that project is a git work
+    /// tree — nothing else can be asked what survived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<RepositoryFacts>,
     pub interventions: InterventionFacts,
     pub rework: ReworkFacts,
     pub harness: HarnessFacts,
@@ -121,6 +128,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut interventions = intervention::InterventionAnalyzer::new();
     let mut compactions: Vec<Compaction> = Vec::new();
     let mut tokens = TokenUse::default();
+    let mut commits: Vec<String> = Vec::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
 
@@ -149,6 +157,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             match rec {
                 record::Record::Compaction(c) => compactions.push(c.clone()),
                 record::Record::Assistant(turn) => tokens.add(turn.tokens),
+                record::Record::User(turn) => {
+                    if let Some(sha) = &turn.commit {
+                        commits.push(sha.clone());
+                    }
+                }
                 _ => {}
             }
             submissions.observe(rec, assigned);
@@ -183,6 +196,10 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             compactions
         },
         tokens,
+        repository: match &options.project {
+            Some(project) => repository::survey(project, &commits)?,
+            None => None,
+        },
         rework: rework.finish(),
         harness: harness.finish(options.with_text),
     })
