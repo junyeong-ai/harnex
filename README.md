@@ -33,9 +33,17 @@ at `.claude-plugin/marketplace.json`. Install, then drive it by mode:
 
 /harnex scaffold      # greenfield: compose a full harness from templates
 /harnex extend        # brownfield: add one guardrail in the incumbent idiom
+/harnex retire        # evidence for removing one, with the limit stated
 /harnex audit         # read-only: gap report (drift, over-constraint, prose-only musts)
 /harnex regenerate    # re-derive against the current Claude Code spec
+
+/harnex:measure       # read your own transcripts: what you delegated, what leaks,
+                      # whether the harness earns its place
 ```
+
+`measure` is a command rather than a skill mode, and `session-judge` is the
+sub-agent it dispatches to read instruction text. Both need the oracle; without
+it they say so and stop rather than estimating from the logs.
 
 It detects the stack from lockfile + manifest (TypeScript/pnpm, Python/uv,
 Rust/cargo, JVM/Gradle-Maven for Java and Kotlin) and composes the harness
@@ -52,11 +60,19 @@ keep/soften/cut principle, the language matrix, the exploration procedure).
 ## The oracle binary
 
 ```bash
-cargo build --release          # → ./target/release/harness
+scripts/install.sh                 # from a clone
+scripts/install.sh --from-git      # from anywhere
+scripts/install.sh --check         # what is installed, changing nothing
 ```
 
-Requires Rust 1.97+. `rust-toolchain.toml` pins the exact toolchain, so a
-checkout builds with the same compiler CI uses.
+Requires Rust 1.97+; the script reads that floor from `Cargo.toml` rather than
+holding a second copy, and `rust-toolchain.toml` pins the exact toolchain so a
+checkout builds with the same compiler CI uses. `cargo build --release` still
+works for a local build without installing.
+
+Installing the plugin does not install the binary. Enabling a plugin is not
+consent to put an executable on the machine, so the two are separate acts and
+the plugin reports the oracle as missing rather than fetching it.
 
 ## IDE integration
 

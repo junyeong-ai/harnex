@@ -14,6 +14,7 @@ lives under `plugins/harnex/`:
 |---|---|
 | `plugins/harnex/SKILL.md` | single-skill plugin entry; modes: scaffold / extend / retire / audit / regenerate |
 | `plugins/harnex/commands/` | user-invoked procedures (`/harnex:measure`) — outside the skill and its budget |
+| `scripts/install.sh` | installs the oracle; the plugin never does, and reports it missing instead |
 | `plugins/harnex/agents/` | sub-agents those procedures dispatch; `model` is the cost lever |
 | `plugins/harnex/reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
 | `plugins/harnex/templates/` | L2 deterministic safety-critical templates (`common` + per-language) |
