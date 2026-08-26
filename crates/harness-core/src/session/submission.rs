@@ -20,12 +20,12 @@
 //!   time-ordered list, so a window always yields the same subset and the
 //!   subset spans the window rather than its beginning.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::record::{Authorship, Citation, Record, UserTurn};
+use super::record::{Authorship, Citation, Record, TokenUse, UserTurn};
 
 /// The tool the runtime records when the agent stops and asks the operator
 /// rather than choosing for them.
@@ -88,6 +88,11 @@ pub struct Submission {
     pub chars: usize,
     /// Agent turns taken while this was the standing instruction.
     pub agent_turns: usize,
+    /// What those turns spent.
+    pub tokens: TokenUse,
+    /// Models that answered it. More than one means a comparison of token
+    /// counts against another instruction is comparing model mixes too.
+    pub models: Vec<String>,
     /// Times the agent stopped to ask rather than choose — a floor, see
     /// [`CLARIFYING_QUESTION_TOOL`].
     pub questions: usize,
@@ -121,6 +126,7 @@ pub struct SubmissionAnalyzer {
     /// Distinct files each instruction touched, held apart from the record so
     /// the result carries a count rather than a copy of the tree.
     touched: HashMap<usize, HashSet<PathBuf>>,
+    models: HashMap<usize, BTreeSet<String>>,
 }
 
 impl SubmissionAnalyzer {
@@ -139,12 +145,17 @@ impl SubmissionAnalyzer {
             },
             Record::Assistant(turn) => {
                 if let Some((_, at)) = self.active.get(session).copied() {
-                    self.out[at].agent_turns += 1;
-                    self.out[at].questions += turn
+                    let held = &mut self.out[at];
+                    held.agent_turns += 1;
+                    held.tokens.add(turn.tokens);
+                    held.questions += turn
                         .actions
                         .iter()
                         .filter(|a| a.tool == CLARIFYING_QUESTION_TOOL)
                         .count();
+                    if let Some(model) = &turn.model {
+                        self.models.entry(at).or_default().insert(model.clone());
+                    }
                 }
             }
             Record::RuleLoad(_) | Record::StopSummary(_) | Record::Compaction(_) => {}
@@ -175,6 +186,8 @@ impl SubmissionAnalyzer {
             turns: 1,
             chars: text.chars().count(),
             agent_turns: 0,
+            tokens: TokenUse::default(),
+            models: Vec::new(),
             questions: 0,
             edits: 0,
             files: 0,
@@ -208,6 +221,9 @@ impl SubmissionAnalyzer {
     pub fn finish(mut self, with_text: bool) -> Vec<Submission> {
         for (at, files) in &self.touched {
             self.out[*at].files = files.len();
+        }
+        for (at, models) in &self.models {
+            self.out[*at].models = models.iter().cloned().collect();
         }
         self.out.sort_by_key(|s| s.citation.timestamp);
         if !with_text {
@@ -329,6 +345,8 @@ mod sample_tests {
             turns: 1,
             chars: 1,
             agent_turns: 0,
+            tokens: TokenUse::default(),
+            models: Vec::new(),
             questions: 0,
             edits: 0,
             files: 0,

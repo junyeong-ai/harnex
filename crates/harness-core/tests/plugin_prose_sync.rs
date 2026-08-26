@@ -36,6 +36,8 @@ const CONTRACTS: &[(&str, &[&str])] = &[
             "interrupts",
             "denials",
             "steered_away",
+            "tokens",
+            "models",
         ],
     ),
     (

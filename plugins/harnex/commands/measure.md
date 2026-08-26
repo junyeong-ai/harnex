@@ -42,9 +42,15 @@ null. Its contract is in its own file; do not restate or relax it here.
 
 The kinds come from a model and the outcomes do not, which is what makes the
 crossing worth reading: if the labels are wrong the observed strata still hold.
-Report per kind — instructions, median `agent_turns`, share cut short, share
-that shipped — and withhold a rate for any kind with fewer instructions than
-`[session] min_support`.
+Report per kind — instructions, median `agent_turns`, `tokens.output`, share
+cut short, share that shipped — and withhold a rate for any kind with fewer
+instructions than `[session] min_support`.
+
+`tokens` carries four counts and no total, because they price differently by
+orders of magnitude and this command does not know a price list. Rank on
+`output`, name the others when they matter, and never convert to money.
+Compare token counts across kinds only where `models` matches: a kind answered
+by a different model is a different price, not a different habit.
 
 This is the delegation question, and it is a portfolio rather than a score.
 Say where the operator intervenes most and show it; do not say what they should
@@ -110,6 +116,8 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - `blocked` lists only calls refused more than once; a single refusal is not a
   pattern and most refusals never repeat
 - a hook's cost is exact and its value is not recorded at all
+- token counts are counts, never money; and a delta across a window whose
+  `models` set moved is a delta about the model as much as the operator
 - §3's judged findings are readings by the model in `session-judge`, over the
   sample size, and they never enter a baseline
 

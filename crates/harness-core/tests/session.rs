@@ -600,8 +600,13 @@ fn queued(session: &str, uuid: &str, ts: &str, text: &str) -> String {
 
 /// An agent turn that produced text and nothing else.
 fn spoke(session: &str, uuid: &str, ts: &str) -> String {
+    spent(session, uuid, ts, "claude-sonnet-5", 0)
+}
+
+/// An agent turn that produced text and reported what it cost.
+fn spent(session: &str, uuid: &str, ts: &str, model: &str, output: u64) -> String {
     format!(
-        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"content":[{{"type":"text","text":"working on it"}}]}}}}"#
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"model":"{model}","usage":{{"input_tokens":7,"cache_creation_input_tokens":11,"cache_read_input_tokens":13,"output_tokens":{output}}},"content":[{{"type":"text","text":"working on it"}}]}}}}"#
     )
 }
 
@@ -991,5 +996,40 @@ fn a_compaction_is_read_as_an_event_and_not_as_an_unread_record_type() {
             .coverage
             .record_types_unconsumed
             .contains_key("system:compact_boundary")
+    );
+}
+
+#[test]
+fn an_instruction_carries_what_it_spent_and_which_models_spent_it() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spent("s1", "x1", "2026-08-01T09:00:02Z", "claude-opus-5", 400),
+            spent("s1", "x2", "2026-08-01T09:00:04Z", "claude-sonnet-5", 100),
+            typed("s1", "a2", "2026-08-01T10:00:00Z", ALSO_STANDING),
+            spent("s1", "x3", "2026-08-01T10:00:02Z", "claude-opus-5", 60),
+        ],
+    )]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.tokens.output, 560, "the window total is every turn");
+    assert_eq!(facts.submissions[0].tokens.output, 500);
+    assert_eq!(facts.submissions[0].tokens.cache_read, 26);
+    assert_eq!(
+        facts.submissions[0].models,
+        vec!["claude-opus-5", "claude-sonnet-5"],
+        "two models answered one instruction, and the record says so"
+    );
+    assert_eq!(facts.submissions[1].tokens.output, 60);
+    assert_eq!(
+        facts.coverage.models.len(),
+        2,
+        "the window's model set rides with its version set"
     );
 }
