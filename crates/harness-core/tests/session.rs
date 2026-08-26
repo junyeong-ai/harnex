@@ -746,3 +746,42 @@ fn the_instruction_list_is_absent_unless_the_caller_asks() {
     assert!(facts.submissions.is_empty());
     assert_eq!(facts.prompts.submissions, 1, "the count is always there");
 }
+
+/// An agent turn that stopped to ask rather than choose.
+fn asked(session: &str, uuid: &str, ts: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"content":[{{"type":"tool_use","id":"q{uuid}","name":"AskUserQuestion","input":{{"questions":[]}}}}]}}}}"#
+    )
+}
+
+#[test]
+fn an_instruction_carries_the_work_done_under_it_not_the_session_total() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            asked("s1", "x1", "2026-08-01T09:00:02Z"),
+            edit("s1", "e1", "2026-08-01T09:00:05Z", "/p/src/loader.rs"),
+            edit("s1", "e2", "2026-08-01T09:00:06Z", "/p/src/loader.rs"),
+            edit("s1", "e3", "2026-08-01T09:00:07Z", "/p/src/exporter.rs"),
+            commit("s1", "c1", "2026-08-01T09:00:09Z", "abc1234"),
+            typed("s1", "a2", "2026-08-01T10:00:00Z", ALSO_STANDING),
+            edit("s1", "e4", "2026-08-01T10:00:03Z", "/p/src/loader.rs"),
+        ],
+    )]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    let (first, second) = (&facts.submissions[0], &facts.submissions[1]);
+    assert_eq!((first.edits, first.files, first.commits), (3, 2, 1));
+    assert_eq!(first.questions, 1);
+    assert_eq!(
+        (second.edits, second.files, second.commits),
+        (1, 1, 0),
+        "the second instruction carries its own work, not the first's"
+    );
+}
