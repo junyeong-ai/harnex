@@ -203,10 +203,23 @@ impl Group {
         self.count += 1;
         self.weight += weight;
         self.flagged += usize::from(flagged);
-        if self.first.is_none() {
+        // By time, not by arrival: a group spans every session in the window
+        // and those are read in path order, which for a UUID-named transcript
+        // has nothing to do with when it was written.
+        if self
+            .first
+            .as_ref()
+            .is_none_or(|f| citation.timestamp < f.timestamp)
+        {
             self.first = Some(citation.clone());
         }
-        self.last = Some(citation.clone());
+        if self
+            .last
+            .as_ref()
+            .is_none_or(|l| citation.timestamp > l.timestamp)
+        {
+            self.last = Some(citation.clone());
+        }
     }
 
     fn span(&self) -> Span {

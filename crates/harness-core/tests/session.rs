@@ -1095,3 +1095,76 @@ fn an_instruction_with_a_file_beside_it_is_still_an_instruction() {
         "a tool result still carries no text and opens no instruction"
     );
 }
+
+#[test]
+fn a_subagents_work_lands_on_the_instruction_that_was_standing() {
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![
+                typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                spent("s1", "x1", "2026-08-01T09:00:10Z", "claude-opus-5", 100),
+                typed("s1", "a2", "2026-08-01T11:00:00Z", ALSO_STANDING),
+                spent("s1", "x2", "2026-08-01T11:00:10Z", "claude-opus-5", 100),
+            ],
+        ),
+        (
+            // A subagent writes its own file under the parent's session and
+            // carries the parent's id. Ran under the first instruction.
+            "-Users-me-alpha/s1/subagents/agent-1.jsonl",
+            vec![
+                spent("s1", "g1", "2026-08-01T09:30:00Z", "claude-sonnet-5", 400),
+                spent("s1", "g2", "2026-08-01T09:40:00Z", "claude-sonnet-5", 300),
+            ],
+        ),
+    ]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    let attributed: u64 = facts.submissions.iter().map(|s| s.tokens.output).sum();
+    assert_eq!(
+        attributed, facts.tokens.output,
+        "every token the window spent belongs to an instruction"
+    );
+    assert_eq!(facts.submissions[0].tokens.output, 800);
+    assert_eq!(facts.submissions[0].agent_turns, 3);
+    assert_eq!(facts.submissions[1].tokens.output, 100);
+    assert_eq!(
+        facts.submissions[0].models,
+        vec!["claude-opus-5", "claude-sonnet-5"]
+    );
+}
+
+#[test]
+fn a_groups_span_is_its_earliest_and_latest_whatever_order_the_files_arrive_in() {
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/zzz.jsonl",
+            vec![
+                typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                rule_load("s1", "r1", "2026-08-01T09:00:01Z", "/p/CLAUDE.md", "old"),
+            ],
+        ),
+        (
+            "-Users-me-alpha/aaa.jsonl",
+            vec![
+                typed("s2", "b1", "2026-08-20T09:00:00Z", STANDING),
+                rule_load("s2", "r2", "2026-08-20T09:00:01Z", "/p/CLAUDE.md", "new"),
+            ],
+        ),
+    ]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    let span = &facts.harness.rule_loads[0].span;
+    assert!(
+        span.first.timestamp < span.last.timestamp,
+        "path order put the later file first; the span is by time"
+    );
+    assert_eq!(span.first.uuid, "r1");
+    assert_eq!(span.last.uuid, "r2");
+}

@@ -139,19 +139,23 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
 
-    for path in &files {
-        let records = match record::read_transcript(
-            path,
-            options.since,
-            options.project.as_deref(),
-            &mut coverage,
-        ) {
-            Ok(r) => r,
-            Err(_) => {
-                coverage.files_unreadable += 1;
-                continue;
+    // A session's transcripts are read together and merged by time. A subagent
+    // writes its own file under its parent's session, so reading files
+    // independently leaves its work outside every instruction the parent gave.
+    for group in discovery::group_by_session(&files) {
+        let mut records = Vec::new();
+        for path in &group {
+            match record::read_transcript(
+                path,
+                options.since,
+                options.project.as_deref(),
+                &mut coverage,
+            ) {
+                Ok(r) => records.extend(r),
+                Err(_) => coverage.files_unreadable += 1,
             }
-        };
+        }
+        records.sort_by_key(|r| r.citation().timestamp);
         for rec in &records {
             sessions.insert(rec.citation().session.clone());
             let mut assigned = None;

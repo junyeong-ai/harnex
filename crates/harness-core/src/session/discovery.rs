@@ -25,7 +25,7 @@
 //! - Never expand a home reference it cannot resolve. `~` without `HOME` is
 //!   reported, not silently left literal to match nothing.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -50,6 +50,46 @@ fn expand_home(raw: &str, home: Option<&OsStr>) -> Result<PathBuf> {
         message: "root begins with '~' but HOME is not set".into(),
     })?;
     Ok(Path::new(home).join(rest))
+}
+
+/// Transcripts of one session, together.
+///
+/// A subagent's transcript carries its parent's `sessionId` and lives beside
+/// the parent's file, so reading the two independently puts a subagent's work
+/// outside every instruction the parent gave. Grouping them lets the caller
+/// merge by time and attribute it.
+///
+/// The group key is the longest ancestor `P` for which `P.jsonl` is also in
+/// the set — the parent transcript names the directory its subagents sit in.
+/// A file with no such parent is its own group, so an unfamiliar layout costs
+/// the merge and never a wrong attribution.
+pub fn group_by_session(files: &[PathBuf]) -> Vec<Vec<PathBuf>> {
+    let stems: BTreeSet<&Path> = files
+        .iter()
+        .filter(|f| f.extension().and_then(|e| e.to_str()) == Some("jsonl"))
+        .filter_map(|f| f.file_stem().map(|_| f.as_path()))
+        .collect();
+    let is_transcript = |p: &Path| -> bool {
+        let mut candidate = p.to_path_buf();
+        candidate.set_extension("jsonl");
+        stems.contains(candidate.as_path())
+    };
+
+    let mut groups: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
+    for file in files {
+        let mut key = file.clone();
+        key.set_extension("");
+        let mut ancestor = file.parent();
+        while let Some(dir) = ancestor {
+            if is_transcript(dir) {
+                key = dir.to_path_buf();
+                break;
+            }
+            ancestor = dir.parent();
+        }
+        groups.entry(key).or_default().push(file.clone());
+    }
+    groups.into_values().collect()
 }
 
 /// Every transcript under `roots`, absolute and deduplicated, in stable order.
@@ -168,5 +208,40 @@ mod tests {
     fn a_tilde_inside_a_path_is_not_a_home_reference() {
         let expanded = expand_home("/tmp/a~b", None).unwrap();
         assert_eq!(expanded, PathBuf::from("/tmp/a~b"));
+    }
+}
+
+#[cfg(test)]
+mod grouping_tests {
+    use super::group_by_session;
+    use std::path::PathBuf;
+
+    fn p(s: &str) -> PathBuf {
+        PathBuf::from(s)
+    }
+
+    #[test]
+    fn a_subagent_transcript_joins_the_session_that_names_its_directory() {
+        let files = vec![
+            p("/c/proj/s1.jsonl"),
+            p("/c/proj/s1/subagents/a.jsonl"),
+            p("/c/proj/s1/subagents/nested/b.jsonl"),
+            p("/c/proj/s2.jsonl"),
+        ];
+
+        let groups = group_by_session(&files);
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].len(), 3, "the parent and both of its subagents");
+        assert_eq!(groups[1], vec![p("/c/proj/s2.jsonl")]);
+    }
+
+    #[test]
+    fn a_transcript_with_no_parent_is_its_own_group() {
+        let files = vec![p("/c/proj/orphan/subagents/a.jsonl")];
+
+        let groups = group_by_session(&files);
+
+        assert_eq!(groups, vec![vec![p("/c/proj/orphan/subagents/a.jsonl")]]);
     }
 }
