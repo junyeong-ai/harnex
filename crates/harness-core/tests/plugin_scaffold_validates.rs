@@ -14,10 +14,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use harness_core::audit::{AuditCheckKind, ProjectAuditor};
-use harness_core::config::SkillsPolicy;
+use harness_core::config::{AgentsPolicy, SkillsPolicy};
 use harness_core::envelope::Finding;
 use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
-use harness_core::validate::{RuleValidator, SettingsScope, SettingsValidator, SkillValidator};
+use harness_core::validate::{
+    AgentValidator, RuleValidator, SettingsScope, SettingsValidator, SkillValidator,
+};
 use tempfile::TempDir;
 
 fn plugin_templates() -> PathBuf {
@@ -398,6 +400,36 @@ fn run_scaffold_validation(lang: &str) {
         let sv = SkillValidator::new(&lenient);
         let findings = sv.validate_file(&dst).unwrap();
         assert_no_findings(lang, "validate.skills(harnex SKILL.md)", &findings);
+    }
+
+    // --- Agent validation: the sub-agents the plugin ships must validate ---
+    // A sub-agent's model and tool grant are frontmatter, so a typo costs the
+    // field it was meant to set and Claude Code says nothing. `reject_unknown_keys`
+    // is on here because these files are ours: the list lagging upstream would
+    // cost a warning on a file we control, where staying silent costs the grant.
+    let plugin_agents =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/agents");
+    if plugin_agents.exists() {
+        let policy = AgentsPolicy {
+            reject_unknown_keys: true,
+        };
+        let av = AgentValidator::new(&policy);
+        for agent in fs::read_dir(&plugin_agents).expect("agents dir").flatten() {
+            let src = agent.path();
+            if src.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            let dst = proj_root
+                .join(".claude/agents")
+                .join(src.file_name().unwrap());
+            copy_file(&src, &dst);
+            let findings = av.validate_file(&dst).unwrap();
+            assert_no_findings(
+                lang,
+                &format!("validate.agents({})", src.display()),
+                &findings,
+            );
+        }
     }
 
     // --- The `extend skill` scaffold template must itself validate clean ---

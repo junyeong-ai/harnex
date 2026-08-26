@@ -12,7 +12,9 @@ lives under `plugins/harnex/`:
 
 | Path | Responsibility |
 |---|---|
-| `plugins/harnex/SKILL.md` | single-skill plugin entry; modes: scaffold / extend / audit / regenerate |
+| `plugins/harnex/SKILL.md` | single-skill plugin entry; modes: scaffold / extend / retire / audit / regenerate |
+| `plugins/harnex/commands/` | user-invoked procedures (`/harnex:measure`) — outside the skill and its budget |
+| `plugins/harnex/agents/` | sub-agents those procedures dispatch; `model` is the cost lever |
 | `plugins/harnex/reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
 | `plugins/harnex/templates/` | L2 deterministic safety-critical templates (`common` + per-language) |
 | `plugins/harnex/templates/scaffold.toml` | composition manifest — every artifact a harness contains, its tier, destination, and merge/managed flags (skill + fixture test + audit coverage all read it) |
