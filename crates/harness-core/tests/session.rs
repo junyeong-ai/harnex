@@ -451,7 +451,7 @@ fn a_window_measured_after_the_last_one_ended_compares_against_it() {
     let restated = diff
         .metrics
         .iter()
-        .find(|m| m.metric == "restated_chars_per_submission")
+        .find(|m| m.metric == "within_session_chars_per_submission")
         .expect("metric present on both sides");
     assert_eq!(restated.from.numerator, STANDING.len() as u64);
     assert_eq!(restated.to.numerator, 0);
@@ -514,7 +514,7 @@ fn a_rate_under_the_support_floor_keeps_both_sides_and_withholds_the_subtraction
     let restated = diff
         .metrics
         .iter()
-        .find(|m| m.metric == "restated_chars_per_submission")
+        .find(|m| m.metric == "within_session_chars_per_submission")
         .unwrap();
     assert_eq!(restated.from.denominator, 1);
     assert_eq!(restated.to.denominator, 1);
@@ -1167,4 +1167,39 @@ fn a_groups_span_is_its_earliest_and_latest_whatever_order_the_files_arrive_in()
     );
     assert_eq!(span.first.uuid, "r1");
     assert_eq!(span.last.uuid, "r2");
+}
+
+#[test]
+fn a_paragraph_that_is_both_failures_is_counted_as_both() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spoke("s1", "x1", "2026-08-01T09:00:05Z"),
+            typed("s1", "a2", "2026-08-01T10:00:00Z", STANDING),
+            typed("s2", "b1", "2026-08-02T09:00:00Z", STANDING),
+            spoke("s2", "y1", "2026-08-02T09:00:05Z"),
+            typed("s2", "b2", "2026-08-02T10:00:00Z", STANDING),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+    let chars = STANDING.chars().count();
+
+    assert_eq!(facts.prompts.submissions, 4);
+    assert_eq!(
+        facts.prompts.cross_session_chars, chars,
+        "one session beyond the first"
+    );
+    assert_eq!(
+        facts.prompts.restated_chars,
+        chars * 2,
+        "one restatement inside each of the two sessions"
+    );
+    assert_eq!(facts.prompts.repeated_blocks.len(), 1);
+    assert_eq!(
+        facts.prompts.restated_blocks.len(),
+        1,
+        "the same paragraph is in both lists because it wants both fixes"
+    );
 }

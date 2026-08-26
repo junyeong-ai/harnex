@@ -65,16 +65,22 @@ pub struct PromptFacts {
     pub submissions: usize,
     /// Characters across every paragraph that met `min_block_chars`.
     pub block_chars: usize,
-    /// Of those, characters in a paragraph already written in an earlier
-    /// submission of the same session.
+    /// Of those, characters written again in a later submission of a session
+    /// the paragraph was already in — text that was in context and did not
+    /// survive it. Excludes the first submission per session, which
+    /// [`PromptFacts::cross_session_chars`] counts instead.
     pub restated_chars: usize,
-    /// Of those, characters in a paragraph also written in another session.
+    /// Of those, characters written again in a session the paragraph was not
+    /// yet in — text no harness was holding. One per session beyond the first;
+    /// further submissions inside a session are
+    /// [`PromptFacts::restated_chars`].
     pub cross_session_chars: usize,
     /// Paragraphs written in two or more sessions — never installed. Most
     /// sessions first.
     pub repeated_blocks: Vec<RepeatedBlock>,
-    /// Paragraphs written in two or more submissions of a single session — did
-    /// not survive its context. Most submissions first.
+    /// Paragraphs written in more submissions than sessions — did not survive
+    /// the context they were given in. Most submissions first. A paragraph
+    /// that is both appears in both lists, because it wants both fixes.
     pub restated_blocks: Vec<RepeatedBlock>,
 }
 
@@ -141,11 +147,20 @@ impl PromptAnalyzer {
                 citations: record.citations,
                 text: with_text.then(|| text.clone()),
             };
+            // A paragraph can be both, and most are: written again in a new
+            // session, and written again inside one. The two failures want
+            // opposite fixes, so they are counted apart rather than by an
+            // exclusive branch that files one as the other. The split is
+            // exact — (occurrences - 1) is (sessions - 1) plus
+            // (submissions - sessions) plus (occurrences - submissions), and
+            // the last of those is one instruction saying a thing twice,
+            // which is neither failure.
             if sessions >= 2 {
-                cross_session_chars += chars * (block.occurrences - 1);
-                repeated.push(block);
-            } else {
-                restated_chars += chars * (submissions - 1);
+                cross_session_chars += chars * (sessions - 1);
+                repeated.push(block.clone());
+            }
+            if submissions > sessions {
+                restated_chars += chars * (submissions - sessions);
                 restated.push(block);
             }
         }

@@ -46,6 +46,8 @@ const CONTRACTS: &[(&str, &[&str])] = &[
         &[
             "repeated_blocks",
             "restated_blocks",
+            "cross_session_chars",
+            "restated_chars",
             "interventions",
             "post_commit_reedits",
             "compactions",

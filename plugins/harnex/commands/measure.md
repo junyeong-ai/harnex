@@ -100,11 +100,19 @@ and what the second added is a constraint that could have been given up front �
 the most directly installable thing this whole report produces. Hand the judge
 those pairs adjacent and in order.
 
-Three more inputs converge and should be read together: `prompts.repeated_blocks`
-(paragraphs retyped across sessions — never installed), `restated_blocks` (the
-same paragraph twice inside one session — did not survive its context), and the
-judge's recurring gaps (constraints never written down at all). The first is
-what the operator knows they repeat; the last is what they do not.
+Three more inputs converge and should be read together: `repeated_blocks`
+(paragraphs retyped in a session that did not yet hold them — never installed),
+`restated_blocks` (retyped inside a session that already held them — did not
+survive its context), and the judge's recurring gaps (constraints never written
+down at all). The first is what the operator knows they repeat; the last is
+what they do not.
+
+A paragraph is usually both, and the two want opposite fixes: installing it
+addresses the first and nothing else, while the second is a context budget.
+Report `cross_session_chars` and `restated_chars` separately and prescribe
+against whichever is larger — over one real corpus the split is 15% to 72%, and
+reading the total as the first would have prescribed installation for a problem
+installation does not touch.
 
 Where `compactions` is non-empty, read it against `restated_blocks` by
 timestamp: a paragraph retyped after a compaction is what that compaction cost.

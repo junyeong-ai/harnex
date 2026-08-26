@@ -12,7 +12,9 @@ paths:
 |---|---|
 | `record` | the transcript vocabulary, and every constant measured out of it |
 | `submission` | the instruction boundary, decided once for every analyser |
-| `prompt` | exact-paragraph repetition, across sessions and inside one |
+| `prompt` | exact-paragraph repetition, across sessions and inside one — a
+  paragraph is usually both and is counted in both, since the two failures
+  want opposite fixes |
 | `intervention` | steering and marked interrupts |
 | `harness` | what the project's harness did, and what it cost |
 | `rework` | edits to a file after the commit that shipped it |
