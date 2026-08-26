@@ -38,7 +38,7 @@ Downloads the ${BINARY} binary this project releases for your platform,
 verifies its checksum, and installs it. No Rust toolchain needed.
 
 Options:
-  --version <tag>   install this release instead of the latest (e.g. v0.1.1)
+  --version <tag>   install this release instead of the latest (e.g. v1.2.3)
   --build           build from source with cargo instead of downloading
   --rev <ref>       with --build, the commit or tag to build
   --bin-dir <path>  where the binary lands (default: \$HOME/.local/bin)
