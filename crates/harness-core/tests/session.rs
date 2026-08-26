@@ -951,3 +951,45 @@ fn a_sub_agent_counts_the_same_however_the_runtime_named_its_tool() {
         vec![("agent", "reviewer", 2), ("skill", "harnex", 1)]
     );
 }
+
+/// The system record marking where the context was compacted.
+fn compacted(session: &str, uuid: &str, ts: &str, pre: u64, post: u64, cumulative: u64) -> String {
+    format!(
+        r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","subtype":"compact_boundary","compactMetadata":{{"trigger":"manual","preTokens":{pre},"postTokens":{post},"cumulativeDroppedTokens":{cumulative},"durationMs":1200}}}}"#
+    )
+}
+
+#[test]
+fn a_compaction_is_read_as_an_event_and_not_as_an_unread_record_type() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            compacted("s1", "k1", "2026-08-01T10:00:00Z", 754_436, 15_645, 738_791),
+            compacted(
+                "s1",
+                "k2",
+                "2026-08-01T11:00:00Z",
+                700_000,
+                12_000,
+                1_426_791,
+            ),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.compactions.len(), 2);
+    assert_eq!(facts.compactions[0].trigger, "manual");
+    assert_eq!(facts.compactions[0].pre_tokens, 754_436);
+    assert_eq!(
+        facts.compactions[1].cumulative_dropped_tokens, 1_426_791,
+        "the runtime's running total, not this event's drop"
+    );
+    assert!(
+        !facts
+            .coverage
+            .record_types_unconsumed
+            .contains_key("system:compact_boundary")
+    );
+}

@@ -63,7 +63,7 @@ pub use harness::{
 };
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock};
-pub use record::{Authorship, Citation, Coverage};
+pub use record::{Authorship, Citation, Compaction, Coverage};
 pub use rework::{PostCommitReedit, ReworkFacts};
 pub use submission::{Submission, SubmissionIndex, systematic_sample};
 
@@ -94,6 +94,8 @@ pub struct SessionFacts {
     /// Empty unless [`CollectOptions::with_submissions`] asked for it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub submissions: Vec<Submission>,
+    /// Where the session's context was compacted, oldest first.
+    pub compactions: Vec<Compaction>,
     pub interventions: InterventionFacts,
     pub rework: ReworkFacts,
     pub harness: HarnessFacts,
@@ -114,6 +116,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut prompts = prompt::PromptAnalyzer::new(config.min_block_chars);
     let mut submissions = submission::SubmissionAnalyzer::new();
     let mut interventions = intervention::InterventionAnalyzer::new();
+    let mut compactions: Vec<Compaction> = Vec::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
 
@@ -138,6 +141,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                     prompts.observe(turn, id);
                 }
                 interventions.observe(turn);
+            }
+            if let record::Record::Compaction(c) = rec {
+                compactions.push(c.clone());
             }
             submissions.observe(rec, assigned);
             harness.observe(rec);
@@ -166,6 +172,10 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             false => Vec::new(),
         },
         interventions: interventions.finish(),
+        compactions: {
+            compactions.sort_by_key(|c| c.citation.timestamp);
+            compactions
+        },
         rework: rework.finish(),
         harness: harness.finish(options.with_text),
     })
