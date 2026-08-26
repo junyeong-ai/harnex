@@ -72,6 +72,9 @@ const RULE_LOAD_ATTACHMENT: &str = "nested_memory";
 /// The system record carrying one Stop event's hook accounting.
 const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
 
+/// The system record marking where the session's context was compacted.
+const COMPACT_BOUNDARY_SUBTYPE: &str = "compact_boundary";
+
 /// Tools that invoke a harness element, and the input key naming it.
 ///
 /// The only per-tool argument vocabulary this module admits, and it is admitted
@@ -271,6 +274,23 @@ pub struct AssistantTurn {
     pub actions: Vec<ToolAction>,
 }
 
+/// Where a session's context was compacted, and what it cost.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Compaction {
+    pub citation: Citation,
+    /// The runtime's own word for why. `manual` and `auto` over the local
+    /// corpus, kept as a string because the vocabulary is upstream.
+    pub trigger: String,
+    pub pre_tokens: u64,
+    pub post_tokens: u64,
+    /// The session's running total, not this event's drop. It equals
+    /// `pre_tokens - post_tokens` only on a session's first compaction — 52 of
+    /// 53 measured — and rises monotonically after, so summing it across a
+    /// session counts the same tokens again at every boundary.
+    pub cumulative_dropped_tokens: u64,
+    pub duration_ms: u64,
+}
+
 /// A project memory file that entered context.
 #[derive(Debug, Clone)]
 pub struct RuleLoad {
@@ -303,6 +323,7 @@ pub enum Record {
     Assistant(AssistantTurn),
     RuleLoad(RuleLoad),
     StopSummary(StopSummary),
+    Compaction(Compaction),
 }
 
 impl Record {
@@ -312,6 +333,7 @@ impl Record {
             Self::Assistant(a) => &a.citation,
             Self::RuleLoad(r) => &r.citation,
             Self::StopSummary(s) => &s.citation,
+            Self::Compaction(c) => &c.citation,
         }
     }
 }
@@ -392,6 +414,19 @@ impl Coverage {
 }
 
 #[derive(Deserialize)]
+struct RawCompactMetadata {
+    trigger: Option<String>,
+    #[serde(rename = "preTokens")]
+    pre_tokens: Option<u64>,
+    #[serde(rename = "postTokens")]
+    post_tokens: Option<u64>,
+    #[serde(rename = "cumulativeDroppedTokens")]
+    cumulative_dropped_tokens: Option<u64>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+}
+
+#[derive(Deserialize)]
 struct RawOrigin {
     kind: Option<String>,
 }
@@ -439,6 +474,8 @@ struct RawRecord {
     prevented_continuation: Option<bool>,
     #[serde(rename = "interruptedMessageId")]
     interrupted_message_id: Option<String>,
+    #[serde(rename = "compactMetadata")]
+    compact_metadata: Option<RawCompactMetadata>,
     cwd: Option<PathBuf>,
 }
 
@@ -683,6 +720,23 @@ pub fn read_transcript(
             }
             ConsumedType::System => {
                 let subtype = raw.subtype.as_deref().unwrap_or_default();
+                if subtype == COMPACT_BOUNDARY_SUBTYPE {
+                    let Some(meta) = raw.compact_metadata else {
+                        coverage.records_malformed += 1;
+                        continue;
+                    };
+                    out.push(Record::Compaction(Compaction {
+                        citation,
+                        trigger: meta.trigger.unwrap_or_default(),
+                        pre_tokens: meta.pre_tokens.unwrap_or_default(),
+                        post_tokens: meta.post_tokens.unwrap_or_default(),
+                        cumulative_dropped_tokens: meta
+                            .cumulative_dropped_tokens
+                            .unwrap_or_default(),
+                        duration_ms: meta.duration_ms.unwrap_or_default(),
+                    }));
+                    continue;
+                }
                 if subtype != STOP_SUMMARY_SUBTYPE {
                     coverage.count_unconsumed(format!("{kind}:{subtype}"));
                     continue;

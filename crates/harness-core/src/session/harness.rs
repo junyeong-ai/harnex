@@ -236,6 +236,7 @@ impl HarnessAnalyzer {
                         );
                 }
             }
+            Record::Compaction(_) => {}
             Record::Assistant(turn) => {
                 for asset in turn.actions.iter().filter_map(|a| a.asset.as_ref()) {
                     self.invocations

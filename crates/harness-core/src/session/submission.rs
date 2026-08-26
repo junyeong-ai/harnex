@@ -147,7 +147,7 @@ impl SubmissionAnalyzer {
                         .count();
                 }
             }
-            Record::RuleLoad(_) | Record::StopSummary(_) => {}
+            Record::RuleLoad(_) | Record::StopSummary(_) | Record::Compaction(_) => {}
         }
     }
 
