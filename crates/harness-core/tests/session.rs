@@ -869,3 +869,85 @@ fn baselines_measured_over_different_scopes_are_not_subtracted() {
 
     assert_eq!(err.code(), ErrorCode::SessionBaselineNotComparable);
 }
+
+/// An agent turn that invoked a harness element.
+fn invoked(session: &str, uuid: &str, ts: &str, tool: &str, key: &str, name: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"content":[{{"type":"tool_use","id":"i{uuid}","name":"{tool}","input":{{"{key}":"{name}"}}}}]}}}}"#
+    )
+}
+
+#[test]
+fn the_same_call_refused_twice_is_one_row_and_its_text_is_opt_in() {
+    let mut lines = vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)];
+    for second in [11, 12, 13] {
+        lines.extend(call_and_denial("s1", "Bash", "permission-rule", second));
+    }
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", lines)]);
+
+    let quiet = session::collect(&config, &CollectOptions::default()).unwrap();
+    let spoken = session::collect(
+        &config,
+        &CollectOptions {
+            with_text: true,
+            ..CollectOptions::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(quiet.harness.blocked.len(), 1, "one call, three attempts");
+    assert_eq!(quiet.harness.blocked[0].attempts, 3);
+    assert_eq!(quiet.harness.blocked[0].tool.as_deref(), Some("Bash"));
+    assert!(quiet.harness.blocked[0].input.is_none());
+    assert_eq!(
+        spoken.harness.blocked[0].input.as_ref().unwrap()["command"],
+        "x"
+    );
+}
+
+#[test]
+fn a_sub_agent_counts_the_same_however_the_runtime_named_its_tool() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            invoked(
+                "s1",
+                "x1",
+                "2026-08-01T09:00:01Z",
+                "Task",
+                "subagent_type",
+                "reviewer",
+            ),
+            invoked(
+                "s1",
+                "x2",
+                "2026-08-01T09:00:02Z",
+                "Agent",
+                "subagent_type",
+                "reviewer",
+            ),
+            invoked(
+                "s1",
+                "x3",
+                "2026-08-01T09:00:03Z",
+                "Skill",
+                "skill",
+                "harnex",
+            ),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    let by_name: Vec<_> = facts
+        .harness
+        .invocations
+        .iter()
+        .map(|i| (i.kind.as_str(), i.name.as_str(), i.calls))
+        .collect();
+    assert_eq!(
+        by_name,
+        vec![("agent", "reviewer", 2), ("skill", "harnex", 1)]
+    );
+}
