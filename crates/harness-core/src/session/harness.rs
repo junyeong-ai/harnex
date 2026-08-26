@@ -72,6 +72,48 @@ pub struct AssetInvocation {
     pub span: Span,
 }
 
+/// A key that is the same for any two equal inputs.
+///
+/// `schemars` enables `serde_json/preserve_order`, so a `Value`'s map is
+/// insertion-ordered and `to_string` reflects the order the keys arrived in
+/// rather than the value. Two identical calls whose arguments were emitted in
+/// a different order would key apart and each fall below the repeat threshold,
+/// so the ordering is imposed here instead of assumed there.
+fn canonical(value: &serde_json::Value) -> String {
+    fn write(value: &serde_json::Value, out: &mut String) {
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                out.push('{');
+                for (i, k) in keys.into_iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    out.push_str(&serde_json::Value::String(k.clone()).to_string());
+                    out.push(':');
+                    write(&map[k], out);
+                }
+                out.push('}');
+            }
+            serde_json::Value::Array(items) => {
+                out.push('[');
+                for (i, v) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write(v, out);
+                }
+                out.push(']');
+            }
+            other => out.push_str(&other.to_string()),
+        }
+    }
+    let mut out = String::new();
+    write(value, &mut out);
+    out
+}
+
 /// The span of one group, enough to check its count by hand.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Span {
@@ -201,10 +243,7 @@ impl HarnessAnalyzer {
                         .or_default()
                         .observe(&turn.citation, 0);
                     if let Some(input) = &denial.input {
-                        // serde_json orders object keys, so an input serialises
-                        // the same way every time it is equal — the grouping
-                        // needs no per-tool notion of which argument matters.
-                        let key = (denial.tool.clone(), input.to_string());
+                        let key = (denial.tool.clone(), canonical(input));
                         self.blocked
                             .entry(key)
                             .or_insert_with(|| (input.clone(), Group::default()))
@@ -335,6 +374,40 @@ impl HarnessAnalyzer {
             hook_errors: self.hook_errors,
             prevented_continuations: self.prevented_continuations,
         }
+    }
+}
+
+#[cfg(test)]
+mod canonical_tests {
+    use super::canonical;
+
+    #[test]
+    fn key_order_does_not_change_the_key() {
+        let a = serde_json::json!({"command": "ls", "description": "list", "timeout": 5});
+        let b: serde_json::Value =
+            serde_json::from_str(r#"{"timeout":5,"description":"list","command":"ls"}"#).unwrap();
+        assert_eq!(a, b, "serde_json compares maps by content");
+        assert_ne!(
+            a.to_string(),
+            b.to_string(),
+            "and serialises them by insertion order, which is why this exists"
+        );
+        assert_eq!(canonical(&a), canonical(&b));
+    }
+
+    #[test]
+    fn nesting_is_ordered_too() {
+        let a = serde_json::json!({"x": {"b": 1, "a": [ {"q": 1, "p": 2} ]}});
+        let b: serde_json::Value =
+            serde_json::from_str(r#"{"x":{"a":[{"p":2,"q":1}],"b":1}}"#).unwrap();
+        assert_eq!(canonical(&a), canonical(&b));
+    }
+
+    #[test]
+    fn different_values_keep_different_keys() {
+        let a = serde_json::json!({"command": "ls"});
+        let b = serde_json::json!({"command": "ls -l"});
+        assert_ne!(canonical(&a), canonical(&b));
     }
 }
 
