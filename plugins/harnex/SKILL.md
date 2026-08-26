@@ -29,6 +29,10 @@ pieces in `common/`, and one directory per supported language
 `<lang>/` directory plus its `*-dev` permission profile). Generated files are
 written to `${CLAUDE_PROJECT_DIR}` (the target repo).
 
+Measuring how the operator instructs Claude Code is `/harnex:measure`, a
+command outside this skill. Section 4 of its report is what turns a constraint
+supplied by hand every session into an `extend` verb.
+
 ## Invariants (every mode)
 
 1. **Compose templates; never free-generate safety-critical code.** Hook

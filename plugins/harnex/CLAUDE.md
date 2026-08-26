@@ -2,9 +2,11 @@
 
 The single-skill plugin: `SKILL.md` (entry; the mode menu lives in SKILL.md) +
 `reference/` (L1
-knowledge) + `templates/` (L2 safety-critical templates). Editing contract
-for this directory (the runtime content ships to installs; this file guides
-editing it, not using it):
+knowledge) + `templates/` (L2 safety-critical templates), alongside two
+component classes the skill does not own — `commands/` (user-invoked
+procedures) and `agents/` (the sub-agents those procedures dispatch). Editing
+contract for this directory (the runtime content ships to installs; this file
+guides editing it, not using it):
 
 - **Compose templates; never free-generate** a hook, permission rule, or
   timeout. The skill selects a language profile and fills declared params.
@@ -34,8 +36,18 @@ editing it, not using it):
   whole-key ownership is what would erase them. Every other top-level key is
   project-owned. `SKILL.md` § Invariants states the same partition; this is the
   editing contract's echo of it, not a second rule.
-- **Budgets:** `SKILL.md` body < 500 lines; `description` + `when_to_use`
-  ≤ 1536 chars, key use case first.
+- **Budgets:** `SKILL.md` body < 500 lines (`plugin_scaffold_validates` gates
+  it); `description` + `when_to_use` ≤ 1536 chars, key use case first. A
+  procedure that does not generate harness tooling belongs in `commands/`,
+  which has no such budget and is the honest component class for it — adding a
+  `skills/` directory would end single-skill discovery, so the skill is not the
+  place to put one.
+- **A shipped sub-agent's frontmatter is a contract.** Its `model` and `tools`
+  are silently ignored when misspelled, so `plugin_scaffold_validates` runs
+  `AgentValidator` with `reject_unknown_keys` over `agents/`. Any envelope
+  field a command or agent is written against is held to the schema by
+  `plugin_prose_sync`; add the name to its `CONTRACTS` table when a new
+  document depends on one.
 - **`templates/scaffold.toml` is the composition.** Which artifacts a harness
   contains, where each lands, which tier it belongs to, and how the project's
   copy relates to its template (`content.kind`: `copy` | `seed` | `managed` |
