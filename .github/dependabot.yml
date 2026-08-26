@@ -1,0 +1,21 @@
+version: 2
+
+# Grouped into one pull request per ecosystem per week. CI is the gate that
+# says whether an update is safe, and it runs `--locked`, so a grouped bump
+# either passes as a set or is rejected as one.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns: ["*"]
