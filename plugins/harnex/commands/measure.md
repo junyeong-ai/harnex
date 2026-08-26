@@ -53,8 +53,12 @@ own, so a delta on cost is a delta on the price list.
 ## 3 — Judge the instructions
 
 Dispatch `session-judge` over the sampled instructions, at most 25 per agent,
-batches in parallel. Each entry returns a kind, and a gap with a rewrite or
-null. Its contract is in its own file; do not restate or relax it here.
+batches in parallel. Each entry returns a kind, and a gap with the clause that
+closes it, or null. Its contract is in its own file; do not restate or relax it
+here.
+
+Report the share that came back `null`. A batch where nothing is null was not
+read, and the same is true of a batch where everything is.
 
 ## 4 — Cross the judge's kinds with the outcomes the oracle observed
 

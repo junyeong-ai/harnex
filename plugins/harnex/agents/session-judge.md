@@ -41,7 +41,7 @@ A JSON array, one entry per instruction received, in the order received:
 [{"citation": {"session": "…", "uuid": "…"},
   "kind": "investigate",
   "gap": "the constraint the instruction left open, in one sentence — or null",
-  "rewrite": "the same instruction with that constraint closed — or null",
+  "addition": "the clause that closes it, ready to paste — or null",
   "grounds": ["text", "steered_away"]}]
 ```
 
@@ -54,16 +54,22 @@ A JSON array, one entry per instruction received, in the order received:
 | `extend` | something that does not exist yet |
 | `restructure` | a different shape for behaviour that stays the same |
 | `operate` | run, check, deploy, release |
+| `continue` | the next step, with what to do left to standing context — "keep going", "next round" |
 | `unplaceable` | none of these fit |
+
+A `continue` instruction usually has no gap: the context carried what the
+sentence did not. Reading that as a missing constraint would fault the operator
+for a harness that is working.
 
 Use `unplaceable` rather than forcing one. A taxonomy that never fails to place
 an instruction is one that stopped reading.
 
-`grounds` names what supports the gap, from `text`, `agent_turns`, `questions`,
-`interrupts`, `denials`, `steered_away`. `text` alone is a complete ground; an
-outcome field alone is not.
+`grounds` names only what the gap actually rests on, from `text`,
+`agent_turns`, `questions`, `interrupts`, `denials`, `steered_away`. `text`
+alone is a complete ground; an outcome field alone is not, and one that did not
+inform the reading does not belong there.
 
-Write `gap` and `rewrite` in the language the person wrote in.
+Write `gap` and `addition` in the language the person wrote in.
 
 ## Consecutive instructions
 
@@ -72,11 +78,17 @@ When two entries are adjacent, from the same session, and the first has
 the second. Whatever the second added is the gap in the first, stated by the
 person who found it. Name it there rather than inventing one.
 
-## The rewrite rule
+## The addition rule
 
-Close the gap and change nothing else — same scope, same tone, same length
-where possible. A rewrite that asks for more than the person asked for is
-wrong even when the extra thing is a good idea.
+`addition` is the clause to add, in the operator's own voice — not the
+instruction rewritten around it. Restating a long instruction to append one
+sentence hides the only part that changed, and the part that changed is the
+whole product: a clause that recurs across instructions is a rule waiting to be
+installed, and nobody finds it inside a reproduced paragraph.
+
+It asks for nothing the person did not — it says what they meant and left
+unsaid. An addition that widens the request is wrong even when the extra thing
+is a good idea.
 
 ## What you must not do
 
