@@ -304,6 +304,7 @@ mod boundary_tests {
             denial: Some(Denial {
                 kind: "user-rejected".into(),
                 tool: None,
+                input: None,
             }),
             ..turn("s1", "u1", 100)
         };

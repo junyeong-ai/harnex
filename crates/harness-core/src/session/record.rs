@@ -72,6 +72,38 @@ const RULE_LOAD_ATTACHMENT: &str = "nested_memory";
 /// The system record carrying one Stop event's hook accounting.
 const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
 
+/// Tools that invoke a harness element, and the input key naming it.
+///
+/// The only per-tool argument vocabulary this module admits, and it is admitted
+/// because the value is an element's own name rather than anything the operator
+/// wrote — which is what lets it be reported plainly. `Task` and `Agent` both
+/// appear because the runtime renamed the tool and the corpus spans both.
+/// Slash commands are absent: their `command` carries arguments as well as a
+/// name, so it is operator text and not an element.
+const ASSET_TOOL_KEYS: &[(&str, &str, &str)] = &[
+    ("Skill", "skill", "skill"),
+    ("Task", "subagent_type", "agent"),
+    ("Agent", "subagent_type", "agent"),
+];
+
+/// A harness element a tool call invoked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AssetCall {
+    /// `skill` or `agent`, unified across the tool rename.
+    pub kind: String,
+    pub name: String,
+}
+
+fn asset_of(tool: &str, input: &serde_json::Value) -> Option<AssetCall> {
+    let (key, kind) = ASSET_TOOL_KEYS
+        .iter()
+        .find_map(|(t, key, kind)| (*t == tool).then_some((*key, *kind)))?;
+    Some(AssetCall {
+        kind: kind.to_string(),
+        name: input.get(key)?.as_str()?.to_string(),
+    })
+}
+
 /// Record types this module reads. Everything else is counted by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConsumedType {
@@ -169,6 +201,11 @@ pub struct Denial {
     /// The tool named by the call this denial answered, resolved through
     /// `tool_use_id`. `None` when the call is not in the same transcript.
     pub tool: Option<String>,
+    /// The refused call's own input, which is what makes two refusals the same
+    /// refusal without this module deciding which of a tool's arguments
+    /// matters. Operator-written, so it is grouped on always and reported only
+    /// when the caller asks for text.
+    pub input: Option<serde_json::Value>,
 }
 
 /// One tool invocation, reduced to what an equality test needs.
@@ -176,10 +213,13 @@ pub struct Denial {
 /// `input` stays private and unserialised: a Bash input carries the operator's
 /// command text, and the envelope is not a place for it. Comparing whole
 /// inputs rather than a per-tool "target" field keeps every tool's argument
-/// vocabulary out of this crate.
+/// vocabulary out of this crate — [`ASSET_TOOL_KEYS`] is the one exception,
+/// and it is one because an element's name is not operator text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolAction {
     pub tool: String,
+    /// The harness element this call invoked, if it invoked one.
+    pub asset: Option<AssetCall>,
     input: serde_json::Value,
 }
 
@@ -496,7 +536,7 @@ pub fn read_transcript(
     let mut out = Vec::new();
     // A tool call always precedes its result inside one transcript, so a single
     // forward pass resolves every denial to the tool it answered.
-    let mut tool_names: HashMap<String, String> = HashMap::new();
+    let mut tool_calls: HashMap<String, (String, serde_json::Value)> = HashMap::new();
     let mut agent_output_since_user_turn = false;
 
     for line in reader.lines() {
@@ -560,9 +600,13 @@ pub fn read_transcript(
                 let authorship = classify(&raw);
                 coverage.count_authorship(authorship);
                 let result = raw.tool_use_result.as_ref();
-                let denial = raw.tool_denial_kind.as_ref().map(|k| Denial {
-                    kind: k.clone(),
-                    tool: tool_use_id_of(content).and_then(|id| tool_names.get(id).cloned()),
+                let denial = raw.tool_denial_kind.as_ref().map(|k| {
+                    let call = tool_use_id_of(content).and_then(|id| tool_calls.get(id));
+                    Denial {
+                        kind: k.clone(),
+                        tool: call.map(|(tool, _)| tool.clone()),
+                        input: call.map(|(_, input)| input.clone()),
+                    }
                 });
                 out.push(Record::User(UserTurn {
                     citation,
@@ -592,15 +636,17 @@ pub fn read_transcript(
                     let Some(tool) = block.get("name").and_then(serde_json::Value::as_str) else {
                         continue;
                     };
+                    let input = block
+                        .get("input")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     if let Some(id) = block.get("id").and_then(serde_json::Value::as_str) {
-                        tool_names.insert(id.to_string(), tool.to_string());
+                        tool_calls.insert(id.to_string(), (tool.to_string(), input.clone()));
                     }
                     actions.push(ToolAction {
                         tool: tool.to_string(),
-                        input: block
-                            .get("input")
-                            .cloned()
-                            .unwrap_or(serde_json::Value::Null),
+                        asset: asset_of(tool, &input),
+                        input,
                     });
                 }
                 agent_output_since_user_turn = true;
@@ -843,14 +889,17 @@ mod tests {
     fn same_action_compares_whole_input_without_naming_a_field() {
         let a = ToolAction {
             tool: "Bash".into(),
+            asset: None,
             input: serde_json::json!({"command": "ls", "timeout": 5}),
         };
         let b = ToolAction {
             tool: "Bash".into(),
+            asset: None,
             input: serde_json::json!({"timeout": 5, "command": "ls"}),
         };
         let c = ToolAction {
             tool: "Bash".into(),
+            asset: None,
             input: serde_json::json!({"command": "ls -l"}),
         };
         assert!(a.same_action(&b));

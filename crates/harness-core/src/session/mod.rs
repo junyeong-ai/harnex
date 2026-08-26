@@ -58,7 +58,9 @@ use crate::error::{Error, Result};
 pub use baseline::{
     Baseline, BaselineDiff, BaselineLedger, Measurement, MetricDelta, SessionMetric,
 };
-pub use harness::{DenialGroup, HarnessFacts, HookCost, RuleLoadGroup};
+pub use harness::{
+    AssetInvocation, BlockedCall, DenialGroup, HarnessFacts, HookCost, RuleLoadGroup,
+};
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock};
 pub use record::{Authorship, Citation, Coverage};
@@ -165,7 +167,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         },
         interventions: interventions.finish(),
         rework: rework.finish(),
-        harness: harness.finish(),
+        harness: harness.finish(options.with_text),
     })
 }
 

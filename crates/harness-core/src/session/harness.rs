@@ -6,13 +6,18 @@
 //! the harness acting on the work. None of it means anything on its own, which
 //! is why this sits behind the operator-side facts rather than in front of them.
 //!
-//! Denials are grouped by `(kind, tool)` and no finer. The runtime writes its
-//! reason into the message text — which rule matched, or which part of a
-//! compound command needed approval — and reading that would be a pattern match
-//! against a literal that reports zero the day it is reworded. `tool_use_id`
-//! resolves the tool structurally instead, on 100% of the denials measured, and
-//! the rule that matched is simply not recorded anywhere. That limit is
-//! reported rather than worked around.
+//! Denials answer two questions and are grouped twice, because the two are not
+//! the same. By `(kind, tool)` is who refused. By the refused call's own input
+//! is what the operator keeps trying and cannot run — the friction the harness
+//! puts in their way, which is the deletion candidate a cost figure is not.
+//!
+//! Neither grouping reaches the rule that matched. The runtime writes its
+//! reason into the message text — which rule, or which part of a compound
+//! command needed approval — and reading that would be a pattern match against
+//! a literal that reports zero the day it is reworded. `tool_use_id` resolves
+//! the call structurally instead, on 100% of the denials measured, and the
+//! matching rule is simply not recorded anywhere. That limit is reported
+//! rather than worked around.
 //!
 //! ## What this module refuses to do
 //!
@@ -35,6 +40,37 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use super::record::{Citation, Record};
+
+/// A call that met a refusal more than once.
+///
+/// Once is not a pattern, the same threshold `prompt` applies to a paragraph,
+/// and it is what separates a wall the operator keeps walking into from the
+/// ordinary friction of a broad rule. Measured over the local corpus the
+/// distinction matters: 2,848 refusals fall across 2,718 distinct calls, so
+/// listing every one would present diffuse friction as a list of habits.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct BlockedCall {
+    pub tool: Option<String>,
+    /// The refused call's input. Operator-written, so present only when the
+    /// caller asked for text; the grouping is on it either way.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<serde_json::Value>,
+    pub attempts: usize,
+    pub span: Span,
+}
+
+/// A harness element and how often it was actually invoked.
+///
+/// The other half of the question — which elements exist and were never
+/// invoked — needs the project's own tree, so it belongs to a project-scoped
+/// window and not here.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AssetInvocation {
+    pub kind: String,
+    pub name: String,
+    pub calls: usize,
+    pub span: Span,
+}
 
 /// The span of one group, enough to check its count by hand.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -91,6 +127,11 @@ pub struct HookCost {
 pub struct HarnessFacts {
     /// Most denials first.
     pub denials: Vec<DenialGroup>,
+    /// The same refusals grouped by the call that met them, most attempts
+    /// first. Where the harness and the operator's habits disagree.
+    pub blocked: Vec<BlockedCall>,
+    /// Harness elements that were invoked, most calls first.
+    pub invocations: Vec<AssetInvocation>,
     /// Most characters first — the cost of having the rule, not its rank.
     pub rule_loads: Vec<RuleLoadGroup>,
     /// Most milliseconds first.
@@ -137,6 +178,8 @@ impl Group {
 #[derive(Default)]
 pub struct HarnessAnalyzer {
     denials: HashMap<(String, Option<String>), Group>,
+    blocked: HashMap<(Option<String>, String), (serde_json::Value, Group)>,
+    invocations: HashMap<(String, String), Group>,
     rules: HashMap<PathBuf, Group>,
     hooks: HashMap<String, Group>,
     stops: usize,
@@ -157,6 +200,17 @@ impl HarnessAnalyzer {
                         .entry((denial.kind.clone(), denial.tool.clone()))
                         .or_default()
                         .observe(&turn.citation, 0);
+                    if let Some(input) = &denial.input {
+                        // serde_json orders object keys, so an input serialises
+                        // the same way every time it is equal — the grouping
+                        // needs no per-tool notion of which argument matters.
+                        let key = (denial.tool.clone(), input.to_string());
+                        self.blocked
+                            .entry(key)
+                            .or_insert_with(|| (input.clone(), Group::default()))
+                            .1
+                            .observe(&turn.citation, 0);
+                    }
                 }
             }
             Record::RuleLoad(load) => {
@@ -182,11 +236,52 @@ impl HarnessAnalyzer {
                         );
                 }
             }
-            Record::Assistant(_) => {}
+            Record::Assistant(turn) => {
+                for asset in turn.actions.iter().filter_map(|a| a.asset.as_ref()) {
+                    self.invocations
+                        .entry((asset.kind.clone(), asset.name.clone()))
+                        .or_default()
+                        .observe(&turn.citation, 0);
+                }
+            }
         }
     }
 
-    pub fn finish(self) -> HarnessFacts {
+    pub fn finish(self, with_text: bool) -> HarnessFacts {
+        let mut blocked: Vec<BlockedCall> = self
+            .blocked
+            .into_iter()
+            .filter(|(_, (_, g))| g.count > 1)
+            .map(|((tool, _), (input, g))| BlockedCall {
+                tool,
+                input: with_text.then_some(input),
+                attempts: g.count,
+                span: g.span(),
+            })
+            .collect();
+        blocked.sort_by(|a, b| {
+            b.attempts
+                .cmp(&a.attempts)
+                .then(a.span.first.timestamp.cmp(&b.span.first.timestamp))
+        });
+
+        let mut invocations: Vec<AssetInvocation> = self
+            .invocations
+            .into_iter()
+            .map(|((kind, name), g)| AssetInvocation {
+                kind,
+                name,
+                calls: g.count,
+                span: g.span(),
+            })
+            .collect();
+        invocations.sort_by(|a, b| {
+            b.calls
+                .cmp(&a.calls)
+                .then(a.kind.cmp(&b.kind))
+                .then(a.name.cmp(&b.name))
+        });
+
         let mut denials: Vec<DenialGroup> = self
             .denials
             .into_iter()
@@ -231,6 +326,8 @@ impl HarnessAnalyzer {
 
         HarnessFacts {
             denials,
+            blocked,
+            invocations,
             rule_loads,
             hooks,
             stops: self.stops,
@@ -267,6 +364,7 @@ mod tests {
             denial: Some(Denial {
                 kind: kind.into(),
                 tool: tool.map(str::to_string),
+                input: None,
             }),
         })
     }
@@ -299,7 +397,7 @@ mod tests {
         for r in records {
             a.observe(r);
         }
-        a.finish()
+        a.finish(false)
     }
 
     #[test]
