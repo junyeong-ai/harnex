@@ -31,6 +31,7 @@ pub enum SchemaTarget {
     Event,
     Permissions,
     ErrorCodes,
+    Session,
     All,
 }
 
@@ -42,6 +43,7 @@ impl SchemaTarget {
         Self::Event,
         Self::Permissions,
         Self::ErrorCodes,
+        Self::Session,
         Self::All,
     ];
 
@@ -53,6 +55,7 @@ impl SchemaTarget {
             "event" => Self::Event,
             "permissions" => Self::Permissions,
             "error-codes" => Self::ErrorCodes,
+            "session" => Self::Session,
             "all" => Self::All,
             _ => return None,
         })
@@ -66,6 +69,7 @@ impl SchemaTarget {
             Self::Event => "event",
             Self::Permissions => "permissions",
             Self::ErrorCodes => "error-codes",
+            Self::Session => "session",
             Self::All => "all",
         }
     }
@@ -73,6 +77,8 @@ impl SchemaTarget {
 
 /// Emit the JSON Schema for `target` as a serde_json::Value (already shaped
 /// as a `$schema`-tagged object).
+use crate::session::SessionFacts;
+
 pub fn schema_for(target: SchemaTarget) -> Value {
     match target {
         SchemaTarget::Config => to_value(schemars::schema_for!(Config)),
@@ -81,6 +87,7 @@ pub fn schema_for(target: SchemaTarget) -> Value {
         SchemaTarget::Event => to_value(schemars::schema_for!(Event)),
         SchemaTarget::Permissions => to_value(schemars::schema_for!(PermissionsBlock)),
         SchemaTarget::ErrorCodes => error_codes_schema(),
+        SchemaTarget::Session => to_value(schemars::schema_for!(SessionFacts)),
         SchemaTarget::All => all_schemas(),
     }
 }
@@ -102,15 +109,18 @@ fn error_codes_schema() -> Value {
     })
 }
 
+/// Every named target, keyed by its own [`SchemaTarget::as_str`].
+///
+/// Derived from [`SchemaTarget::ALL`] rather than listed again: a hand-written
+/// bundle silently omits the next target, and so does a test that checks the
+/// bundle against a second hand-written list.
 fn all_schemas() -> Value {
-    serde_json::json!({
-        "config": schema_for(SchemaTarget::Config),
-        "envelope": schema_for(SchemaTarget::Envelope),
-        "finding": schema_for(SchemaTarget::Finding),
-        "event": schema_for(SchemaTarget::Event),
-        "permissions": schema_for(SchemaTarget::Permissions),
-        "error-codes": schema_for(SchemaTarget::ErrorCodes),
-    })
+    let bundle: serde_json::Map<String, Value> = SchemaTarget::ALL
+        .iter()
+        .filter(|t| !matches!(t, SchemaTarget::All))
+        .map(|t| (t.as_str().to_string(), schema_for(*t)))
+        .collect();
+    Value::Object(bundle)
 }
 
 /// Every known ErrorCode string, derived from the single list the schema
@@ -188,15 +198,15 @@ mod tests {
     #[test]
     fn all_schemas_emits_every_named_target() {
         let v = schema_for(SchemaTarget::All);
-        for k in [
-            "config",
-            "envelope",
-            "finding",
-            "event",
-            "permissions",
-            "error-codes",
-        ] {
-            assert!(v.get(k).is_some(), "all-bundle missing '{k}'");
+        for target in SchemaTarget::ALL {
+            if matches!(target, SchemaTarget::All) {
+                continue;
+            }
+            assert!(
+                v.get(target.as_str()).is_some(),
+                "all-bundle missing '{}'",
+                target.as_str()
+            );
         }
     }
 
@@ -219,6 +229,7 @@ mod tests {
             "event",
             "permissions",
             "error-codes",
+            "session",
             "all",
         ];
         assert_eq!(SchemaTarget::ALL.len(), known_strings.len());

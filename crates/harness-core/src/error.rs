@@ -52,6 +52,8 @@ pub enum ErrorCode {
     GraphResponseInvalid,
     GraphSpawnFailure,
     CheckGitFailure,
+    SessionRootUnreadable,
+    SessionCoverageBelowFloor,
 }
 
 impl ErrorCode {
@@ -90,6 +92,8 @@ impl ErrorCode {
         Self::GraphResponseInvalid,
         Self::GraphSpawnFailure,
         Self::CheckGitFailure,
+        Self::SessionRootUnreadable,
+        Self::SessionCoverageBelowFloor,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -123,6 +127,8 @@ impl ErrorCode {
             Self::GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
             Self::GraphSpawnFailure => "GRAPH_SPAWN_FAILURE",
             Self::CheckGitFailure => "CHECK_GIT_FAILURE",
+            Self::SessionRootUnreadable => "SESSION_ROOT_UNREADABLE",
+            Self::SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
         }
     }
 }
@@ -238,6 +244,16 @@ pub enum Error {
 
     #[error("git command failed: {message}")]
     CheckGitFailure { message: String },
+
+    #[error("session root {path} unreadable: {message}")]
+    SessionRootUnreadable { path: PathBuf, message: String },
+
+    #[error("session coverage {observed:.3} is below the configured floor {floor:.3}: {message}")]
+    SessionCoverageBelowFloor {
+        observed: f64,
+        floor: f64,
+        message: String,
+    },
 }
 
 impl Error {
@@ -276,6 +292,8 @@ impl Error {
             Self::GraphResponseInvalid { .. } => ErrorCode::GraphResponseInvalid,
             Self::GraphSpawnFailure { .. } => ErrorCode::GraphSpawnFailure,
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
+            Self::SessionRootUnreadable { .. } => ErrorCode::SessionRootUnreadable,
+            Self::SessionCoverageBelowFloor { .. } => ErrorCode::SessionCoverageBelowFloor,
         }
     }
 
@@ -336,6 +354,12 @@ impl Error {
             ),
             Self::LifecycleDecisionTextEmpty => Some(
                 "pass a non-empty --decision-text; the toolkit refuses to invent promotion rationale",
+            ),
+            Self::SessionRootUnreadable { .. } => Some(
+                "check [session] roots in harness.toml: every root must name a readable directory",
+            ),
+            Self::SessionCoverageBelowFloor { .. } => Some(
+                "widen the window, or lower [session] coverage_floor once you accept the bias it admits",
             ),
             _ => None,
         }

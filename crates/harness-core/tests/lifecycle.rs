@@ -589,6 +589,7 @@ fn build_sweep_config(tmp_path: &std::path::Path, extra_kinds: Vec<KindDecl>) ->
         lifecycle: Some(default_lifecycle(tmp_path.join("obs"))),
         retirement: None,
         guard: None,
+        session: None,
     };
     cfg.validate().unwrap();
     cfg

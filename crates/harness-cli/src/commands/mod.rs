@@ -8,6 +8,7 @@ pub mod graph;
 pub mod guard;
 pub mod lifecycle;
 pub mod policy;
+pub mod session;
 pub mod telemetry;
 pub mod validate;
 

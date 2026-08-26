@@ -54,6 +54,34 @@ pub struct Config {
     pub retirement: Option<RetirementConfig>,
     #[serde(default)]
     pub guard: Option<GuardConfig>,
+    #[serde(default)]
+    pub session: Option<SessionConfig>,
+}
+
+/// Where Claude Code transcripts live, and the two parameters reading them needs.
+///
+/// `roots` has no default on purpose. It is a machine-global path, and a
+/// built-in one would put the author's layout into a binary that runs on other
+/// machines — Constitution VII, applied to a path rather than a threshold.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SessionConfig {
+    pub roots: Vec<String>,
+    /// Shortest paragraph that counts as a repeatable block. Below it, ordinary
+    /// sentence fragments recur between unrelated prompts and the repeat signal
+    /// drowns.
+    #[serde(default = "default_min_block_chars")]
+    pub min_block_chars: usize,
+    /// Share of person-attributed turns that must carry a recognised prompt
+    /// source before rate-reporting commands will answer.
+    #[serde(default = "default_coverage_floor")]
+    pub coverage_floor: f64,
+}
+
+fn default_min_block_chars() -> usize {
+    40
+}
+fn default_coverage_floor() -> f64 {
+    0.95
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -439,6 +467,7 @@ impl Config {
         self.validate_policy()?;
         self.validate_lifecycle()?;
         self.validate_guard()?;
+        self.validate_session()?;
         Ok(())
     }
 
@@ -857,6 +886,41 @@ impl Config {
         Ok(())
     }
 
+    fn validate_session(&self) -> Result<()> {
+        let Some(sess) = &self.session else {
+            return Ok(());
+        };
+        if sess.roots.is_empty() {
+            return Err(Error::ConfigInvalid {
+                message: "[session] roots is empty; declare where transcripts live (there is no built-in default)".into(),
+                location: None,
+            });
+        }
+        if let Some(blank) = sess.roots.iter().find(|r| r.trim().is_empty()) {
+            return Err(Error::ConfigInvalid {
+                message: format!("[session] roots contains a blank entry ({blank:?})"),
+                location: None,
+            });
+        }
+        if sess.min_block_chars == 0 {
+            return Err(Error::ConfigInvalid {
+                message: "[session] min_block_chars is 0; every paragraph would count as repeated"
+                    .into(),
+                location: None,
+            });
+        }
+        if !(0.0..=1.0).contains(&sess.coverage_floor) {
+            return Err(Error::ConfigInvalid {
+                message: format!(
+                    "[session] coverage_floor {} is outside 0.0..=1.0",
+                    sess.coverage_floor
+                ),
+                location: None,
+            });
+        }
+        Ok(())
+    }
+
     fn validate_guard(&self) -> Result<()> {
         let Some(g) = &self.guard else {
             return Ok(());
@@ -953,6 +1017,73 @@ mod tests {
         assert!(cfg.kinds.is_empty());
         assert!(cfg.evidence.is_none());
         assert!(cfg.telemetry.is_none());
+    }
+
+    #[test]
+    fn session_roots_have_no_default_because_the_path_is_machine_global() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [session]
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+    }
+
+    #[test]
+    fn rejects_a_blank_session_root() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [session]
+            roots = ["~/.claude/projects", "  "]
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+    }
+
+    #[test]
+    fn rejects_a_zero_min_block_chars() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [session]
+            roots = ["~/.claude/projects"]
+            min_block_chars = 0
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+    }
+
+    #[test]
+    fn rejects_a_coverage_floor_outside_zero_to_one() {
+        for bad in ["-0.1", "1.5"] {
+            let src = format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+                [session]
+                roots = ["~/.claude/projects"]
+                coverage_floor = {bad}
+                "#
+            );
+            assert_eq!(
+                parse(&src).unwrap_err().code(),
+                ErrorCode::ConfigInvalid,
+                "coverage_floor={bad} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_a_session_section_with_only_roots() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [session]
+            roots = ["~/.claude/projects"]
+        "#;
+        let cfg = parse(src).unwrap();
+        let session = cfg.session.unwrap();
+        assert_eq!(session.min_block_chars, 40);
+        assert_eq!(session.coverage_floor, 0.95);
     }
 
     #[test]
