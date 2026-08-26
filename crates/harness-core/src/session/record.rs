@@ -31,9 +31,10 @@
 //!   addition lowers coverage instead of entering the statistics.
 //! - Never model the full record vocabulary. Unconsumed types and subtypes are
 //!   counted, not rejected and not dropped.
-//! - Never carry prompt text or tool input into a serialised shape. Text is
-//!   held for analysis and released; [`ToolAction`] compares inputs in memory
-//!   and serialises only the tool name.
+//! - Never carry prompt text or tool input into a serialised shape the caller
+//!   did not ask for. Text is held for analysis and released; the one call
+//!   input that survives its record rides [`Denial`], because a refusal is
+//!   only legible as the thing that was refused.
 //! - Never treat "read nothing" as "found nothing". A discovered file that
 //!   cannot be opened is counted, and the caller is told.
 
@@ -211,25 +212,18 @@ pub struct Denial {
     pub input: Option<serde_json::Value>,
 }
 
-/// One tool invocation, reduced to what an equality test needs.
+/// One tool invocation, reduced to what this module reads.
 ///
-/// `input` stays private and unserialised: a Bash input carries the operator's
-/// command text, and the envelope is not a place for it. Comparing whole
-/// inputs rather than a per-tool "target" field keeps every tool's argument
-/// vocabulary out of this crate — [`ASSET_TOOL_KEYS`] is the one exception,
-/// and it is one because an element's name is not operator text.
-#[derive(Debug, Clone, PartialEq)]
+/// The arguments do not survive the record: a Bash input carries the
+/// operator's command text, and what a call did is read from the tool it
+/// named. [`ASSET_TOOL_KEYS`] is the one place a tool's argument vocabulary
+/// enters this crate, and it is one because a harness element's name is not
+/// operator text.
+#[derive(Debug, Clone)]
 pub struct ToolAction {
     pub tool: String,
     /// The harness element this call invoked, if it invoked one.
     pub asset: Option<AssetCall>,
-    input: serde_json::Value,
-}
-
-impl ToolAction {
-    pub fn same_action(&self, other: &Self) -> bool {
-        self.tool == other.tool && self.input == other.input
-    }
 }
 
 /// A user turn, reduced to what this module reads.
@@ -739,14 +733,13 @@ pub fn read_transcript(
                         .get("input")
                         .cloned()
                         .unwrap_or(serde_json::Value::Null);
-                    if let Some(id) = block.get("id").and_then(serde_json::Value::as_str) {
-                        tool_calls.insert(id.to_string(), (tool.to_string(), input.clone()));
-                    }
                     actions.push(ToolAction {
                         tool: tool.to_string(),
                         asset: asset_of(tool, &input),
-                        input,
                     });
+                    if let Some(id) = block.get("id").and_then(serde_json::Value::as_str) {
+                        tool_calls.insert(id.to_string(), (tool.to_string(), input));
+                    }
                 }
                 agent_output_since_user_turn = true;
                 let message = raw.message.as_ref();
@@ -1012,27 +1005,6 @@ mod tests {
             }
             _ => panic!("expected a stop summary"),
         }
-    }
-
-    #[test]
-    fn same_action_compares_whole_input_without_naming_a_field() {
-        let a = ToolAction {
-            tool: "Bash".into(),
-            asset: None,
-            input: serde_json::json!({"command": "ls", "timeout": 5}),
-        };
-        let b = ToolAction {
-            tool: "Bash".into(),
-            asset: None,
-            input: serde_json::json!({"timeout": 5, "command": "ls"}),
-        };
-        let c = ToolAction {
-            tool: "Bash".into(),
-            asset: None,
-            input: serde_json::json!({"command": "ls -l"}),
-        };
-        assert!(a.same_action(&b));
-        assert!(!a.same_action(&c));
     }
 
     #[test]
