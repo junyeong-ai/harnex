@@ -29,6 +29,7 @@ text and what followed it:
 | `questions` | times the agent stopped to ask instead of choosing |
 | `edits` · `files` · `commits` | what changed under it |
 | `tokens` · `models` | what it spent, and which models spent it |
+| `tools` | tool calls made under it, by tool — how the work was actually done |
 | `interrupts` · `denials` | interruptions marked, tool calls stopped |
 | `steered_away` | the next instruction arrived before this one was answered |
 
@@ -63,6 +64,13 @@ an instruction is one that stopped reading.
 outcome field alone is not.
 
 Write `gap` and `rewrite` in the language the person wrote in.
+
+## Consecutive instructions
+
+When two entries are adjacent, from the same session, and the first has
+`steered_away`, read them as a pair: the operator stopped the first and said
+the second. Whatever the second added is the gap in the first, stated by the
+person who found it. Name it there rather than inventing one.
 
 ## The rewrite rule
 

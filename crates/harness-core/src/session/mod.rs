@@ -48,6 +48,7 @@ pub mod repository;
 pub mod rework;
 pub mod submission;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use jiff::Timestamp;
@@ -101,6 +102,10 @@ pub struct SessionFacts {
     /// What the window spent, whether or not the caller asked for the
     /// instruction list.
     pub tokens: TokenUse,
+    /// Tool calls across the window, by tool. Read beside `harness.denials`,
+    /// which groups by the same names: friction is as much a function of which
+    /// tool the work goes through as of how broad a rule is.
+    pub tools: BTreeMap<String, usize>,
     /// What became of the commits the window produced. Present only for a
     /// window scoped to a project, and only when that project is a git work
     /// tree — nothing else can be asked what survived.
@@ -129,6 +134,8 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut compactions: Vec<Compaction> = Vec::new();
     let mut tokens = TokenUse::default();
     let mut commits: Vec<String> = Vec::new();
+    let mut tools: BTreeMap<String, usize> = BTreeMap::new();
+    let mut sessions: BTreeSet<String> = BTreeSet::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
 
@@ -146,6 +153,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             }
         };
         for rec in &records {
+            sessions.insert(rec.citation().session.clone());
             let mut assigned = None;
             if let record::Record::User(turn) = rec {
                 assigned = index.assign(turn);
@@ -156,7 +164,12 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             }
             match rec {
                 record::Record::Compaction(c) => compactions.push(c.clone()),
-                record::Record::Assistant(turn) => tokens.add(turn.tokens),
+                record::Record::Assistant(turn) => {
+                    tokens.add(turn.tokens);
+                    for action in &turn.actions {
+                        *tools.entry(action.tool.clone()).or_default() += 1;
+                    }
+                }
                 record::Record::User(turn) => {
                     if let Some(sha) = &turn.commit {
                         commits.push(sha.clone());
@@ -183,6 +196,8 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         });
     }
 
+    coverage.sessions = sessions.len();
+
     Ok(SessionFacts {
         coverage,
         prompts: prompts.finish(index.count(), options.with_text),
@@ -196,6 +211,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             compactions
         },
         tokens,
+        tools,
         repository: match &options.project {
             Some(project) => repository::survey(project, &commits)?,
             None => None,

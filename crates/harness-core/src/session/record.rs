@@ -387,6 +387,9 @@ pub struct Coverage {
     /// Models observed across the input. A window whose model mix moved is a
     /// window whose token counts moved for a reason that is not the operator.
     pub models: BTreeSet<String>,
+    /// Sessions the window drew from. The denominator for anything about how
+    /// work was split up rather than how it was instructed.
+    pub sessions: usize,
     /// Timestamp of the earliest record counted, and of the latest.
     ///
     /// The span the numbers describe, which is not the span the caller asked

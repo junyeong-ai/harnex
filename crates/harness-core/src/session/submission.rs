@@ -20,7 +20,7 @@
 //!   time-ordered list, so a window always yields the same subset and the
 //!   subset spans the window rather than its beginning.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -90,6 +90,9 @@ pub struct Submission {
     pub agent_turns: usize,
     /// What those turns spent.
     pub tokens: TokenUse,
+    /// Tool calls made under it, by tool. How the work was actually done,
+    /// which is the half of a costly instruction its wording does not show.
+    pub tools: BTreeMap<String, usize>,
     /// Models that answered it. More than one means a comparison of token
     /// counts against another instruction is comparing model mixes too.
     pub models: Vec<String>,
@@ -154,6 +157,9 @@ impl SubmissionAnalyzer {
                         .iter()
                         .filter(|a| a.tool == CLARIFYING_QUESTION_TOOL)
                         .count();
+                    for action in &turn.actions {
+                        *held.tools.entry(action.tool.clone()).or_default() += 1;
+                    }
                     if let Some(model) = &turn.model {
                         self.models.entry(at).or_default().insert(model.clone());
                     }
@@ -188,6 +194,7 @@ impl SubmissionAnalyzer {
             chars: text.chars().count(),
             agent_turns: 0,
             tokens: TokenUse::default(),
+            tools: BTreeMap::new(),
             models: Vec::new(),
             questions: 0,
             edits: 0,
@@ -347,6 +354,7 @@ mod sample_tests {
             chars: 1,
             agent_turns: 0,
             tokens: TokenUse::default(),
+            tools: BTreeMap::new(),
             models: Vec::new(),
             questions: 0,
             edits: 0,

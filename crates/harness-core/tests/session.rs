@@ -1034,3 +1034,32 @@ fn an_instruction_carries_what_it_spent_and_which_models_spent_it() {
         "the window's model set rides with its version set"
     );
 }
+
+#[test]
+fn the_tool_mix_is_counted_per_window_and_per_instruction() {
+    let mut lines = vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)];
+    lines.extend(call_and_denial("s1", "Bash", "permission-rule", 11));
+    lines.extend(call_and_denial("s1", "Bash", "permission-rule", 12));
+    lines.push(invoked(
+        "s1",
+        "x1",
+        "2026-08-01T10:00:13Z",
+        "Skill",
+        "skill",
+        "harnex",
+    ));
+    lines.push(typed("s2", "b1", "2026-08-02T09:00:00Z", ALSO_STANDING));
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", lines)]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.tools["Bash"], 2);
+    assert_eq!(facts.tools["Skill"], 1);
+    assert_eq!(facts.submissions[0].tools["Bash"], 2);
+    assert!(facts.submissions[1].tools.is_empty());
+    assert_eq!(facts.coverage.sessions, 2);
+}
