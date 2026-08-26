@@ -35,6 +35,11 @@ floor, named for that, and carries the coverage it was measured at.
 
 ## Invariants that a change can break silently
 
+- **A transcript's own order is authoritative; its timestamps are not.** A
+  session's files are interleaved by `interleave_by_time`
+  ([file: crates/harness-core/src/session/mod.rs]), which never reorders within
+  one — 2.27% of adjacent records are stamped behind the record before them.
+  Sorting the concatenation is the shape that looks equivalent and is not.
 - **Coverage counts the window, not the file.** `read_transcript` applies
   `since` and `project` before counting, because `require_coverage` gates on
   the ratio coverage publishes.

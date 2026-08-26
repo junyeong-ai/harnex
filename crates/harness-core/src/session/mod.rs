@@ -118,6 +118,37 @@ pub struct SessionFacts {
     pub harness: HarnessFacts,
 }
 
+/// One session's transcripts as a single sequence, each file's own order intact.
+///
+/// A transcript is append-ordered, so its order is the order things happened.
+/// Its timestamps are not: measured over the local corpus, 2.27% of adjacent
+/// records carry a timestamp earlier than the one before them (68% of those an
+/// attachment written behind the turn it belongs to) and 5.55% carry the same
+/// one. Sorting the concatenation would rewrite that order — including for a
+/// session with no subagent, where there is nothing to interleave at all.
+///
+/// So each file is consumed in its own order and only the choice between files
+/// is made by time. A tie goes to the earlier stream, and `discovery` hands
+/// them over lexicographically, so a run is reproducible.
+fn interleave_by_time(streams: Vec<Vec<record::Record>>) -> Vec<record::Record> {
+    let total: usize = streams.iter().map(Vec::len).sum();
+    let mut streams: Vec<_> = streams
+        .into_iter()
+        .map(|records| records.into_iter().peekable())
+        .collect();
+
+    let mut merged = Vec::with_capacity(total);
+    while let Some((_, next)) = streams
+        .iter_mut()
+        .enumerate()
+        .filter_map(|(i, s)| s.peek().map(|r| (r.citation().timestamp, i)))
+        .min()
+    {
+        merged.push(streams[next].next().expect("the stream that was peeked"));
+    }
+    merged
+}
+
 /// Read every transcript under the configured roots.
 ///
 /// Reports rather than raises for anything a single record or file can be wrong
@@ -141,11 +172,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
 
-    // A session's transcripts are read together and merged by time. A subagent
+    // A session's transcripts are read together and interleaved. A subagent
     // writes its own file under its parent's session, so reading files
     // independently leaves its work outside every instruction the parent gave.
     for group in discovery::group_by_session(&files) {
-        let mut records = Vec::new();
+        let mut streams = Vec::with_capacity(group.len());
         for path in &group {
             // Counters are mutated as the file is read, so a file that fails
             // partway would leave the coverage of records the caller then
@@ -157,14 +188,14 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 options.project.as_deref(),
                 &mut coverage,
             ) {
-                Ok(r) => records.extend(r),
+                Ok(r) => streams.push(r),
                 Err(_) => {
                     coverage = before;
                     coverage.files_unreadable += 1;
                 }
             }
         }
-        records.sort_by_key(|r| r.citation().timestamp);
+        let records = interleave_by_time(streams);
         for rec in &records {
             sessions.insert(rec.citation().session.clone());
             let mut assigned = None;
@@ -303,6 +334,49 @@ mod tests {
     }
 
     const STANDING: &str = "resolve the root cause rather than patching the symptom";
+
+    fn stream(uuid_and_second: &[(&str, i64)]) -> Vec<record::Record> {
+        uuid_and_second
+            .iter()
+            .map(|(uuid, second)| {
+                record::Record::RuleLoad(record::RuleLoad {
+                    citation: record::Citation {
+                        session: "s1".into(),
+                        file: PathBuf::from("/corpus/s1.jsonl"),
+                        uuid: (*uuid).into(),
+                        timestamp: Timestamp::from_second(*second).unwrap(),
+                    },
+                    path: PathBuf::from("/repo/CLAUDE.md"),
+                    chars: 1,
+                })
+            })
+            .collect()
+    }
+
+    fn order(records: &[record::Record]) -> Vec<&str> {
+        records.iter().map(|r| r.citation().uuid.as_str()).collect()
+    }
+
+    #[test]
+    fn a_transcripts_own_order_survives_a_timestamp_that_goes_backwards() {
+        let merged = interleave_by_time(vec![stream(&[("a", 30), ("b", 10), ("c", 20)])]);
+        assert_eq!(order(&merged), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn a_subagents_records_land_between_the_parents_by_time() {
+        let merged = interleave_by_time(vec![
+            stream(&[("p1", 10), ("p2", 40)]),
+            stream(&[("s1", 20), ("s2", 30)]),
+        ]);
+        assert_eq!(order(&merged), ["p1", "s1", "s2", "p2"]);
+    }
+
+    #[test]
+    fn records_sharing_a_timestamp_resolve_to_the_earlier_transcript() {
+        let merged = interleave_by_time(vec![stream(&[("p", 10)]), stream(&[("s", 10)])]);
+        assert_eq!(order(&merged), ["p", "s"]);
+    }
 
     #[test]
     fn a_paragraph_across_two_sessions_surfaces_with_its_citations() {
