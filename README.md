@@ -71,7 +71,7 @@ macOS and Linux, on x86-64 and arm64, have a release binary. Anywhere else the
 installer says so and builds from source instead.
 
 ```bash
-scripts/install.sh --version v0.1.1   # a specific release rather than the latest
+scripts/install.sh --version v1.2.3   # a specific release rather than the latest
 scripts/install.sh --build            # build from source instead of downloading
 scripts/install.sh --check            # what is installed, changing nothing
 scripts/install.sh --help             # every option
