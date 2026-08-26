@@ -1,0 +1,114 @@
+name: Release
+
+# A tag is the release. Every binary a user installs is built here, from that
+# tag — `scripts/install.sh` downloads exactly what this uploads.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  # Builds every target and uploads nothing, so a cross-compilation break is
+  # found before a tag exists instead of by half-filling a published release.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: create release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # The tag names a version and so does the manifest the binary is built
+      # from. They are one fact, so a disagreement stops the release rather
+      # than publishing v0.2.0 assets that report 0.1.1.
+      - name: the tag and the manifest declare one version
+        run: |
+          declared=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          [ -n "$declared" ] || { echo "Cargo.toml declares no version"; exit 1; }
+          [ "v$declared" = "$GITHUB_REF_NAME" ] || {
+            echo "tag $GITHUB_REF_NAME, manifest $declared — one of them is wrong"
+            exit 1
+          }
+
+      - name: create the release the assets attach to
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INSTALL_URL: https://github.com/${{ github.repository }}/raw/${{ github.ref_name }}/scripts/install.sh
+        run: |
+          notes=$(printf '%s\n' \
+            '## Install' \
+            '' \
+            '```' \
+            "curl -fsSL $INSTALL_URL | bash" \
+            '```' \
+            '' \
+            'Or take an archive below. Each has a sha256 file beside it, and' \
+            'provenance attesting it was built by this workflow from this tag:' \
+            '' \
+            '```' \
+            "gh attestation verify harness-<target>.tar.gz --repo $GITHUB_REPOSITORY" \
+            '```')
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists — the assets attach to it"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --generate-notes \
+              --notes "$notes"
+          fi
+
+  upload-assets:
+    name: ${{ matrix.target }}
+    needs: create-release
+    # Runs when create-release succeeded, and when workflow_dispatch skipped it.
+    if: ${{ !failure() && !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: write # upload the assets
+      id-token: write # sign the provenance
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Linux ships musl, statically linked, so the runner's glibc floor never
+      # becomes the user's. cross builds it; installing it prebuilt saves the
+      # `cargo install cross` the upload action would otherwise run.
+      - if: runner.os == 'Linux'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - id: build
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: harness
+          target: ${{ matrix.target }}
+          locked: true
+          checksum: sha256
+          dry-run: ${{ github.event_name == 'workflow_dispatch' }}
+
+      - if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ steps.build.outputs.tar }}
