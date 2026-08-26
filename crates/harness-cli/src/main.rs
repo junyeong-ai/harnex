@@ -73,6 +73,11 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::export::ExportCommand,
     },
+    /// Observed behaviour read from Claude Code session transcripts
+    Session {
+        #[command(subcommand)]
+        cmd: commands::session::SessionCommand,
+    },
     /// Read-only queries over a nodex document graph
     Graph {
         #[command(subcommand)]
@@ -122,6 +127,7 @@ fn main() -> ExitCode {
         Command::Lifecycle { cmd } => commands::lifecycle::run(cmd, &mut out),
         Command::Guard { cmd } => commands::guard::run(cmd, &mut out),
         Command::Export { cmd } => commands::export::run(cmd, &mut out),
+        Command::Session { cmd } => commands::session::run(cmd, &mut out),
         Command::Graph { cmd } => commands::graph::run(cmd, &mut out),
         Command::Completions(args) => commands::completions::run(args, &mut out),
         Command::Check(args) => commands::check::run(args, &mut out),

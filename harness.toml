@@ -42,3 +42,6 @@ always_loaded_slugs = ["constitution"]
 [validate.agents]
 
 [validate.output_styles]
+
+[session]
+roots = ["~/.claude/projects"]

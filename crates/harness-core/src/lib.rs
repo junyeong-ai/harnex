@@ -25,6 +25,7 @@
 //! - [`check`] — unified validation gate.
 //! - [`export`] — JSON Schema emission.
 //! - [`graph`] — read-only nodex CLI bridge.
+//! - [`session`] — observed behaviour read from Claude Code transcripts.
 //!
 //! ## What this crate refuses to do
 //!
@@ -50,6 +51,7 @@ pub mod path_guard;
 pub mod policy;
 pub mod scaffold;
 pub mod sentinel;
+pub mod session;
 pub mod spec;
 pub mod telemetry;
 pub mod validate;

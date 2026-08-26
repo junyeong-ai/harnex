@@ -126,6 +126,9 @@ harness validate output-styles <files...>
 harness validate settings [<path>]
 harness validate commit-msg <path>                     # closed-enum trailer
 
+harness session index  [--since <rfc3339>]              # transcripts found, and what was read
+harness session facts  [--since <rfc3339>] [--with-text] # counts + citations, no judgement
+
 harness lifecycle observe --tag T --text X --source S
 harness lifecycle candidates
 harness lifecycle promote --tag T --text X --decision-text "..."
