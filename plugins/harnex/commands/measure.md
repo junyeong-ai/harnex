@@ -163,6 +163,9 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - a denial cannot be attributed to the permission rule that caused it
 - `blocked` lists only calls refused more than once; a single refusal is not a
   pattern and most refusals never repeat
+- a commit is a floor: the runtime records some and not others, so
+  `repository.commits_in_span` is what `commits` is a floor against and
+  anything per-commit reads high
 - a hook's cost is exact and its value is not recorded at all
 - token counts are counts, never money; and a delta across a window whose
   `models` set moved is a delta about the model as much as the operator

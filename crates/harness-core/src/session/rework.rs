@@ -48,6 +48,9 @@ pub struct PostCommitReedit {
 /// Commits seen, and what was edited again straight after one.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ReworkFacts {
+    /// Commits the transcript reported, which is a floor on the commits made
+    /// — see [`super::record::UserTurn::commit`]. A rate denominated in this
+    /// reads high by however much the runtime did not record.
     pub commits: usize,
     /// Files edited again before the next commit, most re-edits first.
     pub post_commit_reedits: Vec<PostCommitReedit>,
