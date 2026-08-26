@@ -6,11 +6,10 @@
 //! never installed anywhere the next session would read. Collapsing both into
 //! one repeat rate produces a number that recommends nothing.
 //!
-//! The unit that separates them is the **submission**, and the runtime supplies
-//! it: a turn whose prompt source marks it queued was sent while the agent was
-//! still working, so it continues the instruction before it rather than
-//! restating it. Three messages typed in a row before any reply are one
-//! submission, not three, and no clock is consulted to decide that.
+//! The unit that separates them is the **submission**, decided by
+//! [`super::SubmissionIndex`] and consumed here. Three messages typed in a row
+//! before any reply are one instruction, not three, and no clock is consulted
+//! to decide that.
 //!
 //! The unit inside a submission is an exact paragraph, not a similarity score.
 //! A shingle overlap measure needs a window length and a stride, and the
@@ -36,7 +35,9 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use super::record::{Authorship, Citation, UserTurn};
+#[cfg(test)]
+use super::record::Authorship;
+use super::record::{Citation, UserTurn};
 
 /// A paragraph the operator wrote more than once.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -87,9 +88,7 @@ struct BlockRecord {
 pub struct PromptAnalyzer {
     min_block_chars: usize,
     blocks: HashMap<String, BlockRecord>,
-    open_submission: HashMap<String, u64>,
     authored_turns: usize,
-    submissions: usize,
     block_chars: usize,
 }
 
@@ -98,37 +97,17 @@ impl PromptAnalyzer {
         Self {
             min_block_chars,
             blocks: HashMap::new(),
-            open_submission: HashMap::new(),
             authored_turns: 0,
-            submissions: 0,
             block_chars: 0,
         }
     }
 
-    pub fn observe(&mut self, turn: &UserTurn) {
-        if turn.authorship != Authorship::Authored {
-            return;
-        }
+    pub fn observe(&mut self, turn: &UserTurn, submission: u64) {
         let Some(text) = turn.text.as_deref() else {
             return;
         };
         self.authored_turns += 1;
-
         let session = turn.citation.session.clone();
-        let submission = match self.open_submission.get(&session) {
-            // A queued turn continues what is already open only while the
-            // agent has said nothing back; once it has, the operator is
-            // answering it and this is a new instruction. A queued turn with
-            // nothing open — a resumed session whose earlier turns are in
-            // another file — opens one rather than being dropped.
-            Some(open) if turn.queued && !turn.follows_agent_output => *open,
-            _ => {
-                self.submissions += 1;
-                let next = self.submissions as u64;
-                self.open_submission.insert(session.clone(), next);
-                next
-            }
-        };
 
         for block in paragraphs(text, self.min_block_chars) {
             self.block_chars += block.chars().count();
@@ -139,7 +118,7 @@ impl PromptAnalyzer {
         }
     }
 
-    pub fn finish(self, with_text: bool) -> PromptFacts {
+    pub fn finish(self, submissions: usize, with_text: bool) -> PromptFacts {
         let mut repeated = Vec::new();
         let mut restated = Vec::new();
         let mut restated_chars = 0;
@@ -180,7 +159,7 @@ impl PromptAnalyzer {
 
         PromptFacts {
             authored_turns: self.authored_turns,
-            submissions: self.submissions,
+            submissions,
             block_chars: self.block_chars,
             restated_chars,
             cross_session_chars,
@@ -279,6 +258,32 @@ mod tests {
         }
     }
 
+    /// Drives the analyser through the index a run uses, so a test exercises
+    /// the instruction boundary and the paragraph rule together.
+    struct Run {
+        index: super::super::SubmissionIndex,
+        analyzer: PromptAnalyzer,
+    }
+
+    impl Run {
+        fn new(min_block_chars: usize) -> Self {
+            Self {
+                index: super::super::SubmissionIndex::new(),
+                analyzer: PromptAnalyzer::new(min_block_chars),
+            }
+        }
+
+        fn observe(&mut self, turn: &UserTurn) {
+            if let Some(id) = self.index.assign(turn) {
+                self.analyzer.observe(turn, id);
+            }
+        }
+
+        fn finish(self, with_text: bool) -> PromptFacts {
+            self.analyzer.finish(self.index.count(), with_text)
+        }
+    }
+
     const STANDING: &str = "always resolve the root cause rather than patching the symptom";
 
     #[test]
@@ -297,7 +302,7 @@ mod tests {
 
     #[test]
     fn queued_turns_fold_into_the_instruction_they_continue() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn("s1", "u1", 100, STANDING));
         a.observe(&queued("s1", "u2", 103, "and check the exporter too"));
         a.observe(&queued("s1", "u3", 107, "and the loader"));
@@ -309,7 +314,7 @@ mod tests {
 
     #[test]
     fn the_same_paragraph_inside_one_submission_is_not_a_restatement() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn("s1", "u1", 100, STANDING));
         a.observe(&queued("s1", "u2", 103, STANDING));
         let facts = a.finish(false);
@@ -320,7 +325,7 @@ mod tests {
 
     #[test]
     fn the_same_paragraph_in_a_later_submission_is_a_restatement() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn("s1", "u1", 100, STANDING));
         a.observe(&turn("s1", "u2", 900, STANDING));
         let facts = a.finish(false);
@@ -337,7 +342,7 @@ mod tests {
 
     #[test]
     fn the_same_paragraph_in_a_later_session_is_a_repeat_not_a_restatement() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn("s1", "u1", 100, STANDING));
         a.observe(&turn("s2", "u2", 900, STANDING));
         let facts = a.finish(false);
@@ -349,14 +354,14 @@ mod tests {
 
     #[test]
     fn a_queued_turn_with_nothing_open_starts_a_submission() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&queued("s1", "u1", 100, STANDING));
         assert_eq!(a.finish(false).submissions, 1);
     }
 
     #[test]
     fn a_queued_turn_does_not_continue_another_session() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn("s1", "u1", 100, STANDING));
         a.observe(&queued("s2", "u2", 103, STANDING));
         assert_eq!(a.finish(false).submissions, 2);
@@ -364,7 +369,7 @@ mod tests {
 
     #[test]
     fn text_is_withheld_unless_asked_for() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn("s1", "u1", 100, STANDING));
         a.observe(&turn("s2", "u2", 200, STANDING));
         assert_eq!(
@@ -375,7 +380,7 @@ mod tests {
 
     #[test]
     fn turns_the_runtime_did_not_attribute_to_typing_are_not_read() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         let mut unclaimed = turn("s1", "u1", 100, STANDING);
         unclaimed.authorship = Authorship::Unclaimed;
         a.observe(&unclaimed);
@@ -390,7 +395,7 @@ mod tests {
     fn blocks_rank_by_session_count_before_length() {
         let wide = "a standing instruction repeated across three separate sessions";
         let long = "a longer paragraph that only ever appeared in two of the sessions here";
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         for (i, s) in ["s1", "s2", "s3"].iter().enumerate() {
             a.observe(&turn(s, "u", 100 + i as i64, wide));
         }
@@ -404,7 +409,7 @@ mod tests {
 
     #[test]
     fn whitespace_differences_do_not_split_a_paragraph() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn(
             "s1",
             "u1",
@@ -422,7 +427,7 @@ mod tests {
 
     #[test]
     fn case_differences_do_split_a_paragraph() {
-        let mut a = PromptAnalyzer::new(20);
+        let mut a = Run::new(20);
         a.observe(&turn(
             "s1",
             "u1",

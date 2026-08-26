@@ -33,6 +33,7 @@ fn corpus(files: &[(&str, Vec<String>)]) -> (TempDir, SessionConfig) {
         coverage_floor: 0.95,
         min_support: 1,
         baseline_path: dir.path().join("baselines.jsonl"),
+        submission_sample: None,
     };
     (dir, config)
 }
@@ -140,6 +141,7 @@ fn a_run_that_reads_nothing_is_an_error_rather_than_a_report_of_zero() {
         coverage_floor: 0.95,
         min_support: 1,
         baseline_path: dir.path().join("baselines.jsonl"),
+        submission_sample: None,
     };
 
     let err = session::collect(&config, &CollectOptions::default()).unwrap_err();
@@ -403,6 +405,7 @@ fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> sess
         &CollectOptions {
             with_text: false,
             since: since.map(|s| s.parse().unwrap()),
+            ..CollectOptions::default()
         },
     )
     .unwrap();
@@ -574,6 +577,7 @@ fn coverage_counts_the_window_rather_than_the_whole_file() {
     let options = CollectOptions {
         with_text: false,
         since: Some("2026-08-05T00:00:00Z".parse().unwrap()),
+        ..CollectOptions::default()
     };
 
     let facts = session::collect(&config, &options).unwrap();
@@ -677,4 +681,68 @@ fn an_interrupt_the_runtime_marked_is_reported_though_no_person_authored_it() {
         1,
         "the marker stays outside the coverage denominator"
     );
+}
+
+#[test]
+fn an_instruction_carries_what_happened_while_it_stood() {
+    let mut lines = vec![
+        typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+        spoke("s1", "x1", "2026-08-01T09:00:05Z"),
+    ];
+    lines.extend(call_and_denial("s1", "Bash", "permission-rule", 6));
+    lines.push(marked_interrupt("s1", "i1", "2026-08-01T10:00:08Z"));
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", lines)]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    let only = &facts.submissions[0];
+    assert_eq!(only.citation.uuid, "a1");
+    assert_eq!(only.turns, 1);
+    assert_eq!(only.agent_turns, 2, "the reply and the tool call");
+    assert_eq!(only.denials, 1);
+    assert_eq!(only.interrupts, 1);
+    assert!(!only.steered_away);
+    assert!(only.text.is_none(), "text stays on disk unless asked for");
+}
+
+#[test]
+fn an_instruction_the_operator_did_not_wait_for_is_marked_where_it_was_cut() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spoke("s1", "x1", "2026-08-01T09:00:05Z"),
+            queued("s1", "a2", "2026-08-01T09:00:09Z", ALSO_STANDING),
+            spoke("s1", "x2", "2026-08-01T09:00:20Z"),
+        ],
+    )]);
+    let options = CollectOptions {
+        with_submissions: true,
+        with_text: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.submissions.len(), 2);
+    assert!(facts.submissions[0].steered_away);
+    assert!(!facts.submissions[1].steered_away);
+    assert_eq!(facts.submissions[1].text.as_deref(), Some(ALSO_STANDING));
+}
+
+#[test]
+fn the_instruction_list_is_absent_unless_the_caller_asks() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert!(facts.submissions.is_empty());
+    assert_eq!(facts.prompts.submissions, 1, "the count is always there");
 }

@@ -773,6 +773,16 @@
           "description": "Append-only ledger of measured windows, relative to `harness.toml`.",
           "type": "string",
           "default": ".harness/session-baselines.jsonl"
+        },
+        "submission_sample": {
+          "description": "Cap on instructions returned one at a time, for callers that pay per\ninstruction. Absent returns the window whole.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "default": null
         }
       },
       "required": [

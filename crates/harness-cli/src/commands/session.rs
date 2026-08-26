@@ -27,6 +27,19 @@ pub enum SessionCommand {
         #[arg(long)]
         with_text: bool,
     },
+    /// Instructions one at a time, with what followed each
+    Submissions {
+        /// Ignore records older than this RFC 3339 timestamp
+        #[arg(long)]
+        since: Option<String>,
+        /// Include the text of each instruction
+        #[arg(long)]
+        with_text: bool,
+        /// Return at most this many, evenly spaced across the window.
+        /// Overrides `[session] submission_sample`.
+        #[arg(long)]
+        sample: Option<usize>,
+    },
     /// Measured windows, and the difference between two of them
     Baseline {
         #[command(subcommand)]
@@ -87,8 +100,8 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
     match cmd {
         SessionCommand::Index { since } => {
             let options = CollectOptions {
-                with_text: false,
                 since: timestamp(since)?,
+                ..CollectOptions::default()
             };
             let facts = session::collect(session_config, &options)?;
             write_envelope_success(out, facts.coverage)?;
@@ -97,8 +110,29 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
             let options = CollectOptions {
                 with_text,
                 since: timestamp(since)?,
+                ..CollectOptions::default()
             };
             write_envelope_success(out, measure(session_config, &options)?)?;
+        }
+        SessionCommand::Submissions {
+            since,
+            with_text,
+            sample,
+        } => {
+            let options = CollectOptions {
+                with_text,
+                since: timestamp(since)?,
+                with_submissions: true,
+            };
+            let facts = measure(session_config, &options)?;
+            let cap = sample.or(session_config.submission_sample);
+            write_envelope_success(
+                out,
+                match cap {
+                    Some(max) => session::systematic_sample(&facts.submissions, max),
+                    None => facts.submissions,
+                },
+            )?;
         }
         SessionCommand::Baseline { cmd } => {
             let ledger = BaselineLedger::new(
@@ -114,8 +148,8 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                     let facts = measure(
                         session_config,
                         &CollectOptions {
-                            with_text: false,
                             since,
+                            ..CollectOptions::default()
                         },
                     )?;
                     let baseline = Baseline::of(&label, Timestamp::now(), &facts);

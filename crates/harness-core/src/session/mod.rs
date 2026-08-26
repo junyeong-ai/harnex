@@ -45,6 +45,7 @@ pub mod intervention;
 pub mod prompt;
 pub mod record;
 pub mod rework;
+pub mod submission;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -60,6 +61,7 @@ pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock};
 pub use record::{Authorship, Citation, Coverage};
 pub use rework::{PostCommitReedit, ReworkFacts};
+pub use submission::{Submission, SubmissionIndex, systematic_sample};
 
 /// What a caller wants out of a scan beyond the defaults.
 #[derive(Debug, Clone, Default)]
@@ -71,6 +73,10 @@ pub struct CollectOptions {
     pub with_text: bool,
     /// Ignore records older than this.
     pub since: Option<Timestamp>,
+    /// Include the instruction-by-instruction list. Off by default: it is one
+    /// entry per instruction where the rest of the result is one entry per
+    /// finding, and most callers want the findings.
+    pub with_submissions: bool,
 }
 
 /// Counts and citations for one window of the corpus.
@@ -78,6 +84,9 @@ pub struct CollectOptions {
 pub struct SessionFacts {
     pub coverage: Coverage,
     pub prompts: PromptFacts,
+    /// Empty unless [`CollectOptions::with_submissions`] asked for it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub submissions: Vec<Submission>,
     pub interventions: InterventionFacts,
     pub rework: ReworkFacts,
     pub harness: HarnessFacts,
@@ -94,7 +103,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         files_discovered: files.len(),
         ..Coverage::default()
     };
+    let mut index = submission::SubmissionIndex::new();
     let mut prompts = prompt::PromptAnalyzer::new(config.min_block_chars);
+    let mut submissions = submission::SubmissionAnalyzer::new();
     let mut interventions = intervention::InterventionAnalyzer::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
@@ -108,10 +119,15 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             }
         };
         for rec in &records {
+            let mut assigned = None;
             if let record::Record::User(turn) = rec {
-                prompts.observe(turn);
+                assigned = index.assign(turn);
+                if let Some(id) = assigned {
+                    prompts.observe(turn, id);
+                }
                 interventions.observe(turn);
             }
+            submissions.observe(rec, assigned);
             harness.observe(rec);
         }
         rework.observe(&records);
@@ -132,7 +148,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
 
     Ok(SessionFacts {
         coverage,
-        prompts: prompts.finish(options.with_text),
+        prompts: prompts.finish(index.count(), options.with_text),
+        submissions: match options.with_submissions {
+            true => submissions.finish(options.with_text),
+            false => Vec::new(),
+        },
         interventions: interventions.finish(),
         rework: rework.finish(),
         harness: harness.finish(),
@@ -193,6 +213,7 @@ mod tests {
             coverage_floor: 0.95,
             min_support: 1,
             baseline_path: dir.path().join("baselines.jsonl"),
+            submission_sample: None,
         };
         (dir, config)
     }
