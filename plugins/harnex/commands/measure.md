@@ -32,6 +32,24 @@ harness session submissions --since <t> [--project <dir>] --with-text --sample <
 `--sample` defaults to `[session] submission_sample`. Evidence the envelopes do
 not carry does not exist — do not supply it from reading transcripts by hand.
 
+**If a cost source is installed, take it too.** The transcripts carry token
+counts and no clock and no price: nothing in them says how long a tool call
+took, whether it failed, or what any of it cost. A telemetry collector keyed by
+`session_id` — `hatel` is the one this plugin knows — supplies exactly that
+gap, and every citation here carries the session it belongs to, so the join is
+exact. Ask it for the same window, check its own wiring first, and add:
+
+| what it adds | why the transcript cannot |
+|---|---|
+| wall-clock per tool, and how often a tool *failed* | a tool result records what came back, not how long or whether it worked |
+| money, split by model and by main / subagent | pricing is not in the record and is not this plugin's to know |
+| active time per session | the transcript has timestamps, not attention |
+
+This step is optional in both directions. With no collector the report is
+complete without these rows and says so once; with one, no other section
+changes its meaning. Never put money in a baseline — a price list moves on its
+own, so a delta on cost is a delta on the price list.
+
 ## 3 — Judge the instructions
 
 Dispatch `session-judge` over the sampled instructions, at most 25 per agent,
@@ -45,6 +63,12 @@ crossing worth reading: if the labels are wrong the observed strata still hold.
 Report per kind — instructions, median `agent_turns`, `tokens.output`, share
 cut short, share that shipped — and withhold a rate for any kind with fewer
 instructions than `[session] min_support`.
+
+Read `tools` beside `harness.denials`, which groups by the same tool names.
+Friction is as much a function of which tool the work goes through as of how
+broad a rule is: a window where most calls are the one tool permission rules
+must guard will meet refusals whatever the rules say, and read-only tools meet
+none. Say which it is before prescribing a rule change.
 
 `tokens` carries four counts and no total, because they price differently by
 orders of magnitude and this command does not know a price list. Rank on
@@ -63,7 +87,14 @@ rather than badly delegated.
 same constraint has to be supplied by hand across sessions, its home is
 `CLAUDE.md` or a path-scoped rule, and `/harnex extend` is how it gets there.
 
-Three inputs converge and should be read together: `prompts.repeated_blocks`
+**Look at consecutive instructions, not only at each one.** Where an
+instruction has `steered_away` and the next one in the same session repeats
+part of its text, the pair is the operator correcting themselves in real time,
+and what the second added is a constraint that could have been given up front —
+the most directly installable thing this whole report produces. Hand the judge
+those pairs adjacent and in order.
+
+Three more inputs converge and should be read together: `prompts.repeated_blocks`
 (paragraphs retyped across sessions — never installed), `restated_blocks` (the
 same paragraph twice inside one session — did not survive its context), and the
 judge's recurring gaps (constraints never written down at all). The first is
@@ -101,8 +132,9 @@ does not reach it — a rebase, an amend, a reset, or a branch never merged, and
 a repository that squash-merges puts every feature commit there — and a change
 undone by hand carries no revert trailer and is invisible.
 
-**4. Whether the harness earns its place.** `invocations` is what was actually
-called; an element the operator built and never invoked is only visible under
+**4. Whether the harness earns its place.** Report `sessions` and instructions
+per session first — the shape of the work is what the rest is per. `invocations`
+is what was actually called; an element the operator built and never invoked is only visible under
 `--project`, where the tree can be listed. `blocked` is where the harness and
 their habits disagree — report the concentration first (attempts against
 distinct calls), because diffuse friction points at a broad rule and repeated
@@ -128,6 +160,8 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - a hook's cost is exact and its value is not recorded at all
 - token counts are counts, never money; and a delta across a window whose
   `models` set moved is a delta about the model as much as the operator
+- `tools` counts calls, not time or success; those come from a cost source or
+  from nowhere
 - `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
   sample size, and they never enter a baseline
