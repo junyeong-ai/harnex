@@ -43,6 +43,7 @@
 pub mod discovery;
 pub mod prompt;
 pub mod record;
+pub mod rework;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -52,6 +53,7 @@ use crate::error::{Error, Result};
 
 pub use prompt::{PromptFacts, RepeatedBlock};
 pub use record::{Authorship, Citation, Coverage};
+pub use rework::{PostCommitReedit, ReworkFacts};
 
 /// What a caller wants out of a scan beyond the defaults.
 #[derive(Debug, Clone, Default)]
@@ -70,6 +72,7 @@ pub struct CollectOptions {
 pub struct SessionFacts {
     pub coverage: Coverage,
     pub prompts: PromptFacts,
+    pub rework: ReworkFacts,
 }
 
 /// Read every transcript under the configured roots.
@@ -83,7 +86,8 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         files_discovered: files.len(),
         ..Coverage::default()
     };
-    let mut analyzer = prompt::PromptAnalyzer::new(config.min_block_chars);
+    let mut prompts = prompt::PromptAnalyzer::new(config.min_block_chars);
+    let mut rework = rework::ReworkAnalyzer::new();
 
     for path in &files {
         let records = match record::read_transcript(path, &mut coverage) {
@@ -93,16 +97,19 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 continue;
             }
         };
-        for rec in &records {
-            if let Some(since) = options.since
-                && rec.citation().timestamp < since
-            {
-                continue;
-            }
+        let window: Vec<record::Record> = match options.since {
+            Some(since) => records
+                .into_iter()
+                .filter(|r| r.citation().timestamp >= since)
+                .collect(),
+            None => records,
+        };
+        for rec in &window {
             if let record::Record::User(turn) = rec {
-                analyzer.observe(turn);
+                prompts.observe(turn);
             }
         }
+        rework.observe(&window);
     }
 
     if coverage.files_discovered > 0 && coverage.files_read == 0 {
@@ -120,7 +127,8 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
 
     Ok(SessionFacts {
         coverage,
-        prompts: analyzer.finish(options.with_text),
+        prompts: prompts.finish(options.with_text),
+        rework: rework.finish(),
     })
 }
 
@@ -204,7 +212,7 @@ mod tests {
 
         let facts = collect(&config, &CollectOptions::default()).unwrap();
 
-        assert_eq!(facts.prompts.authored_prompts, 2);
+        assert_eq!(facts.prompts.authored_turns, 2);
         let block = &facts.prompts.repeated_blocks[0];
         assert_eq!(block.sessions, 2);
         assert_eq!(block.citations.len(), 2);
@@ -231,7 +239,7 @@ mod tests {
 
         let facts = collect(&config, &options).unwrap();
 
-        assert_eq!(facts.prompts.authored_prompts, 1);
+        assert_eq!(facts.prompts.authored_turns, 1);
         assert!(facts.prompts.repeated_blocks.is_empty());
     }
 

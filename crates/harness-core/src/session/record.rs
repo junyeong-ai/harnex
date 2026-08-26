@@ -43,6 +43,17 @@ use serde::{Deserialize, Serialize};
 /// prompt statistics as though the operator had written it.
 const AUTHORED_PROMPT_SOURCES: &[&str] = &["typed", "queued"];
 
+/// The prompt source the runtime records when a turn was submitted while the
+/// agent was still working.
+///
+/// This is what makes a submission boundary observable rather than guessed. A
+/// person sending three messages before the agent replies has sent one
+/// instruction, and asking a clock how close together they arrived is a proxy
+/// for a fact the runtime already wrote down. Measured across 430 consecutive
+/// pairs under ten seconds, 79% end in this source; the gap threshold that
+/// would have stood in for it is deleted rather than tuned.
+const CONTINUATION_PROMPT_SOURCE: &str = "queued";
+
 /// Record types this module reads. Everything else is counted by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConsumedType {
@@ -150,6 +161,13 @@ pub struct UserTurn {
     /// Joined text of a text-only message. `None` when the message carries
     /// anything else — a tool result is a tool result, not a turn.
     pub text: Option<String>,
+    /// Whether the runtime marked this turn as submitted while the agent was
+    /// working. Only meaningful on an [`Authorship::Authored`] turn.
+    pub continues_submission: bool,
+    /// The commit a tool result on this record reported.
+    pub commit: Option<String>,
+    /// The file a tool result on this record reported editing.
+    pub edited_file: Option<PathBuf>,
 }
 
 /// An assistant turn, reduced to the actions it took.
@@ -253,6 +271,32 @@ struct RawRecord {
     #[serde(rename = "isSidechain")]
     is_sidechain: Option<bool>,
     message: Option<RawMessage>,
+    /// Polymorphic upstream: an object for most tools, a bare string for some.
+    /// Modelled as an untyped value so a string never fails the whole record.
+    #[serde(rename = "toolUseResult")]
+    tool_use_result: Option<serde_json::Value>,
+}
+
+/// The commit a tool result reported, if it reported one.
+fn commit_of(result: &serde_json::Value) -> Option<String> {
+    Some(
+        result
+            .get("gitOperation")?
+            .get("commit")?
+            .get("sha")?
+            .as_str()?
+            .to_string(),
+    )
+}
+
+/// The file a tool result reported editing.
+///
+/// `structuredPatch` is required alongside the path: a result naming a file it
+/// only read carries no patch, and counting a read as an edit would put every
+/// inspection into the rework figures.
+fn edited_file_of(result: &serde_json::Value) -> Option<PathBuf> {
+    result.get("structuredPatch")?;
+    Some(PathBuf::from(result.get("filePath")?.as_str()?))
 }
 
 /// Text of a message whose content is text and nothing else.
@@ -365,10 +409,15 @@ pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<
             ConsumedType::User => {
                 let authorship = classify(&raw);
                 coverage.count_authorship(authorship);
+                let result = raw.tool_use_result.as_ref();
                 out.push(Record::User(UserTurn {
                     citation,
                     authorship,
                     text: content.and_then(text_only),
+                    continues_submission: raw.prompt_source.as_deref()
+                        == Some(CONTINUATION_PROMPT_SOURCE),
+                    commit: result.and_then(commit_of),
+                    edited_file: result.and_then(edited_file_of),
                 }));
             }
             ConsumedType::Assistant => {
