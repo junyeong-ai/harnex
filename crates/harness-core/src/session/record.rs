@@ -399,6 +399,7 @@ struct RawRecord {
     prevented_continuation: Option<bool>,
     #[serde(rename = "interruptedMessageId")]
     interrupted_message_id: Option<String>,
+    cwd: Option<PathBuf>,
 }
 
 /// The commit a tool result reported, if it reported one.
@@ -485,6 +486,7 @@ fn classify(raw: &RawRecord) -> Authorship {
 pub fn read_transcript(
     path: &Path,
     since: Option<Timestamp>,
+    project: Option<&Path>,
     coverage: &mut Coverage,
 ) -> std::io::Result<Vec<Record>> {
     use std::io::BufRead;
@@ -513,6 +515,16 @@ pub fn read_transcript(
         // dropped, which overstates the damage in the window and never hides it.
         if since.is_some_and(|s| raw.timestamp.is_some_and(|t| t < s)) {
             continue;
+        }
+        // A worktree runs under a directory below the project it belongs to,
+        // so containment rather than equality is what places a record. Every
+        // record type this module consumes carries `cwd`; one that does not is
+        // outside a project window rather than in every one.
+        if let Some(project) = project {
+            match &raw.cwd {
+                Some(cwd) if cwd.starts_with(project) => {}
+                _ => continue,
+            }
         }
         coverage.records_total += 1;
         if let Some(t) = raw.timestamp {
@@ -662,7 +674,7 @@ mod tests {
         let path = dir.path().join("s.jsonl");
         std::fs::write(&path, json).unwrap();
         let mut cov = Coverage::default();
-        let recs = read_transcript(&path, None, &mut cov).unwrap();
+        let recs = read_transcript(&path, None, None, &mut cov).unwrap();
         (recs, cov)
     }
 

@@ -1,7 +1,8 @@
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 use jiff::Timestamp;
 
 use harness_core::config::SessionConfig;
@@ -10,28 +11,74 @@ use harness_core::session::{self, Baseline, BaselineLedger, CollectOptions};
 
 use super::{config_dir, load_config, write_envelope_success};
 
+/// Which records a command reads. Every session command takes the same two,
+/// so they are declared once and flattened rather than repeated per verb.
+#[derive(Args, Clone)]
+pub struct WindowArgs {
+    /// Ignore records older than this RFC 3339 timestamp
+    #[arg(long)]
+    since: Option<String>,
+    /// Read only sessions run in this directory or below it
+    #[arg(long)]
+    project: Option<PathBuf>,
+}
+
+impl WindowArgs {
+    fn resolve(self) -> Result<(Option<Timestamp>, Option<PathBuf>)> {
+        let since = self
+            .since
+            .map(|raw| {
+                raw.parse().map_err(|e| Error::ConfigInvalid {
+                    message: format!("--since '{raw}' is not an RFC 3339 timestamp: {e}"),
+                    location: None,
+                })
+            })
+            .transpose()?;
+        // Resolved rather than taken as given: a project that is not there
+        // filters every record away, and a run that read nothing must not
+        // report it as a project with nothing in it.
+        let project = self
+            .project
+            .map(|path| {
+                path.canonicalize().map_err(|e| Error::ConfigInvalid {
+                    message: format!("--project {}: {e}", path.display()),
+                    location: None,
+                })
+            })
+            .transpose()?;
+        Ok((since, project))
+    }
+
+    fn options(self, with_text: bool, with_submissions: bool) -> Result<CollectOptions> {
+        let (since, project) = self.resolve()?;
+        Ok(CollectOptions {
+            with_text,
+            with_submissions,
+            since,
+            project,
+        })
+    }
+}
+
 #[derive(Subcommand)]
 pub enum SessionCommand {
     /// Transcripts discovered under the configured roots, and what of them was read
     Index {
-        /// Ignore records older than this RFC 3339 timestamp
-        #[arg(long)]
-        since: Option<String>,
+        #[command(flatten)]
+        window: WindowArgs,
     },
     /// The fact ledger for one window: counts and citations, no judgement
     Facts {
-        /// Ignore records older than this RFC 3339 timestamp
-        #[arg(long)]
-        since: Option<String>,
+        #[command(flatten)]
+        window: WindowArgs,
         /// Include prompt text alongside its citations
         #[arg(long)]
         with_text: bool,
     },
     /// Instructions one at a time, with what followed each
     Submissions {
-        /// Ignore records older than this RFC 3339 timestamp
-        #[arg(long)]
-        since: Option<String>,
+        #[command(flatten)]
+        window: WindowArgs,
         /// Include the text of each instruction
         #[arg(long)]
         with_text: bool,
@@ -54,10 +101,13 @@ pub enum BaselineCommand {
         /// How a later comparison asks for this window
         #[arg(long)]
         label: String,
-        /// Window start, as an RFC 3339 timestamp. Defaults to where the most
-        /// recent baseline stopped, so consecutive baselines never overlap.
+        /// Window start. Defaults to where the most recent baseline of the
+        /// same scope stopped, so consecutive baselines never overlap.
         #[arg(long)]
         since: Option<String>,
+        /// Measure only sessions run in this directory or below it
+        #[arg(long)]
+        project: Option<PathBuf>,
     },
     /// Compare two recorded windows
     Diff {
@@ -68,16 +118,6 @@ pub enum BaselineCommand {
         #[arg(long)]
         to: Option<String>,
     },
-}
-
-fn timestamp(raw: Option<String>) -> Result<Option<Timestamp>> {
-    raw.map(|raw| {
-        raw.parse().map_err(|e| Error::ConfigInvalid {
-            message: format!("--since '{raw}' is not an RFC 3339 timestamp: {e}"),
-            location: None,
-        })
-    })
-    .transpose()
 }
 
 /// Collect a window and refuse to report rates the window does not support.
@@ -98,33 +138,20 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
         })?;
 
     match cmd {
-        SessionCommand::Index { since } => {
-            let options = CollectOptions {
-                since: timestamp(since)?,
-                ..CollectOptions::default()
-            };
-            let facts = session::collect(session_config, &options)?;
+        SessionCommand::Index { window } => {
+            let facts = session::collect(session_config, &window.options(false, false)?)?;
             write_envelope_success(out, facts.coverage)?;
         }
-        SessionCommand::Facts { since, with_text } => {
-            let options = CollectOptions {
-                with_text,
-                since: timestamp(since)?,
-                ..CollectOptions::default()
-            };
-            write_envelope_success(out, measure(session_config, &options)?)?;
+        SessionCommand::Facts { window, with_text } => {
+            let facts = measure(session_config, &window.options(with_text, false)?)?;
+            write_envelope_success(out, facts)?;
         }
         SessionCommand::Submissions {
-            since,
+            window,
             with_text,
             sample,
         } => {
-            let options = CollectOptions {
-                with_text,
-                since: timestamp(since)?,
-                with_submissions: true,
-            };
-            let facts = measure(session_config, &options)?;
+            let facts = measure(session_config, &window.options(with_text, true)?)?;
             let cap = sample.or(session_config.submission_sample);
             write_envelope_success(
                 out,
@@ -139,20 +166,25 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                 config_dir(&config_path, &working_dir).join(&session_config.baseline_path),
             );
             match cmd {
-                BaselineCommand::Save { label, since } => {
+                BaselineCommand::Save {
+                    label,
+                    since,
+                    project,
+                } => {
+                    let (since, project) = WindowArgs { since, project }.resolve()?;
                     let recorded = ledger.load_all()?;
-                    let since = match timestamp(since)? {
-                        Some(explicit) => Some(explicit),
-                        None => session::baseline::latest_observed_to(&recorded),
-                    };
+                    let since = since.or_else(|| {
+                        session::baseline::latest_observed_to(&recorded, project.as_deref())
+                    });
                     let facts = measure(
                         session_config,
                         &CollectOptions {
                             since,
+                            project: project.clone(),
                             ..CollectOptions::default()
                         },
                     )?;
-                    let baseline = Baseline::of(&label, Timestamp::now(), &facts);
+                    let baseline = Baseline::of(&label, Timestamp::now(), project, &facts);
                     ledger.append(&baseline)?;
                     write_envelope_success(out, baseline)?;
                 }
