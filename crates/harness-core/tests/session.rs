@@ -1063,3 +1063,35 @@ fn the_tool_mix_is_counted_per_window_and_per_instruction() {
     assert!(facts.submissions[1].tools.is_empty());
     assert_eq!(facts.coverage.sessions, 2);
 }
+
+/// A turn the operator typed with a file dropped in beside the text.
+fn typed_with_image(session: &str, uuid: &str, ts: &str, text: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","version":"2.1.246","origin":{{"kind":"human"}},"promptSource":"typed","message":{{"content":[{{"type":"image","source":{{"type":"base64","media_type":"image/png","data":"iVBOR"}}}},{{"type":"text","text":{}}}]}}}}"#,
+        serde_json::to_string(text).unwrap()
+    )
+}
+
+#[test]
+fn an_instruction_with_a_file_beside_it_is_still_an_instruction() {
+    let mut lines = vec![
+        typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+        typed_with_image("s1", "a2", "2026-08-01T10:00:00Z", ALSO_STANDING),
+    ];
+    lines.extend(call_and_denial("s1", "Bash", "permission-rule", 11));
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", lines)]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.prompts.authored_turns,
+        facts.coverage.user_turns_by_authorship[Authorship::Authored.as_str()],
+        "one envelope, one meaning for `authored`"
+    );
+    assert_eq!(facts.prompts.submissions, 2);
+    assert_eq!(
+        facts.harness.denials.len(),
+        1,
+        "a tool result still carries no text and opens no instruction"
+    );
+}

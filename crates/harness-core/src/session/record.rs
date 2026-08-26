@@ -237,8 +237,8 @@ impl ToolAction {
 pub struct UserTurn {
     pub citation: Citation,
     pub authorship: Authorship,
-    /// Joined text of a text-only message. `None` when the message carries
-    /// anything else — a tool result is a tool result, not a turn.
+    /// What the person wrote, joined from the message's text blocks. `None`
+    /// when there are none: a tool result is a tool result, not a turn.
     pub text: Option<String>,
     /// Whether the runtime marked this turn as submitted while the agent was
     /// working. Only meaningful on an [`Authorship::Authored`] turn.
@@ -558,18 +558,22 @@ fn edited_file_of(result: &serde_json::Value) -> Option<PathBuf> {
 /// A message carrying a tool result, an image or any other block is not a turn
 /// the operator wrote, so it yields `None` rather than a partial join — a
 /// partial join would put tool output into prompt statistics.
-fn text_only(content: &serde_json::Value) -> Option<String> {
+/// What a person wrote in this message, if they wrote anything.
+///
+/// The text blocks, joined; `None` when there are none. A tool result carries
+/// `tool_result` blocks and no text, so it still yields nothing — which is the
+/// separation this is for. Requiring every block to be text would have dropped
+/// the whole turn over an attachment beside it.
+fn text_of(content: &serde_json::Value) -> Option<String> {
     match content {
         serde_json::Value::String(s) => Some(s.clone()),
         serde_json::Value::Array(blocks) => {
-            let mut out = Vec::with_capacity(blocks.len());
-            for b in blocks {
-                match b.get("type").and_then(serde_json::Value::as_str) {
-                    Some("text") => out.push(b.get("text")?.as_str()?.to_string()),
-                    _ => return None,
-                }
-            }
-            Some(out.join("\n"))
+            let out: Vec<String> = blocks
+                .iter()
+                .filter(|b| b.get("type").and_then(serde_json::Value::as_str) == Some("text"))
+                .filter_map(|b| Some(b.get("text")?.as_str()?.to_string()))
+                .collect();
+            (!out.is_empty()).then(|| out.join("\n"))
         }
         _ => None,
     }
@@ -700,7 +704,7 @@ pub fn read_transcript(
                 out.push(Record::User(UserTurn {
                     citation,
                     authorship,
-                    text: content.and_then(text_only),
+                    text: content.and_then(text_of),
                     queued: raw.prompt_source.as_deref() == Some(QUEUED_PROMPT_SOURCE),
                     follows_agent_output: agent_output_since_user_turn,
                     interrupted: raw.interrupted_message_id.is_some(),
