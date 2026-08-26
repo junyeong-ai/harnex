@@ -24,6 +24,10 @@
 //!   reported as exactly that; whether it should go is a reading.
 //! - Never carry every citation. A group's count is made verifiable by its
 //!   first and last occurrence; the transcripts hold the rest.
+//! - Never present a cost as a verdict. `durationMs` is per hook and exact;
+//!   nothing in the record attributes what a hook produced to that hook, so
+//!   [`HookCost::stops_with_prevention`] is reported with its limit rather than
+//!   used as a predicate.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -68,6 +72,17 @@ pub struct HookCost {
     pub command: String,
     pub runs: usize,
     pub total_ms: u64,
+    /// Stops this hook ran in that the hooks held the agent through.
+    ///
+    /// Zero means this hook never held the agent. It does not mean the hook
+    /// bought nothing: a Stop wrapper that reports rather than blocks exits 0
+    /// by design, and the fields that would show what a hook produced —
+    /// `hasOutput`, `hookAdditionalContext` — belong to the Stop event rather
+    /// than to a hook inside it. Every Stop in the measured corpus ran three to
+    /// six hooks (single-hook stops: 0 of 7,195), so none of them resolves to
+    /// one hook even in principle. Cost is attributable here; value is not, and
+    /// a removal gated on this zero would mark every hook there is.
+    pub stops_with_prevention: usize,
     pub span: Span,
 }
 
@@ -91,14 +106,20 @@ pub struct HarnessFacts {
 struct Group {
     count: usize,
     weight: u64,
+    flagged: usize,
     first: Option<Citation>,
     last: Option<Citation>,
 }
 
 impl Group {
     fn observe(&mut self, citation: &Citation, weight: u64) {
+        self.observe_flagged(citation, weight, false);
+    }
+
+    fn observe_flagged(&mut self, citation: &Citation, weight: u64, flagged: bool) {
         self.count += 1;
         self.weight += weight;
+        self.flagged += usize::from(flagged);
         if self.first.is_none() {
             self.first = Some(citation.clone());
         }
@@ -154,7 +175,11 @@ impl HarnessAnalyzer {
                     self.hooks
                         .entry(hook.command.clone())
                         .or_default()
-                        .observe(&stop.citation, hook.duration_ms);
+                        .observe_flagged(
+                            &stop.citation,
+                            hook.duration_ms,
+                            stop.prevented_continuation,
+                        );
                 }
             }
             Record::Assistant(_) => {}
@@ -198,6 +223,7 @@ impl HarnessAnalyzer {
                 command,
                 runs: g.count,
                 total_ms: g.weight,
+                stops_with_prevention: g.flagged,
                 span: g.span(),
             })
             .collect();
@@ -338,6 +364,35 @@ mod tests {
     fn a_hook_that_held_the_agent_is_counted_as_having_done_so() {
         let facts = run(&[stop("s1", 100, &[("gate.sh", 160)], true)]);
         assert_eq!(facts.prevented_continuations, 1);
+        assert_eq!(facts.hooks[0].stops_with_prevention, 1);
+    }
+
+    #[test]
+    fn a_prevention_charges_every_hook_that_ran_in_that_stop() {
+        let facts = run(&[
+            stop("s1", 100, &[("noisy.sh", 2000), ("gate.sh", 160)], false),
+            stop("s2", 200, &[("gate.sh", 160)], true),
+        ]);
+
+        let noisy = facts
+            .hooks
+            .iter()
+            .find(|h| h.command == "noisy.sh")
+            .expect("noisy hook");
+        let gate = facts
+            .hooks
+            .iter()
+            .find(|h| h.command == "gate.sh")
+            .expect("gate hook");
+
+        assert_eq!(
+            noisy.stops_with_prevention, 0,
+            "a hook absent from the stop that held cannot have held it"
+        );
+        assert_eq!(
+            gate.stops_with_prevention, 1,
+            "a hook present in the stop that held is not cleared"
+        );
     }
 
     #[test]

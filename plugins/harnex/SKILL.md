@@ -2,7 +2,7 @@
 name: harnex
 description: Generate and maintain project-fit, project-native Claude Code harness tooling — hooks, settings.json, CLAUDE.md, path-scoped rules — in the target project's own language, from verified spec-correct templates. Use to scaffold a harness in a fresh repo, extend one with a closed-verb additive change, audit an existing harness for spec drift, or regenerate the managed regions against the current Claude Code spec.
 disable-model-invocation: true
-argument-hint: "scaffold | extend <verb> <args> | audit | regenerate"
+argument-hint: "scaffold | extend <verb> <args> | retire <verb> <args> | audit | regenerate"
 ---
 
 # harnex
@@ -20,6 +20,8 @@ Read these first (they are the contract, load on demand):
 - `${CLAUDE_SKILL_DIR}/reference/language-matrix.md` — stack detection +
   per-language parameters.
 - `${CLAUDE_SKILL_DIR}/reference/exploration.md` — divide-and-conquer repo map.
+- `${CLAUDE_SKILL_DIR}/reference/retire.md` — the removal contract: what
+  the evidence supports, and where it stops short of a verdict.
 
 Templates live under `${CLAUDE_SKILL_DIR}/templates/`: language-agnostic
 pieces in `common/`, and one directory per supported language
@@ -452,6 +454,35 @@ content), surface it for operator review rather than overwrite. Preserve every
 other top-level key (`autoMemoryEnabled`, `skillOverrides`, `env`, etc.).
 
 Report what changed and why.
+
+## Mode: retire (evidence-presented, operator-decided removal)
+
+`extend` adds and nothing removed, so a harness only ever grew. This mode is
+the other direction. It does not decide: the transcript records what a harness
+element cost and never what it bought, so `retire.md` presents evidence and the
+operator supplies the reason. Read it before running this mode.
+
+- **`drop-hook <command>`** — a Stop hook's `runs`, `total_ms` and
+  `stops_with_prevention`, with that field's attribution limit stated.
+- **`drop-rule <path>`** — a rule absent from `rule_loads` across a window that
+  did observe this project.
+
+Run `harness session facts` first; evidence the envelope does not carry does
+not exist. Then, for the chosen verb:
+
+1. Present the evidence with its limit. Never call an element useless because
+   nothing recorded it being useful.
+2. Take the operator's decision text. Without it, stop — this is the same
+   refusal `harness lifecycle` makes.
+3. Locate the entry by the rendering rule in `retire.md`. No match or more than
+   one → report and stop.
+4. Refuse anything outside the managed partition (§ Invariants 6) and report
+   where it lives instead.
+5. Remove the entry, leaving every sibling and every other key intact.
+6. Record the decision with `harness lifecycle`, then commit that removal alone.
+
+Verify as `regenerate` does: the settings file still parses and still passes
+`harness validate settings`.
 
 ## Verify before finishing
 
