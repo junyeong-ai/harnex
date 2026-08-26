@@ -46,8 +46,9 @@ guides editing it, not using it):
   are silently ignored when misspelled, so `plugin_scaffold_validates` runs
   `AgentValidator` with `reject_unknown_keys` over `agents/`. Any envelope
   field a command or agent is written against is held to the schema by
-  `plugin_prose_sync`; add the name to its `CONTRACTS` table when a new
-  document depends on one.
+  `plugin_prose_sync`; add it to that test's `CONTRACTS` table as `Type.field`
+  when a new document depends on one, and cite it in a code span — the guard
+  reads code spans, because these field names are also ordinary English.
 - **`templates/scaffold.toml` is the composition.** Which artifacts a harness
   contains, where each lands, which tier it belongs to, and how the project's
   copy relates to its template (`content.kind`: `copy` | `seed` | `managed` |
