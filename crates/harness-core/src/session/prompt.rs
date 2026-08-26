@@ -116,10 +116,12 @@ impl PromptAnalyzer {
 
         let session = turn.citation.session.clone();
         let submission = match self.open_submission.get(&session) {
-            // A queued turn continues what is already open. A queued turn with
+            // A queued turn continues what is already open only while the
+            // agent has said nothing back; once it has, the operator is
+            // answering it and this is a new instruction. A queued turn with
             // nothing open — a resumed session whose earlier turns are in
             // another file — opens one rather than being dropped.
-            Some(open) if turn.continues_submission => *open,
+            Some(open) if turn.queued && !turn.follows_agent_output => *open,
             _ => {
                 self.submissions += 1;
                 let next = self.submissions as u64;
@@ -259,7 +261,9 @@ mod tests {
             },
             authorship: Authorship::Authored,
             text: Some(text.into()),
-            continues_submission: false,
+            queued: false,
+            follows_agent_output: false,
+            interrupted: false,
             commit: None,
             edited_file: None,
             denial: None,
@@ -268,7 +272,9 @@ mod tests {
 
     fn queued(session: &str, uuid: &str, seconds: i64, text: &str) -> UserTurn {
         UserTurn {
-            continues_submission: true,
+            queued: true,
+            follows_agent_output: false,
+            interrupted: false,
             ..turn(session, uuid, seconds, text)
         }
     }

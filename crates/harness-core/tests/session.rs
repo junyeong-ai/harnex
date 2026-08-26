@@ -585,3 +585,96 @@ fn coverage_counts_the_window_rather_than_the_whole_file() {
     );
     assert_eq!(facts.coverage.observed_to, facts.coverage.observed_from);
 }
+
+/// A turn the operator sent while the agent was working.
+fn queued(session: &str, uuid: &str, ts: &str, text: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","version":"2.1.246","origin":{{"kind":"human"}},"promptSource":"queued","message":{{"content":{}}}}}"#,
+        serde_json::to_string(text).unwrap()
+    )
+}
+
+/// An agent turn that produced text and nothing else.
+fn spoke(session: &str, uuid: &str, ts: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"content":[{{"type":"text","text":"working on it"}}]}}}}"#
+    )
+}
+
+/// The record the runtime writes where it cut an agent turn short.
+fn marked_interrupt(session: &str, uuid: &str, ts: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","interruptedMessageId":"msg_01","message":{{"content":"[Request interrupted by user]"}}}}"#
+    )
+}
+
+#[test]
+fn a_queued_turn_after_the_agent_has_spoken_is_a_new_instruction_and_steering() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spoke("s1", "x1", "2026-08-01T09:00:05Z"),
+            queued("s1", "a2", "2026-08-01T09:00:09Z", ALSO_STANDING),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.prompts.submissions, 2);
+    assert_eq!(facts.interventions.by_kind["steering"], 1);
+    assert_eq!(facts.interventions.interventions[0].citation.uuid, "a2");
+}
+
+#[test]
+fn a_tool_result_is_not_the_operator_speaking() {
+    let mut lines = vec![
+        typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+        spoke("s1", "x1", "2026-08-01T09:00:05Z"),
+    ];
+    lines.extend(call_and_denial("s1", "Bash", "permission-rule", 6));
+    lines.push(queued("s1", "a2", "2026-08-01T10:00:09Z", ALSO_STANDING));
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", lines)]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.interventions.by_kind["steering"], 1,
+        "the denial record sits between them but the operator did not type it"
+    );
+}
+
+#[test]
+fn a_refused_tool_call_is_not_counted_as_an_intervention() {
+    let mut lines = vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)];
+    lines.extend(call_and_denial("s1", "Bash", "user-rejected", 7));
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", lines)]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert!(facts.interventions.interventions.is_empty());
+    assert_eq!(facts.harness.denials[0].kind, "user-rejected");
+}
+
+#[test]
+fn an_interrupt_the_runtime_marked_is_reported_though_no_person_authored_it() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spoke("s1", "x1", "2026-08-01T09:00:05Z"),
+            marked_interrupt("s1", "i1", "2026-08-01T09:00:07Z"),
+            typed("s1", "a2", "2026-08-01T09:00:20Z", ALSO_STANDING),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.interventions.by_kind["marked-interrupt"], 1);
+    assert_eq!(facts.interventions.by_kind["steering"], 0);
+    assert_eq!(
+        facts.coverage.user_turns_by_authorship[Authorship::Unclaimed.as_str()],
+        1,
+        "the marker stays outside the coverage denominator"
+    );
+}

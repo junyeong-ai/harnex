@@ -29,20 +29,19 @@
 //! - Never judge. No metric here carries a causal name: the count of edits
 //!   after a commit is `post_commit_reedit`, not "regression", because a name
 //!   in the envelope hardens into a finding.
-//! - Never identify a turn by its wording. Interruptions are the current
-//!   example of the cost: the runtime marks only some of them structurally
-//!   (`interruptedMessageId`, on roughly 70% and not gated by version), and the
-//!   rest are identifiable only by matching a runtime-emitted literal. Counting
-//!   the structural subset would understate interruptions by an unknown amount
-//!   in the flattering direction, and matching the literal reports zero the day
-//!   it is reworded. Interruptions therefore wait for a sound identification
-//!   rather than shipping an approximate one.
+//! - Never identify a turn by its wording. Where the runtime marks only part
+//!   of a population — interruptions are the standing example, marked on 216
+//!   of 394 — the marked subset is published as a floor carrying its measured
+//!   coverage, and the remainder is left to a reader of the transcript.
+//!   Matching the runtime's wording to close the gap reports zero the day the
+//!   wording moves.
 //! - Never write. This module reads; nothing here mutates a project.
 //! - Never reach the network. Every input is a local file.
 
 pub mod baseline;
 pub mod discovery;
 pub mod harness;
+pub mod intervention;
 pub mod prompt;
 pub mod record;
 pub mod rework;
@@ -57,6 +56,7 @@ pub use baseline::{
     Baseline, BaselineDiff, BaselineLedger, Measurement, MetricDelta, SessionMetric,
 };
 pub use harness::{DenialGroup, HarnessFacts, HookCost, RuleLoadGroup};
+pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock};
 pub use record::{Authorship, Citation, Coverage};
 pub use rework::{PostCommitReedit, ReworkFacts};
@@ -78,6 +78,7 @@ pub struct CollectOptions {
 pub struct SessionFacts {
     pub coverage: Coverage,
     pub prompts: PromptFacts,
+    pub interventions: InterventionFacts,
     pub rework: ReworkFacts,
     pub harness: HarnessFacts,
 }
@@ -94,6 +95,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         ..Coverage::default()
     };
     let mut prompts = prompt::PromptAnalyzer::new(config.min_block_chars);
+    let mut interventions = intervention::InterventionAnalyzer::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
 
@@ -108,6 +110,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         for rec in &records {
             if let record::Record::User(turn) = rec {
                 prompts.observe(turn);
+                interventions.observe(turn);
             }
             harness.observe(rec);
         }
@@ -130,6 +133,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     Ok(SessionFacts {
         coverage,
         prompts: prompts.finish(options.with_text),
+        interventions: interventions.finish(),
         rework: rework.finish(),
         harness: harness.finish(),
     })

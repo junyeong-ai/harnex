@@ -259,7 +259,9 @@ mod tests {
             citation: cite(uuid, seconds),
             authorship: Authorship::Unclaimed,
             text: None,
-            continues_submission: false,
+            queued: false,
+            follows_agent_output: false,
+            interrupted: false,
             commit: None,
             edited_file: None,
             denial: Some(Denial {
