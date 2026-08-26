@@ -171,6 +171,7 @@ impl PromptAnalyzer {
                 .cmp(&a.submissions)
                 .then(b.chars.cmp(&a.chars))
                 .then(a.citations[0].timestamp.cmp(&b.citations[0].timestamp))
+                .then(a.citations[0].uuid.cmp(&b.citations[0].uuid))
         });
 
         PromptFacts {
@@ -190,6 +191,7 @@ fn rank(a: &RepeatedBlock, b: &RepeatedBlock) -> std::cmp::Ordering {
         .cmp(&b.sessions)
         .then(a.chars.cmp(&b.chars))
         .then(b.citations[0].timestamp.cmp(&a.citations[0].timestamp))
+        .then(b.citations[0].uuid.cmp(&a.citations[0].uuid))
 }
 
 /// Paragraphs of `text` that reach `min_chars`, each with its internal

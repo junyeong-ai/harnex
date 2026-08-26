@@ -21,6 +21,9 @@
 //! - Never claim a revert it cannot see. [`CommitOutcome::reverted_by`] finds
 //!   the line `git revert` writes and nothing else; a change undone by hand
 //!   carries no such line and is invisible here.
+//! - Never write into a project. The one file this module creates is the query
+//!   git reads on stdin, in a scratch directory outside any project tree and
+//!   through `path_guard` like every other write in the crate.
 //! - Never reach the network. Every command reads the local object database.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -33,7 +36,15 @@ use crate::error::{Error, Result};
 use crate::path_guard;
 
 /// The line `git revert` writes into the message it generates.
+///
+/// Matched at the start of a line, because the same words quoted inside a
+/// message body are somebody talking about a revert rather than one.
 const REVERT_TRAILER: &str = "This reverts commit ";
+
+/// Object id widths git uses: SHA-1 today, SHA-256 where a repository was
+/// created with it. Hardcoding the first would leave `reverted_by` empty on
+/// the second and say nothing about why.
+const OBJECT_ID_WIDTHS: &[usize] = &[40, 64];
 
 /// Where a commit stands relative to the branch that is checked out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,8 +124,25 @@ pub fn survey(
     observed: &[String],
     span: Option<(jiff::Timestamp, jiff::Timestamp)>,
 ) -> Result<Option<RepositoryFacts>> {
-    if run(project, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+    // Three answers, kept apart. A directory that is not there has no history
+    // to ask about; git saying "not a work tree" is the same; a git that could
+    // not be spawned is a failure, and reporting that as an absent repository
+    // would say the project has no history rather than that nothing asked.
+    if !project.is_dir() {
         return Ok(None);
+    }
+    match Command::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(project)
+        .output()
+    {
+        Ok(out) if !out.status.success() => return Ok(None),
+        Ok(_) => {}
+        Err(e) => {
+            return Err(Error::CheckGitFailure {
+                message: format!("git rev-parse --is-inside-work-tree spawn: {e}"),
+            });
+        }
     }
     let head = run(project, &["rev-parse", "HEAD"])?.trim().to_string();
     let resolved = resolve(project, observed)?;
@@ -182,14 +210,30 @@ fn resolve(project: &Path, observed: &[String]) -> Result<Vec<Option<String>>> {
     if observed.is_empty() {
         return Ok(Vec::new());
     }
+    // The transcript is not a trusted source of revision expressions. Anything
+    // that is not an abbreviation resolves to nothing rather than being handed
+    // to git, which would otherwise accept `HEAD~1` or a tag name and report
+    // whatever it found as the work this window did.
+    let abbreviations: Vec<Option<&String>> = observed
+        .iter()
+        .map(|s| {
+            (!s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_hexdigit()))
+                .then_some(s)
+        })
+        .collect();
     // The query goes through a file rather than a pipe. Writing every line to
     // a piped stdin before reading stdout deadlocks once git's output fills the
     // kernel buffer and it blocks writing while this blocks writing — measured
     // here between six and eight thousand commits, which one busy project
     // reaches. A file has no such limit and needs no second thread to drain.
-    let query: String = observed
+    let query: String = abbreviations
         .iter()
-        .map(|s| format!("{s}^{{commit}}\n"))
+        .map(|a| match a {
+            // A line git cannot resolve keeps the answer positional without
+            // asking it about something the transcript made up.
+            Some(sha) => format!("{sha}^{{commit}}\n"),
+            None => "\n".to_string(),
+        })
         .collect();
     let scratch = tempfile::tempdir().map_err(|e| Error::CheckGitFailure {
         message: format!("git cat-file --batch-check scratch: {e}"),
@@ -216,6 +260,11 @@ fn resolve(project: &Path, observed: &[String]) -> Result<Vec<Option<String>>> {
             message: format!("git cat-file --batch-check wait: {e}"),
         })?;
 
+    if !output.status.success() {
+        return Err(Error::CheckGitFailure {
+            message: format!("git cat-file --batch-check exited {}", output.status),
+        });
+    }
     let body = String::from_utf8_lossy(&output.stdout);
     let out: Vec<Option<String>> = body
         .lines()
@@ -258,11 +307,14 @@ fn reverts(project: &Path) -> Result<BTreeMap<String, Vec<String>>> {
         if sha.is_empty() {
             continue;
         }
-        for reverted in body.match_indices(REVERT_TRAILER).filter_map(|(at, _)| {
-            let rest = &body[at + REVERT_TRAILER.len()..];
-            let candidate: String = rest.chars().take_while(char::is_ascii_hexdigit).collect();
-            (candidate.len() == 40).then_some(candidate)
-        }) {
+        for reverted in body
+            .lines()
+            .filter_map(|line| line.trim_start().strip_prefix(REVERT_TRAILER))
+            .filter_map(|rest| {
+                let id: String = rest.chars().take_while(char::is_ascii_hexdigit).collect();
+                OBJECT_ID_WIDTHS.contains(&id.len()).then_some(id)
+            })
+        {
             out.entry(reverted).or_default().push(sha.to_string());
         }
     }

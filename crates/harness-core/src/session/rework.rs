@@ -132,6 +132,7 @@ impl ReworkAnalyzer {
             b.reedits
                 .cmp(&a.reedits)
                 .then(a.citations[0].timestamp.cmp(&b.citations[0].timestamp))
+                .then(a.file.cmp(&b.file))
         });
         ReworkFacts {
             commits: self.commits,

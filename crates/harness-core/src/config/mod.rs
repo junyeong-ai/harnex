@@ -64,6 +64,7 @@ pub struct Config {
 /// built-in one would put the author's layout into a binary that runs on other
 /// machines — Constitution VII, applied to a path rather than a threshold.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SessionConfig {
     pub roots: Vec<String>,
     /// Shortest paragraph that counts as a repeatable block. Below it, ordinary
@@ -958,6 +959,22 @@ impl Config {
                 location: None,
             });
         }
+        // `path_guard` refuses a traversal at write time; a configuration the
+        // runtime cannot honor is rejected at load instead, so the refusal
+        // arrives before a window is measured rather than after.
+        if sess
+            .baseline_path
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+        {
+            return Err(Error::ConfigInvalid {
+                message: format!(
+                    "[session] baseline_path {} climbs out of the project; a write refuses a '..' segment",
+                    sess.baseline_path.display()
+                ),
+                location: None,
+            });
+        }
         Ok(())
     }
 
@@ -1057,6 +1074,33 @@ mod tests {
         assert!(cfg.kinds.is_empty());
         assert!(cfg.evidence.is_none());
         assert!(cfg.telemetry.is_none());
+    }
+
+    #[test]
+    fn rejects_a_baseline_path_that_climbs_out_of_the_project() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [session]
+            roots = ["~/.claude/projects"]
+            baseline_path = "../elsewhere/ledger.jsonl"
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+    }
+
+    #[test]
+    fn rejects_a_session_field_it_does_not_declare() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [session]
+            roots = ["~/.claude/projects"]
+            submission_sampl = 50
+        "#;
+        assert!(
+            parse(src).is_err(),
+            "a typo must not fall back to the default it shadows"
+        );
     }
 
     #[test]
