@@ -61,7 +61,10 @@ const AUTHORED_PROMPT_SOURCES: &[&str] = &["typed", "queued"];
 /// for a fact the runtime already wrote down. Measured across 430 consecutive
 /// pairs under ten seconds, 79% end in this source; the gap threshold that
 /// would have stood in for it is deleted rather than tuned.
-const CONTINUATION_PROMPT_SOURCE: &str = "queued";
+///
+/// It says the operator did not wait, not what they meant by it — see
+/// [`UserTurn::follows_agent_output`].
+const QUEUED_PROMPT_SOURCE: &str = "queued";
 
 /// The attachment carrying a project memory file that entered context.
 const RULE_LOAD_ATTACHMENT: &str = "nested_memory";
@@ -196,7 +199,23 @@ pub struct UserTurn {
     pub text: Option<String>,
     /// Whether the runtime marked this turn as submitted while the agent was
     /// working. Only meaningful on an [`Authorship::Authored`] turn.
-    pub continues_submission: bool,
+    pub queued: bool,
+    /// Whether the agent produced anything since the previous user turn.
+    ///
+    /// The two readings of [`UserTurn::queued`] separate here and nowhere
+    /// else. A queued turn with nothing produced yet is the operator still
+    /// composing; a queued turn after the agent has spoken is the operator
+    /// reacting to what it did. Measured across the local corpus the split is
+    /// 430 to 437, so treating every queued turn as one instruction folds half
+    /// of them into an instruction they were arguing with.
+    pub follows_agent_output: bool,
+    /// Whether the runtime recorded this turn as the point an agent turn was
+    /// cut short.
+    ///
+    /// A floor, not a count: measured against the runtime's own wording over
+    /// the local corpus the field is present on 216 of 394 interruptions
+    /// (54.8%). Reading it as the number of interruptions understates them.
+    pub interrupted: bool,
     /// The commit a tool result on this record reported.
     pub commit: Option<String>,
     /// The file a tool result on this record reported editing.
@@ -378,6 +397,8 @@ struct RawRecord {
     hook_errors: Option<Vec<serde_json::Value>>,
     #[serde(rename = "preventedContinuation")]
     prevented_continuation: Option<bool>,
+    #[serde(rename = "interruptedMessageId")]
+    interrupted_message_id: Option<String>,
 }
 
 /// The commit a tool result reported, if it reported one.
@@ -474,6 +495,7 @@ pub fn read_transcript(
     // A tool call always precedes its result inside one transcript, so a single
     // forward pass resolves every denial to the tool it answered.
     let mut tool_names: HashMap<String, String> = HashMap::new();
+    let mut agent_output_since_user_turn = false;
 
     for line in reader.lines() {
         let line = line?;
@@ -534,12 +556,20 @@ pub fn read_transcript(
                     citation,
                     authorship,
                     text: content.and_then(text_only),
-                    continues_submission: raw.prompt_source.as_deref()
-                        == Some(CONTINUATION_PROMPT_SOURCE),
+                    queued: raw.prompt_source.as_deref() == Some(QUEUED_PROMPT_SOURCE),
+                    follows_agent_output: agent_output_since_user_turn,
+                    interrupted: raw.interrupted_message_id.is_some(),
                     commit: result.and_then(commit_of),
                     edited_file: result.and_then(edited_file_of),
                     denial,
                 }));
+                // Only a turn the runtime attributed to a person closes the
+                // interval. A tool result is also a `user` record, and letting
+                // one reset this would report the operator as having spoken
+                // when the protocol did.
+                if authorship.claims_a_person() {
+                    agent_output_since_user_turn = false;
+                }
             }
             ConsumedType::Assistant => {
                 let mut actions = Vec::new();
@@ -561,6 +591,7 @@ pub fn read_transcript(
                             .unwrap_or(serde_json::Value::Null),
                     });
                 }
+                agent_output_since_user_turn = true;
                 out.push(Record::Assistant(AssistantTurn { citation, actions }));
             }
             ConsumedType::Attachment => {

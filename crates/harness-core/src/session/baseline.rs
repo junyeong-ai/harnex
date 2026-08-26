@@ -77,6 +77,9 @@ pub enum SessionMetric {
     RuleLoadCharsPerSubmission,
     /// Tool calls a permission rule or the operator stopped.
     DenialsPerSubmission,
+    /// Instructions the operator sent without waiting for the agent that was
+    /// already answering the previous one.
+    SteeringPerSubmission,
     /// Files edited again after a commit and before the next one.
     ReeditsPerCommit,
     /// Wall-clock the Stop hooks held.
@@ -89,6 +92,7 @@ impl SessionMetric {
         Self::RestatedCharsPerSubmission,
         Self::RuleLoadCharsPerSubmission,
         Self::DenialsPerSubmission,
+        Self::SteeringPerSubmission,
         Self::ReeditsPerCommit,
         Self::HookMillisecondsPerStop,
     ];
@@ -99,6 +103,7 @@ impl SessionMetric {
             "restated_chars_per_submission" => Self::RestatedCharsPerSubmission,
             "rule_load_chars_per_submission" => Self::RuleLoadCharsPerSubmission,
             "denials_per_submission" => Self::DenialsPerSubmission,
+            "steering_per_submission" => Self::SteeringPerSubmission,
             "reedits_per_commit" => Self::ReeditsPerCommit,
             "hook_milliseconds_per_stop" => Self::HookMillisecondsPerStop,
             _ => return None,
@@ -111,6 +116,7 @@ impl SessionMetric {
             Self::RestatedCharsPerSubmission => "restated_chars_per_submission",
             Self::RuleLoadCharsPerSubmission => "rule_load_chars_per_submission",
             Self::DenialsPerSubmission => "denials_per_submission",
+            Self::SteeringPerSubmission => "steering_per_submission",
             Self::ReeditsPerCommit => "reedits_per_commit",
             Self::HookMillisecondsPerStop => "hook_milliseconds_per_stop",
         }
@@ -132,6 +138,15 @@ impl SessionMetric {
             ),
             Self::DenialsPerSubmission => Measurement::new(
                 facts.harness.denials.iter().map(|d| d.denials).sum(),
+                submissions,
+            ),
+            Self::SteeringPerSubmission => Measurement::new(
+                facts
+                    .interventions
+                    .by_kind
+                    .get(crate::session::InterventionKind::Steering.as_str())
+                    .copied()
+                    .unwrap_or(0),
                 submissions,
             ),
             Self::ReeditsPerCommit => Measurement::new(
