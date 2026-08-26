@@ -41,6 +41,7 @@
 //! - Never reach the network. Every input is a local file.
 
 pub mod discovery;
+pub mod harness;
 pub mod prompt;
 pub mod record;
 pub mod rework;
@@ -51,6 +52,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::SessionConfig;
 use crate::error::{Error, Result};
 
+pub use harness::{DenialGroup, HarnessFacts, HookCost, RuleLoadGroup};
 pub use prompt::{PromptFacts, RepeatedBlock};
 pub use record::{Authorship, Citation, Coverage};
 pub use rework::{PostCommitReedit, ReworkFacts};
@@ -73,6 +75,7 @@ pub struct SessionFacts {
     pub coverage: Coverage,
     pub prompts: PromptFacts,
     pub rework: ReworkFacts,
+    pub harness: HarnessFacts,
 }
 
 /// Read every transcript under the configured roots.
@@ -88,6 +91,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     };
     let mut prompts = prompt::PromptAnalyzer::new(config.min_block_chars);
     let mut rework = rework::ReworkAnalyzer::new();
+    let mut harness = harness::HarnessAnalyzer::new();
 
     for path in &files {
         let records = match record::read_transcript(path, &mut coverage) {
@@ -108,6 +112,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             if let record::Record::User(turn) = rec {
                 prompts.observe(turn);
             }
+            harness.observe(rec);
         }
         rework.observe(&window);
     }
@@ -129,6 +134,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         coverage,
         prompts: prompts.finish(options.with_text),
         rework: rework.finish(),
+        harness: harness.finish(),
     })
 }
 
