@@ -148,9 +148,13 @@ fn the_command_dispatches_the_agent_the_plugin_ships() {
         .find_map(|l| l.strip_prefix("name: "))
         .expect("the agent declares a name");
 
+    // Plugin agents are namespaced `plugin:agent`, and the bare name does not
+    // resolve — verified against an installed copy, where `session-judge` is
+    // absent and `harnex:session-judge` is what exists.
+    let qualified = format!("harnex:{name}");
     assert!(
-        command.contains(name),
-        "measure.md dispatches no agent called `{name}`; a renamed agent leaves \
-         the command naming one that does not exist"
+        command.contains(&qualified),
+        "measure.md must dispatch `{qualified}`; the bare `{name}` is not a type \
+         Claude Code resolves for a plugin agent"
     );
 }
