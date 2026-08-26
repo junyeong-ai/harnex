@@ -35,7 +35,7 @@ strategy = "file-path-line"
 # rule here is path-scoped and costs context only on the files it governs, so
 # `max_scoped_lines` stays unset — a cohesive long rule is not a defect.
 max_lines = 200
-always_loaded_slugs = ["constitution"]
+always_loaded_slugs = ["constitution", "making-changes"]
 
 [validate.skills]
 
