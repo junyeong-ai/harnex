@@ -746,6 +746,27 @@ impl Config {
                     return Err(Error::PolicyProfileUnknown { name: name.clone() });
                 }
             }
+            // A rule Claude Code accepts and never consults is a guardrail the
+            // runtime cannot honor: it merges into the generated settings,
+            // reads as a floor, and enforces nothing.
+            for (field, rules) in [
+                ("[policy.permissions].extra_allow", &perms.extra_allow),
+                ("[policy.permissions].extra_ask", &perms.extra_ask),
+                ("[policy.permissions].extra_deny", &perms.extra_deny),
+            ] {
+                for rule in rules {
+                    if let crate::policy::RuleEffect::Inert(inert) =
+                        crate::policy::PermissionRule::parse(rule).effect()
+                    {
+                        return Err(Error::PolicyRuleInert {
+                            field,
+                            rule: rule.clone(),
+                            reason: inert.reason_text(),
+                            hint: inert.hint(),
+                        });
+                    }
+                }
+            }
         }
         for v in &p.versions {
             match v.strategy.as_str() {
@@ -1315,6 +1336,46 @@ mod tests {
         "#;
         let err = parse(src).unwrap_err();
         assert_eq!(err.code(), ErrorCode::PolicyProfileUnknown);
+    }
+
+    #[test]
+    fn rejects_an_extra_rule_no_permission_check_consults() {
+        for (field, rule) in [
+            ("extra_deny", "Write(/secrets/**)"),
+            ("extra_deny", "Bash(command:rm -rf *)"),
+            ("extra_ask", "NotebookEdit(notebooks/**)"),
+            ("extra_allow", "Glob(src/**)"),
+        ] {
+            let src = format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+                [policy.permissions]
+                profiles = ["baseline"]
+                {field} = ["{rule}"]
+            "#
+            );
+            let err = parse(&src).unwrap_err();
+            assert_eq!(
+                err.code(),
+                ErrorCode::PolicyRuleInert,
+                "{field} = {rule} must fail at load"
+            );
+            assert!(err.hint().is_some(), "{rule} must say what to write");
+        }
+    }
+
+    #[test]
+    fn accepts_extra_rules_a_permission_check_reads() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [policy.permissions]
+            profiles = ["baseline"]
+            extra_deny = ["Edit(/vault/**)", "Bash(terraform apply *)", "Agent(model:opus)"]
+            extra_allow = ["Bash(pnpm gate:*)", "Write"]
+        "#;
+        parse(src).unwrap();
     }
 
     #[test]

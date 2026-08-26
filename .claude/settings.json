@@ -118,19 +118,7 @@
       "Read(.env.*)",
       "Read(/secrets/**)",
       "Read(~/.aws/credentials)",
-      "Read(~/.ssh/*)",
-      "Write(*.key)",
-      "Write(*.p12)",
-      "Write(*.pem)",
-      "Write(*.pfx)",
-      "Write(.env)",
-      "Write(.env.development)",
-      "Write(.env.local)",
-      "Write(.env.production)",
-      "Write(.env.staging)",
-      "Write(/secrets/**)",
-      "Write(~/.aws/credentials)",
-      "Write(~/.ssh/*)"
+      "Read(~/.ssh/*)"
     ]
   }
 }

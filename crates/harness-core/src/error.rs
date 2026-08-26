@@ -39,6 +39,7 @@ pub enum ErrorCode {
     CodegenSentinelDuplicate,
     CodegenCycle,
     PolicyProfileUnknown,
+    PolicyRuleInert,
     PolicyVersionFailure,
     ValidateFrontmatterMalformed,
     ValidateFrontmatterInvalid,
@@ -76,6 +77,7 @@ impl ErrorCode {
         Self::CodegenSentinelDuplicate,
         Self::CodegenCycle,
         Self::PolicyProfileUnknown,
+        Self::PolicyRuleInert,
         Self::PolicyVersionFailure,
         Self::ValidateFrontmatterMalformed,
         Self::ValidateFrontmatterInvalid,
@@ -108,6 +110,7 @@ impl ErrorCode {
             Self::CodegenSentinelDuplicate => "CODEGEN_SENTINEL_DUPLICATE",
             Self::CodegenCycle => "CODEGEN_CYCLE",
             Self::PolicyProfileUnknown => "POLICY_PROFILE_UNKNOWN",
+            Self::PolicyRuleInert => "POLICY_RULE_INERT",
             Self::PolicyVersionFailure => "POLICY_VERSION_FAILURE",
             Self::ValidateFrontmatterMalformed => "VALIDATE_FRONTMATTER_MALFORMED",
             Self::ValidateFrontmatterInvalid => "VALIDATE_FRONTMATTER_INVALID",
@@ -189,6 +192,14 @@ pub enum Error {
     #[error("policy profile unknown: '{name}'")]
     PolicyProfileUnknown { name: String },
 
+    #[error("permission rule {rule:?} in {field} is never consulted: {reason}")]
+    PolicyRuleInert {
+        field: &'static str,
+        rule: String,
+        reason: String,
+        hint: String,
+    },
+
     #[error("policy version check failed: {message}")]
     PolicyVersionFailure { message: String },
 
@@ -248,6 +259,7 @@ impl Error {
             Self::CodegenSentinelDuplicate { .. } => ErrorCode::CodegenSentinelDuplicate,
             Self::CodegenCycle { .. } => ErrorCode::CodegenCycle,
             Self::PolicyProfileUnknown { .. } => ErrorCode::PolicyProfileUnknown,
+            Self::PolicyRuleInert { .. } => ErrorCode::PolicyRuleInert,
             Self::PolicyVersionFailure { .. } => ErrorCode::PolicyVersionFailure,
             Self::ValidateFrontmatterMalformed { .. } => ErrorCode::ValidateFrontmatterMalformed,
             Self::ValidateFrontmatterInvalid { .. } => ErrorCode::ValidateFrontmatterInvalid,
@@ -305,6 +317,7 @@ impl Error {
             Self::PolicyProfileUnknown { .. } => Some(
                 "use one of the built-in profiles or register a custom profile in harness.toml",
             ),
+            Self::PolicyRuleInert { hint, .. } => Some(hint),
             Self::ValidateFrontmatterMalformed { .. } => {
                 Some("frontmatter must be `---`-delimited YAML at the top of the file")
             }

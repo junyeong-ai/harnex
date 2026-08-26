@@ -269,7 +269,9 @@ operator to re-phrase using a verb from this list.
 - **`extend permission deny <pattern>`** — append `<pattern>` to the
   `permissions.deny` array in `.claude/settings.json`. The pattern must
   follow the spec grammar (`Bash(cmd *)`, `Read(path)`, `Edit(path)`,
-  `Write(path)`, `WebFetch(domain:...)`, `mcp__server[__tool]`).
+  `WebFetch(domain:...)`, `Tool(param:value)`, `mcp__server[__tool]`).
+  `harness validate settings` rejects a rule no permission check consults, so
+  the pattern is verified rather than trusted.
 - **`extend permission ask <pattern>`** — same, into `permissions.ask`.
 - **`extend permission allow <pattern>`** — same, into `permissions.allow`.
   Refuse when `<pattern>` is a read-only built-in (`ls`, `grep`, `cat`,
