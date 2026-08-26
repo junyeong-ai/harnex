@@ -60,15 +60,34 @@ keep/soften/cut principle, the language matrix, the exploration procedure).
 ## The oracle binary
 
 ```bash
-scripts/install.sh                 # from a clone
-scripts/install.sh --from-git      # from anywhere
-scripts/install.sh --check         # what is installed, changing nothing
+curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash
 ```
 
-Requires Rust 1.97+; the script reads that floor from `Cargo.toml` rather than
-holding a second copy, and `rust-toolchain.toml` pins the exact toolchain so a
-checkout builds with the same compiler CI uses. `cargo build --release` still
-works for a local build without installing.
+Takes the binary this project releases for your platform, verifies its sha256,
+and installs it to `~/.local/bin` — no Rust toolchain involved. Linux archives
+link musl statically, so one per architecture runs on any distribution.
+
+macOS and Linux, on x86-64 and arm64, have a release binary. Anywhere else the
+installer says so and builds from source instead.
+
+```bash
+scripts/install.sh --version v0.1.1   # a specific release rather than the latest
+scripts/install.sh --build            # build from source instead of downloading
+scripts/install.sh --check            # what is installed, changing nothing
+scripts/install.sh --help             # every option
+```
+
+`--build` needs Rust 1.97+; the script reads that floor from `Cargo.toml`
+rather than holding a second copy, and `rust-toolchain.toml` pins the exact
+toolchain so a checkout builds with the same compiler CI uses. `cargo build
+--release` still works for a local build without installing.
+
+Every asset is built by `.github/workflows/release.yml` from the tag it is
+attached to, and carries provenance saying so:
+
+```bash
+gh attestation verify harness-<target>.tar.gz --repo junyeong-ai/harnex
+```
 
 Installing the plugin does not install the binary. Enabling a plugin is not
 consent to put an executable on the machine, so the two are separate acts and

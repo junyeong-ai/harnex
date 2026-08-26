@@ -11,8 +11,8 @@ what is not; this command joins them and never blurs which is which.
 
 Requires `[session]` in `harness.toml`. Without the binary there are no numbers
 — say so and stop rather than estimating from the logs by hand, and name
-`scripts/install.sh` from the harnex clone as how it is installed. Enabling
-this plugin does not install it.
+`curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash`
+as how it is installed. Enabling this plugin does not install it.
 
 ## 1 — Fix the window
 
