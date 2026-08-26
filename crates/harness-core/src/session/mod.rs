@@ -63,7 +63,7 @@ pub use harness::{
 };
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock};
-pub use record::{Authorship, Citation, Compaction, Coverage};
+pub use record::{Authorship, Citation, Compaction, Coverage, TokenUse};
 pub use rework::{PostCommitReedit, ReworkFacts};
 pub use submission::{Submission, SubmissionIndex, systematic_sample};
 
@@ -96,6 +96,9 @@ pub struct SessionFacts {
     pub submissions: Vec<Submission>,
     /// Where the session's context was compacted, oldest first.
     pub compactions: Vec<Compaction>,
+    /// What the window spent, whether or not the caller asked for the
+    /// instruction list.
+    pub tokens: TokenUse,
     pub interventions: InterventionFacts,
     pub rework: ReworkFacts,
     pub harness: HarnessFacts,
@@ -117,6 +120,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut submissions = submission::SubmissionAnalyzer::new();
     let mut interventions = intervention::InterventionAnalyzer::new();
     let mut compactions: Vec<Compaction> = Vec::new();
+    let mut tokens = TokenUse::default();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
 
@@ -142,8 +146,10 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 }
                 interventions.observe(turn);
             }
-            if let record::Record::Compaction(c) = rec {
-                compactions.push(c.clone());
+            match rec {
+                record::Record::Compaction(c) => compactions.push(c.clone()),
+                record::Record::Assistant(turn) => tokens.add(turn.tokens),
+                _ => {}
             }
             submissions.observe(rec, assigned);
             harness.observe(rec);
@@ -176,6 +182,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             compactions.sort_by_key(|c| c.citation.timestamp);
             compactions
         },
+        tokens,
         rework: rework.finish(),
         harness: harness.finish(options.with_text),
     })

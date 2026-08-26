@@ -28,6 +28,7 @@ text and what followed it:
 | `agent_turns` | turns the agent took under it |
 | `questions` | times the agent stopped to ask instead of choosing |
 | `edits` · `files` · `commits` | what changed under it |
+| `tokens` · `models` | what it spent, and which models spent it |
 | `interrupts` · `denials` | interruptions marked, tool calls stopped |
 | `steered_away` | the next instruction arrived before this one was answered |
 

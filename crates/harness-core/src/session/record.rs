@@ -272,6 +272,9 @@ pub struct UserTurn {
 pub struct AssistantTurn {
     pub citation: Citation,
     pub actions: Vec<ToolAction>,
+    pub tokens: TokenUse,
+    /// The model that produced this turn, as the runtime named it.
+    pub model: Option<String>,
 }
 
 /// Where a session's context was compacted, and what it cost.
@@ -289,6 +292,28 @@ pub struct Compaction {
     /// session counts the same tokens again at every boundary.
     pub cumulative_dropped_tokens: u64,
     pub duration_ms: u64,
+}
+
+/// What one turn, instruction or window spent.
+///
+/// Four counts and no total: they price differently and this module does not
+/// know by how much. A single number would need a price list that is neither
+/// ours nor stable, so the reader gets the counts and money is never named.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TokenUse {
+    pub input: u64,
+    pub cache_creation: u64,
+    pub cache_read: u64,
+    pub output: u64,
+}
+
+impl TokenUse {
+    pub fn add(&mut self, other: TokenUse) {
+        self.input += other.input;
+        self.cache_creation += other.cache_creation;
+        self.cache_read += other.cache_read;
+        self.output += other.output;
+    }
 }
 
 /// A project memory file that entered context.
@@ -359,6 +384,9 @@ pub struct Coverage {
     pub user_turns_by_authorship: BTreeMap<String, usize>,
     /// Runtime versions observed across the input.
     pub runtime_versions: BTreeSet<String>,
+    /// Models observed across the input. A window whose model mix moved is a
+    /// window whose token counts moved for a reason that is not the operator.
+    pub models: BTreeSet<String>,
     /// Timestamp of the earliest record counted, and of the latest.
     ///
     /// The span the numbers describe, which is not the span the caller asked
@@ -434,6 +462,27 @@ struct RawOrigin {
 #[derive(Deserialize)]
 struct RawMessage {
     content: Option<serde_json::Value>,
+    model: Option<String>,
+    usage: Option<RawUsage>,
+}
+
+#[derive(Deserialize)]
+struct RawUsage {
+    input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+    cache_read_input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+}
+
+impl RawUsage {
+    fn tokens(&self) -> TokenUse {
+        TokenUse {
+            input: self.input_tokens.unwrap_or_default(),
+            cache_creation: self.cache_creation_input_tokens.unwrap_or_default(),
+            cache_read: self.cache_read_input_tokens.unwrap_or_default(),
+            output: self.output_tokens.unwrap_or_default(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -687,7 +736,20 @@ pub fn read_transcript(
                     });
                 }
                 agent_output_since_user_turn = true;
-                out.push(Record::Assistant(AssistantTurn { citation, actions }));
+                let message = raw.message.as_ref();
+                let model = message.and_then(|m| m.model.clone());
+                if let Some(model) = &model {
+                    coverage.models.insert(model.clone());
+                }
+                out.push(Record::Assistant(AssistantTurn {
+                    citation,
+                    actions,
+                    tokens: message
+                        .and_then(|m| m.usage.as_ref())
+                        .map(RawUsage::tokens)
+                        .unwrap_or_default(),
+                    model,
+                }));
             }
             ConsumedType::Attachment => {
                 let attachment = raw.attachment.as_ref();

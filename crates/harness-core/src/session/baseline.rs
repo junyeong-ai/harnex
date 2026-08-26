@@ -84,6 +84,9 @@ pub enum SessionMetric {
     ReeditsPerCommit,
     /// Wall-clock the Stop hooks held.
     HookMillisecondsPerStop,
+    /// Tokens the agent generated. Read beside the window's model set: a mix
+    /// that moved moves this for a reason that is not the operator.
+    OutputTokensPerSubmission,
 }
 
 impl SessionMetric {
@@ -95,6 +98,7 @@ impl SessionMetric {
         Self::SteeringPerSubmission,
         Self::ReeditsPerCommit,
         Self::HookMillisecondsPerStop,
+        Self::OutputTokensPerSubmission,
     ];
 
     pub fn from_str(s: &str) -> Option<Self> {
@@ -106,6 +110,7 @@ impl SessionMetric {
             "steering_per_submission" => Self::SteeringPerSubmission,
             "reedits_per_commit" => Self::ReeditsPerCommit,
             "hook_milliseconds_per_stop" => Self::HookMillisecondsPerStop,
+            "output_tokens_per_submission" => Self::OutputTokensPerSubmission,
             _ => return None,
         })
     }
@@ -119,6 +124,7 @@ impl SessionMetric {
             Self::SteeringPerSubmission => "steering_per_submission",
             Self::ReeditsPerCommit => "reedits_per_commit",
             Self::HookMillisecondsPerStop => "hook_milliseconds_per_stop",
+            Self::OutputTokensPerSubmission => "output_tokens_per_submission",
         }
     }
 
@@ -161,6 +167,10 @@ impl SessionMetric {
             Self::HookMillisecondsPerStop => Measurement {
                 numerator: facts.harness.hooks.iter().map(|h| h.total_ms).sum(),
                 denominator: facts.harness.stops as u64,
+            },
+            Self::OutputTokensPerSubmission => Measurement {
+                numerator: facts.tokens.output,
+                denominator: submissions as u64,
             },
         }
     }
@@ -285,6 +295,8 @@ pub struct BaselineWindow {
     /// an observation about two different runtimes as much as about the
     /// operator.
     pub runtime_versions: BTreeSet<String>,
+    /// Models the window spans, for the same reason the versions are here.
+    pub models: BTreeSet<String>,
     pub authorship_ratio: Option<f64>,
 }
 
@@ -297,6 +309,7 @@ impl BaselineWindow {
             observed_to: baseline.coverage.observed_to,
             project: baseline.project.clone(),
             runtime_versions: baseline.coverage.runtime_versions.clone(),
+            models: baseline.coverage.models.clone(),
             authorship_ratio: baseline.coverage.authorship_ratio(),
         }
     }
