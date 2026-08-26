@@ -43,6 +43,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::validate` | rule / skill / agent / output-style / settings / commit-msg checks |
 | `harness-core::audit` | harness-engineering compliance gate; `AuditCheckKind` is the check set |
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
+| `harness-core::session` | reads Claude Code's own transcripts — instructions, interventions, repetition, tool and token use, and what the repository says survived |
 | `harness-core::guard` | Claude Code hook adapter + Stop auditor |
 | `harness-core::export` | JSON Schema emission |
 | `harness-core::graph` | read-only `nodex` CLI bridge |
