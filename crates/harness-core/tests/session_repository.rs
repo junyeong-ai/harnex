@@ -94,3 +94,28 @@ fn a_reverted_commit_names_the_commit_that_reverted_it() {
     assert_eq!(facts.commits[0].fate, CommitFate::Reachable.as_str());
     assert_eq!(facts.commits[0].reverted_by, vec![reverting]);
 }
+
+#[test]
+fn a_window_with_thousands_of_commits_returns_rather_than_blocking() {
+    let dir = repo();
+    let head = commit(dir.path(), "one");
+    // Enough queries that a piped stdin would fill the kernel buffer before
+    // anything drained stdout, which is where this used to stop answering.
+    let observed: Vec<String> = (0..10_000).map(|_| head[..9].to_string()).collect();
+
+    let path = dir.path().to_path_buf();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(repository::survey(&path, &observed));
+    });
+
+    // A hang is the failure this guards against, so it is reported as one
+    // rather than left to stall the run.
+    let facts = rx
+        .recv_timeout(std::time::Duration::from_secs(60))
+        .expect("survey returned")
+        .expect("survey succeeded")
+        .expect("the tempdir is a work tree");
+    assert_eq!(facts.commits.len(), 10_000);
+    assert_eq!(facts.by_fate[CommitFate::Reachable.as_str()], 10_000);
+}
