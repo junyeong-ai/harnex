@@ -58,7 +58,8 @@ pub struct RepeatedBlock {
 /// What the operator typed, and which kind of twice they typed it.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PromptFacts {
-    /// Authored turns, before queued turns are folded into what they continue.
+    /// Turns the operator wrote, before queued ones are folded into what they
+    /// continue. Matches the `authored` count in coverage.
     pub authored_turns: usize,
     /// Instructions, after folding. The denominator for anything per-instruction.
     pub submissions: usize,
