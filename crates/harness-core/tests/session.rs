@@ -289,3 +289,106 @@ fn queued_turns_fold_into_one_instruction_end_to_end() {
         "the queued copy rides along; the later one is the restatement"
     );
 }
+
+/// The assistant record that makes a tool call, and the denial that answers it.
+fn call_and_denial(session: &str, tool: &str, kind: &str, seconds: u32) -> Vec<String> {
+    let id = format!("t{seconds}");
+    vec![
+        format!(
+            r#"{{"type":"assistant","uuid":"a{seconds}","timestamp":"2026-08-01T10:00:{seconds:02}Z","sessionId":"{session}","message":{{"content":[{{"type":"tool_use","id":"{id}","name":"{tool}","input":{{"command":"x"}}}}]}}}}"#
+        ),
+        format!(
+            r#"{{"type":"user","uuid":"d{seconds}","timestamp":"2026-08-01T10:00:{seconds:02}Z","sessionId":"{session}","toolDenialKind":"{kind}","message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","content":"denied"}}]}}}}"#
+        ),
+    ]
+}
+
+fn stop_summary(session: &str, uuid: &str, ts: &str, command: &str, ms: u64) -> String {
+    format!(
+        r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","subtype":"stop_hook_summary","hookInfos":[{{"command":"{command}","durationMs":{ms}}}],"hookErrors":[],"preventedContinuation":false}}"#
+    )
+}
+
+fn rule_load(session: &str, uuid: &str, ts: &str, path: &str, body: &str) -> String {
+    format!(
+        r#"{{"type":"attachment","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","attachment":{{"type":"nested_memory","path":"{path}","content":{{"content":{}}}}}}}"#,
+        serde_json::to_string(body).unwrap()
+    )
+}
+
+#[test]
+fn the_harness_side_separates_who_refused_and_what_each_hook_cost() {
+    let mut lines = vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)];
+    lines.extend(call_and_denial("s1", "Bash", "permission-rule", 1));
+    lines.extend(call_and_denial("s1", "Bash", "permission-rule", 2));
+    lines.extend(call_and_denial("s1", "Bash", "user-rejected", 3));
+    lines.push(stop_summary(
+        "s1",
+        "h1",
+        "2026-08-01T11:00:00Z",
+        "afplay chime &",
+        2543,
+    ));
+    lines.push(stop_summary(
+        "s1",
+        "h2",
+        "2026-08-01T11:10:00Z",
+        "afplay chime &",
+        2400,
+    ));
+    lines.push(rule_load(
+        "s1",
+        "m1",
+        "2026-08-01T09:00:01Z",
+        "/repo/.claude/rules/testing.md",
+        "abcdefghij",
+    ));
+
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", lines)]);
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+    let h = &facts.harness;
+
+    assert_eq!(h.denials.len(), 2);
+    assert_eq!(h.denials[0].kind, "permission-rule");
+    assert_eq!(h.denials[0].tool.as_deref(), Some("Bash"));
+    assert_eq!(h.denials[0].denials, 2);
+    assert_eq!(h.denials[1].kind, "user-rejected");
+
+    assert_eq!(h.stops, 2);
+    assert_eq!(h.prevented_continuations, 0);
+    assert_eq!(h.hooks[0].command, "afplay chime &");
+    assert_eq!(h.hooks[0].total_ms, 4943);
+
+    assert_eq!(h.rule_loads[0].loads, 1);
+    assert_eq!(h.rule_loads[0].chars, 10);
+}
+
+#[test]
+fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            r#"{"type":"attachment","uuid":"x1","timestamp":"2026-08-01T09:00:01Z","sessionId":"s1","attachment":{"type":"hook_success"}}"#.to_string(),
+            r#"{"type":"system","uuid":"x2","timestamp":"2026-08-01T09:00:02Z","sessionId":"s1","subtype":"turn_duration"}"#.to_string(),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts
+            .coverage
+            .record_types_unconsumed
+            .get("attachment:hook_success"),
+        Some(&1)
+    );
+    assert_eq!(
+        facts
+            .coverage
+            .record_types_unconsumed
+            .get("system:turn_duration"),
+        Some(&1)
+    );
+    assert_eq!(facts.coverage.records_malformed, 0);
+}

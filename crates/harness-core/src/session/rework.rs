@@ -156,6 +156,7 @@ mod tests {
             continues_submission: false,
             commit: None,
             edited_file: None,
+            denial: None,
         }
     }
 

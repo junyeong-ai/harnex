@@ -1,12 +1,15 @@
 //! # record — the transcript shapes this module consumes, and what it could not read
 //!
 //! A Claude Code transcript is JSONL whose vocabulary is undocumented and
-//! moves: the local corpus spans 27 runtime versions and 22 record `type`
-//! values, several of which arrived recently. Modelling that vocabulary as a
-//! closed enum would make a future record type a parse failure, and a parse
-//! failure that is skipped reads as a shorter session — a *better* number,
-//! arrived at silently. So only the two record types this module consumes are
-//! closed; every other value is counted into [`Coverage`] under its own name.
+//! moves: the local corpus spans 21 runtime versions and 23 record `type`
+//! values this binary does not read, several of which arrived recently.
+//! Modelling that vocabulary as a closed enum would make a future record type a
+//! parse failure, and a parse failure that is skipped reads as a shorter
+//! session — a *better* number, arrived at silently. So only the types this
+//! module consumes are closed; every other value is counted into [`Coverage`]
+//! under its own name, and the two types with a sub-vocabulary are counted
+//! under a qualified one (`attachment:hook_success`) so consuming one member
+//! does not hide the growth of the rest.
 //!
 //! [`Authorship`] is the one classification made here, and it is made from the
 //! runtime's own attribution rather than from the text. `origin.kind` is the
@@ -14,21 +17,27 @@
 //! made no claim, and neither does this module. Reconstructing authorship from
 //! phrasing would put a word list in source that tomorrow's phrasing is not in.
 //!
+//! A denied tool call is attributed the same way. The runtime writes its reason
+//! into the result's message text, which would have to be pattern-matched; it
+//! also writes `tool_use_id`, which resolves to the call that was denied
+//! through the ordinary Anthropic tool protocol. Measured over 1,085 denials,
+//! that link resolves 100% of them, so the text is never read.
+//!
 //! ## What this module refuses to do
 //!
-//! - Never infer authorship from message text. `origin.kind` and
-//!   `promptSource` are the only inputs; an unrecognised prompt source
-//!   classifies as [`Authorship::SourceUnrecognised`], never as authored, so
-//!   an upstream addition lowers coverage instead of entering the statistics.
-//! - Never model the full record vocabulary. Unconsumed types are counted,
-//!   not rejected and not dropped.
+//! - Never infer authorship, or what was denied, from message text. An
+//!   unrecognised prompt source classifies as
+//!   [`Authorship::SourceUnrecognised`], never as authored, so an upstream
+//!   addition lowers coverage instead of entering the statistics.
+//! - Never model the full record vocabulary. Unconsumed types and subtypes are
+//!   counted, not rejected and not dropped.
 //! - Never carry prompt text or tool input into a serialised shape. Text is
 //!   held for analysis and released; [`ToolAction`] compares inputs in memory
 //!   and serialises only the tool name.
 //! - Never treat "read nothing" as "found nothing". A discovered file that
 //!   cannot be opened is counted, and the caller is told.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
@@ -54,11 +63,19 @@ const AUTHORED_PROMPT_SOURCES: &[&str] = &["typed", "queued"];
 /// would have stood in for it is deleted rather than tuned.
 const CONTINUATION_PROMPT_SOURCE: &str = "queued";
 
+/// The attachment carrying a project memory file that entered context.
+const RULE_LOAD_ATTACHMENT: &str = "nested_memory";
+
+/// The system record carrying one Stop event's hook accounting.
+const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
+
 /// Record types this module reads. Everything else is counted by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConsumedType {
     User,
     Assistant,
+    Attachment,
+    System,
 }
 
 impl ConsumedType {
@@ -66,6 +83,8 @@ impl ConsumedType {
         Some(match s {
             "user" => Self::User,
             "assistant" => Self::Assistant,
+            "attachment" => Self::Attachment,
+            "system" => Self::System,
             _ => return None,
         })
     }
@@ -135,6 +154,20 @@ impl Authorship {
     }
 }
 
+/// A tool call the runtime refused to run.
+///
+/// `kind` stays a string. The runtime's two observed values separate the
+/// harness refusing (`permission-rule`) from the operator refusing
+/// (`user-rejected`), and a third value shipped upstream should appear as its
+/// own row rather than be dropped by an enum that has not heard of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Denial {
+    pub kind: String,
+    /// The tool named by the call this denial answered, resolved through
+    /// `tool_use_id`. `None` when the call is not in the same transcript.
+    pub tool: Option<String>,
+}
+
 /// One tool invocation, reduced to what an equality test needs.
 ///
 /// `input` stays private and unserialised: a Bash input carries the operator's
@@ -168,6 +201,8 @@ pub struct UserTurn {
     pub commit: Option<String>,
     /// The file a tool result on this record reported editing.
     pub edited_file: Option<PathBuf>,
+    /// The refusal a tool result on this record reported.
+    pub denial: Option<Denial>,
 }
 
 /// An assistant turn, reduced to the actions it took.
@@ -177,10 +212,38 @@ pub struct AssistantTurn {
     pub actions: Vec<ToolAction>,
 }
 
+/// A project memory file that entered context.
+#[derive(Debug, Clone)]
+pub struct RuleLoad {
+    pub citation: Citation,
+    pub path: PathBuf,
+    /// Characters of the file as it entered context.
+    pub chars: usize,
+}
+
+/// One hook run inside a Stop event.
+#[derive(Debug, Clone)]
+pub struct HookRun {
+    pub command: String,
+    pub duration_ms: u64,
+}
+
+/// One Stop event's hook accounting.
+#[derive(Debug, Clone)]
+pub struct StopSummary {
+    pub citation: Citation,
+    pub hooks: Vec<HookRun>,
+    pub errors: usize,
+    /// Whether these hooks kept the agent from stopping.
+    pub prevented_continuation: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum Record {
     User(UserTurn),
     Assistant(AssistantTurn),
+    RuleLoad(RuleLoad),
+    StopSummary(StopSummary),
 }
 
 impl Record {
@@ -188,6 +251,8 @@ impl Record {
         match self {
             Self::User(u) => &u.citation,
             Self::Assistant(a) => &a.citation,
+            Self::RuleLoad(r) => &r.citation,
+            Self::StopSummary(s) => &s.citation,
         }
     }
 }
@@ -205,8 +270,9 @@ pub struct Coverage {
     pub files_unreadable: usize,
     pub records_total: usize,
     pub records_malformed: usize,
-    /// Record types present in the input that this module does not consume,
-    /// by name. Growth here is the signal that the vocabulary moved.
+    /// Record kinds present in the input that this module does not consume.
+    /// A type with a sub-vocabulary is keyed `type:subtype`, so consuming one
+    /// member still leaves the growth of its siblings visible.
     pub record_types_unconsumed: BTreeMap<String, usize>,
     /// User turns by [`Authorship`], keyed by its stable string.
     pub user_turns_by_authorship: BTreeMap<String, usize>,
@@ -244,6 +310,10 @@ impl Coverage {
             .entry(a.as_str().to_string())
             .or_default() += 1;
     }
+
+    fn count_unconsumed(&mut self, key: String) {
+        *self.record_types_unconsumed.entry(key).or_default() += 1;
+    }
 }
 
 #[derive(Deserialize)]
@@ -254,6 +324,13 @@ struct RawOrigin {
 #[derive(Deserialize)]
 struct RawMessage {
     content: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct RawHookInfo {
+    command: Option<String>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -275,6 +352,16 @@ struct RawRecord {
     /// Modelled as an untyped value so a string never fails the whole record.
     #[serde(rename = "toolUseResult")]
     tool_use_result: Option<serde_json::Value>,
+    #[serde(rename = "toolDenialKind")]
+    tool_denial_kind: Option<String>,
+    attachment: Option<serde_json::Value>,
+    subtype: Option<String>,
+    #[serde(rename = "hookInfos")]
+    hook_infos: Option<Vec<RawHookInfo>>,
+    #[serde(rename = "hookErrors")]
+    hook_errors: Option<Vec<serde_json::Value>>,
+    #[serde(rename = "preventedContinuation")]
+    prevented_continuation: Option<bool>,
 }
 
 /// The commit a tool result reported, if it reported one.
@@ -321,20 +408,19 @@ fn text_only(content: &serde_json::Value) -> Option<String> {
     }
 }
 
-fn tool_actions(content: &serde_json::Value) -> Vec<ToolAction> {
-    let Some(blocks) = content.as_array() else {
-        return Vec::new();
-    };
-    blocks
+fn blocks_of(content: Option<&serde_json::Value>) -> &[serde_json::Value] {
+    content
+        .and_then(serde_json::Value::as_array)
+        .map_or(&[], |v| v)
+}
+
+/// `tool_use_id` of the first tool result in a message.
+fn tool_use_id_of(content: Option<&serde_json::Value>) -> Option<&str> {
+    blocks_of(content)
         .iter()
-        .filter(|b| b.get("type").and_then(serde_json::Value::as_str) == Some("tool_use"))
-        .filter_map(|b| {
-            Some(ToolAction {
-                tool: b.get("name")?.as_str()?.to_string(),
-                input: b.get("input").cloned().unwrap_or(serde_json::Value::Null),
-            })
-        })
-        .collect()
+        .find(|b| b.get("type").and_then(serde_json::Value::as_str) == Some("tool_result"))?
+        .get("tool_use_id")?
+        .as_str()
 }
 
 fn classify(raw: &RawRecord) -> Authorship {
@@ -356,7 +442,7 @@ fn classify(raw: &RawRecord) -> Authorship {
 /// Read one transcript, appending what it understood into `coverage`.
 ///
 /// A malformed line, a record without the identity a citation needs, and a
-/// record type this module does not consume are each counted rather than
+/// record kind this module does not consume are each counted rather than
 /// raised: the file is still readable and the rest of it still counts. Only an
 /// unreadable file is the caller's problem, and that is signalled by the `Err`.
 pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<Vec<Record>> {
@@ -365,6 +451,9 @@ pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     let mut out = Vec::new();
+    // A tool call always precedes its result inside one transcript, so a single
+    // forward pass resolves every denial to the tool it answered.
+    let mut tool_names: HashMap<String, String> = HashMap::new();
 
     for line in reader.lines() {
         let line = line?;
@@ -385,10 +474,7 @@ pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<
             continue;
         };
         let Some(consumed) = ConsumedType::from_str(kind) else {
-            *coverage
-                .record_types_unconsumed
-                .entry(kind.to_string())
-                .or_default() += 1;
+            coverage.count_unconsumed(kind.to_string());
             continue;
         };
         let (Some(uuid), Some(timestamp), Some(session)) =
@@ -410,6 +496,10 @@ pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<
                 let authorship = classify(&raw);
                 coverage.count_authorship(authorship);
                 let result = raw.tool_use_result.as_ref();
+                let denial = raw.tool_denial_kind.as_ref().map(|k| Denial {
+                    kind: k.clone(),
+                    tool: tool_use_id_of(content).and_then(|id| tool_names.get(id).cloned()),
+                });
                 out.push(Record::User(UserTurn {
                     citation,
                     authorship,
@@ -418,12 +508,82 @@ pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<
                         == Some(CONTINUATION_PROMPT_SOURCE),
                     commit: result.and_then(commit_of),
                     edited_file: result.and_then(edited_file_of),
+                    denial,
                 }));
             }
             ConsumedType::Assistant => {
-                out.push(Record::Assistant(AssistantTurn {
+                let mut actions = Vec::new();
+                for block in blocks_of(content) {
+                    if block.get("type").and_then(serde_json::Value::as_str) != Some("tool_use") {
+                        continue;
+                    }
+                    let Some(tool) = block.get("name").and_then(serde_json::Value::as_str) else {
+                        continue;
+                    };
+                    if let Some(id) = block.get("id").and_then(serde_json::Value::as_str) {
+                        tool_names.insert(id.to_string(), tool.to_string());
+                    }
+                    actions.push(ToolAction {
+                        tool: tool.to_string(),
+                        input: block
+                            .get("input")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null),
+                    });
+                }
+                out.push(Record::Assistant(AssistantTurn { citation, actions }));
+            }
+            ConsumedType::Attachment => {
+                let attachment = raw.attachment.as_ref();
+                let subtype = attachment
+                    .and_then(|a| a.get("type"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                if subtype != RULE_LOAD_ATTACHMENT {
+                    coverage.count_unconsumed(format!("{kind}:{subtype}"));
+                    continue;
+                }
+                let Some(loaded) = attachment
+                    .and_then(|a| a.get("path"))
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    coverage.records_malformed += 1;
+                    continue;
+                };
+                let chars = attachment
+                    .and_then(|a| a.get("content"))
+                    .and_then(|c| c.get("content"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(|s| s.chars().count())
+                    .unwrap_or(0);
+                out.push(Record::RuleLoad(RuleLoad {
                     citation,
-                    actions: content.map(tool_actions).unwrap_or_default(),
+                    path: PathBuf::from(loaded),
+                    chars,
+                }));
+            }
+            ConsumedType::System => {
+                let subtype = raw.subtype.as_deref().unwrap_or_default();
+                if subtype != STOP_SUMMARY_SUBTYPE {
+                    coverage.count_unconsumed(format!("{kind}:{subtype}"));
+                    continue;
+                }
+                let hooks = raw
+                    .hook_infos
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|h| {
+                        Some(HookRun {
+                            command: h.command?,
+                            duration_ms: h.duration_ms.unwrap_or(0),
+                        })
+                    })
+                    .collect();
+                out.push(Record::StopSummary(StopSummary {
+                    citation,
+                    hooks,
+                    errors: raw.hook_errors.map(|e| e.len()).unwrap_or(0),
+                    prevented_continuation: raw.prevented_continuation.unwrap_or(false),
                 }));
             }
         }
@@ -515,6 +675,26 @@ mod tests {
     }
 
     #[test]
+    fn an_unconsumed_subtype_is_counted_under_its_qualified_name() {
+        let (recs, cov) = rec(&format!(
+            "{}\n{}",
+            format_args!(
+                r#"{{"type":"attachment",{BASE},"attachment":{{"type":"hook_success"}}}}"#
+            ),
+            format_args!(r#"{{"type":"system",{BASE},"subtype":"turn_duration"}}"#)
+        ));
+        assert!(recs.is_empty());
+        assert_eq!(
+            cov.record_types_unconsumed.get("attachment:hook_success"),
+            Some(&1)
+        );
+        assert_eq!(
+            cov.record_types_unconsumed.get("system:turn_duration"),
+            Some(&1)
+        );
+    }
+
+    #[test]
     fn malformed_line_does_not_abort_the_file() {
         let (recs, cov) = rec(&format!(
             "not json\n{{\"type\":\"user\",{BASE},\"origin\":{{\"kind\":\"human\"}},\"promptSource\":\"typed\",\"message\":{{\"content\":\"hi\"}}}}\n"
@@ -522,6 +702,68 @@ mod tests {
         assert_eq!(recs.len(), 1);
         assert_eq!(cov.records_malformed, 1);
         assert_eq!(cov.records_total, 2);
+    }
+
+    #[test]
+    fn a_denial_resolves_to_the_tool_it_answered_without_reading_the_message() {
+        let (recs, _) = rec(&format!(
+            "{}\n{}",
+            format_args!(
+                r#"{{"type":"assistant",{BASE},"message":{{"content":[{{"type":"tool_use","id":"t1","name":"Bash","input":{{"command":"rm -rf /"}}}}]}}}}"#
+            ),
+            format_args!(
+                r#"{{"type":"user","uuid":"u2","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","toolDenialKind":"permission-rule","message":{{"content":[{{"type":"tool_result","tool_use_id":"t1","content":"Permission to use Bash with command rm -rf / has been denied."}}]}}}}"#
+            )
+        ));
+        match &recs[1] {
+            Record::User(u) => {
+                let d = u.denial.as_ref().expect("denial");
+                assert_eq!(d.kind, "permission-rule");
+                assert_eq!(d.tool.as_deref(), Some("Bash"));
+            }
+            _ => panic!("expected a user turn"),
+        }
+    }
+
+    #[test]
+    fn a_denial_whose_call_is_not_in_this_transcript_names_no_tool() {
+        let (recs, _) = rec(
+            r#"{"type":"user","uuid":"u2","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","toolDenialKind":"user-rejected","message":{"content":[{"type":"tool_result","tool_use_id":"elsewhere","content":"no"}]}}"#,
+        );
+        match &recs[0] {
+            Record::User(u) => assert!(u.denial.as_ref().unwrap().tool.is_none()),
+            _ => panic!("expected a user turn"),
+        }
+    }
+
+    #[test]
+    fn a_rule_load_carries_its_path_and_the_characters_it_cost() {
+        let (recs, _) = rec(&format!(
+            r#"{{"type":"attachment",{BASE},"attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/testing.md","content":{{"content":"abcde"}}}}}}"#
+        ));
+        match &recs[0] {
+            Record::RuleLoad(r) => {
+                assert_eq!(r.path, PathBuf::from("/repo/.claude/rules/testing.md"));
+                assert_eq!(r.chars, 5);
+            }
+            _ => panic!("expected a rule load"),
+        }
+    }
+
+    #[test]
+    fn a_stop_summary_carries_each_hook_and_whether_it_held_the_agent() {
+        let (recs, _) = rec(&format!(
+            r#"{{"type":"system",{BASE},"subtype":"stop_hook_summary","hookInfos":[{{"command":"afplay chime &","durationMs":2543}}],"hookErrors":[],"preventedContinuation":false}}"#
+        ));
+        match &recs[0] {
+            Record::StopSummary(s) => {
+                assert_eq!(s.hooks[0].command, "afplay chime &");
+                assert_eq!(s.hooks[0].duration_ms, 2543);
+                assert_eq!(s.errors, 0);
+                assert!(!s.prevented_continuation);
+            }
+            _ => panic!("expected a stop summary"),
+        }
     }
 
     #[test]
