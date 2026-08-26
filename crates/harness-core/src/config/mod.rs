@@ -84,6 +84,10 @@ pub struct SessionConfig {
     /// Append-only ledger of measured windows, relative to `harness.toml`.
     #[serde(default = "default_baseline_path")]
     pub baseline_path: PathBuf,
+    /// Cap on instructions returned one at a time, for callers that pay per
+    /// instruction. Absent returns the window whole.
+    #[serde(default)]
+    pub submission_sample: Option<usize>,
 }
 
 fn default_min_block_chars() -> usize {
@@ -936,6 +940,13 @@ impl Config {
         if sess.min_support == 0 {
             return Err(Error::ConfigInvalid {
                 message: "[session] min_support is 0; a rate over nothing would be compared".into(),
+                location: None,
+            });
+        }
+        if sess.submission_sample == Some(0) {
+            return Err(Error::ConfigInvalid {
+                message: "[session] submission_sample is 0; omit it to return the window whole"
+                    .into(),
                 location: None,
             });
         }
