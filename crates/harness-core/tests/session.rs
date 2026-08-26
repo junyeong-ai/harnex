@@ -270,6 +270,59 @@ fn reading_a_committed_file_is_not_touching_it_again() {
 }
 
 #[test]
+fn a_subagent_edits_a_file_the_parent_committed_and_it_lands_under_that_commit() {
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![
+                typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                commit("s1", "c1", "2026-08-01T09:10:00Z", "1111111"),
+                commit("s1", "c2", "2026-08-01T09:40:00Z", "2222222"),
+            ],
+        ),
+        (
+            // The subagent's file carries no commit of its own, so read alone
+            // it has nothing to place its edits against.
+            "-Users-me-alpha/s1/subagents/agent-1.jsonl",
+            vec![
+                edit("s1", "g1", "2026-08-01T09:05:00Z", "/repo/loader.rs"),
+                edit("s1", "g2", "2026-08-01T09:20:00Z", "/repo/loader.rs"),
+            ],
+        ),
+    ]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.rework.commits, 2);
+    assert_eq!(facts.rework.post_commit_reedits.len(), 1);
+    let r = &facts.rework.post_commit_reedits[0];
+    assert_eq!(r.commit, "1111111");
+    assert_eq!(r.reedits, 1);
+    assert_eq!(r.citations[0].uuid, "g2");
+}
+
+#[test]
+fn an_edit_stamped_before_the_commit_it_was_written_after_is_still_rework() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            edit("s1", "e1", "2026-08-01T09:05:00Z", "/repo/loader.rs"),
+            commit("s1", "c1", "2026-08-01T09:10:00Z", "1111111"),
+            edit("s1", "e2", "2026-08-01T09:08:00Z", "/repo/loader.rs"),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.rework.post_commit_reedits.len(),
+        1,
+        "the transcript is append-ordered; its timestamps are not"
+    );
+    assert_eq!(facts.rework.post_commit_reedits[0].citations[0].uuid, "e2");
+}
+
+#[test]
 fn queued_turns_fold_into_one_instruction_end_to_end() {
     let queued = |uuid: &str, ts: &str, text: &str| {
         format!(
