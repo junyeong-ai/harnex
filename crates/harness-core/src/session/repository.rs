@@ -20,13 +20,13 @@
 //! - Never reach the network. Every command reads the local object database.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::path_guard;
 
 /// The line `git revert` writes into the message it generates.
 const REVERT_TRAILER: &str = "This reverts commit ";
@@ -146,29 +146,35 @@ fn resolve(project: &Path, observed: &[String]) -> Result<Vec<Option<String>>> {
     if observed.is_empty() {
         return Ok(Vec::new());
     }
-    let mut child = Command::new("git")
+    // The query goes through a file rather than a pipe. Writing every line to
+    // a piped stdin before reading stdout deadlocks once git's output fills the
+    // kernel buffer and it blocks writing while this blocks writing — measured
+    // here between six and eight thousand commits, which one busy project
+    // reaches. A file has no such limit and needs no second thread to drain.
+    let query: String = observed
+        .iter()
+        .map(|s| format!("{s}^{{commit}}\n"))
+        .collect();
+    let scratch = tempfile::tempdir().map_err(|e| Error::CheckGitFailure {
+        message: format!("git cat-file --batch-check scratch: {e}"),
+    })?;
+    let query_path = scratch.path().join("commits");
+    path_guard::write_atomic(&query_path, query.as_bytes())?;
+    let stdin = std::fs::File::open(&query_path).map_err(|e| Error::IoFailure {
+        path: query_path.clone(),
+        source: e,
+    })?;
+
+    let output = Command::new("git")
         .args(["cat-file", "--batch-check"])
         .current_dir(project)
-        .stdin(Stdio::piped())
+        .stdin(Stdio::from(stdin))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| Error::CheckGitFailure {
             message: format!("git cat-file --batch-check spawn: {e}"),
-        })?;
-    let query: String = observed
-        .iter()
-        .map(|s| format!("{s}^{{commit}}\n"))
-        .collect();
-    child
-        .stdin
-        .take()
-        .expect("stdin was piped")
-        .write_all(query.as_bytes())
-        .map_err(|e| Error::CheckGitFailure {
-            message: format!("git cat-file --batch-check write: {e}"),
-        })?;
-    let output = child
+        })?
         .wait_with_output()
         .map_err(|e| Error::CheckGitFailure {
             message: format!("git cat-file --batch-check wait: {e}"),
