@@ -40,6 +40,7 @@
 //! - Never write. This module reads; nothing here mutates a project.
 //! - Never reach the network. Every input is a local file.
 
+pub mod baseline;
 pub mod discovery;
 pub mod harness;
 pub mod prompt;
@@ -52,6 +53,9 @@ use serde::{Deserialize, Serialize};
 use crate::config::SessionConfig;
 use crate::error::{Error, Result};
 
+pub use baseline::{
+    Baseline, BaselineDiff, BaselineLedger, Measurement, MetricDelta, SessionMetric,
+};
 pub use harness::{DenialGroup, HarnessFacts, HookCost, RuleLoadGroup};
 pub use prompt::{PromptFacts, RepeatedBlock};
 pub use record::{Authorship, Citation, Coverage};
@@ -94,27 +98,20 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut harness = harness::HarnessAnalyzer::new();
 
     for path in &files {
-        let records = match record::read_transcript(path, &mut coverage) {
+        let records = match record::read_transcript(path, options.since, &mut coverage) {
             Ok(r) => r,
             Err(_) => {
                 coverage.files_unreadable += 1;
                 continue;
             }
         };
-        let window: Vec<record::Record> = match options.since {
-            Some(since) => records
-                .into_iter()
-                .filter(|r| r.citation().timestamp >= since)
-                .collect(),
-            None => records,
-        };
-        for rec in &window {
+        for rec in &records {
             if let record::Record::User(turn) = rec {
                 prompts.observe(turn);
             }
             harness.observe(rec);
         }
-        rework.observe(&window);
+        rework.observe(&records);
     }
 
     if coverage.files_discovered > 0 && coverage.files_read == 0 {
@@ -190,6 +187,8 @@ mod tests {
             roots: vec![dir.path().to_string_lossy().into_owned()],
             min_block_chars: 20,
             coverage_floor: 0.95,
+            min_support: 1,
+            baseline_path: dir.path().join("baselines.jsonl"),
         };
         (dir, config)
     }

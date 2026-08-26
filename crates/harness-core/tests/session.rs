@@ -31,6 +31,8 @@ fn corpus(files: &[(&str, Vec<String>)]) -> (TempDir, SessionConfig) {
         roots: vec![dir.path().to_string_lossy().into_owned()],
         min_block_chars: 30,
         coverage_floor: 0.95,
+        min_support: 1,
+        baseline_path: dir.path().join("baselines.jsonl"),
     };
     (dir, config)
 }
@@ -136,6 +138,8 @@ fn a_run_that_reads_nothing_is_an_error_rather_than_a_report_of_zero() {
         roots: vec![dir.path().to_string_lossy().into_owned()],
         min_block_chars: 30,
         coverage_floor: 0.95,
+        min_support: 1,
+        baseline_path: dir.path().join("baselines.jsonl"),
     };
 
     let err = session::collect(&config, &CollectOptions::default()).unwrap_err();
@@ -391,4 +395,193 @@ fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
         Some(&1)
     );
     assert_eq!(facts.coverage.records_malformed, 0);
+}
+
+fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> session::Baseline {
+    let facts = session::collect(
+        config,
+        &CollectOptions {
+            with_text: false,
+            since: since.map(|s| s.parse().unwrap()),
+        },
+    )
+    .unwrap();
+    session::Baseline::of(label, "2026-09-01T00:00:00Z".parse().unwrap(), &facts)
+}
+
+#[test]
+fn a_window_measured_after_the_last_one_ended_compares_against_it() {
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            typed("s1", "a2", "2026-08-01T10:00:00Z", STANDING),
+        ],
+    )]);
+
+    let before = baseline_of(&config, None, "before");
+    let ledger = session::BaselineLedger::new(config.baseline_path.clone());
+    ledger.append(&before).unwrap();
+
+    std::fs::write(
+        dir.path().join("-Users-me-alpha/s2.jsonl"),
+        [
+            typed("s2", "b1", "2026-08-05T09:00:00Z", STANDING),
+            typed("s2", "b2", "2026-08-05T10:00:00Z", ALSO_STANDING),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let resume = session::baseline::latest_observed_to(&ledger.load_all().unwrap()).unwrap();
+    let after = baseline_of(&config, Some(&resume.to_string()), "after");
+    ledger.append(&after).unwrap();
+
+    let recorded = ledger.load_all().unwrap();
+    let (from, to) = session::baseline::select(&recorded, None, None).unwrap();
+    assert_eq!(
+        (from.label.as_str(), to.label.as_str()),
+        ("before", "after")
+    );
+
+    let diff = session::baseline::diff(from, to, config.min_support).unwrap();
+    let restated = diff
+        .metrics
+        .iter()
+        .find(|m| m.metric == "restated_chars_per_submission")
+        .expect("metric present on both sides");
+    assert_eq!(restated.from.numerator, STANDING.len() as u64);
+    assert_eq!(restated.to.numerator, 0);
+    assert!(restated.change.is_some_and(|c| c < 0.0));
+}
+
+#[test]
+fn two_windows_over_the_same_history_are_refused_rather_than_diluted() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            typed("s1", "a2", "2026-08-05T10:00:00Z", STANDING),
+        ],
+    )]);
+
+    let before = baseline_of(&config, None, "before");
+    let after = baseline_of(&config, None, "after");
+
+    let err = session::baseline::diff(&before, &after, config.min_support).unwrap_err();
+
+    assert_eq!(err.code(), ErrorCode::SessionBaselineNotComparable);
+}
+
+#[test]
+fn a_label_the_ledger_already_holds_is_refused() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let ledger = session::BaselineLedger::new(config.baseline_path.clone());
+    ledger
+        .append(&baseline_of(&config, None, "before"))
+        .unwrap();
+
+    let err = ledger
+        .append(&baseline_of(&config, None, "before"))
+        .unwrap_err();
+
+    assert_eq!(err.code(), ErrorCode::SessionBaselineLabelRejected);
+    assert_eq!(ledger.load_all().unwrap().len(), 1);
+}
+
+#[test]
+fn a_rate_under_the_support_floor_keeps_both_sides_and_withholds_the_subtraction() {
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let before = baseline_of(&config, None, "before");
+    std::fs::write(
+        dir.path().join("-Users-me-alpha/s2.jsonl"),
+        typed("s2", "b1", "2026-08-05T09:00:00Z", STANDING),
+    )
+    .unwrap();
+    let after = baseline_of(&config, Some("2026-08-05T00:00:00Z"), "after");
+
+    let diff = session::baseline::diff(&before, &after, 30).unwrap();
+
+    let restated = diff
+        .metrics
+        .iter()
+        .find(|m| m.metric == "restated_chars_per_submission")
+        .unwrap();
+    assert_eq!(restated.from.denominator, 1);
+    assert_eq!(restated.to.denominator, 1);
+    assert!(restated.change.is_none());
+}
+
+#[test]
+fn a_metric_only_one_side_carries_is_named_rather_than_filled_in() {
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let mut before = baseline_of(&config, None, "before");
+    before.measurements.remove("denials_per_submission");
+    std::fs::write(
+        dir.path().join("-Users-me-alpha/s2.jsonl"),
+        typed("s2", "b1", "2026-08-05T09:00:00Z", STANDING),
+    )
+    .unwrap();
+    let after = baseline_of(&config, Some("2026-08-05T00:00:00Z"), "after");
+
+    let diff = session::baseline::diff(&before, &after, config.min_support).unwrap();
+
+    assert_eq!(diff.metrics_unmatched, vec!["denials_per_submission"]);
+    assert!(
+        diff.metrics
+            .iter()
+            .all(|m| m.metric != "denials_per_submission")
+    );
+}
+
+#[test]
+fn a_corrupt_ledger_line_stops_the_read_rather_than_shortening_the_history() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let ledger = session::BaselineLedger::new(config.baseline_path.clone());
+    ledger
+        .append(&baseline_of(&config, None, "before"))
+        .unwrap();
+    let mut body = std::fs::read_to_string(&config.baseline_path).unwrap();
+    body.push_str("{\"label\":\"truncated\"}\n");
+    std::fs::write(&config.baseline_path, body).unwrap();
+
+    let err = ledger.load_all().unwrap_err();
+
+    assert_eq!(err.code(), ErrorCode::IoFailure);
+}
+
+#[test]
+fn coverage_counts_the_window_rather_than_the_whole_file() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            typed("s1", "a2", "2026-08-05T09:00:00Z", ALSO_STANDING),
+        ],
+    )]);
+    let options = CollectOptions {
+        with_text: false,
+        since: Some("2026-08-05T00:00:00Z".parse().unwrap()),
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.coverage.records_total, 1);
+    assert_eq!(
+        facts.coverage.observed_from,
+        Some("2026-08-05T09:00:00Z".parse().unwrap())
+    );
+    assert_eq!(facts.coverage.observed_to, facts.coverage.observed_from);
 }

@@ -2,11 +2,13 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use clap::Subcommand;
+use jiff::Timestamp;
 
+use harness_core::config::SessionConfig;
 use harness_core::error::{Error, Result};
-use harness_core::session::{self, CollectOptions};
+use harness_core::session::{self, Baseline, BaselineLedger, CollectOptions};
 
-use super::{load_config, write_envelope_success};
+use super::{config_dir, load_config, write_envelope_success};
 
 #[derive(Subcommand)]
 pub enum SessionCommand {
@@ -25,22 +27,55 @@ pub enum SessionCommand {
         #[arg(long)]
         with_text: bool,
     },
+    /// Measured windows, and the difference between two of them
+    Baseline {
+        #[command(subcommand)]
+        cmd: BaselineCommand,
+    },
 }
 
-fn options(since: Option<String>, with_text: bool) -> Result<CollectOptions> {
-    let since = since
-        .map(|raw| {
-            raw.parse().map_err(|e| Error::ConfigInvalid {
-                message: format!("--since '{raw}' is not an RFC 3339 timestamp: {e}"),
-                location: None,
-            })
+#[derive(Subcommand)]
+pub enum BaselineCommand {
+    /// Measure a window and record it under a label no earlier baseline used
+    Save {
+        /// How a later comparison asks for this window
+        #[arg(long)]
+        label: String,
+        /// Window start, as an RFC 3339 timestamp. Defaults to where the most
+        /// recent baseline stopped, so consecutive baselines never overlap.
+        #[arg(long)]
+        since: Option<String>,
+    },
+    /// Compare two recorded windows
+    Diff {
+        /// Earlier window. Defaults to the baseline recorded before `--to`.
+        #[arg(long)]
+        from: Option<String>,
+        /// Later window. Defaults to the most recent baseline.
+        #[arg(long)]
+        to: Option<String>,
+    },
+}
+
+fn timestamp(raw: Option<String>) -> Result<Option<Timestamp>> {
+    raw.map(|raw| {
+        raw.parse().map_err(|e| Error::ConfigInvalid {
+            message: format!("--since '{raw}' is not an RFC 3339 timestamp: {e}"),
+            location: None,
         })
-        .transpose()?;
-    Ok(CollectOptions { with_text, since })
+    })
+    .transpose()
+}
+
+/// Collect a window and refuse to report rates the window does not support.
+fn measure(config: &SessionConfig, options: &CollectOptions) -> Result<session::SessionFacts> {
+    let facts = session::collect(config, options)?;
+    session::require_coverage(&facts.coverage, config.coverage_floor)?;
+    Ok(facts)
 }
 
 pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
-    let (config, _config_path, _working_dir) = load_config()?;
+    let (config, config_path, working_dir) = load_config()?;
     let session_config = config
         .session
         .as_ref()
@@ -51,13 +86,50 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
 
     match cmd {
         SessionCommand::Index { since } => {
-            let facts = session::collect(session_config, &options(since, false)?)?;
+            let options = CollectOptions {
+                with_text: false,
+                since: timestamp(since)?,
+            };
+            let facts = session::collect(session_config, &options)?;
             write_envelope_success(out, facts.coverage)?;
         }
         SessionCommand::Facts { since, with_text } => {
-            let facts = session::collect(session_config, &options(since, with_text)?)?;
-            session::require_coverage(&facts.coverage, session_config.coverage_floor)?;
-            write_envelope_success(out, facts)?;
+            let options = CollectOptions {
+                with_text,
+                since: timestamp(since)?,
+            };
+            write_envelope_success(out, measure(session_config, &options)?)?;
+        }
+        SessionCommand::Baseline { cmd } => {
+            let ledger = BaselineLedger::new(
+                config_dir(&config_path, &working_dir).join(&session_config.baseline_path),
+            );
+            match cmd {
+                BaselineCommand::Save { label, since } => {
+                    let recorded = ledger.load_all()?;
+                    let since = match timestamp(since)? {
+                        Some(explicit) => Some(explicit),
+                        None => session::baseline::latest_observed_to(&recorded),
+                    };
+                    let facts = measure(
+                        session_config,
+                        &CollectOptions {
+                            with_text: false,
+                            since,
+                        },
+                    )?;
+                    let baseline = Baseline::of(&label, Timestamp::now(), &facts);
+                    ledger.append(&baseline)?;
+                    write_envelope_success(out, baseline)?;
+                }
+                BaselineCommand::Diff { from, to } => {
+                    let recorded = ledger.load_all()?;
+                    let (from, to) =
+                        session::baseline::select(&recorded, from.as_deref(), to.as_deref())?;
+                    let diff = session::baseline::diff(from, to, session_config.min_support)?;
+                    write_envelope_success(out, diff)?;
+                }
+            }
         }
     }
     Ok(ExitCode::SUCCESS)

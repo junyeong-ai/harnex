@@ -740,7 +740,7 @@
       ]
     },
     "SessionConfig": {
-      "description": "Where Claude Code transcripts live, and the two parameters reading them needs.\n\n`roots` has no default on purpose. It is a machine-global path, and a\nbuilt-in one would put the author's layout into a binary that runs on other\nmachines — Constitution VII, applied to a path rather than a threshold.",
+      "description": "Where Claude Code transcripts live, and what reading them is parameterised by.\n\n`roots` has no default on purpose. It is a machine-global path, and a\nbuilt-in one would put the author's layout into a binary that runs on other\nmachines — Constitution VII, applied to a path rather than a threshold.",
       "type": "object",
       "properties": {
         "roots": {
@@ -761,6 +761,18 @@
           "type": "number",
           "format": "double",
           "default": 0.95
+        },
+        "min_support": {
+          "description": "Observations a rate needs on both sides before a comparison subtracts\nthem. Under it the two rates are still reported and only the difference\nis withheld, because a handful of submissions moves a rate by arrival\norder more than by anything the operator changed.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 30
+        },
+        "baseline_path": {
+          "description": "Append-only ledger of measured windows, relative to `harness.toml`.",
+          "type": "string",
+          "default": ".harness/session-baselines.jsonl"
         }
       },
       "required": [
