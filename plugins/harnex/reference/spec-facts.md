@@ -246,6 +246,16 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   secure storage), `dependencies` (other plugins, optional semver), `channels`,
   and `defaultEnabled`. A plugin root CLAUDE.md is NOT loaded as context —
   ship instructions in a skill.
+- **A plugin agent is namespaced `plugin:agent`, like a skill.** Verified by
+  installing with `--plugin-dir` and asking a running session: an agent whose
+  frontmatter says `name: session-judge` resolves as `harnex:session-judge`,
+  and the bare name resolves to nothing. A command that dispatches the bare
+  name fails at the point it dispatches and nowhere earlier.
+- **`claude plugin details <name>` reports what the runtime actually
+  discovered** — component counts and a projected always-on token cost — and
+  counts `commands/` entries alongside `skills/` in that inventory. It is the
+  cheapest check that a plugin's assets are found at all, and it needs the
+  top-level `--plugin-dir` flag rather than a subcommand option.
 - **`workflows/` is a distinct component class from `skills/`.** A skill is
   instructions a model follows; a workflow is a script the runtime executes
   over many subagents, invoked as a slash command. The two are not
