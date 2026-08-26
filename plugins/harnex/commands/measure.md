@@ -91,7 +91,17 @@ was cut short and restarted. **People learn from cases, not from rates.**
 tokens in and out, and that the runtime's `cumulative_dropped_tokens` is a
 running total per session, so it is read from the last event and never summed.
 
-**3. Whether the harness earns its place.** `invocations` is what was actually
+**3. What survived.** Present only under `--project`, and only where that
+project is a git work tree. `repository.by_fate` counts what the branch still
+reaches; `reverted_by` names commits undone with `git revert`. Join it to
+`submissions[].commits` to say which instruction's work did not last.
+
+State both limits or do not report the section: `unreachable` means the branch
+does not reach it — a rebase, an amend, a reset, or a branch never merged, and
+a repository that squash-merges puts every feature commit there — and a change
+undone by hand carries no revert trailer and is invisible.
+
+**4. Whether the harness earns its place.** `invocations` is what was actually
 called; an element the operator built and never invoked is only visible under
 `--project`, where the tree can be listed. `blocked` is where the harness and
 their habits disagree — report the concentration first (attempts against
@@ -118,6 +128,7 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - a hook's cost is exact and its value is not recorded at all
 - token counts are counts, never money; and a delta across a window whose
   `models` set moved is a delta about the model as much as the operator
+- `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
   sample size, and they never enter a baseline
 

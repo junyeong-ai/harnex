@@ -100,10 +100,11 @@ pub struct Submission {
     pub edits: usize,
     /// Distinct files those edits touched.
     pub files: usize,
-    /// Commits reported under it. Sparse by design: the agent commits when
-    /// asked, so most instructions end without one and an absent commit is not
-    /// a failed instruction.
-    pub commits: usize,
+    /// Commits reported under it, as the transcript abbreviated them. Sparse
+    /// by design: the agent commits when asked, so most instructions end
+    /// without one and an absent commit is not a failed instruction. The shas
+    /// are what joins an instruction to what became of its work.
+    pub commits: Vec<String>,
     /// Interruptions the runtime marked while it stood — a floor, for the
     /// reason [`super::InterventionKind`] gives.
     pub interrupts: usize,
@@ -191,7 +192,7 @@ impl SubmissionAnalyzer {
             questions: 0,
             edits: 0,
             files: 0,
-            commits: 0,
+            commits: Vec::new(),
             interrupts: 0,
             denials: 0,
             steered_away: false,
@@ -209,8 +210,8 @@ impl SubmissionAnalyzer {
         if turn.denial.is_some() {
             self.out[at].denials += 1;
         }
-        if turn.commit.is_some() {
-            self.out[at].commits += 1;
+        if let Some(sha) = &turn.commit {
+            self.out[at].commits.push(sha.clone());
         }
         if let Some(file) = &turn.edited_file {
             self.out[at].edits += 1;
@@ -350,7 +351,7 @@ mod sample_tests {
             questions: 0,
             edits: 0,
             files: 0,
-            commits: 0,
+            commits: Vec::new(),
             interrupts: 0,
             denials: 0,
             steered_away: false,

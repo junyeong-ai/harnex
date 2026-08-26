@@ -53,6 +53,9 @@ const CONTRACTS: &[(&str, &[&str])] = &[
             "blocked",
             "min_support",
             "submission_sample",
+            "repository",
+            "by_fate",
+            "reverted_by",
         ],
     ),
 ];

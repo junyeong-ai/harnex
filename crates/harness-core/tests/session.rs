@@ -782,10 +782,11 @@ fn an_instruction_carries_the_work_done_under_it_not_the_session_total() {
     let facts = session::collect(&config, &options).unwrap();
 
     let (first, second) = (&facts.submissions[0], &facts.submissions[1]);
-    assert_eq!((first.edits, first.files, first.commits), (3, 2, 1));
+    assert_eq!((first.edits, first.files, first.commits.len()), (3, 2, 1));
+    assert_eq!(first.commits, vec!["abc1234"]);
     assert_eq!(first.questions, 1);
     assert_eq!(
-        (second.edits, second.files, second.commits),
+        (second.edits, second.files, second.commits.len()),
         (1, 1, 0),
         "the second instruction carries its own work, not the first's"
     );
