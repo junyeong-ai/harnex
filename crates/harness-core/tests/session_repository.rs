@@ -42,7 +42,7 @@ fn commit(dir: &Path, message: &str) -> String {
 fn a_directory_that_is_not_a_work_tree_is_absent_rather_than_an_error() {
     let dir = TempDir::new().unwrap();
     assert!(
-        repository::survey(dir.path(), &["abcdef1".into()])
+        repository::survey(dir.path(), &["abcdef1".into()], None)
             .unwrap()
             .is_none()
     );
@@ -54,7 +54,9 @@ fn an_abbreviation_is_resolved_by_the_repository_and_not_by_a_prefix_match() {
     let kept = commit(dir.path(), "kept");
     let observed = vec![kept[..9].to_string(), "0000000".to_string()];
 
-    let facts = repository::survey(dir.path(), &observed).unwrap().unwrap();
+    let facts = repository::survey(dir.path(), &observed, None)
+        .unwrap()
+        .unwrap();
 
     assert_eq!(facts.head, kept);
     assert_eq!(facts.commits[0].resolved.as_deref(), Some(kept.as_str()));
@@ -71,7 +73,7 @@ fn a_commit_the_branch_no_longer_reaches_is_named_for_that_and_not_for_being_und
     let dropped = commit(dir.path(), "dropped");
     git(dir.path(), &["reset", "-q", "--hard", "HEAD~1"]);
 
-    let facts = repository::survey(dir.path(), std::slice::from_ref(&dropped))
+    let facts = repository::survey(dir.path(), std::slice::from_ref(&dropped), None)
         .unwrap()
         .unwrap();
 
@@ -87,7 +89,7 @@ fn a_reverted_commit_names_the_commit_that_reverted_it() {
     git(dir.path(), &["revert", "--no-edit", &undone]);
     let reverting = git(dir.path(), &["rev-parse", "HEAD"]);
 
-    let facts = repository::survey(dir.path(), &[undone[..9].to_string()])
+    let facts = repository::survey(dir.path(), &[undone[..9].to_string()], None)
         .unwrap()
         .unwrap();
 
@@ -106,7 +108,7 @@ fn a_window_with_thousands_of_commits_returns_rather_than_blocking() {
     let path = dir.path().to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(repository::survey(&path, &observed));
+        let _ = tx.send(repository::survey(&path, &observed, None));
     });
 
     // A hang is the failure this guards against, so it is reported as one
@@ -118,4 +120,23 @@ fn a_window_with_thousands_of_commits_returns_rather_than_blocking() {
         .expect("the tempdir is a work tree");
     assert_eq!(facts.commits.len(), 10_000);
     assert_eq!(facts.by_fate[CommitFate::Reachable.as_str()], 10_000);
+}
+
+#[test]
+fn the_observed_commits_are_reported_beside_what_the_repository_counts() {
+    let dir = repo();
+    let first = commit(dir.path(), "one");
+    commit(dir.path(), "two");
+    commit(dir.path(), "three");
+    let from: jiff::Timestamp = "2000-01-01T00:00:00Z".parse().unwrap();
+    let to = jiff::Timestamp::now();
+
+    // One of three observed: the transcript records a commit only sometimes,
+    // and a consumer must be able to see by how much.
+    let facts = repository::survey(dir.path(), &[first[..9].to_string()], Some((from, to)))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(facts.commits.len(), 1);
+    assert_eq!(facts.commits_in_span, Some(3));
 }

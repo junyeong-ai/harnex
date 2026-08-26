@@ -14,6 +14,10 @@
 //! - Never read [`CommitFate::Unreachable`] as work undone. A rebase, an
 //!   amend, a reset and an unmerged branch all land there, and a repository
 //!   that squash-merges puts every feature commit there by design.
+//! - Never present the observed commits as every commit. The transcript
+//!   records one only sometimes — 29 of git's 42 over this project — so the
+//!   count git gives for the same span rides beside it rather than being
+//!   assumed equal to it.
 //! - Never claim a revert it cannot see. [`CommitOutcome::reverted_by`] finds
 //!   the line `git revert` writes and nothing else; a change undone by hand
 //!   carries no such line and is invisible here.
@@ -86,8 +90,16 @@ pub struct CommitOutcome {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RepositoryFacts {
     pub head: String,
-    /// Oldest first, as the window observed them.
+    /// Oldest first, as the window observed them. A floor: the transcript
+    /// records a commit only sometimes, so this is what the window saw and not
+    /// what the window did.
     pub commits: Vec<CommitOutcome>,
+    /// Commits git counts over the same span, which is what the floor above is
+    /// a floor against. Absent when the window observed no span. Measured over
+    /// this project the transcript held 29 of git's 42, so a rate denominated
+    /// in observed commits reads high by however much this gap is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commits_in_span: Option<usize>,
     /// Counts keyed by [`CommitFate::as_str`].
     pub by_fate: BTreeMap<String, usize>,
 }
@@ -96,7 +108,11 @@ pub struct RepositoryFacts {
 ///
 /// `None` when the path is not a git work tree, which is the ordinary case for
 /// most of a machine's transcripts and not a failure.
-pub fn survey(project: &Path, observed: &[String]) -> Result<Option<RepositoryFacts>> {
+pub fn survey(
+    project: &Path,
+    observed: &[String],
+    span: Option<(jiff::Timestamp, jiff::Timestamp)>,
+) -> Result<Option<RepositoryFacts>> {
     if run(project, &["rev-parse", "--is-inside-work-tree"]).is_err() {
         return Ok(None);
     }
@@ -132,9 +148,29 @@ pub fn survey(project: &Path, observed: &[String]) -> Result<Option<RepositoryFa
         });
     }
 
+    let commits_in_span = match span {
+        Some((from, to)) => Some(
+            run(
+                project,
+                &[
+                    "log",
+                    &format!("--since={from}"),
+                    &format!("--until={to}"),
+                    "--format=%H",
+                    "HEAD",
+                ],
+            )?
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count(),
+        ),
+        None => None,
+    };
+
     Ok(Some(RepositoryFacts {
         head,
         commits,
+        commits_in_span,
         by_fate,
     }))
 }

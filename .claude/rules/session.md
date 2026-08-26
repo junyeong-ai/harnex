@@ -48,6 +48,10 @@ floor, named for that, and carries the coverage it was measured at.
   `Value` serialises in insertion order. Canonicalise before using one as a
   map key — `canonical` ([file: crates/harness-core/src/session/harness.rs]) does,
   and its test asserts the ordering it exists for.
+- **A commit is a floor, not a count.** The runtime attaches `gitOperation` to
+  some commits and not others — 29 of git's 42 over this project. Anything
+  denominated in commits reads high, and `repository.commits_in_span` reports
+  what the floor is a floor against so a consumer can see the gap.
 - **Never pipe stdin to a subprocess that also writes stdout.** The repository
   survey ([file: crates/harness-core/src/session/repository.rs]) passes its
   query as a file; a piped write deadlocks once the child's output fills the

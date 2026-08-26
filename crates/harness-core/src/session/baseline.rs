@@ -80,7 +80,9 @@ pub enum SessionMetric {
     /// Instructions the operator sent without waiting for the agent that was
     /// already answering the previous one.
     SteeringPerSubmission,
-    /// Files edited again after a commit and before the next one.
+    /// Files edited again after a commit and before the next one. Denominated
+    /// in observed commits, which is a floor, so this reads high; compare it
+    /// only against another window measured the same way.
     ReeditsPerCommit,
     /// Wall-clock the Stop hooks held.
     HookMillisecondsPerStop,

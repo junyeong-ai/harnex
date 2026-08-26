@@ -197,6 +197,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     }
 
     coverage.sessions = sessions.len();
+    let span = coverage.observed_from.zip(coverage.observed_to);
+    let repository = match &options.project {
+        Some(project) => repository::survey(project, &commits, span)?,
+        None => None,
+    };
 
     Ok(SessionFacts {
         coverage,
@@ -212,10 +217,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         },
         tokens,
         tools,
-        repository: match &options.project {
-            Some(project) => repository::survey(project, &commits)?,
-            None => None,
-        },
+        repository,
         rework: rework.finish(),
         harness: harness.finish(options.with_text),
     })

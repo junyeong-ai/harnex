@@ -260,6 +260,12 @@ pub struct UserTurn {
     /// (54.8%). Reading it as the number of interruptions understates them.
     pub interrupted: bool,
     /// The commit a tool result on this record reported.
+    ///
+    /// A floor. The runtime attaches `gitOperation` to some commits and not
+    /// others — measured against one project's history, 29 of git's 42 over
+    /// the span it recorded any at all. Anything denominated in observed
+    /// commits therefore reads high, and `repository.commits_in_span` is what
+    /// makes the gap visible.
     pub commit: Option<String>,
     /// The file a tool result on this record reported editing.
     pub edited_file: Option<PathBuf>,
