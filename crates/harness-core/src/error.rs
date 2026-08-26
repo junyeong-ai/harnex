@@ -379,7 +379,7 @@ impl Error {
                 "choose a label no earlier baseline used; the ledger is append-only and a label names one window",
             ),
             Self::SessionBaselineNotComparable { .. } => Some(
-                "measure the later window from where the earlier one ended: harness session baseline save --since <observed_to>",
+                "a comparison needs two recorded windows of the same scope that do not overlap; `baseline save` starts where the last window of that scope ended",
             ),
             _ => None,
         }
