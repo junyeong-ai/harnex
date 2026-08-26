@@ -58,7 +58,7 @@ pub struct Config {
     pub session: Option<SessionConfig>,
 }
 
-/// Where Claude Code transcripts live, and the two parameters reading them needs.
+/// Where Claude Code transcripts live, and what reading them is parameterised by.
 ///
 /// `roots` has no default on purpose. It is a machine-global path, and a
 /// built-in one would put the author's layout into a binary that runs on other
@@ -75,6 +75,15 @@ pub struct SessionConfig {
     /// source before rate-reporting commands will answer.
     #[serde(default = "default_coverage_floor")]
     pub coverage_floor: f64,
+    /// Observations a rate needs on both sides before a comparison subtracts
+    /// them. Under it the two rates are still reported and only the difference
+    /// is withheld, because a handful of submissions moves a rate by arrival
+    /// order more than by anything the operator changed.
+    #[serde(default = "default_min_support")]
+    pub min_support: u64,
+    /// Append-only ledger of measured windows, relative to `harness.toml`.
+    #[serde(default = "default_baseline_path")]
+    pub baseline_path: PathBuf,
 }
 
 fn default_min_block_chars() -> usize {
@@ -82,6 +91,12 @@ fn default_min_block_chars() -> usize {
 }
 fn default_coverage_floor() -> f64 {
     0.95
+}
+fn default_min_support() -> u64 {
+    30
+}
+fn default_baseline_path() -> PathBuf {
+    PathBuf::from(".harness/session-baselines.jsonl")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -915,6 +930,20 @@ impl Config {
                     "[session] coverage_floor {} is outside 0.0..=1.0",
                     sess.coverage_floor
                 ),
+                location: None,
+            });
+        }
+        if sess.min_support == 0 {
+            return Err(Error::ConfigInvalid {
+                message: "[session] min_support is 0; a rate over nothing would be compared".into(),
+                location: None,
+            });
+        }
+        if sess.baseline_path.as_os_str().is_empty() {
+            return Err(Error::ConfigInvalid {
+                message:
+                    "[session] baseline_path is empty; name the ledger measured windows append to"
+                        .into(),
                 location: None,
             });
         }

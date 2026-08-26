@@ -278,6 +278,13 @@ pub struct Coverage {
     pub user_turns_by_authorship: BTreeMap<String, usize>,
     /// Runtime versions observed across the input.
     pub runtime_versions: BTreeSet<String>,
+    /// Timestamp of the earliest record counted, and of the latest.
+    ///
+    /// The span the numbers describe, which is not the span the caller asked
+    /// for: a window opened before the corpus starts, or closed after the last
+    /// session, still reports what it actually saw.
+    pub observed_from: Option<Timestamp>,
+    pub observed_to: Option<Timestamp>,
 }
 
 impl Coverage {
@@ -302,6 +309,15 @@ impl Coverage {
             .copied()
             .unwrap_or(0);
         Some(authored as f64 / claimed as f64)
+    }
+
+    fn observe_time(&mut self, t: Timestamp) {
+        if self.observed_from.is_none_or(|from| t < from) {
+            self.observed_from = Some(t);
+        }
+        if self.observed_to.is_none_or(|to| t > to) {
+            self.observed_to = Some(t);
+        }
     }
 
     fn count_authorship(&mut self, a: Authorship) {
@@ -445,7 +461,11 @@ fn classify(raw: &RawRecord) -> Authorship {
 /// record kind this module does not consume are each counted rather than
 /// raised: the file is still readable and the rest of it still counts. Only an
 /// unreadable file is the caller's problem, and that is signalled by the `Err`.
-pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<Vec<Record>> {
+pub fn read_transcript(
+    path: &Path,
+    since: Option<Timestamp>,
+    coverage: &mut Coverage,
+) -> std::io::Result<Vec<Record>> {
     use std::io::BufRead;
 
     let file = std::fs::File::open(path)?;
@@ -460,12 +480,22 @@ pub fn read_transcript(path: &Path, coverage: &mut Coverage) -> std::io::Result<
         if line.trim().is_empty() {
             continue;
         }
-        coverage.records_total += 1;
-
         let Ok(raw) = serde_json::from_str::<RawRecord>(&line) else {
+            coverage.records_total += 1;
             coverage.records_malformed += 1;
             continue;
         };
+        // Coverage counts the window, not the file: the ratio it publishes is
+        // the one `require_coverage` gates on. A record too damaged to carry a
+        // timestamp cannot be placed in time and is counted here rather than
+        // dropped, which overstates the damage in the window and never hides it.
+        if since.is_some_and(|s| raw.timestamp.is_some_and(|t| t < s)) {
+            continue;
+        }
+        coverage.records_total += 1;
+        if let Some(t) = raw.timestamp {
+            coverage.observe_time(t);
+        }
         if let Some(v) = &raw.version {
             coverage.runtime_versions.insert(v.clone());
         }
@@ -601,7 +631,7 @@ mod tests {
         let path = dir.path().join("s.jsonl");
         std::fs::write(&path, json).unwrap();
         let mut cov = Coverage::default();
-        let recs = read_transcript(&path, &mut cov).unwrap();
+        let recs = read_transcript(&path, None, &mut cov).unwrap();
         (recs, cov)
     }
 

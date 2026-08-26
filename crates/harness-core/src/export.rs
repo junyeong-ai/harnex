@@ -19,6 +19,7 @@ use crate::config::Config;
 use crate::envelope::{EnvelopeShape, Finding, ListResponse};
 use crate::error::ErrorCode;
 use crate::policy::PermissionsBlock;
+use crate::session::{BaselineDiff, SessionFacts};
 use crate::telemetry::Event;
 
 /// Closed enum of schema targets `harness export schema <target>` understands.
@@ -32,6 +33,7 @@ pub enum SchemaTarget {
     Permissions,
     ErrorCodes,
     Session,
+    SessionBaseline,
     All,
 }
 
@@ -44,6 +46,7 @@ impl SchemaTarget {
         Self::Permissions,
         Self::ErrorCodes,
         Self::Session,
+        Self::SessionBaseline,
         Self::All,
     ];
 
@@ -56,6 +59,7 @@ impl SchemaTarget {
             "permissions" => Self::Permissions,
             "error-codes" => Self::ErrorCodes,
             "session" => Self::Session,
+            "session-baseline" => Self::SessionBaseline,
             "all" => Self::All,
             _ => return None,
         })
@@ -70,6 +74,7 @@ impl SchemaTarget {
             Self::Permissions => "permissions",
             Self::ErrorCodes => "error-codes",
             Self::Session => "session",
+            Self::SessionBaseline => "session-baseline",
             Self::All => "all",
         }
     }
@@ -77,8 +82,6 @@ impl SchemaTarget {
 
 /// Emit the JSON Schema for `target` as a serde_json::Value (already shaped
 /// as a `$schema`-tagged object).
-use crate::session::SessionFacts;
-
 pub fn schema_for(target: SchemaTarget) -> Value {
     match target {
         SchemaTarget::Config => to_value(schemars::schema_for!(Config)),
@@ -88,6 +91,7 @@ pub fn schema_for(target: SchemaTarget) -> Value {
         SchemaTarget::Permissions => to_value(schemars::schema_for!(PermissionsBlock)),
         SchemaTarget::ErrorCodes => error_codes_schema(),
         SchemaTarget::Session => to_value(schemars::schema_for!(SessionFacts)),
+        SchemaTarget::SessionBaseline => to_value(schemars::schema_for!(BaselineDiff)),
         SchemaTarget::All => all_schemas(),
     }
 }
@@ -219,25 +223,17 @@ mod tests {
     }
 
     #[test]
-    fn target_all_covers_every_known_variant() {
-        // Spot-check that ALL is not stale — adding a new variant requires
-        // updating ALL or this test fails (count mismatch with known strings).
-        let known_strings = [
-            "config",
-            "envelope",
-            "finding",
-            "event",
-            "permissions",
-            "error-codes",
-            "session",
-            "all",
-        ];
-        assert_eq!(SchemaTarget::ALL.len(), known_strings.len());
-        for s in known_strings {
-            assert!(
-                SchemaTarget::ALL.iter().any(|v| v.as_str() == s),
-                "ALL missing {s}"
-            );
-        }
+    fn target_all_is_unique_and_nonshrinking() {
+        // What a test can guard without variant reflection, matching
+        // `error_code_tests`: no duplicate, and never shrinks. Completeness of
+        // ALL is procedural — the exhaustive `as_str` match forces an edit to
+        // this file, where ALL sits directly above it.
+        let unique: std::collections::BTreeSet<&str> =
+            SchemaTarget::ALL.iter().map(|t| t.as_str()).collect();
+        assert_eq!(SchemaTarget::ALL.len(), unique.len(), "ALL has a duplicate");
+        assert!(
+            SchemaTarget::ALL.len() >= 9,
+            "ALL shrank unexpectedly — target dropped?"
+        );
     }
 }

@@ -54,6 +54,8 @@ pub enum ErrorCode {
     CheckGitFailure,
     SessionRootUnreadable,
     SessionCoverageBelowFloor,
+    SessionBaselineLabelRejected,
+    SessionBaselineNotComparable,
 }
 
 impl ErrorCode {
@@ -94,6 +96,8 @@ impl ErrorCode {
         Self::CheckGitFailure,
         Self::SessionRootUnreadable,
         Self::SessionCoverageBelowFloor,
+        Self::SessionBaselineLabelRejected,
+        Self::SessionBaselineNotComparable,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -129,6 +133,8 @@ impl ErrorCode {
             Self::CheckGitFailure => "CHECK_GIT_FAILURE",
             Self::SessionRootUnreadable => "SESSION_ROOT_UNREADABLE",
             Self::SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
+            Self::SessionBaselineLabelRejected => "SESSION_BASELINE_LABEL_REJECTED",
+            Self::SessionBaselineNotComparable => "SESSION_BASELINE_NOT_COMPARABLE",
         }
     }
 }
@@ -254,6 +260,12 @@ pub enum Error {
         floor: f64,
         message: String,
     },
+
+    #[error("baseline label '{label}' rejected: {message}")]
+    SessionBaselineLabelRejected { label: String, message: String },
+
+    #[error("baselines cannot be compared: {message}")]
+    SessionBaselineNotComparable { message: String },
 }
 
 impl Error {
@@ -294,6 +306,8 @@ impl Error {
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
             Self::SessionRootUnreadable { .. } => ErrorCode::SessionRootUnreadable,
             Self::SessionCoverageBelowFloor { .. } => ErrorCode::SessionCoverageBelowFloor,
+            Self::SessionBaselineLabelRejected { .. } => ErrorCode::SessionBaselineLabelRejected,
+            Self::SessionBaselineNotComparable { .. } => ErrorCode::SessionBaselineNotComparable,
         }
     }
 
@@ -360,6 +374,12 @@ impl Error {
             ),
             Self::SessionCoverageBelowFloor { .. } => Some(
                 "widen the window, or lower [session] coverage_floor once you accept the bias it admits",
+            ),
+            Self::SessionBaselineLabelRejected { .. } => Some(
+                "choose a label no earlier baseline used; the ledger is append-only and a label names one window",
+            ),
+            Self::SessionBaselineNotComparable { .. } => Some(
+                "measure the later window from where the earlier one ended: harness session baseline save --since <observed_to>",
             ),
             _ => None,
         }
