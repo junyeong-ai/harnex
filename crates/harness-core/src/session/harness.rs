@@ -312,10 +312,15 @@ impl HarnessAnalyzer {
                 span: g.span(),
             })
             .collect();
+        // Every sort here ends on a key that cannot tie. A comparison that
+        // stops at a timestamp leaves the order to hash iteration, and the
+        // same corpus would then serialise two different ways.
         blocked.sort_by(|a, b| {
             b.attempts
                 .cmp(&a.attempts)
                 .then(a.span.first.timestamp.cmp(&b.span.first.timestamp))
+                .then(a.tool.cmp(&b.tool))
+                .then(a.span.first.uuid.cmp(&b.span.first.uuid))
         });
 
         let mut invocations: Vec<AssetInvocation> = self

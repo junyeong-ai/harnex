@@ -140,3 +140,52 @@ fn the_observed_commits_are_reported_beside_what_the_repository_counts() {
     assert_eq!(facts.commits.len(), 1);
     assert_eq!(facts.commits_in_span, Some(3));
 }
+
+#[test]
+fn a_revision_expression_the_transcript_invented_is_not_asked_of_git() {
+    let dir = repo();
+    let head = commit(dir.path(), "one");
+    commit(dir.path(), "two");
+
+    let facts = repository::survey(
+        dir.path(),
+        &["HEAD~1".into(), "main".into(), head[..9].to_string()],
+        None,
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(facts.commits[0].fate, CommitFate::Missing.as_str());
+    assert_eq!(facts.commits[1].fate, CommitFate::Missing.as_str());
+    assert_eq!(
+        facts.commits[2].fate,
+        CommitFate::Reachable.as_str(),
+        "the one that is an abbreviation still resolves"
+    );
+}
+
+#[test]
+fn the_revert_trailer_is_a_line_and_not_a_phrase_in_a_paragraph() {
+    let dir = repo();
+    let undone = commit(dir.path(), "undone");
+    std::fs::write(dir.path().join("f.txt"), "talk").unwrap();
+    git(dir.path(), &["add", "f.txt"]);
+    git(
+        dir.path(),
+        &[
+            "commit",
+            "-q",
+            "-m",
+            &format!("discuss\n\nsomeone said This reverts commit {undone} in review"),
+        ],
+    );
+
+    let facts = repository::survey(dir.path(), std::slice::from_ref(&undone), None)
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        facts.commits[0].reverted_by.is_empty(),
+        "a sentence about a revert is not a revert"
+    );
+}

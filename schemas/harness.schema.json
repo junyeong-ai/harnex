@@ -785,6 +785,7 @@
           "default": null
         }
       },
+      "additionalProperties": false,
       "required": [
         "roots"
       ]

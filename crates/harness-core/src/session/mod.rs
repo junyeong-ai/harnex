@@ -35,7 +35,9 @@
 //!   coverage, and the remainder is left to a reader of the transcript.
 //!   Matching the runtime's wording to close the gap reports zero the day the
 //!   wording moves.
-//! - Never write. This module reads; nothing here mutates a project.
+//! - Never write into a project. Reading is the whole of it; the one file
+//!   written anywhere is `repository`'s scratch query for git, outside any
+//!   project tree and through `path_guard`.
 //! - Never reach the network. Every input is a local file.
 
 pub mod baseline;
@@ -145,6 +147,10 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     for group in discovery::group_by_session(&files) {
         let mut records = Vec::new();
         for path in &group {
+            // Counters are mutated as the file is read, so a file that fails
+            // partway would leave the coverage of records the caller then
+            // discards. The run must not be able to claim what it did not use.
+            let before = coverage.clone();
             match record::read_transcript(
                 path,
                 options.since,
@@ -152,7 +158,10 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 &mut coverage,
             ) {
                 Ok(r) => records.extend(r),
-                Err(_) => coverage.files_unreadable += 1,
+                Err(_) => {
+                    coverage = before;
+                    coverage.files_unreadable += 1;
+                }
             }
         }
         records.sort_by_key(|r| r.citation().timestamp);

@@ -71,7 +71,9 @@ pub enum SessionCommand {
     Facts {
         #[command(flatten)]
         window: WindowArgs,
-        /// Include prompt text alongside its citations
+        /// Include what was written — prompt text, and the input of a refused
+        /// tool call. Both carry whatever the operator typed, so neither is in
+        /// the default result.
         #[arg(long)]
         with_text: bool,
     },
@@ -152,6 +154,12 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
             sample,
         } => {
             let facts = measure(session_config, &window.options(with_text, true)?)?;
+            if sample == Some(0) {
+                return Err(Error::ConfigInvalid {
+                    message: "--sample 0 is not a cap; omit it to return the window whole".into(),
+                    location: None,
+                });
+            }
             let cap = sample.or(session_config.submission_sample);
             write_envelope_success(
                 out,
