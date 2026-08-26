@@ -409,7 +409,7 @@ fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> sess
         },
     )
     .unwrap();
-    session::Baseline::of(label, "2026-09-01T00:00:00Z".parse().unwrap(), &facts)
+    session::Baseline::of(label, "2026-09-01T00:00:00Z".parse().unwrap(), None, &facts)
 }
 
 #[test]
@@ -436,7 +436,7 @@ fn a_window_measured_after_the_last_one_ended_compares_against_it() {
     )
     .unwrap();
 
-    let resume = session::baseline::latest_observed_to(&ledger.load_all().unwrap()).unwrap();
+    let resume = session::baseline::latest_observed_to(&ledger.load_all().unwrap(), None).unwrap();
     let after = baseline_of(&config, Some(&resume.to_string()), "after");
     ledger.append(&after).unwrap();
 
@@ -784,4 +784,88 @@ fn an_instruction_carries_the_work_done_under_it_not_the_session_total() {
         (1, 1, 0),
         "the second instruction carries its own work, not the first's"
     );
+}
+
+/// A turn carrying the directory the session ran in.
+fn typed_in(session: &str, uuid: &str, ts: &str, cwd: &str, text: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","version":"2.1.246","cwd":"{cwd}","origin":{{"kind":"human"}},"promptSource":"typed","message":{{"content":{}}}}}"#,
+        serde_json::to_string(text).unwrap()
+    )
+}
+
+#[test]
+fn a_project_window_admits_a_worktree_below_it_and_nothing_beside_it() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed_in("s1", "a1", "2026-08-01T09:00:00Z", "/w/alpha", STANDING),
+            typed_in(
+                "s2",
+                "a2",
+                "2026-08-01T09:10:00Z",
+                "/w/alpha/.claude/worktrees/fix",
+                STANDING,
+            ),
+            typed_in(
+                "s3",
+                "a3",
+                "2026-08-01T09:20:00Z",
+                "/w/alpha-tools",
+                STANDING,
+            ),
+            typed_in("s4", "a4", "2026-08-01T09:30:00Z", "/w/beta", STANDING),
+        ],
+    )]);
+    let options = CollectOptions {
+        project: Some("/w/alpha".into()),
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(
+        facts.prompts.submissions, 2,
+        "the project and its worktree, not the sibling whose name starts the same"
+    );
+    assert_eq!(facts.coverage.records_total, 2);
+}
+
+#[test]
+fn baselines_measured_over_different_scopes_are_not_subtracted() {
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed_in(
+            "s1",
+            "a1",
+            "2026-08-01T09:00:00Z",
+            "/w/alpha",
+            STANDING,
+        )],
+    )]);
+    let whole = baseline_of(&config, None, "whole");
+    std::fs::write(
+        dir.path().join("-Users-me-alpha/s2.jsonl"),
+        typed_in("s2", "b1", "2026-08-05T09:00:00Z", "/w/alpha", STANDING),
+    )
+    .unwrap();
+    let facts = session::collect(
+        &config,
+        &CollectOptions {
+            since: Some("2026-08-05T00:00:00Z".parse().unwrap()),
+            project: Some("/w/alpha".into()),
+            ..CollectOptions::default()
+        },
+    )
+    .unwrap();
+    let scoped = session::Baseline::of(
+        "scoped",
+        "2026-09-01T00:00:00Z".parse().unwrap(),
+        Some("/w/alpha".into()),
+        &facts,
+    );
+
+    let err = session::baseline::diff(&whole, &scoped, config.min_support).unwrap_err();
+
+    assert_eq!(err.code(), ErrorCode::SessionBaselineNotComparable);
 }

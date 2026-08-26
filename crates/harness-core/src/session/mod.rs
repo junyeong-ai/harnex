@@ -47,6 +47,8 @@ pub mod record;
 pub mod rework;
 pub mod submission;
 
+use std::path::PathBuf;
+
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -73,6 +75,9 @@ pub struct CollectOptions {
     pub with_text: bool,
     /// Ignore records older than this.
     pub since: Option<Timestamp>,
+    /// Read only records made under this directory or below it. Absent reads
+    /// every project on the machine.
+    pub project: Option<PathBuf>,
     /// Include the instruction-by-instruction list. Off by default: it is one
     /// entry per instruction where the rest of the result is one entry per
     /// finding, and most callers want the findings.
@@ -111,7 +116,12 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut harness = harness::HarnessAnalyzer::new();
 
     for path in &files {
-        let records = match record::read_transcript(path, options.since, &mut coverage) {
+        let records = match record::read_transcript(
+            path,
+            options.since,
+            options.project.as_deref(),
+            &mut coverage,
+        ) {
             Ok(r) => r,
             Err(_) => {
                 coverage.files_unreadable += 1;

@@ -24,7 +24,7 @@
 //!   effect: the runtime versions of both windows ride along for that reason.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -173,6 +173,11 @@ pub struct Baseline {
     /// comparison names this window, so the ledger refuses to reuse one.
     pub label: String,
     pub recorded_at: Timestamp,
+    /// The project this window was measured under, if it was scoped to one.
+    /// Two windows of different scope describe different populations, so
+    /// [`diff`] refuses to subtract one from the other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<PathBuf>,
     /// What the reader saw and what it could not — including the observed
     /// span, which is what makes two baselines comparable or not.
     pub coverage: Coverage,
@@ -181,10 +186,16 @@ pub struct Baseline {
 }
 
 impl Baseline {
-    pub fn of(label: &str, recorded_at: Timestamp, facts: &SessionFacts) -> Self {
+    pub fn of(
+        label: &str,
+        recorded_at: Timestamp,
+        project: Option<PathBuf>,
+        facts: &SessionFacts,
+    ) -> Self {
         Self {
             label: label.to_string(),
             recorded_at,
+            project,
             coverage: facts.coverage.clone(),
             measurements: SessionMetric::ALL
                 .iter()
@@ -268,6 +279,8 @@ pub struct BaselineWindow {
     pub recorded_at: Timestamp,
     pub observed_from: Option<Timestamp>,
     pub observed_to: Option<Timestamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<PathBuf>,
     /// Runtime versions the window spans. A delta across a version change is
     /// an observation about two different runtimes as much as about the
     /// operator.
@@ -282,6 +295,7 @@ impl BaselineWindow {
             recorded_at: baseline.recorded_at,
             observed_from: baseline.coverage.observed_from,
             observed_to: baseline.coverage.observed_to,
+            project: baseline.project.clone(),
             runtime_versions: baseline.coverage.runtime_versions.clone(),
             authorship_ratio: baseline.coverage.authorship_ratio(),
         }
@@ -318,6 +332,14 @@ pub struct BaselineDiff {
 /// The two must be different stretches of time for the difference between them
 /// to be about anything.
 pub fn diff(from: &Baseline, to: &Baseline, support_floor: u64) -> Result<BaselineDiff> {
+    if from.project != to.project {
+        return Err(Error::SessionBaselineNotComparable {
+            message: format!(
+                "'{}' and '{}' were measured over different scopes, so the difference between them is the scope",
+                from.label, to.label
+            ),
+        });
+    }
     let (Some(earlier_end), Some(later_start)) =
         (from.coverage.observed_to, to.coverage.observed_from)
     else {
@@ -404,9 +426,15 @@ pub fn select<'a>(
     Ok((&ledger[from], &ledger[to]))
 }
 
-/// Where the next window starts if it is to continue where the ledger stopped.
-pub fn latest_observed_to(ledger: &[Baseline]) -> Option<Timestamp> {
-    ledger.iter().filter_map(|b| b.coverage.observed_to).max()
+/// Where the next window of this scope starts if it is to continue where the
+/// ledger stopped. A window scoped to one project resumes from that project's
+/// last measurement, never from an unrelated one.
+pub fn latest_observed_to(ledger: &[Baseline], project: Option<&Path>) -> Option<Timestamp> {
+    ledger
+        .iter()
+        .filter(|b| b.project.as_deref() == project)
+        .filter_map(|b| b.coverage.observed_to)
+        .max()
 }
 
 #[cfg(test)]

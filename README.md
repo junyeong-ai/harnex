@@ -126,8 +126,8 @@ harness validate output-styles <files...>
 harness validate settings [<path>]
 harness validate commit-msg <path>                     # closed-enum trailer
 
-harness session index  [--since <rfc3339>]              # transcripts found, and what was read
-harness session facts  [--since <rfc3339>] [--with-text] # counts + citations, no judgement
+harness session index  [--since <t>] [--project <dir>]  # transcripts found, and what was read
+harness session facts  [--since <t>] [--with-text]      # counts + citations, no judgement
 harness session submissions [--with-text] [--sample N]  # one entry per instruction, and what followed it
 harness session baseline save --label <name>            # freeze the window; resumes where the last one ended
 harness session baseline diff [--from <a>] [--to <b>]   # rates across two windows, with each window's span
