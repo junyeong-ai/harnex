@@ -107,15 +107,18 @@ survive its context), and the judge's recurring gaps (constraints never written
 down at all). The first is what the operator knows they repeat; the last is
 what they do not.
 
-A paragraph is usually both, and the two want opposite fixes: installing it
-addresses the first and nothing else, while the second is a context budget.
-Report `cross_session_chars` and `restated_chars` separately and prescribe
-against whichever is larger — over one real corpus the split is 15% to 72%, and
-reading the total as the first would have prescribed installation for a problem
-installation does not touch.
+A paragraph is usually both, and the two are not one problem.
+`cross_session_chars` counts what was never installed anywhere, and installing
+it is the whole fix. `restated_chars` counts what was typed again inside one
+session, and **the oracle cannot say why** — a paragraph retyped after a
+compaction, one retyped into a session whose rules already carry it, and one
+retyped to weight it for a single task are three findings with three fixes.
+Open the citations and let the judge separate them; where `compactions` is
+non-empty, the timestamps settle the first case outright.
 
-Where `compactions` is non-empty, read it against `restated_blocks` by
-timestamp: a paragraph retyped after a compaction is what that compaction cost.
+Report the two separately and never sum them — over one real corpus the split
+is 15% to 72%, and reading the total as the first prescribes installation for
+something installation does not touch.
 
 ## 6 — Report
 
@@ -125,11 +128,19 @@ guessed.
 
 **0. This window.** Files, records, span, runtime versions, coverage, scope.
 Then the delta from `baseline diff`, or "first measurement" — never zeros.
+Where `change` is null on every metric the window is too thin to compare: say
+so with `support_floor` and the denominators beside it, because the operator's
+next act is to keep working rather than to change anything.
 
 **1. What was delegated, and how it went.** §4's portfolio. Then the three
 most expensive moments, each opened from its citation and shown with the turns
 around it: the longest run, the costliest interruption, the instruction that
 was cut short and restarted. **People learn from cases, not from rates.**
+
+Each case is an account, not a verdict: what was asked, where the work landed
+(`submissions[].files` and `tools`), what shipped, and the judge's `carried`
+and `gap` beside it. `carried` is the half an operator can act on immediately —
+it is the wording to keep.
 
 **2. What leaks every session.** §5, plus `interventions` by kind and
 `post_commit_reedits` per commit. Compaction belongs here when present: report
