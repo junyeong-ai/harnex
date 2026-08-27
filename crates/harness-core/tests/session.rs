@@ -624,6 +624,37 @@ fn every_window_verb_returns_something_that_says_which_window_it_is() {
 }
 
 #[test]
+fn every_analyser_sees_the_same_records_after_a_copy_is_discarded() {
+    // The re-edit walk reads the group rather than one record at a time, so a
+    // copy the other analysers discarded would reach it and count again.
+    let edit = r#"{"type":"user","uuid":"e1","timestamp":"2026-08-01T09:00:20Z","sessionId":"s1","toolUseResult":{"filePath":"/w/alpha/src/lib.rs","structuredPatch":[]},"message":{"content":[{"type":"tool_result","content":"ok"}]}}"#.to_string();
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![
+                typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                // Edited, shipped, then edited again — the shape a re-edit is.
+                edit.replace("\"uuid\":\"e1\"", "\"uuid\":\"e0\"")
+                    .replace("09:00:20", "09:00:05"),
+                format!(
+                    r#"{{"type":"user","uuid":"c1","timestamp":"2026-08-01T09:00:10Z","sessionId":"s1","toolUseResult":{{"gitOperation":{{"commit":{{"sha":"abc1234"}}}}}},"message":{{"content":[{{"type":"tool_result","content":"ok"}}]}}}}"#
+                ),
+                edit.clone(),
+            ],
+        ),
+        ("-Users-me-alpha/s1/subagents/agent-one.jsonl", vec![edit]),
+    ]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.coverage.records_duplicated, 1);
+    assert_eq!(
+        facts.rework.post_commit_reedits[0].reedits, 1,
+        "one file was edited once after the commit, and two files recorded it"
+    );
+}
+
+#[test]
 fn a_scoped_window_says_how_many_files_it_drew_from_and_how_many_it_opened() {
     let (_dir, config) = corpus(&[
         (
