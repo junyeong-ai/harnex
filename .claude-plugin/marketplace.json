@@ -1,6 +1,6 @@
 {
   "name": "harnex",
-  "owner": { "name": "ai-junyeong" },
+  "owner": { "name": "junyeong-ai" },
   "description": "Distributes the harnex plugin — a generator for project-fit, project-native Claude Code harness tooling.",
   "plugins": [
     {
