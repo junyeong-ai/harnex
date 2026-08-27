@@ -376,6 +376,12 @@ pub struct Coverage {
     pub files_unreadable: usize,
     pub records_total: usize,
     pub records_malformed: usize,
+    /// Records the runtime carried in from the session this one was forked
+    /// from. The work they describe happened there and is counted there, so a
+    /// window that reads both files counts it once — measured over one corpus,
+    /// 54,965 such records, every one of which is also in the file it came
+    /// from.
+    pub records_forked: usize,
     /// Record kinds present in the input that this module does not consume.
     /// A type with a sub-vocabulary is keyed `type:subtype`, so consuming one
     /// member still leaves the growth of its siblings visible.
@@ -510,6 +516,11 @@ struct RawRecord {
     prompt_source: Option<String>,
     #[serde(rename = "isSidechain")]
     is_sidechain: Option<bool>,
+    /// Set by the runtime on a record it replayed out of the session this one
+    /// was forked from. Its contents name that session; its presence is what
+    /// says the record is not this session's event.
+    #[serde(rename = "forkedFrom")]
+    forked_from: Option<serde_json::Value>,
     message: Option<RawMessage>,
     /// Polymorphic upstream: an object for most tools, a bare string for some.
     /// Modelled as an untyped value so a string never fails the whole record.
@@ -690,6 +701,14 @@ pub fn read_transcript(
             }
         }
         coverage.records_total += 1;
+        // A fork's transcript replays the conversation it was forked from so
+        // the session stands alone. Those records are the earlier session's
+        // events, carrying its uuids and its timestamps, and counting them
+        // again here would report one instruction as two.
+        if raw.forked_from.is_some() {
+            coverage.records_forked += 1;
+            continue;
+        }
         if let Some(t) = raw.timestamp {
             coverage.observe_time(t);
         }
