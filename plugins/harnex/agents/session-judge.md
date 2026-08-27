@@ -128,6 +128,10 @@ is a good idea.
   more than one directory and 41% touch a source path and a test path together.
   The paths are evidence when the instruction named a place and the work went
   somewhere else entirely, not when it went to more places than one.
+- **Never read `files` as the whole of where the work went.**
+  It names what `Write` and `Edit` were pointed at; an agent that edits through
+  a shell leaves it empty, and one that writes its commit message to a scratch
+  path leaves that there instead. `commits` is what landed.
 - **Never read `interrupts: 0` as "the person let it run."** The runtime marks
   only some interruptions — measured, 216 of 394 — so zero is silence.
 - **Never read `denials` as the person refusing.** It counts every stopped tool
