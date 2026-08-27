@@ -68,8 +68,6 @@ fn every_manifest_template_exists_for_every_language() {
 const NON_SCAFFOLD_TEMPLATES: &[(&str, &str)] = &[
     ("common/rule-template.md", "extend rule"),
     ("common/skill-template.md", "extend skill"),
-    ("common/git-hooks/commit-msg", "extend pattern commit-msg"),
-    ("common/git-hooks/pre-push", "extend pattern pre-push"),
 ];
 
 #[test]
@@ -107,14 +105,26 @@ fn no_template_is_unclaimed_by_the_manifest() {
 }
 
 #[test]
-fn every_non_scaffold_template_exists() {
-    // The allowance above must name real files, or it silently excuses a
-    // template that was deleted.
+fn every_non_scaffold_template_is_a_real_file_a_real_verb_installs() {
+    // Both halves, because the allowance is the one place a template can be
+    // excused from the sweep. A dead file excused by it is dead weight the
+    // sweep exists to find; a verb the skill does not offer excuses a template
+    // nothing can install, which is how `pre-push` shipped unreachable behind
+    // an `extend pattern pre-push` that was never a verb.
     let root = templates_root();
+    let menu = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/SKILL.md"),
+    )
+    .expect("SKILL.md is readable");
+
     for (rel, verb) in NON_SCAFFOLD_TEMPLATES {
         assert!(
             root.join(rel).is_file(),
             "'{rel}' is declared as installed by `{verb}` but is not in the tree"
+        );
+        assert!(
+            menu.contains(&format!("`{verb}")),
+            "'{rel}' is excused as installed by `{verb}`, which SKILL.md offers nowhere"
         );
     }
 }

@@ -22,8 +22,5 @@ yaml_serde.workspace = true
 walkdir.workspace = true
 schemars.workspace = true
 
-[dev-dependencies]
-tempfile.workspace = true
-
 [lints]
 workspace = true

@@ -180,6 +180,16 @@ template = "common/git-hooks/pre-commit"
 destination = "hooks/pre-commit"
 executable = true
 
+# Fail-open in three places — no binary, no `[validate.commit_msg]` section,
+# and `HARNEX_SKIP_COMMITMSG` — so a project that has not configured trailers
+# is never blocked by the hook that would enforce them.
+[[artifact]]
+tier = "foundation"
+content = { kind = "copy" }
+template = "common/git-hooks/commit-msg"
+destination = "hooks/commit-msg"
+executable = true
+
 # ---------- language: emitted once per detected stack ----------
 #
 # Detection answers with a SET, not a winner. A lockfile is evidence that a

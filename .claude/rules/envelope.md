@@ -10,7 +10,7 @@ Every CLI command emits exactly one envelope on stdout, terminated by `\n`.
 
 Success: `{"ok": true, "data": T, "warnings": [...]}`
 Error:   `{"ok": false, "error": {"code", "message", "hint?", "location?"}}`
-List:    `data = {"items": [...], "total": N, "skipped_rules"?: [...]}`
+List:    `data = {"items": [...], "total": N}`
 
 Construct via `envelope::write_success(out, data, warnings)` or
 `envelope::write_error(out, &error)`. Never write prose to stdout.
