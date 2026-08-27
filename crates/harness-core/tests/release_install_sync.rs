@@ -228,3 +228,28 @@ fn the_upload_step_keeps_the_defaults_the_installer_reads_asset_names_from() {
         );
     }
 }
+
+/// The command surface the README prints is the one a reader copies from, and
+/// a target it omits is a capability nobody finds.
+#[test]
+fn the_readme_names_every_schema_the_binary_will_emit() {
+    let readme = repo_file("README.md");
+    let listed: BTreeSet<&str> = readme
+        .split("harness export schema {")
+        .nth(1)
+        .expect("README prints the export surface")
+        .split('}')
+        .next()
+        .expect("the brace closes")
+        .split('|')
+        .map(str::trim)
+        .collect();
+
+    for target in harness_core::export::SchemaTarget::ALL {
+        assert!(
+            listed.contains(target.as_str()),
+            "README omits `{}` from the schemas the binary emits",
+            target.as_str()
+        );
+    }
+}

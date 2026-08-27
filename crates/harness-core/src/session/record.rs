@@ -371,9 +371,16 @@ impl Record {
 /// looks calm doing it.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Coverage {
+    /// Transcripts under the configured roots. The corpus, not the window: a
+    /// scoped run opens every one of them and answers about the few that
+    /// match, which is what it costs and not what it measured.
     pub files_discovered: usize,
     pub files_read: usize,
     pub files_unreadable: usize,
+    /// Of those, the ones a record in the window came from. The file count
+    /// that belongs beside `records_total`.
+    #[serde(default)]
+    pub files_in_window: usize,
     pub records_total: usize,
     pub records_malformed: usize,
     /// Records the runtime carried in from the session this one was forked
@@ -749,7 +756,15 @@ pub fn read_transcript(
         match consumed {
             ConsumedType::User => {
                 let authorship = classify(&raw);
-                coverage.count_authorship(authorship);
+                let text = content.and_then(text_of);
+                // A tool result is a `user` record carrying no turn. Counting
+                // one as a turn the runtime declined to attribute describes the
+                // protocol rather than the operator — measured over one
+                // project, 3,751 of the 3,859 records that would land in
+                // `unclaimed` are tool results.
+                if text.is_some() {
+                    coverage.count_authorship(authorship);
+                }
                 let result = raw.tool_use_result.as_ref();
                 let denial = raw.tool_denial_kind.as_ref().map(|k| {
                     let call = tool_use_id_of(content).and_then(|id| tool_calls.get(id));
@@ -762,7 +777,7 @@ pub fn read_transcript(
                 out.push(Record::User(UserTurn {
                     citation,
                     authorship,
-                    text: content.and_then(text_of),
+                    text,
                     queued: raw.prompt_source.as_deref() == Some(QUEUED_PROMPT_SOURCE),
                     follows_agent_output: agent_output_since_user_turn,
                     interrupted: raw.interrupted_message_id.is_some(),

@@ -19,7 +19,7 @@ use crate::config::Config;
 use crate::envelope::{EnvelopeShape, Finding, ListResponse};
 use crate::error::ErrorCode;
 use crate::policy::PermissionsBlock;
-use crate::session::{BaselineDiff, SessionFacts};
+use crate::session::{BaselineDiff, SessionFacts, SubmissionWindow};
 use crate::telemetry::Event;
 
 /// Closed enum of schema targets `harness export schema <target>` understands.
@@ -33,6 +33,7 @@ pub enum SchemaTarget {
     Permissions,
     ErrorCodes,
     Session,
+    SessionSubmissions,
     SessionBaseline,
     All,
 }
@@ -46,6 +47,7 @@ impl SchemaTarget {
         Self::Permissions,
         Self::ErrorCodes,
         Self::Session,
+        Self::SessionSubmissions,
         Self::SessionBaseline,
         Self::All,
     ];
@@ -59,6 +61,7 @@ impl SchemaTarget {
             "permissions" => Self::Permissions,
             "error-codes" => Self::ErrorCodes,
             "session" => Self::Session,
+            "session-submissions" => Self::SessionSubmissions,
             "session-baseline" => Self::SessionBaseline,
             "all" => Self::All,
             _ => return None,
@@ -74,6 +77,7 @@ impl SchemaTarget {
             Self::Permissions => "permissions",
             Self::ErrorCodes => "error-codes",
             Self::Session => "session",
+            Self::SessionSubmissions => "session-submissions",
             Self::SessionBaseline => "session-baseline",
             Self::All => "all",
         }
@@ -91,6 +95,7 @@ pub fn schema_for(target: SchemaTarget) -> Value {
         SchemaTarget::Permissions => to_value(schemars::schema_for!(PermissionsBlock)),
         SchemaTarget::ErrorCodes => error_codes_schema(),
         SchemaTarget::Session => to_value(schemars::schema_for!(SessionFacts)),
+        SchemaTarget::SessionSubmissions => to_value(schemars::schema_for!(SubmissionWindow)),
         SchemaTarget::SessionBaseline => to_value(schemars::schema_for!(BaselineDiff)),
         SchemaTarget::All => all_schemas(),
     }

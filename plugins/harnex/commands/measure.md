@@ -31,8 +31,13 @@ harness session facts --since <t> [--project <dir>] --with-text
 harness session submissions --since <t> [--project <dir>] --with-text --sample <n>
 ```
 
-`--sample` defaults to `[session] submission_sample`. Evidence the envelopes do
-not carry does not exist — do not supply it from reading transcripts by hand.
+`submissions` returns `coverage` beside its `submissions`, the same coverage
+`facts` carries, so either result read alone still says which window it is.
+
+`--sample` defaults to `[session] submission_sample`. **Absent, that returns
+the window whole**, and §3 dispatches an agent per 25 of them — set it, or say
+in the report how many agents the run cost. Evidence the envelopes do not carry
+does not exist — do not supply it from reading transcripts by hand.
 
 **If a cost source is installed, take it too.** The transcripts carry token
 counts and no clock and no price: nothing in them says how long a tool call
@@ -144,7 +149,10 @@ Three questions, in this order. A section with nothing in it says so and says
 why — an empty section with its reason is worth more than a filled one that
 guessed.
 
-**0. This window.** Files, records, span, runtime versions, coverage, scope.
+**0. This window.** `files_in_window` and records, span, runtime versions,
+coverage, scope. `files_discovered` is the corpus the run opened to find them,
+which is what it cost and not what it measured — a scoped window is routinely
+a handful of files out of thousands.
 Then the delta from `baseline diff`, or "first measurement" — never zeros.
 Where `change` is null on every metric the window is too thin to compare: say
 so with `support_floor` and the denominators beside it, because the operator's
@@ -228,6 +236,16 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - `rule_loads` is the project memory the runtime attached to a turn. A rule
   loaded on every turn is never attached and is absent here, so this is a floor
   on what was in force
+- `files_discovered` is the corpus the run opened; `files_in_window` is what it
+  answered about
+- `by_fate` counts the commits the transcript recorded, which is a floor
+  against `commits_in_span` — measured, 41 of 92 over one project and 1,717 of
+  4,470 over another, so anything denominated in observed commits reads high
+- an event the runtime wrote into two transcripts is counted once, by uuid,
+  and `records_duplicated` says how many. Two shapes escape that count and are
+  measured at 9 and 201 of 285,233 messages: a message whose copies carry
+  different uuids, and a copy of a message the earlier file recorded while it
+  was still streaming
 - `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
   sample size, and they never enter a baseline

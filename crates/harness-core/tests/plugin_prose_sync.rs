@@ -72,6 +72,12 @@ const CONTRACTS: &[(&str, &[&str])] = &[
             "RepositoryFacts.by_fate",
             "CommitOutcome.reverted_by",
             "Coverage.sessions",
+            "Coverage.files_in_window",
+            "Coverage.records_duplicated",
+            "SubmissionWindow.coverage",
+            "SubmissionWindow.submissions",
+            "RepositoryFacts.commits_in_span",
+            "Coverage.files_discovered",
             "Submission.written",
             "Submission.committed",
             "BaselineDiff.support_floor",
@@ -102,6 +108,7 @@ fn schema_types() -> BTreeMap<String, BTreeSet<String>> {
     let mut types = BTreeMap::new();
     for target in [
         SchemaTarget::Session,
+        SchemaTarget::SessionSubmissions,
         SchemaTarget::SessionBaseline,
         SchemaTarget::Config,
     ] {
