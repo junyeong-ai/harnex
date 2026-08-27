@@ -1000,6 +1000,38 @@ mod tests {
     }
 
     #[test]
+    fn every_record_read_lands_in_exactly_one_bucket() {
+        // One of each way a line can end: kept, unreadable, a type this module
+        // does not consume, a consumed type missing what places it in time, and
+        // a copy the runtime replayed out of another session.
+        let (kept, cov) = rec(&format!(
+            "{}\n{}\n{}\n{}\n{}",
+            format_args!(
+                r#"{{"type":"user",{BASE},"origin":{{"kind":"human"}},"promptSource":"typed","message":{{"content":"hi"}}}}"#
+            ),
+            "not json",
+            format_args!(r#"{{"type":"artifact-comment-monitor",{BASE}}}"#),
+            r#"{"type":"user","uuid":"u2","sessionId":"s","message":{"content":"no timestamp"}}"#,
+            format_args!(
+                r#"{{"type":"user",{BASE},"forkedFrom":{{"sessionId":"earlier"}},"origin":{{"kind":"human"}},"promptSource":"typed","message":{{"content":"replayed"}}}}"#
+            ),
+        ));
+
+        let accounted = kept.len()
+            + cov.records_malformed
+            + cov.records_forked
+            + cov.record_types_unconsumed.values().sum::<usize>();
+        assert_eq!(
+            accounted, cov.records_total,
+            "a record read and neither kept nor counted has gone missing"
+        );
+        assert_eq!(
+            (kept.len(), cov.records_forked, cov.records_malformed),
+            (1, 1, 2)
+        );
+    }
+
+    #[test]
     fn malformed_line_does_not_abort_the_file() {
         let (recs, cov) = rec(&format!(
             "not json\n{{\"type\":\"user\",{BASE},\"origin\":{{\"kind\":\"human\"}},\"promptSource\":\"typed\",\"message\":{{\"content\":\"hi\"}}}}\n"
