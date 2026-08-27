@@ -12,7 +12,7 @@ use harness_core::session::{self, Baseline, BaselineLedger, CollectOptions};
 
 use super::{config_dir, load_config, write_envelope_success, write_envelope_success_warned};
 
-/// Which records a command reads. Every session command takes the same two,
+/// Which records a command reads. Every session command takes the same three,
 /// so they are declared once and flattened rather than repeated per verb.
 #[derive(Args, Clone)]
 pub struct WindowArgs {
@@ -22,6 +22,9 @@ pub struct WindowArgs {
     /// Read only sessions run in this directory or below it
     #[arg(long)]
     project: Option<PathBuf>,
+    /// Read only this session, subagents it dispatched included
+    #[arg(long)]
+    session: Option<String>,
 }
 
 impl WindowArgs {
@@ -51,12 +54,14 @@ impl WindowArgs {
     }
 
     fn options(self, with_text: bool, with_submissions: bool) -> Result<CollectOptions> {
+        let session = self.session.clone();
         let (since, project) = self.resolve()?;
         Ok(CollectOptions {
             with_text,
             with_submissions,
             since,
             project,
+            session,
         })
     }
 }
@@ -206,7 +211,14 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                     since,
                     project,
                 } => {
-                    let (since, project) = WindowArgs { since, project }.resolve()?;
+                    let (since, project) = WindowArgs {
+                        since,
+                        project,
+                        // A baseline anchors a trajectory, which is the
+                        // operator's and not one session's.
+                        session: None,
+                    }
+                    .resolve()?;
                     let recorded = ledger.load_all()?;
                     let since = since.or_else(|| {
                         session::baseline::latest_observed_to(&recorded, project.as_deref())

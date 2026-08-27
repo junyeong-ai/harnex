@@ -85,6 +85,10 @@ pub struct CollectOptions {
     /// Read only records made under this directory or below it. Absent reads
     /// every project on the machine.
     pub project: Option<PathBuf>,
+    /// Read only records this session wrote. A subagent's transcript is a
+    /// separate file carrying its parent's id, so this keeps a session whole
+    /// rather than splitting the work it delegated away from it.
+    pub session: Option<String>,
     /// Include the instruction-by-instruction list. Off by default: it is one
     /// entry per instruction where the rest of the result is one entry per
     /// finding, and most callers want the findings.
@@ -184,8 +188,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             let before = coverage.clone();
             match record::read_transcript(
                 path,
-                options.since,
-                options.project.as_deref(),
+                record::Window {
+                    since: options.since,
+                    project: options.project.as_deref(),
+                    session: options.session.as_deref(),
+                },
                 &mut coverage,
             ) {
                 Ok(r) => streams.push(r),
