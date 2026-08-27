@@ -558,6 +558,37 @@ fn a_fork_replaying_its_parent_does_not_make_one_instruction_into_two() {
 }
 
 #[test]
+fn a_record_two_of_a_sessions_subagents_start_from_is_one_event() {
+    let shared = spent("s1", "x1", "2026-08-01T09:00:02Z", "claude-opus-5", 400);
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+        ),
+        // Two subagents dispatched at once, each transcript opening with the
+        // state they were handed, under the session that dispatched them.
+        (
+            "-Users-me-alpha/s1/subagents/agent-one.jsonl",
+            vec![shared.clone()],
+        ),
+        ("-Users-me-alpha/s1/subagents/agent-two.jsonl", vec![shared]),
+    ]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(
+        facts.tokens.output, 400,
+        "one turn was taken, and two files record it"
+    );
+    assert_eq!(facts.submissions[0].agent_turns, 1);
+    assert_eq!(facts.coverage.records_duplicated, 1);
+}
+
+#[test]
 fn a_window_scoped_to_a_fork_does_not_inherit_what_it_was_forked_from() {
     let original = typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING);
     let (_dir, config) = corpus(&[

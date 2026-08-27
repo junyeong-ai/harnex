@@ -382,6 +382,10 @@ pub struct Coverage {
     /// 54,965 such records, every one of which is also in the file it came
     /// from.
     pub records_forked: usize,
+    /// Records already counted from another of the same session's transcripts.
+    /// Dispatching several subagents at once copies the state they start from
+    /// into each of their files, and one event is counted once.
+    pub records_duplicated: usize,
     /// Record kinds present in the input that this module does not consume.
     /// A type with a sub-vocabulary is keyed `type:subtype`, so consuming one
     /// member still leaves the growth of its siblings visible.
