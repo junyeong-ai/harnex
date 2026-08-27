@@ -39,7 +39,17 @@ pub fn config_dir(config_path: &std::path::Path, working_dir: &std::path::Path) 
 /// command's findings: it describes this build's knowledge, not the project
 /// the command was pointed at, and every consumer sees it on every call.
 pub fn write_envelope_success<T: serde::Serialize, W: Write>(out: &mut W, data: T) -> Result<()> {
-    let warnings = harness_core::spec::stale_warnings_now();
+    write_envelope_success_warned(out, data, Vec::new())
+}
+
+/// The same, for a command that succeeded and has something the operator is
+/// owed anyway — a result that is correct and cannot yet be used.
+pub fn write_envelope_success_warned<T: serde::Serialize, W: Write>(
+    out: &mut W,
+    data: T,
+    mut warnings: Vec<harness_core::envelope::Warning>,
+) -> Result<()> {
+    warnings.extend(harness_core::spec::stale_warnings_now());
     harness_core::envelope::write_success(out, data, &warnings).map_err(|e| Error::IoFailure {
         path: PathBuf::from("(stdout)"),
         source: e,
