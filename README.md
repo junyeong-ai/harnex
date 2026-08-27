@@ -166,7 +166,7 @@ harness validate output-styles <files...>
 harness validate settings [<path>]
 harness validate commit-msg <path>                     # closed-enum trailer
 
-harness session index  [--since <t>] [--project <dir>]  # transcripts found, and what was read
+harness session index  [--since <t>] [--project <dir>] [--session <id>]
 harness session facts  [--since <t>] [--with-text]      # counts + citations, no judgement
 harness session submissions [--with-text] [--sample N]  # one entry per instruction, and what followed it
 harness session baseline save --label <name>            # freeze the window; resumes where the last one ended
@@ -193,6 +193,11 @@ harness export schema {config|envelope|finding|event|permissions|error-codes|all
 
 harness completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```
+`index`, `facts` and `submissions` take the same window: `--since`, `--project`
+and `--session`, in any combination. Each emits one JSON envelope carrying the
+window's span, coverage, runtime versions and model mix, so a saved envelope is
+self-describing — that is the export, and two of them are readable side by side
+without the binary having to claim they measured the same work.
 
 By default every command emits one JSON envelope on stdout; the explicit raw
 modes (`export schema --raw`, `completions --raw`) emit the bare artifact for

@@ -610,6 +610,22 @@ fn classify(raw: &RawRecord) -> Authorship {
     }
 }
 
+/// Which records of a transcript are in the window.
+///
+/// Every filter here is applied per record rather than per file, because a
+/// file is not the unit any of them names: `since` cuts inside a transcript
+/// that spans the boundary, a worktree puts records of two projects in one
+/// file, and a subagent's transcript is a separate file carrying its parent's
+/// session. That last one is why `session` reads the record's own id — the
+/// subagent's work comes with the parent it belongs to, and no filename rule
+/// would find it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Window<'a> {
+    pub since: Option<Timestamp>,
+    pub project: Option<&'a Path>,
+    pub session: Option<&'a str>,
+}
+
 /// Read one transcript, appending what it understood into `coverage`.
 ///
 /// A malformed line, a record without the identity a citation needs, and a
@@ -618,8 +634,7 @@ fn classify(raw: &RawRecord) -> Authorship {
 /// unreadable file is the caller's problem, and that is signalled by the `Err`.
 pub fn read_transcript(
     path: &Path,
-    since: Option<Timestamp>,
-    project: Option<&Path>,
+    window: Window<'_>,
     coverage: &mut Coverage,
 ) -> std::io::Result<Vec<Record>> {
     use std::io::BufRead;
@@ -646,16 +661,25 @@ pub fn read_transcript(
         // the one `require_coverage` gates on. A record too damaged to carry a
         // timestamp cannot be placed in time and is counted here rather than
         // dropped, which overstates the damage in the window and never hides it.
-        if since.is_some_and(|s| raw.timestamp.is_some_and(|t| t < s)) {
+        if window
+            .since
+            .is_some_and(|s| raw.timestamp.is_some_and(|t| t < s))
+        {
             continue;
         }
         // A worktree runs under a directory below the project it belongs to,
         // so containment rather than equality is what places a record. Every
         // record type this module consumes carries `cwd`; one that does not is
         // outside a project window rather than in every one.
-        if let Some(project) = project {
+        if let Some(project) = window.project {
             match &raw.cwd {
                 Some(cwd) if cwd.starts_with(project) => {}
+                _ => continue,
+            }
+        }
+        if let Some(session) = window.session {
+            match &raw.session_id {
+                Some(id) if id == session => {}
                 _ => continue,
             }
         }
@@ -842,7 +866,7 @@ mod tests {
         let path = dir.path().join("s.jsonl");
         std::fs::write(&path, json).unwrap();
         let mut cov = Coverage::default();
-        let recs = read_transcript(&path, None, None, &mut cov).unwrap();
+        let recs = read_transcript(&path, Window::default(), &mut cov).unwrap();
         (recs, cov)
     }
 

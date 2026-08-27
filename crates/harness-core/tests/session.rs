@@ -272,6 +272,53 @@ fn reading_a_committed_file_is_not_touching_it_again() {
 }
 
 #[test]
+fn a_session_window_keeps_the_subagents_that_session_dispatched() {
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![
+                typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                edit("s1", "e1", "2026-08-01T09:05:00Z", "/repo/loader.rs"),
+            ],
+        ),
+        (
+            "-Users-me-alpha/s1/subagents/agent-1.jsonl",
+            vec![edit(
+                "s1",
+                "g1",
+                "2026-08-01T09:06:00Z",
+                "/repo/exporter.rs",
+            )],
+        ),
+        (
+            "-Users-me-alpha/s2.jsonl",
+            vec![
+                typed("s2", "b1", "2026-08-01T09:10:00Z", ALSO_STANDING),
+                edit("s2", "e2", "2026-08-01T09:11:00Z", "/repo/other.rs"),
+            ],
+        ),
+    ]);
+    let options = CollectOptions {
+        session: Some("s1".into()),
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.coverage.sessions, 1);
+    assert_eq!(facts.submissions.len(), 1);
+    assert_eq!(
+        facts.submissions[0].files,
+        [
+            PathBuf::from("/repo/exporter.rs"),
+            PathBuf::from("/repo/loader.rs")
+        ],
+        "the subagent's file carries the parent's id, so its work stays in the window"
+    );
+}
+
+#[test]
 fn a_subagent_edits_a_file_the_parent_committed_and_it_lands_under_that_commit() {
     let (_dir, config) = corpus(&[
         (
