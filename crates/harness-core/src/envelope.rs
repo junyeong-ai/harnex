@@ -6,9 +6,9 @@
 //! - Error:   `{"ok": false, "error": {"code", "message", "hint?", "location?"}}`
 //!
 //! List-shaped responses use [`ListResponse`] for `data`, which carries
-//! `items` + `total` + an explicit `skipped_rules` list. A consumer who
-//! sees `skipped_rules.len() > 0` knows the absence of findings does NOT
-//! imply the absent rules passed — they did not run.
+//! `items` + `total`. A command that chooses which rules to run reports the
+//! ones it did not as [`SkippedRule`] beside its findings, so a consumer knows
+//! the absence of a finding does NOT imply that rule passed.
 //!
 //! ## What this module refuses to do
 //!
@@ -247,9 +247,11 @@ pub struct Finding {
     pub fix_command: Option<FixCommand>,
 }
 
-/// A rule that loaded but did not fire on this input, with the reason.
-/// Absence of a slug from `findings` means the rule passed; absence
-/// from BOTH `findings` and `skipped_rules` means the rule never ran.
+/// A rule that could have run on this input and did not, with the reason.
+///
+/// Reported by the command that decides which rules run — absence of a slug
+/// from a report's findings means it passed; absence from both its findings
+/// and its skipped list means it never ran at all.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SkippedRule {
     pub slug: String,
@@ -257,26 +259,21 @@ pub struct SkippedRule {
 }
 
 /// List-shaped response payload.
+///
+/// Deliberately only `items` and `total`. Every command that emits one runs
+/// exactly what its arguments named, so there is nothing for it to have
+/// skipped; the concept belongs to the orchestrator that chooses, and
+/// [`crate::check::CheckOutcome`] owns it.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ListResponse<T: schemars::JsonSchema> {
     pub items: Vec<T>,
     pub total: usize,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub skipped_rules: Vec<SkippedRule>,
 }
 
 impl<T: schemars::JsonSchema> ListResponse<T> {
     pub fn new(items: Vec<T>) -> Self {
         let total = items.len();
-        Self {
-            items,
-            total,
-            skipped_rules: Vec::new(),
-        }
-    }
-    pub fn with_skipped(mut self, skipped: Vec<SkippedRule>) -> Self {
-        self.skipped_rules = skipped;
-        self
+        Self { items, total }
     }
 }
 

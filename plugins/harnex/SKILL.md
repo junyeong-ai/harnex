@@ -192,16 +192,16 @@ Content the manifest cannot supply, because it comes from Step 1's analysis:
 
 ### Step 3 — Finalize
 
-Set hook scripts executable (0o755), including `hooks/pre-commit`. Point git
-at the version-controlled hooks: `git config core.hooksPath hooks` (state
+Set hook scripts executable (0o755), the extensionless git hooks included.
+Point git at the version-controlled hooks: `git config core.hooksPath hooks` (state
 this command for the operator to run; do not run git config silently).
 Report the enforced invariants Phase 2 found — the guards this project already
 runs that no rule names yet. Each is an `extend rule <slug> <paths-glob>` worth
 making, and naming them is what turns a floor into this project's harness.
 Suggest them; do not write them unasked.
 
-Verify: `bash -n` on every `.sh` and on `hooks/pre-commit`, JSON-parse
-settings.json. Run `harness check` / `harness audit` if the binary oracle is
+Verify: `bash -n` on every `.sh` and on every extensionless hook under
+`hooks/`, JSON-parse settings.json. Run `harness check` / `harness audit` if the binary oracle is
 available. On a repo that already had artifacts, the scaffolded `harness.toml`
 points validators at them for the first time, so report those findings as part
 of what the scaffold revealed rather than leaving them to be discovered — a

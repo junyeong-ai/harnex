@@ -6,7 +6,10 @@ JSON envelope on stdout and exits with a documented code.
 ## The envelope contract
 
 - Success: `write_envelope_success(out, data)` — wraps in
-  `{"ok":true,"data":<data>,"warnings":[]}`.
+  `{"ok":true,"data":<data>,"warnings":[]}`. Use
+  `write_envelope_success_warned(out, data, warnings)` when a command
+  succeeded and the operator is owed something anyway — a result that is
+  correct and cannot yet be used.
 - Error: harness-core `Error` flows up; main converts via the typed
   ErrorCode to `{"ok":false,"error":{...}}`. Invalid CLI arguments are
   caught via `Cli::try_parse()` and mapped to an error envelope (exit 2);
