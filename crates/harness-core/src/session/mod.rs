@@ -134,14 +134,7 @@ pub struct SessionFacts {
 /// So each file is consumed in its own order and only the choice between files
 /// is made by time. A tie goes to the earlier stream, and `discovery` hands
 /// them over lexicographically, so a run is reproducible.
-///
-/// A record can be in two of a session's files: dispatching several subagents
-/// at once copies the state they start from into each one. A uuid is one
-/// event, so the first of its copies is kept and the rest are dropped.
-fn interleave_by_time(
-    streams: Vec<Vec<record::Record>>,
-    coverage: &mut record::Coverage,
-) -> Vec<record::Record> {
+fn interleave_by_time(streams: Vec<Vec<record::Record>>) -> Vec<record::Record> {
     let total: usize = streams.iter().map(Vec::len).sum();
     let mut streams: Vec<_> = streams
         .into_iter()
@@ -149,18 +142,13 @@ fn interleave_by_time(
         .collect();
 
     let mut merged = Vec::with_capacity(total);
-    let mut seen: HashSet<String> = HashSet::with_capacity(total);
     while let Some((_, next)) = streams
         .iter_mut()
         .enumerate()
         .filter_map(|(i, s)| s.peek().map(|r| (r.citation().timestamp, i)))
         .min()
     {
-        let record = streams[next].next().expect("the stream that was peeked");
-        match seen.insert(record.citation().uuid.clone()) {
-            true => merged.push(record),
-            false => coverage.records_duplicated += 1,
-        }
+        merged.push(streams[next].next().expect("the stream that was peeked"));
     }
     merged
 }
@@ -187,6 +175,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut sessions: BTreeSet<String> = BTreeSet::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
+    // A uuid is one event. The runtime replays a session's records into other
+    // files — into a fork's transcript, into each subagent dispatched at once,
+    // and into a resumed session under a new id — so the same event reaches
+    // this loop from more than one file and from more than one session.
+    let mut seen: HashSet<String> = HashSet::new();
 
     // A session's transcripts are read together and interleaved. A subagent
     // writes its own file under its parent's session, so reading files
@@ -214,8 +207,12 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 }
             }
         }
-        let records = interleave_by_time(streams, &mut coverage);
+        let records = interleave_by_time(streams);
         for rec in &records {
+            if !seen.insert(rec.citation().uuid.clone()) {
+                coverage.records_duplicated += 1;
+                continue;
+            }
             sessions.insert(rec.citation().session.clone());
             let mut assigned = None;
             if let record::Record::User(turn) = rec {
@@ -421,31 +418,22 @@ mod tests {
 
     #[test]
     fn a_transcripts_own_order_survives_a_timestamp_that_goes_backwards() {
-        let merged = interleave_by_time(
-            vec![stream(&[("a", 30), ("b", 10), ("c", 20)])],
-            &mut record::Coverage::default(),
-        );
+        let merged = interleave_by_time(vec![stream(&[("a", 30), ("b", 10), ("c", 20)])]);
         assert_eq!(order(&merged), ["a", "b", "c"]);
     }
 
     #[test]
     fn a_subagents_records_land_between_the_parents_by_time() {
-        let merged = interleave_by_time(
-            vec![
-                stream(&[("p1", 10), ("p2", 40)]),
-                stream(&[("s1", 20), ("s2", 30)]),
-            ],
-            &mut record::Coverage::default(),
-        );
+        let merged = interleave_by_time(vec![
+            stream(&[("p1", 10), ("p2", 40)]),
+            stream(&[("s1", 20), ("s2", 30)]),
+        ]);
         assert_eq!(order(&merged), ["p1", "s1", "s2", "p2"]);
     }
 
     #[test]
     fn records_sharing_a_timestamp_resolve_to_the_earlier_transcript() {
-        let merged = interleave_by_time(
-            vec![stream(&[("p", 10)]), stream(&[("s", 10)])],
-            &mut record::Coverage::default(),
-        );
+        let merged = interleave_by_time(vec![stream(&[("p", 10)]), stream(&[("s", 10)])]);
         assert_eq!(order(&merged), ["p", "s"]);
     }
 
