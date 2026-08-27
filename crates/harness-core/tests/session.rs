@@ -527,7 +527,13 @@ fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> sess
         },
     )
     .unwrap();
-    session::Baseline::of(label, "2026-09-01T00:00:00Z".parse().unwrap(), None, &facts)
+    session::Baseline::of(
+        label,
+        "2026-09-01T00:00:00Z".parse().unwrap(),
+        None,
+        config.min_block_chars,
+        &facts,
+    )
 }
 
 #[test]
@@ -820,6 +826,45 @@ fn a_baseline_an_earlier_build_recorded_still_loads() {
     );
     assert_eq!(recorded[0].coverage.records_forked, 0);
     assert_eq!(recorded[0].coverage.sessions, 2);
+}
+
+#[test]
+fn a_record_on_the_boundary_belongs_to_one_of_the_two_windows() {
+    // Both turns land on the same instant, which 5.55% of adjacent records do.
+    // Resuming from that instant would put them in the earlier window and the
+    // later one, and a comparison would call the pair consecutive.
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            typed("s1", "a2", "2026-08-01T10:00:00Z", STANDING),
+        ],
+    )]);
+    let ledger = session::BaselineLedger::new(config.baseline_path.clone());
+    ledger
+        .append(&baseline_of(&config, None, "before"))
+        .unwrap();
+
+    std::fs::write(
+        dir.path().join("-Users-me-alpha/s2.jsonl"),
+        [typed("s2", "b1", "2026-08-01T10:00:00Z", ALSO_STANDING)].join("\n"),
+    )
+    .unwrap();
+
+    let resume = session::baseline::latest_observed_to(&ledger.load_all().unwrap(), None).unwrap();
+    let after = baseline_of(&config, Some(&resume.to_string()), "after");
+    ledger.append(&after).unwrap();
+
+    let recorded = ledger.load_all().unwrap();
+    let (from, to) = session::baseline::select(&recorded, None, None).unwrap();
+    assert_eq!(
+        from.measurements["denials_per_submission"].denominator, 2,
+        "the window that stopped at the boundary measured what was on it"
+    );
+    assert_eq!(
+        to.measurements["denials_per_submission"].denominator, 0,
+        "and the window resuming after it measured none of the same records"
+    );
 }
 
 #[test]
@@ -1340,6 +1385,7 @@ fn baselines_measured_over_different_scopes_are_not_subtracted() {
         "scoped",
         "2026-09-01T00:00:00Z".parse().unwrap(),
         Some("/w/alpha".into()),
+        config.min_block_chars,
         &facts,
     );
 
@@ -1508,6 +1554,26 @@ fn an_instruction_carries_what_it_spent_and_which_models_spent_it() {
 }
 
 #[test]
+fn a_turn_that_spent_without_naming_its_message_is_charged_and_reported() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            // The shape before the runtime named its messages: usage, no id.
+            // Nothing can hold the charge against a message, so it is taken as
+            // new — which is the pre-fix behaviour, and the counter is how a
+            // reader learns the totals are a ceiling again.
+            spent("s1", "x1", "2026-08-01T09:00:02Z", "claude-opus-5", 400),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.tokens.output, 400);
+    assert_eq!(facts.coverage.turns_charged_without_a_message, 1);
+}
+
+#[test]
 fn a_message_split_across_records_is_charged_once_at_its_settled_count() {
     let (_dir, config) = corpus(&[(
         "-Users-me-alpha/s1.jsonl",
@@ -1537,6 +1603,7 @@ fn a_message_split_across_records_is_charged_once_at_its_settled_count() {
         "a repeated usage is the same read, not another one"
     );
     assert_eq!(facts.submissions[0].tokens.output, 500);
+    assert_eq!(facts.coverage.turns_charged_without_a_message, 0);
 }
 
 #[test]

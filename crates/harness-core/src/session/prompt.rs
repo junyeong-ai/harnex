@@ -21,6 +21,14 @@
 //!
 //! ## What this module refuses to do
 //!
+//! - **Never say why a paragraph was written twice.** A paragraph the operator
+//!   wrote in two sessions may be a constraint no rule file holds, or the same
+//!   error pasted twice, or a rule already in force that they did not trust to
+//!   be. Nothing in a transcript separates those, and the third is not
+//!   hypothetical: over this project's own corpus the largest such paragraphs
+//!   are its always-loaded rule file in translation. The counts are the
+//!   finding; the reason is a reading, and it belongs to whoever opens the
+//!   citations.
 //! - Never lowercase or stem. Normalisation is whitespace only; anything more
 //!   merges paragraphs that differ, which is the false positive this design
 //!   exists to avoid.
@@ -76,17 +84,23 @@ pub struct PromptFacts {
     pub submissions: usize,
     /// Characters across every paragraph that met `min_block_chars`.
     pub block_chars: usize,
-    /// Paragraphs written again inside a session that already held them — text
-    /// that was in context and did not survive it. Installing it is not the
-    /// fix, because it was already there.
+    /// Paragraphs written again inside a session that already held them.
+    ///
+    /// The session had the text and received it again. Why is not here: a
+    /// paragraph retyped after a compaction, one retyped into a session whose
+    /// rules already carry it, and one appended to weight it for a single task
+    /// are three findings with three fixes and one count.
     pub within_sessions: Repetition,
-    /// Paragraphs written again in a session that did not yet hold them — text
-    /// no harness was holding, which installing does fix.
+    /// Paragraphs written again in a session that did not yet hold them.
+    ///
+    /// A second session received text a first one already had. Whether any
+    /// harness held it is not observable here — project memory loaded on every
+    /// turn is never attached to one, so it appears nowhere in a transcript.
     ///
     /// `None` where the window holds instructions from fewer than two
     /// sessions: a paragraph cannot be written again in a session the window
     /// does not contain, so a zero here would describe the window rather than
-    /// the operator, and reads as nothing to install.
+    /// the operator.
     pub across_sessions: Option<Repetition>,
 }
 
