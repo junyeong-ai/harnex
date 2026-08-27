@@ -234,7 +234,13 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                             ..CollectOptions::default()
                         },
                     )?;
-                    let baseline = Baseline::of(&label, Timestamp::now(), project, &facts);
+                    let baseline = Baseline::of(
+                        &label,
+                        Timestamp::now(),
+                        project,
+                        session_config.min_block_chars,
+                        &facts,
+                    );
                     ledger.append(&baseline)?;
                     let warnings = thin_window(&baseline, session_config.min_support);
                     write_envelope_success_warned(out, baseline, warnings)?;

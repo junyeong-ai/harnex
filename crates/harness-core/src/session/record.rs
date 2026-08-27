@@ -398,6 +398,12 @@ pub struct Coverage {
     /// into each of their files, and one event is counted once.
     #[serde(default)]
     pub records_duplicated: usize,
+    /// Turns that reported what they spent without naming the message they
+    /// belong to, so the charge could not be held against its message and was
+    /// taken as new. Zero across every record of the local corpus; a non-zero
+    /// here says the shape moved and the token counts are a ceiling.
+    #[serde(default)]
+    pub turns_charged_without_a_message: usize,
     /// Record kinds present in the input that this module does not consume.
     /// A type with a sub-vocabulary is keyed `type:subtype`, so consuming one
     /// member still leaves the growth of its siblings visible.
@@ -820,13 +826,15 @@ pub fn read_transcript(
                 if let Some(model) = &model {
                     coverage.models.insert(model.clone());
                 }
+                let tokens = message
+                    .and_then(|m| m.usage.as_ref())
+                    .map(RawUsage::tokens)
+                    .unwrap_or_default();
+                let spent = message.and_then(|m| m.usage.as_ref()).is_some();
                 out.push(Record::Assistant(AssistantTurn {
                     citation,
                     actions,
-                    tokens: message
-                        .and_then(|m| m.usage.as_ref())
-                        .map(RawUsage::tokens)
-                        .unwrap_or_default(),
+                    tokens,
                     model,
                 }));
                 // The latest record of a message holds its charge: while a
@@ -834,11 +842,20 @@ pub fn read_transcript(
                 // partial output count and the last one reports the settled
                 // one. Clearing the record that held it before keeps the
                 // message counted once at its final value.
-                if let Some(id) = message.and_then(|m| m.id.as_deref())
-                    && let Some(previous) = charged.insert(id.to_string(), out.len() - 1)
-                    && let Record::Assistant(turn) = &mut out[previous]
-                {
-                    turn.tokens = TokenUse::default();
+                match message.and_then(|m| m.id.as_deref()) {
+                    Some(id) => {
+                        if let Some(previous) = charged.insert(id.to_string(), out.len() - 1)
+                            && let Record::Assistant(turn) = &mut out[previous]
+                        {
+                            turn.tokens = TokenUse::default();
+                        }
+                    }
+                    // Charging it is the only answer left — dropping it would
+                    // undercount — and a charge nothing can be held against is
+                    // the shape that made this counter necessary, so it is
+                    // reported rather than assumed away.
+                    None if spent => coverage.turns_charged_without_a_message += 1,
+                    None => {}
                 }
             }
             ConsumedType::Attachment => {

@@ -135,13 +135,17 @@ something installation does not touch.
 than two sessions**, which any window scoped with `--session` does. Say that
 the question was not asked; a null there is not an answer of none.
 
+**Neither field says a paragraph is a constraint.** It is an exact paragraph
+typed twice, which a pasted error, a spec excerpt and a code block all are.
+Open the citations and read the text before calling any of them a rule.
+
 **Then check whether the constraint is already installed before prescribing
 that it be.** `rule_loads` lists the project memory the runtime attached to a
 turn, which is the path-scoped kind; a rule loaded on every turn is in the
 prompt from the start and appears nowhere in the transcript. Read the
 project's own rule files before naming a paragraph uninstalled — measured over
-one window, the paragraph retyped into the most instructions was already a
-rule, in force the whole time.
+one window, the largest of these paragraphs were that project's always-loaded
+rule file in translation, in force the whole time.
 
 ## 6 — Report
 
@@ -171,7 +175,7 @@ around it: the longest run, the costliest interruption, the instruction that
 was cut short and restarted. **People learn from cases, not from rates.**
 
 Each case is an account, not a verdict: what was asked, where the work landed
-(`submissions[].files` and `tools`), what shipped, and the judge's `carried`
+(`written`, `committed` and `tools`), what shipped, and the judge's `carried`
 and `gap` beside it. `carried` is the half an operator can act on immediately —
 it is the wording to keep.
 

@@ -217,6 +217,12 @@ pub struct Baseline {
     /// `None` on a baseline written before this was recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle_version: Option<String>,
+    /// `[session] min_block_chars` as this window was measured. The shortest
+    /// paragraph that counts as one, so the repetition metrics mean something
+    /// different either side of a change to it — the operator's half of what
+    /// `oracle_version` says about the build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_block_chars: Option<usize>,
     /// Keyed by [`SessionMetric::as_str`]. A metric the window could not
     /// measure is absent rather than zero.
     pub measurements: BTreeMap<String, Measurement>,
@@ -227,6 +233,7 @@ impl Baseline {
         label: &str,
         recorded_at: Timestamp,
         project: Option<PathBuf>,
+        min_block_chars: usize,
         facts: &SessionFacts,
     ) -> Self {
         Self {
@@ -235,6 +242,7 @@ impl Baseline {
             project,
             coverage: facts.coverage.clone(),
             oracle_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            min_block_chars: Some(min_block_chars),
             measurements: SessionMetric::ALL
                 .iter()
                 .filter_map(|m| Some((m.as_str().to_string(), m.measure(facts)?)))
@@ -336,6 +344,10 @@ pub struct BaselineWindow {
     /// [`Baseline::oracle_version`] gives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle_version: Option<String>,
+    /// The paragraph floor this window was measured under, for the reason
+    /// [`Baseline::min_block_chars`] gives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_block_chars: Option<usize>,
     /// Runtime versions the window spans. A delta across a version change is
     /// an observation about two different runtimes as much as about the
     /// operator.
@@ -354,6 +366,7 @@ impl BaselineWindow {
             observed_to: baseline.coverage.observed_to,
             project: baseline.project.clone(),
             oracle_version: baseline.oracle_version.clone(),
+            min_block_chars: baseline.min_block_chars,
             runtime_versions: baseline.coverage.runtime_versions.clone(),
             models: baseline.coverage.models.clone(),
             authorship_ratio: baseline.coverage.authorship_ratio(),
@@ -488,12 +501,18 @@ pub fn select<'a>(
 /// Where the next window of this scope starts if it is to continue where the
 /// ledger stopped. A window scoped to one project resumes from that project's
 /// last measurement, never from an unrelated one.
+///
+/// The instant after the last record rather than its instant: `--since` keeps
+/// a record at the boundary, so resuming from the boundary itself would put it
+/// in both windows, and [`diff`] would call two windows sharing a record
+/// consecutive.
 pub fn latest_observed_to(ledger: &[Baseline], project: Option<&Path>) -> Option<Timestamp> {
     ledger
         .iter()
         .filter(|b| b.project.as_deref() == project)
         .filter_map(|b| b.coverage.observed_to)
         .max()
+        .and_then(|t| t.checked_add(jiff::SignedDuration::from_nanos(1)).ok())
 }
 
 #[cfg(test)]
