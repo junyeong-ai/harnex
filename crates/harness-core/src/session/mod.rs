@@ -208,12 +208,17 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 }
             }
         }
-        let records = interleave_by_time(streams);
-        for rec in &records {
-            if !seen.insert(rec.citation().uuid.clone()) {
+        // Once, before anything reads them: an analyser handed the unfiltered
+        // list would count a copy its neighbours had already discarded.
+        let mut records = interleave_by_time(streams);
+        records.retain(|rec| {
+            let first = seen.insert(rec.citation().uuid.clone());
+            if !first {
                 coverage.records_duplicated += 1;
-                continue;
             }
+            first
+        });
+        for rec in &records {
             sessions.insert(rec.citation().session.clone());
             in_window.insert(rec.citation().file.clone());
             let mut assigned = None;
