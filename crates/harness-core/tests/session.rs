@@ -22,6 +22,16 @@ fn unclaimed(session: &str, uuid: &str, ts: &str, text: &str) -> String {
     )
 }
 
+/// The copy the runtime writes into a forked session's transcript: the earlier
+/// session's record verbatim, restamped with the new session's id and marked
+/// with the session it came from.
+fn forked(from: &str, into: &str, line: &str) -> String {
+    let mut record: serde_json::Value = serde_json::from_str(line).unwrap();
+    record["sessionId"] = serde_json::json!(into);
+    record["forkedFrom"] = serde_json::json!({ "sessionId": from });
+    serde_json::to_string(&record).unwrap()
+}
+
 fn corpus(files: &[(&str, Vec<String>)]) -> (TempDir, SessionConfig) {
     let dir = TempDir::new().unwrap();
     for (name, lines) in files {
@@ -518,6 +528,59 @@ fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> sess
     )
     .unwrap();
     session::Baseline::of(label, "2026-09-01T00:00:00Z".parse().unwrap(), None, &facts)
+}
+
+#[test]
+fn a_fork_replaying_its_parent_does_not_make_one_instruction_into_two() {
+    let original = typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING);
+    let (_dir, config) = corpus(&[
+        ("-Users-me-alpha/s1.jsonl", vec![original.clone()]),
+        (
+            "-Users-me-alpha/s2.jsonl",
+            vec![
+                forked("s1", "s2", &original),
+                typed("s2", "b1", "2026-08-01T11:00:00Z", ALSO_STANDING),
+            ],
+        ),
+    ]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.prompts.submissions, 2,
+        "the fork replayed one instruction and typed one"
+    );
+    assert_eq!(facts.coverage.records_forked, 1);
+    assert_eq!(
+        facts.coverage.sessions, 2,
+        "the fork is a session; only its replayed records are not its events"
+    );
+}
+
+#[test]
+fn a_window_scoped_to_a_fork_does_not_inherit_what_it_was_forked_from() {
+    let original = typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING);
+    let (_dir, config) = corpus(&[
+        ("-Users-me-alpha/s1.jsonl", vec![original.clone()]),
+        (
+            "-Users-me-alpha/s2.jsonl",
+            vec![
+                forked("s1", "s2", &original),
+                typed("s2", "b1", "2026-08-01T11:00:00Z", ALSO_STANDING),
+            ],
+        ),
+    ]);
+    let options = CollectOptions {
+        session: Some("s2".into()),
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(
+        facts.prompts.submissions, 1,
+        "the replayed instruction was given to the session this one came from"
+    );
 }
 
 #[test]
