@@ -93,12 +93,18 @@ rather than badly delegated.
 same constraint has to be supplied by hand across sessions, its home is
 `CLAUDE.md` or a path-scoped rule, and `/harnex extend` is how it gets there.
 
-**Look at consecutive instructions, not only at each one.** Where an
-instruction has `steered_away` and the next one in the same session repeats
-part of its text, the pair is the operator correcting themselves in real time,
-and what the second added is a constraint that could have been given up front —
-the most directly installable thing this whole report produces. Hand the judge
-those pairs adjacent and in order.
+**Look at consecutive instructions, not only at each one.** Two shapes, and the
+second is easy to miss. Where an instruction has `steered_away`, the operator
+stopped the agent mid-run and said the next thing. Where one has `agent_turns:
+0` and is not the last in its session, they replaced it before the agent moved
+at all — no interruption is marked, because there was no agent turn to
+interrupt, and `agent_turns` is the only field that shows it.
+
+Either way what the second instruction added is a constraint that could have
+been given up front, stated by the person who found it missing — the most
+directly installable thing this whole report produces. Show the pair as the
+operator's two messages with the seconds between them, and hand the judge those
+pairs adjacent and in order.
 
 Three more inputs converge and should be read together: `repeated_blocks`
 (paragraphs retyped in a session that did not yet hold them — never installed),
@@ -132,6 +138,13 @@ Where `change` is null on every metric the window is too thin to compare: say
 so with `support_floor` and the denominators beside it, because the operator's
 next act is to keep working rather than to change anything.
 
+**Then what it cost and what it produced, on one line each.** Elapsed, `tokens`
+by its four counts, instructions, agent turns; against commits, files touched,
+and what `repository` says still stands. A report on how someone works with an
+agent that never says what the whole thing came to has skipped the question
+they asked. Cross-check the count against `repository.commits_in_span` and say
+it plainly when the two disagree.
+
 **1. What was delegated, and how it went.** §4's portfolio. Then the three
 most expensive moments, each opened from its citation and shown with the turns
 around it: the longest run, the costliest interruption, the instruction that
@@ -141,6 +154,12 @@ Each case is an account, not a verdict: what was asked, where the work landed
 (`submissions[].files` and `tools`), what shipped, and the judge's `carried`
 and `gap` beside it. `carried` is the half an operator can act on immediately —
 it is the wording to keep.
+
+**Quote the instruction; never print its citation as though that were the
+case.** A uuid identifies a record and describes nothing — a reader shown one
+learns that something happened somewhere. Give the operator's own words, the
+clock time, and what changed under them. The citation belongs in a footnote for
+whoever wants to reopen the file, not in the sentence doing the work.
 
 **2. What leaks every session.** §5, plus `interventions` by kind and
 `post_commit_reedits` per commit. Compaction belongs here when present: report
