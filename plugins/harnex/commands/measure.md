@@ -209,6 +209,11 @@ metric that will show whether it worked. Everything else goes in an appendix.
   `models` set moved is a delta about the model as much as the operator
 - `tools` counts calls, not time or success; those come from a cost source or
   from nowhere
+- `submissions[].files` names what `Write` and `Edit` were pointed at, so work
+  done through a shell leaves nothing there. Where `Bash` dominates the tool
+  mix, read `commits` for where the work landed and say that `files` is a floor
+  — measured over one window, an instruction that shipped four commits across
+  twenty source files reported four scratch paths
 - `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
   sample size, and they never enter a baseline
