@@ -195,9 +195,12 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
             let cap = sample.or(session_config.submission_sample);
             write_envelope_success(
                 out,
-                match cap {
-                    Some(max) => session::systematic_sample(&facts.submissions, max),
-                    None => facts.submissions,
+                session::SubmissionWindow {
+                    submissions: match cap {
+                        Some(max) => session::systematic_sample(&facts.submissions, max),
+                        None => facts.submissions,
+                    },
+                    coverage: facts.coverage,
                 },
             )?;
         }

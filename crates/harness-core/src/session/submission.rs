@@ -128,6 +128,17 @@ pub struct Submission {
     pub text: Option<String>,
 }
 
+/// Instructions, and the window they were read from.
+///
+/// The coverage rides along so a saved result says what it covers. A list on
+/// its own cannot be held beside another list: neither says which window,
+/// which project, or which runtime it came from.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SubmissionWindow {
+    pub coverage: super::record::Coverage,
+    pub submissions: Vec<Submission>,
+}
+
 #[derive(Default)]
 pub struct SubmissionAnalyzer {
     out: Vec<Submission>,

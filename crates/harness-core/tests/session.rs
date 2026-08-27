@@ -589,6 +589,91 @@ fn a_record_two_of_a_sessions_subagents_start_from_is_one_event() {
 }
 
 #[test]
+fn every_window_verb_returns_something_that_says_which_window_it_is() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+    let facts = session::collect(&config, &options).unwrap();
+
+    // What each of `index`, `facts` and `submissions` puts in `data`. A saved
+    // result that cannot say what it covers cannot be read beside another.
+    let index = serde_json::to_value(&facts.coverage).unwrap();
+    let full = serde_json::to_value(&facts).unwrap();
+    let window = serde_json::to_value(session::SubmissionWindow {
+        coverage: facts.coverage.clone(),
+        submissions: facts.submissions.clone(),
+    })
+    .unwrap();
+
+    for (verb, value) in [("facts", &full), ("submissions", &window)] {
+        let coverage = value
+            .get("coverage")
+            .unwrap_or_else(|| panic!("`{verb}` carries the window it read"));
+        assert!(coverage.get("observed_from").is_some());
+        assert!(coverage.get("runtime_versions").is_some());
+    }
+    assert!(
+        index.get("observed_from").is_some(),
+        "`index` is the coverage"
+    );
+}
+
+#[test]
+fn a_scoped_window_says_how_many_files_it_drew_from_and_how_many_it_opened() {
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+        ),
+        (
+            "-Users-me-beta/s2.jsonl",
+            vec![typed("s2", "b1", "2026-08-01T10:00:00Z", ALSO_STANDING)],
+        ),
+    ]);
+    let options = CollectOptions {
+        session: Some("s1".into()),
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.coverage.files_discovered, 2, "what it cost to answer");
+    assert_eq!(facts.coverage.files_in_window, 1, "what it answered about");
+}
+
+#[test]
+fn a_tool_result_is_not_a_turn_the_runtime_declined_to_attribute() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            unclaimed(
+                "s1",
+                "u1",
+                "2026-08-01T09:00:05Z",
+                "[Request interrupted by user]",
+            ),
+            format!(
+                r#"{{"type":"user","uuid":"t1","timestamp":"2026-08-01T09:00:06Z","sessionId":"s1","message":{{"content":[{{"type":"tool_result","content":"ok"}}]}}}}"#
+            ),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.coverage.user_turns_by_authorship[Authorship::Unclaimed.as_str()],
+        1,
+        "the interrupt is a turn nobody claimed; the tool result is not a turn"
+    );
+}
+
+#[test]
 fn a_turn_replayed_into_a_second_session_is_not_a_paragraph_written_twice() {
     // A resumed session can carry the earlier one's records verbatim under a
     // new id and without the fork marker. Two sessions then hold one turn, and

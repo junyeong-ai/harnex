@@ -66,11 +66,11 @@ pub use harness::{
     AssetInvocation, BlockedCall, DenialGroup, HarnessFacts, HookCost, RuleLoadGroup,
 };
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
-pub use prompt::{PromptFacts, RepeatedBlock};
+pub use prompt::{PromptFacts, RepeatedBlock, Repetition};
 pub use record::{Authorship, Citation, Compaction, Coverage, TokenUse};
 pub use repository::{CommitFate, CommitOutcome, RepositoryFacts};
 pub use rework::{PostCommitReedit, ReworkFacts};
-pub use submission::{Submission, SubmissionIndex, systematic_sample};
+pub use submission::{Submission, SubmissionIndex, SubmissionWindow, systematic_sample};
 
 /// What a caller wants out of a scan beyond the defaults.
 #[derive(Debug, Clone, Default)]
@@ -180,6 +180,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     // and into a resumed session under a new id — so the same event reaches
     // this loop from more than one file and from more than one session.
     let mut seen: HashSet<String> = HashSet::new();
+    let mut in_window: BTreeSet<std::path::PathBuf> = BTreeSet::new();
 
     // A session's transcripts are read together and interleaved. A subagent
     // writes its own file under its parent's session, so reading files
@@ -214,6 +215,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 continue;
             }
             sessions.insert(rec.citation().session.clone());
+            in_window.insert(rec.citation().file.clone());
             let mut assigned = None;
             if let record::Record::User(turn) = rec {
                 assigned = index.assign(turn);
@@ -257,6 +259,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     }
 
     coverage.sessions = sessions.len();
+    coverage.files_in_window = in_window.len();
     let span = coverage.observed_from.zip(coverage.observed_to);
     let repository = match &options.project {
         Some(project) => repository::survey(project, &commits, span)?,

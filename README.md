@@ -189,7 +189,8 @@ harness guard stop-audit [--session ID]                # fresh-context Stop audi
 
 harness graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
 
-harness export schema {config|envelope|finding|event|permissions|error-codes|all}
+harness export schema {config|envelope|finding|event|permissions|error-codes|
+                       session|session-submissions|session-baseline|all}
 
 harness completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```
