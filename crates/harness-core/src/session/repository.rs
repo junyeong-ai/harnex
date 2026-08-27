@@ -27,7 +27,7 @@
 //! - Never reach the network. Every command reads the local object database.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
@@ -203,6 +203,55 @@ pub fn survey(
     }))
 }
 
+/// The paths each commit changed, keyed by the sha given.
+///
+/// What an instruction edited through a tool the runtime records is only the
+/// part of its work that went through such a tool; a change written by a shell
+/// command leaves no edit record at all. A commit is the one account of a
+/// change that does not depend on how it was made.
+///
+/// A merge carries no diff of its own here and reports no paths, which is what
+/// it changed on its own.
+pub fn paths_touched(project: &Path, commits: &[String]) -> Result<BTreeMap<String, Vec<PathBuf>>> {
+    if commits.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let query: String = commits.iter().map(|sha| format!("{sha}\n")).collect();
+    let listing = stdin_query(
+        project,
+        &[
+            "-c",
+            "core.quotePath=false",
+            "diff-tree",
+            "-r",
+            "--root",
+            "--name-only",
+            "--stdin",
+        ],
+        &query,
+        "git diff-tree --stdin",
+    )?;
+
+    let mut out: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    let mut current: Option<&mut Vec<PathBuf>> = None;
+    for line in listing.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        // git writes the commit it is describing on a line of its own, in full,
+        // before that commit's paths. An object id is the only line it can
+        // write in that shape, so the two never collide.
+        if OBJECT_ID_WIDTHS.contains(&line.len()) && line.chars().all(|c| c.is_ascii_hexdigit()) {
+            current = Some(out.entry(line.to_string()).or_default());
+            continue;
+        }
+        if let Some(paths) = current.as_deref_mut() {
+            paths.push(PathBuf::from(line));
+        }
+    }
+    Ok(out)
+}
+
 /// Ask git to resolve each abbreviation, in the order given. Git is the only
 /// thing that can: a seven-character prefix is not a commit until a repository
 /// says which one.
@@ -221,11 +270,6 @@ fn resolve(project: &Path, observed: &[String]) -> Result<Vec<Option<String>>> {
                 .then_some(s)
         })
         .collect();
-    // The query goes through a file rather than a pipe. Writing every line to
-    // a piped stdin before reading stdout deadlocks once git's output fills the
-    // kernel buffer and it blocks writing while this blocks writing — measured
-    // here between six and eight thousand commits, which one busy project
-    // reaches. A file has no such limit and needs no second thread to drain.
     let query: String = abbreviations
         .iter()
         .map(|a| match a {
@@ -235,37 +279,12 @@ fn resolve(project: &Path, observed: &[String]) -> Result<Vec<Option<String>>> {
             None => "\n".to_string(),
         })
         .collect();
-    let scratch = tempfile::tempdir().map_err(|e| Error::CheckGitFailure {
-        message: format!("git cat-file --batch-check scratch: {e}"),
-    })?;
-    let query_path = scratch.path().join("commits");
-    path_guard::write_atomic(&query_path, query.as_bytes())?;
-    let stdin = std::fs::File::open(&query_path).map_err(|e| Error::IoFailure {
-        path: query_path.clone(),
-        source: e,
-    })?;
-
-    let output = Command::new("git")
-        .args(["cat-file", "--batch-check"])
-        .current_dir(project)
-        .stdin(Stdio::from(stdin))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| Error::CheckGitFailure {
-            message: format!("git cat-file --batch-check spawn: {e}"),
-        })?
-        .wait_with_output()
-        .map_err(|e| Error::CheckGitFailure {
-            message: format!("git cat-file --batch-check wait: {e}"),
-        })?;
-
-    if !output.status.success() {
-        return Err(Error::CheckGitFailure {
-            message: format!("git cat-file --batch-check exited {}", output.status),
-        });
-    }
-    let body = String::from_utf8_lossy(&output.stdout);
+    let body = stdin_query(
+        project,
+        &["cat-file", "--batch-check"],
+        &query,
+        "git cat-file --batch-check",
+    )?;
     let out: Vec<Option<String>> = body
         .lines()
         .map(|line| {
@@ -319,6 +338,47 @@ fn reverts(project: &Path) -> Result<BTreeMap<String, Vec<String>>> {
         }
     }
     Ok(out)
+}
+
+/// Run git with a query on stdin, and return what it wrote.
+///
+/// The query goes through a file rather than a pipe. Writing every line to a
+/// piped stdin before reading stdout deadlocks once git's output fills the
+/// kernel buffer and it blocks writing while this blocks writing — measured
+/// between six and eight thousand commits, which one busy project reaches. A
+/// file has no such limit and needs no second thread to drain.
+fn stdin_query(project: &Path, args: &[&str], query: &str, what: &str) -> Result<String> {
+    let scratch = tempfile::tempdir().map_err(|e| Error::CheckGitFailure {
+        message: format!("{what} scratch: {e}"),
+    })?;
+    let query_path = scratch.path().join("query");
+    path_guard::write_atomic(&query_path, query.as_bytes())?;
+    let stdin = std::fs::File::open(&query_path).map_err(|e| Error::IoFailure {
+        path: query_path.clone(),
+        source: e,
+    })?;
+
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(project)
+        .stdin(Stdio::from(stdin))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| Error::CheckGitFailure {
+            message: format!("{what} spawn: {e}"),
+        })?
+        .wait_with_output()
+        .map_err(|e| Error::CheckGitFailure {
+            message: format!("{what} wait: {e}"),
+        })?;
+
+    if !output.status.success() {
+        return Err(Error::CheckGitFailure {
+            message: format!("{what} exited {}", output.status),
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn run(project: &Path, args: &[&str]) -> Result<String> {

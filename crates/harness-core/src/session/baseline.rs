@@ -143,14 +143,19 @@ impl SessionMetric {
     }
 
     /// Read this metric off a window's facts.
-    pub fn measure(self, facts: &SessionFacts) -> Measurement {
+    ///
+    /// `None` where the window cannot answer this metric at all, which is not
+    /// the same as answering zero: an unrecorded metric lands in
+    /// [`BaselineDiff::metrics_unmatched`], where a recorded zero would be
+    /// subtracted as though it had been measured.
+    pub fn measure(self, facts: &SessionFacts) -> Option<Measurement> {
         let submissions = facts.prompts.submissions;
-        match self {
+        Some(match self {
             Self::CrossSessionCharsPerSubmission => {
-                Measurement::new(facts.prompts.cross_session_chars, submissions)
+                Measurement::new(facts.prompts.across_sessions.as_ref()?.chars, submissions)
             }
             Self::WithinSessionCharsPerSubmission => {
-                Measurement::new(facts.prompts.restated_chars, submissions)
+                Measurement::new(facts.prompts.within_sessions.chars, submissions)
             }
             Self::RuleLoadCharsPerSubmission => Measurement::new(
                 facts.harness.rule_loads.iter().map(|r| r.chars).sum(),
@@ -186,7 +191,7 @@ impl SessionMetric {
                 numerator: facts.tokens.output,
                 denominator: submissions as u64,
             },
-        }
+        })
     }
 }
 
@@ -205,7 +210,8 @@ pub struct Baseline {
     /// What the reader saw and what it could not — including the observed
     /// span, which is what makes two baselines comparable or not.
     pub coverage: Coverage,
-    /// Keyed by [`SessionMetric::as_str`].
+    /// Keyed by [`SessionMetric::as_str`]. A metric the window could not
+    /// measure is absent rather than zero.
     pub measurements: BTreeMap<String, Measurement>,
 }
 
@@ -223,7 +229,7 @@ impl Baseline {
             coverage: facts.coverage.clone(),
             measurements: SessionMetric::ALL
                 .iter()
-                .map(|m| (m.as_str().to_string(), m.measure(facts)))
+                .filter_map(|m| Some((m.as_str().to_string(), m.measure(facts)?)))
                 .collect(),
         }
     }

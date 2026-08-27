@@ -81,7 +81,7 @@ fn the_paragraph_typed_into_the_most_sessions_ranks_first_with_every_citation() 
     let facts = session::collect(&config, &CollectOptions::default()).unwrap();
 
     assert_eq!(facts.prompts.authored_turns, 4);
-    let blocks = &facts.prompts.repeated_blocks;
+    let blocks = &facts.prompts.across_sessions.as_ref().unwrap().blocks;
     assert_eq!(blocks.len(), 2);
 
     let first = &blocks[0];
@@ -165,7 +165,11 @@ fn text_stays_on_disk_unless_the_caller_asks_for_it() {
     ]);
 
     let withheld = session::collect(&config, &CollectOptions::default()).unwrap();
-    assert!(withheld.prompts.repeated_blocks[0].text.is_none());
+    assert!(
+        withheld.prompts.across_sessions.as_ref().unwrap().blocks[0]
+            .text
+            .is_none()
+    );
     let serialised = serde_json::to_string(&withheld).unwrap();
     assert!(
         !serialised.contains(STANDING),
@@ -181,7 +185,9 @@ fn text_stays_on_disk_unless_the_caller_asks_for_it() {
     )
     .unwrap();
     assert_eq!(
-        asked.prompts.repeated_blocks[0].text.as_deref(),
+        asked.prompts.across_sessions.as_ref().unwrap().blocks[0]
+            .text
+            .as_deref(),
         Some(STANDING)
     );
 }
@@ -309,7 +315,7 @@ fn a_session_window_keeps_the_subagents_that_session_dispatched() {
     assert_eq!(facts.coverage.sessions, 1);
     assert_eq!(facts.submissions.len(), 1);
     assert_eq!(
-        facts.submissions[0].files,
+        facts.submissions[0].written,
         [
             PathBuf::from("/repo/exporter.rs"),
             PathBuf::from("/repo/loader.rs")
@@ -393,7 +399,7 @@ fn queued_turns_fold_into_one_instruction_end_to_end() {
     assert_eq!(facts.prompts.authored_turns, 3);
     assert_eq!(facts.prompts.submissions, 2);
     assert_eq!(
-        facts.prompts.restated_blocks[0].submissions, 2,
+        facts.prompts.within_sessions.blocks[0].submissions, 2,
         "the queued copy rides along; the later one is the restatement"
     );
 }
@@ -512,6 +518,42 @@ fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> sess
     )
     .unwrap();
     session::Baseline::of(label, "2026-09-01T00:00:00Z".parse().unwrap(), None, &facts)
+}
+
+#[test]
+fn a_metric_the_window_could_not_measure_is_absent_rather_than_zero() {
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            typed("s1", "a2", "2026-08-01T10:00:00Z", STANDING),
+        ],
+    )]);
+    const ACROSS: &str = "cross_session_chars_per_submission";
+
+    let one_session = baseline_of(&config, None, "one");
+    assert!(
+        !one_session.measurements.contains_key(ACROSS),
+        "a paragraph cannot cross into a session the window does not hold"
+    );
+    assert!(
+        one_session
+            .measurements
+            .contains_key("within_session_chars_per_submission"),
+        "the question this window can answer is still answered"
+    );
+
+    std::fs::write(
+        dir.path().join("-Users-me-alpha/s2.jsonl"),
+        [typed("s2", "b1", "2026-08-05T09:00:00Z", STANDING)].join("\n"),
+    )
+    .unwrap();
+    let two_sessions = baseline_of(&config, None, "two");
+    assert!(two_sessions.measurements.contains_key(ACROSS));
+
+    let diff = session::baseline::diff(&one_session, &two_sessions, config.min_support);
+    let unmatched = diff.expect_err("the windows overlap");
+    assert_eq!(unmatched.code(), ErrorCode::SessionBaselineNotComparable);
 }
 
 #[test]
@@ -920,7 +962,7 @@ fn an_instruction_carries_the_work_done_under_it_not_the_session_total() {
     let (first, second) = (&facts.submissions[0], &facts.submissions[1]);
     assert_eq!((first.edits, first.commits.len()), (3, 1));
     assert_eq!(
-        first.files,
+        first.written,
         [
             PathBuf::from("/p/src/exporter.rs"),
             PathBuf::from("/p/src/loader.rs")
@@ -930,7 +972,11 @@ fn an_instruction_carries_the_work_done_under_it_not_the_session_total() {
     assert_eq!(first.commits, vec!["abc1234"]);
     assert_eq!(first.questions, 1);
     assert_eq!(
-        (second.edits, second.files.as_slice(), second.commits.len()),
+        (
+            second.edits,
+            second.written.as_slice(),
+            second.commits.len()
+        ),
         (1, [PathBuf::from("/p/src/loader.rs")].as_slice(), 0),
         "the second instruction carries its own work, not the first's"
     );
@@ -1364,17 +1410,21 @@ fn a_paragraph_that_is_both_failures_is_counted_as_both() {
 
     assert_eq!(facts.prompts.submissions, 4);
     assert_eq!(
-        facts.prompts.cross_session_chars, chars,
+        facts.prompts.across_sessions.as_ref().unwrap().chars,
+        chars,
         "one session beyond the first"
     );
     assert_eq!(
-        facts.prompts.restated_chars,
+        facts.prompts.within_sessions.chars,
         chars * 2,
         "one restatement inside each of the two sessions"
     );
-    assert_eq!(facts.prompts.repeated_blocks.len(), 1);
     assert_eq!(
-        facts.prompts.restated_blocks.len(),
+        facts.prompts.across_sessions.as_ref().unwrap().blocks.len(),
+        1
+    );
+    assert_eq!(
+        facts.prompts.within_sessions.blocks.len(),
         1,
         "the same paragraph is in both lists because it wants both fixes"
     );

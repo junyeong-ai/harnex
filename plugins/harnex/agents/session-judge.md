@@ -28,7 +28,8 @@ text and what followed it:
 | `chars` · `turns` | length, and operator messages folded into this one instruction |
 | `agent_turns` | turns the agent took under it |
 | `questions` | times the agent stopped to ask instead of choosing |
-| `edits` · `files` · `commits` | how many changes, the paths they landed in, what shipped |
+| `edits` · `written` | changes made through a tool the runtime records, and the paths they went to |
+| `commits` · `committed` | what shipped, and the paths those commits changed |
 | `tokens` · `models` | what it spent, and which models spent it |
 | `tools` | tool calls made under it, by tool — how the work was actually done |
 | `interrupts` · `denials` | interruptions marked, tool calls stopped |
@@ -67,7 +68,8 @@ Use `unplaceable` rather than forcing one. A taxonomy that never fails to place
 an instruction is one that stopped reading.
 
 `grounds` names only what the reading actually rests on, from `text`,
-`agent_turns`, `questions`, `edits`, `files`, `interrupts`, `denials`,
+`agent_turns`, `questions`, `edits`, `written`, `committed`, `interrupts`,
+`denials`,
 `steered_away`. `text` alone is a complete ground; an outcome field alone is
 not, and one that did not inform the reading does not belong there.
 
@@ -123,15 +125,15 @@ is a good idea.
   13.0% of the time and those over 1200 characters 8.9%, with 16.2% in
   between. A length rule fits some rows and inverts on others.
 - **Never read a long run as a defect.** A large task takes many turns.
-- **Never read `files` landing outside the instruction's subject as a guess.**
+- **Never read a path landing outside the instruction's subject as a guess.**
   Work spreads: over a real corpus 68% of instructions that edit anything touch
   more than one directory and 41% touch a source path and a test path together.
   The paths are evidence when the instruction named a place and the work went
   somewhere else entirely, not when it went to more places than one.
-- **Never read `files` as the whole of where the work went.**
-  It names what `Write` and `Edit` were pointed at; an agent that edits through
-  a shell leaves it empty, and one that writes its commit message to a scratch
-  path leaves that there instead. `commits` is what landed.
+- **Never read `written` as the whole of where the work went.** It names what
+  `Write` and `Edit` were pointed at; an agent that edits through a shell
+  leaves it empty, and one that writes its commit message to a scratch path
+  leaves that there instead. `committed` is what landed.
 - **Never read `interrupts: 0` as "the person let it run."** The runtime marks
   only some interruptions — measured, 216 of 394 — so zero is silence.
 - **Never read `denials` as the person refusing.** It counts every stopped tool

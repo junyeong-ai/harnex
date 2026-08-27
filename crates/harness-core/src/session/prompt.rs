@@ -55,6 +55,17 @@ pub struct RepeatedBlock {
     pub text: Option<String>,
 }
 
+/// Paragraphs the operator wrote again, and what that repetition cost.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Repetition {
+    /// Characters the repetition accounts for. Not the length of the
+    /// paragraphs: a paragraph written three times where once would do costs
+    /// two of it.
+    pub chars: usize,
+    /// The paragraphs, most repeated first.
+    pub blocks: Vec<RepeatedBlock>,
+}
+
 /// What the operator typed, and which kind of twice they typed it.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PromptFacts {
@@ -65,23 +76,18 @@ pub struct PromptFacts {
     pub submissions: usize,
     /// Characters across every paragraph that met `min_block_chars`.
     pub block_chars: usize,
-    /// Of those, characters written again in a later submission of a session
-    /// the paragraph was already in — text that was in context and did not
-    /// survive it. Excludes the first submission per session, which
-    /// [`PromptFacts::cross_session_chars`] counts instead.
-    pub restated_chars: usize,
-    /// Of those, characters written again in a session the paragraph was not
-    /// yet in — text no harness was holding. One per session beyond the first;
-    /// further submissions inside a session are
-    /// [`PromptFacts::restated_chars`].
-    pub cross_session_chars: usize,
-    /// Paragraphs written in two or more sessions — never installed. Most
-    /// sessions first.
-    pub repeated_blocks: Vec<RepeatedBlock>,
-    /// Paragraphs written in more submissions than sessions — did not survive
-    /// the context they were given in. Most submissions first. A paragraph
-    /// that is both appears in both lists, because it wants both fixes.
-    pub restated_blocks: Vec<RepeatedBlock>,
+    /// Paragraphs written again inside a session that already held them — text
+    /// that was in context and did not survive it. Installing it is not the
+    /// fix, because it was already there.
+    pub within_sessions: Repetition,
+    /// Paragraphs written again in a session that did not yet hold them — text
+    /// no harness was holding, which installing does fix.
+    ///
+    /// `None` where the window holds instructions from fewer than two
+    /// sessions: a paragraph cannot be written again in a session the window
+    /// does not contain, so a zero here would describe the window rather than
+    /// the operator, and reads as nothing to install.
+    pub across_sessions: Option<Repetition>,
 }
 
 #[derive(Default)]
@@ -95,6 +101,10 @@ struct BlockRecord {
 pub struct PromptAnalyzer {
     min_block_chars: usize,
     blocks: HashMap<String, BlockRecord>,
+    /// Sessions the operator gave an instruction in. What makes repetition
+    /// across sessions a question the window can answer, rather than the count
+    /// of sessions the window read.
+    sessions: BTreeSet<String>,
     authored_turns: usize,
     block_chars: usize,
 }
@@ -104,6 +114,7 @@ impl PromptAnalyzer {
         Self {
             min_block_chars,
             blocks: HashMap::new(),
+            sessions: BTreeSet::new(),
             authored_turns: 0,
             block_chars: 0,
         }
@@ -115,6 +126,7 @@ impl PromptAnalyzer {
         };
         self.authored_turns += 1;
         let session = turn.citation.session.clone();
+        self.sessions.insert(session.clone());
 
         for block in paragraphs(text, self.min_block_chars) {
             self.block_chars += block.chars().count();
@@ -178,10 +190,14 @@ impl PromptAnalyzer {
             authored_turns: self.authored_turns,
             submissions,
             block_chars: self.block_chars,
-            restated_chars,
-            cross_session_chars,
-            repeated_blocks: repeated,
-            restated_blocks: restated,
+            within_sessions: Repetition {
+                chars: restated_chars,
+                blocks: restated,
+            },
+            across_sessions: (self.sessions.len() >= 2).then_some(Repetition {
+                chars: cross_session_chars,
+                blocks: repeated,
+            }),
         }
     }
 }
@@ -337,8 +353,8 @@ mod tests {
         a.observe(&queued("s1", "u2", 103, STANDING));
         let facts = a.finish(false);
 
-        assert!(facts.restated_blocks.is_empty());
-        assert_eq!(facts.restated_chars, 0);
+        assert!(facts.within_sessions.blocks.is_empty());
+        assert_eq!(facts.within_sessions.chars, 0);
     }
 
     #[test]
@@ -348,14 +364,13 @@ mod tests {
         a.observe(&turn("s1", "u2", 900, STANDING));
         let facts = a.finish(false);
 
-        assert_eq!(
-            facts.repeated_blocks.len(),
-            0,
-            "one session is not cross-session"
+        assert!(
+            facts.across_sessions.is_none(),
+            "one session cannot answer whether a paragraph crossed sessions"
         );
-        assert_eq!(facts.restated_blocks.len(), 1);
-        assert_eq!(facts.restated_blocks[0].submissions, 2);
-        assert_eq!(facts.restated_chars, STANDING.chars().count());
+        assert_eq!(facts.within_sessions.blocks.len(), 1);
+        assert_eq!(facts.within_sessions.blocks[0].submissions, 2);
+        assert_eq!(facts.within_sessions.chars, STANDING.chars().count());
     }
 
     #[test]
@@ -365,9 +380,10 @@ mod tests {
         a.observe(&turn("s2", "u2", 900, STANDING));
         let facts = a.finish(false);
 
-        assert_eq!(facts.restated_blocks.len(), 0);
-        assert_eq!(facts.repeated_blocks.len(), 1);
-        assert_eq!(facts.repeated_blocks[0].sessions, 2);
+        let across = facts.across_sessions.unwrap();
+        assert_eq!(facts.within_sessions.blocks.len(), 0);
+        assert_eq!(across.blocks.len(), 1);
+        assert_eq!(across.blocks[0].sessions, 2);
     }
 
     #[test]
@@ -391,7 +407,9 @@ mod tests {
         a.observe(&turn("s1", "u1", 100, STANDING));
         a.observe(&turn("s2", "u2", 200, STANDING));
         assert_eq!(
-            a.finish(true).repeated_blocks[0].text.as_deref(),
+            a.finish(true).across_sessions.unwrap().blocks[0]
+                .text
+                .as_deref(),
             Some(STANDING)
         );
     }
@@ -406,7 +424,10 @@ mod tests {
 
         let facts = a.finish(false);
         assert_eq!(facts.authored_turns, 1);
-        assert!(facts.repeated_blocks.is_empty());
+        assert!(
+            facts.across_sessions.is_none(),
+            "the turn the runtime did not attribute leaves one session speaking"
+        );
     }
 
     #[test]
@@ -421,8 +442,9 @@ mod tests {
         a.observe(&turn("s5", "v2", 400, long));
 
         let facts = a.finish(false);
-        assert_eq!(facts.repeated_blocks[0].sessions, 3);
-        assert_eq!(facts.repeated_blocks[1].sessions, 2);
+        let across = facts.across_sessions.unwrap();
+        assert_eq!(across.blocks[0].sessions, 3);
+        assert_eq!(across.blocks[1].sessions, 2);
     }
 
     #[test]
@@ -440,7 +462,7 @@ mod tests {
             200,
             "resolve the root cause not the symptom",
         ));
-        assert_eq!(a.finish(false).repeated_blocks.len(), 1);
+        assert_eq!(a.finish(false).across_sessions.unwrap().blocks.len(), 1);
     }
 
     #[test]
@@ -458,6 +480,9 @@ mod tests {
             200,
             "Resolve the root cause not the symptom",
         ));
-        assert!(a.finish(false).repeated_blocks.is_empty());
+        assert!(
+            a.finish(false).across_sessions.unwrap().blocks.is_empty(),
+            "two sessions can answer the question; the answer is that nothing repeated"
+        );
     }
 }

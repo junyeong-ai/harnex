@@ -254,13 +254,18 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         None => None,
     };
 
+    let mut submissions = match options.with_submissions {
+        true => submissions.finish(options.with_text),
+        false => Vec::new(),
+    };
+    if let (Some(project), Some(repository)) = (&options.project, &repository) {
+        attribute_committed_paths(project, repository, &mut submissions)?;
+    }
+
     Ok(SessionFacts {
         coverage,
         prompts: prompts.finish(index.count(), options.with_text),
-        submissions: match options.with_submissions {
-            true => submissions.finish(options.with_text),
-            false => Vec::new(),
-        },
+        submissions,
         interventions: interventions.finish(),
         compactions: {
             compactions.sort_by_key(|c| c.citation.timestamp);
@@ -272,6 +277,44 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         rework: rework.finish(),
         harness: harness.finish(options.with_text),
     })
+}
+
+/// Give each instruction the paths its commits changed.
+///
+/// The transcript abbreviates a commit and the repository resolved it, so the
+/// join runs through that resolution rather than through the abbreviation: two
+/// windows of the same project abbreviate to different widths, and a prefix is
+/// not a commit until git says which one.
+fn attribute_committed_paths(
+    project: &std::path::Path,
+    repository: &repository::RepositoryFacts,
+    submissions: &mut [submission::Submission],
+) -> Result<()> {
+    let resolved: BTreeMap<&str, &str> = repository
+        .commits
+        .iter()
+        .filter_map(|c| Some((c.sha.as_str(), c.resolved.as_deref()?)))
+        .collect();
+    if resolved.is_empty() {
+        return Ok(());
+    }
+    let shas: Vec<String> = resolved.values().map(|s| s.to_string()).collect();
+    let touched = repository::paths_touched(project, &shas)?;
+    for held in submissions {
+        let paths: BTreeSet<&std::path::Path> = held
+            .commits
+            .iter()
+            .filter_map(|sha| resolved.get(sha.as_str()))
+            .filter_map(|full| touched.get(*full))
+            .flatten()
+            .map(std::path::PathBuf::as_path)
+            .collect();
+        held.committed = paths
+            .into_iter()
+            .map(std::path::Path::to_path_buf)
+            .collect();
+    }
+    Ok(())
 }
 
 /// Refuse to report rates the input does not support.
@@ -401,7 +444,7 @@ mod tests {
         let facts = collect(&config, &CollectOptions::default()).unwrap();
 
         assert_eq!(facts.prompts.authored_turns, 2);
-        let block = &facts.prompts.repeated_blocks[0];
+        let block = &facts.prompts.across_sessions.as_ref().unwrap().blocks[0];
         assert_eq!(block.sessions, 2);
         assert_eq!(block.citations.len(), 2);
         assert!(block.citations.iter().all(|c| c.file.is_absolute()));
@@ -428,7 +471,10 @@ mod tests {
         let facts = collect(&config, &options).unwrap();
 
         assert_eq!(facts.prompts.authored_turns, 1);
-        assert!(facts.prompts.repeated_blocks.is_empty());
+        assert!(
+            facts.prompts.across_sessions.is_none(),
+            "one session left in the window cannot repeat across sessions"
+        );
     }
 
     #[test]
