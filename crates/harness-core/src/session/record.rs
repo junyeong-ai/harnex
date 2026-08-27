@@ -381,10 +381,15 @@ pub struct Coverage {
     /// window that reads both files counts it once — measured over one corpus,
     /// 54,965 such records, every one of which is also in the file it came
     /// from.
+    ///
+    /// Zero on a baseline whose `oracle_version` predates this counter, which
+    /// is what that field is for.
+    #[serde(default)]
     pub records_forked: usize,
     /// Records already counted from another of the same session's transcripts.
     /// Dispatching several subagents at once copies the state they start from
     /// into each of their files, and one event is counted once.
+    #[serde(default)]
     pub records_duplicated: usize,
     /// Record kinds present in the input that this module does not consume.
     /// A type with a sub-vocabulary is keyed `type:subtype`, so consuming one

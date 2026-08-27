@@ -650,6 +650,33 @@ fn a_metric_the_window_could_not_measure_is_absent_rather_than_zero() {
     assert_eq!(unmatched.code(), ErrorCode::SessionBaselineNotComparable);
 }
 
+/// A baseline as an earlier build wrote it: no `oracle_version`, and none of
+/// the coverage counters added since. The ledger is append-only and is the
+/// operator's, so a build that cannot read what an earlier one recorded takes
+/// their history away.
+const BASELINE_FROM_AN_EARLIER_BUILD: &str = r#"{"label":"round-1","recorded_at":"2026-08-26T00:00:00Z","project":"/p","coverage":{"files_discovered":2,"files_read":2,"files_unreadable":0,"records_total":9,"records_malformed":0,"record_types_unconsumed":{},"user_turns_by_authorship":{"authored":4},"runtime_versions":["2.1.246"],"models":["claude-opus-5"],"sessions":2,"observed_from":"2026-08-25T00:00:00Z","observed_to":"2026-08-26T00:00:00Z"},"measurements":{"denials_per_submission":{"numerator":3,"denominator":4}}}"#;
+
+#[test]
+fn a_baseline_an_earlier_build_recorded_still_loads() {
+    let (dir, _config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let path = dir.path().join("older.jsonl");
+    std::fs::write(&path, format!("{BASELINE_FROM_AN_EARLIER_BUILD}\n")).unwrap();
+
+    let recorded = session::BaselineLedger::new(path).load_all().unwrap();
+
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].label, "round-1");
+    assert_eq!(
+        recorded[0].oracle_version, None,
+        "which is how a reader knows not to believe the counters it did not record"
+    );
+    assert_eq!(recorded[0].coverage.records_forked, 0);
+    assert_eq!(recorded[0].coverage.sessions, 2);
+}
+
 #[test]
 fn a_baseline_records_the_build_that_measured_it() {
     let (_dir, config) = corpus(&[(
