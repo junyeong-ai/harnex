@@ -19,7 +19,8 @@ paths:
 | `harness` | what the project's harness did, and what it cost |
 | `rework` | edits to a file after the commit that shipped it |
 | `repository` | what became of a commit, through git, project scope only |
-| `baseline` | frozen rates, and the refusal to compare overlapping windows |
+| `baseline` | frozen rates, the refusal to compare overlapping windows, and
+  which rates a comparison will withhold |
 | `discovery` | the roots, absolute and deduplicated |
 
 Each module doc argues its own refusals. Read the doc before changing the
@@ -40,6 +41,10 @@ floor, named for that, and carries the coverage it was measured at.
   ([file: crates/harness-core/src/session/mod.rs]), which never reorders within
   one — 2.27% of adjacent records are stamped behind the record before them.
   Sorting the concatenation is the shape that looks equivalent and is not.
+- **One rule decides whether a rate can be compared.** `Measurement::supports`
+  ([file: crates/harness-core/src/session/baseline.rs]) is what `diff` withholds
+  on and what `baseline save` discloses; a second copy of the floor check in
+  either place drifts silently, because both still return plausible answers.
 - **Coverage counts the window, not the file.** `read_transcript` applies
   `since` and `project` before counting, because `require_coverage` gates on
   the ratio coverage publishes.

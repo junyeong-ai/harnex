@@ -58,6 +58,15 @@ impl Measurement {
     pub fn rate(&self) -> Option<f64> {
         (self.denominator > 0).then(|| self.numerator as f64 / self.denominator as f64)
     }
+
+    /// Whether a comparison can subtract this from another measurement.
+    ///
+    /// The floor is raised to one whatever the configuration says: an empty
+    /// population has no rate to compare, so a floor of zero would admit a
+    /// subtraction there is nothing to subtract.
+    pub fn supports(&self, support_floor: u64) -> bool {
+        self.denominator >= support_floor.max(1)
+    }
 }
 
 /// The rates a baseline carries.
@@ -217,6 +226,19 @@ impl Baseline {
                 .map(|m| (m.as_str().to_string(), m.measure(facts)))
                 .collect(),
         }
+    }
+
+    /// The rates [`diff`] will withhold on either side of a comparison.
+    ///
+    /// A window can be too thin to say anything and still record cleanly, so
+    /// this is what the operator is owed at the moment the baseline is written
+    /// rather than at the moment a comparison against it comes back empty.
+    pub fn unsupported(&self, support_floor: u64) -> Vec<&str> {
+        self.measurements
+            .iter()
+            .filter(|(_, m)| !m.supports(support_floor))
+            .map(|(name, _)| name.as_str())
+            .collect()
     }
 }
 
@@ -387,7 +409,7 @@ pub fn diff(from: &Baseline, to: &Baseline, support_floor: u64) -> Result<Baseli
     for key in keys {
         match (from.measurements.get(key), to.measurements.get(key)) {
             (Some(a), Some(b)) => {
-                let supported = a.denominator >= support_floor && b.denominator >= support_floor;
+                let supported = a.supports(support_floor) && b.supports(support_floor);
                 let change = match (supported, a.rate(), b.rate()) {
                     (true, Some(a), Some(b)) => Some(b - a),
                     _ => None,

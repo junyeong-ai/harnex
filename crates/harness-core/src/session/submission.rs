@@ -20,7 +20,7 @@
 //!   time-ordered list, so a window always yields the same subset and the
 //!   subset spans the window rather than its beginning.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -101,8 +101,11 @@ pub struct Submission {
     pub questions: usize,
     /// File edits the agent made under it.
     pub edits: usize,
-    /// Distinct files those edits touched.
-    pub files: usize,
+    /// Distinct files those edits touched, in path order. Where the work
+    /// landed is the half of a run its counts cannot show: an instruction
+    /// about one subsystem answered entirely inside another is a guess the
+    /// agent made, and only the paths say so.
+    pub files: Vec<PathBuf>,
     /// Commits reported under it, as the transcript abbreviated them. Sparse
     /// by design: the agent commits when asked, so most instructions end
     /// without one and an absent commit is not a failed instruction. The shas
@@ -127,9 +130,9 @@ pub struct SubmissionAnalyzer {
     /// Session to the index in `out` of the instruction still standing in it,
     /// and the id that instruction was assigned.
     active: HashMap<String, (u64, usize)>,
-    /// Distinct files each instruction touched, held apart from the record so
-    /// the result carries a count rather than a copy of the tree.
-    touched: HashMap<usize, HashSet<PathBuf>>,
+    /// Distinct files each instruction touched, deduplicated here so the
+    /// record carries each path once however many times it was edited.
+    touched: HashMap<usize, BTreeSet<PathBuf>>,
     models: HashMap<usize, BTreeSet<String>>,
 }
 
@@ -198,7 +201,7 @@ impl SubmissionAnalyzer {
             models: Vec::new(),
             questions: 0,
             edits: 0,
-            files: 0,
+            files: Vec::new(),
             commits: Vec::new(),
             interrupts: 0,
             denials: 0,
@@ -228,7 +231,7 @@ impl SubmissionAnalyzer {
 
     pub fn finish(mut self, with_text: bool) -> Vec<Submission> {
         for (at, files) in &self.touched {
-            self.out[*at].files = files.len();
+            self.out[*at].files = files.iter().cloned().collect();
         }
         for (at, models) in &self.models {
             self.out[*at].models = models.iter().cloned().collect();
@@ -358,7 +361,7 @@ mod sample_tests {
             models: Vec::new(),
             questions: 0,
             edits: 0,
-            files: 0,
+            files: Vec::new(),
             commits: Vec::new(),
             interrupts: 0,
             denials: 0,

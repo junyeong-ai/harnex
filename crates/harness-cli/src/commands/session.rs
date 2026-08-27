@@ -6,10 +6,11 @@ use clap::{Args, Subcommand};
 use jiff::Timestamp;
 
 use harness_core::config::SessionConfig;
+use harness_core::envelope::Warning;
 use harness_core::error::{Error, Result};
 use harness_core::session::{self, Baseline, BaselineLedger, CollectOptions};
 
-use super::{config_dir, load_config, write_envelope_success};
+use super::{config_dir, load_config, write_envelope_success, write_envelope_success_warned};
 
 /// Which records a command reads. Every session command takes the same two,
 /// so they are declared once and flattened rather than repeated per verb.
@@ -122,6 +123,32 @@ pub enum BaselineCommand {
     },
 }
 
+/// The code a consumer matches on when a baseline records cleanly and cannot
+/// anchor a comparison.
+const THIN_WINDOW_CODE: &str = "SESSION_BASELINE_BELOW_SUPPORT";
+
+/// What the operator is owed about a window too thin to compare against.
+///
+/// Saving is not the failure — the ledger holds it and the next window starts
+/// where it ended. Silence is: a baseline whose every rate is withheld looks
+/// from the envelope exactly like one that will answer.
+fn thin_window(baseline: &Baseline, support_floor: u64) -> Vec<Warning> {
+    let unsupported = baseline.unsupported(support_floor);
+    if unsupported.is_empty() {
+        return Vec::new();
+    }
+    vec![Warning {
+        code: THIN_WINDOW_CODE.to_string(),
+        message: format!(
+            "{} of {} rates in '{}' are measured over fewer than {support_floor} observations \
+             (session.min_support), and a diff against this baseline withholds them",
+            unsupported.len(),
+            baseline.measurements.len(),
+            baseline.label,
+        ),
+    }]
+}
+
 /// Collect a window and refuse to report rates the window does not support.
 fn measure(config: &SessionConfig, options: &CollectOptions) -> Result<session::SessionFacts> {
     let facts = session::collect(config, options)?;
@@ -194,7 +221,8 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                     )?;
                     let baseline = Baseline::of(&label, Timestamp::now(), project, &facts);
                     ledger.append(&baseline)?;
-                    write_envelope_success(out, baseline)?;
+                    let warnings = thin_window(&baseline, session_config.min_support);
+                    write_envelope_success_warned(out, baseline, warnings)?;
                 }
                 BaselineCommand::Diff { from, to } => {
                     let recorded = ledger.load_all()?;

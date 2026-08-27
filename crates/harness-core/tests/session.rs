@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use harness_core::config::SessionConfig;
 use harness_core::error::ErrorCode;
 use harness_core::session::{self, Authorship, CollectOptions};
@@ -549,6 +551,32 @@ fn a_label_the_ledger_already_holds_is_refused() {
 }
 
 #[test]
+fn a_window_names_the_rates_no_comparison_against_it_will_answer() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let baseline = baseline_of(&config, None, "thin");
+
+    assert_eq!(
+        baseline.unsupported(30).len(),
+        baseline.measurements.len(),
+        "one instruction supports no rate at a floor of thirty"
+    );
+    assert!(
+        baseline
+            .unsupported(30)
+            .contains(&"output_tokens_per_submission"),
+        "the metrics are named, so a consumer can say which"
+    );
+    assert_eq!(
+        baseline.unsupported(0),
+        ["hook_milliseconds_per_stop", "reedits_per_commit"],
+        "a rate over an empty population is withheld at any floor, zero included"
+    );
+}
+
+#[test]
 fn a_rate_under_the_support_floor_keeps_both_sides_and_withholds_the_subtraction() {
     let (dir, config) = corpus(&[(
         "-Users-me-alpha/s1.jsonl",
@@ -835,12 +863,20 @@ fn an_instruction_carries_the_work_done_under_it_not_the_session_total() {
     let facts = session::collect(&config, &options).unwrap();
 
     let (first, second) = (&facts.submissions[0], &facts.submissions[1]);
-    assert_eq!((first.edits, first.files, first.commits.len()), (3, 2, 1));
+    assert_eq!((first.edits, first.commits.len()), (3, 1));
+    assert_eq!(
+        first.files,
+        [
+            PathBuf::from("/p/src/exporter.rs"),
+            PathBuf::from("/p/src/loader.rs")
+        ],
+        "three edits over two files, each named once and in path order"
+    );
     assert_eq!(first.commits, vec!["abc1234"]);
     assert_eq!(first.questions, 1);
     assert_eq!(
-        (second.edits, second.files, second.commits.len()),
-        (1, 1, 0),
+        (second.edits, second.files.as_slice(), second.commits.len()),
+        (1, [PathBuf::from("/p/src/loader.rs")].as_slice(), 0),
         "the second instruction carries its own work, not the first's"
     );
 }
