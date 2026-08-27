@@ -1,4 +1,5 @@
-//! Drift guard between the release workflow and the installer.
+//! Drift guard over how this project publishes itself — the release workflow,
+//! the installer, and the manifests that name where both come from.
 //!
 //! `release.yml` decides which targets become release assets and what those
 //! assets are called; `install.sh` decides which asset a machine asks for.
@@ -172,6 +173,39 @@ fn every_shipped_install_command_fetches_the_declared_repository() {
             assert_eq!(url, expected, "{doc} fetches the installer from elsewhere");
         }
     }
+}
+
+#[test]
+fn every_manifest_that_publishes_this_project_names_one_owner() {
+    let declared = manifest_value(
+        &repo_file("Cargo.toml"),
+        "[workspace.package]",
+        "repository",
+    );
+    let owner = declared
+        .rsplit('/')
+        .nth(1)
+        .expect("the repository URL carries an owner segment");
+
+    let json = |path: &str| -> serde_json::Value {
+        serde_json::from_str(&repo_file(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
+    };
+
+    let marketplace = json(".claude-plugin/marketplace.json");
+    assert_eq!(
+        marketplace["owner"]["name"], owner,
+        "the marketplace names an owner the workspace manifest does not"
+    );
+
+    let plugin = json("plugins/harnex/.claude-plugin/plugin.json");
+    assert_eq!(
+        plugin["author"]["name"], owner,
+        "the plugin names an author the workspace manifest does not"
+    );
+    assert_eq!(
+        plugin["repository"], declared,
+        "the plugin points at a repository the workspace manifest does not"
+    );
 }
 
 #[test]
