@@ -106,25 +106,37 @@ directly installable thing this whole report produces. Show the pair as the
 operator's two messages with the seconds between them, and hand the judge those
 pairs adjacent and in order.
 
-Three more inputs converge and should be read together: `repeated_blocks`
+Three more inputs converge and should be read together: `across_sessions`
 (paragraphs retyped in a session that did not yet hold them — never installed),
-`restated_blocks` (retyped inside a session that already held them — did not
+`within_sessions` (retyped inside a session that already held them — did not
 survive its context), and the judge's recurring gaps (constraints never written
 down at all). The first is what the operator knows they repeat; the last is
-what they do not.
+what they do not. Each of the two carries the same `chars` and `blocks`.
 
-A paragraph is usually both, and the two are not one problem.
-`cross_session_chars` counts what was never installed anywhere, and installing
-it is the whole fix. `restated_chars` counts what was typed again inside one
-session, and **the oracle cannot say why** — a paragraph retyped after a
-compaction, one retyped into a session whose rules already carry it, and one
-retyped to weight it for a single task are three findings with three fixes.
-Open the citations and let the judge separate them; where `compactions` is
-non-empty, the timestamps settle the first case outright.
+A paragraph is usually both, and the two are not one problem. The first counts
+what was never installed anywhere, and installing it is the whole fix. The
+second counts what was typed again inside one session, and **the oracle cannot
+say why** — a paragraph retyped after a compaction, one retyped into a session
+whose rules already carry it, and one retyped to weight it for a single task
+are three findings with three fixes. Open the citations and let the judge
+separate them; where `compactions` is non-empty, the timestamps settle the
+first case outright.
 
 Report the two separately and never sum them — over one real corpus the split
 is 15% to 72%, and reading the total as the first prescribes installation for
 something installation does not touch.
+
+**`across_sessions` is null where the window holds instructions from fewer
+than two sessions**, which any window scoped with `--session` does. Say that
+the question was not asked; a null there is not an answer of none.
+
+**Then check whether the constraint is already installed before prescribing
+that it be.** `rule_loads` lists the project memory the runtime attached to a
+turn, which is the path-scoped kind; a rule loaded on every turn is in the
+prompt from the start and appears nowhere in the transcript. Read the
+project's own rule files before naming a paragraph uninstalled — measured over
+one window, the paragraph retyped into the most instructions was already a
+rule, in force the whole time.
 
 ## 6 — Report
 
@@ -209,11 +221,13 @@ metric that will show whether it worked. Everything else goes in an appendix.
   `models` set moved is a delta about the model as much as the operator
 - `tools` counts calls, not time or success; those come from a cost source or
   from nowhere
-- `submissions[].files` names what `Write` and `Edit` were pointed at, so work
-  done through a shell leaves nothing there. Where `Bash` dominates the tool
-  mix, read `commits` for where the work landed and say that `files` is a floor
-  — measured over one window, an instruction that shipped four commits across
-  twenty source files reported four scratch paths
+- `written` names what `Write` and `Edit` were pointed at, so work done through
+  a shell leaves nothing there; `committed` is where the work landed, and needs
+  `--project` over a git work tree
+- a merge changed nothing on its own, so it contributes no paths to `committed`
+- `rule_loads` is the project memory the runtime attached to a turn. A rule
+  loaded on every turn is never attached and is absent here, so this is a floor
+  on what was in force
 - `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
   sample size, and they never enter a baseline

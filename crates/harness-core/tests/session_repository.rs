@@ -38,6 +38,64 @@ fn commit(dir: &Path, message: &str) -> String {
     git(dir, &["rev-parse", "HEAD"])
 }
 
+/// A commit that changes several files at once, none of them the one `commit`
+/// writes, so a path list cannot be confused for the fixture's own file.
+fn commit_touching(dir: &Path, message: &str, paths: &[&str]) -> String {
+    for path in paths {
+        let full = dir.join(path);
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::write(full, message).unwrap();
+    }
+    git(dir, &["add", "-A"]);
+    git(dir, &["commit", "-q", "-m", message]);
+    git(dir, &["rev-parse", "HEAD"])
+}
+
+#[test]
+fn a_commit_reports_the_paths_it_changed_including_the_first_one_in_the_tree() {
+    let dir = repo();
+    let root = commit_touching(dir.path(), "root", &["src/lib.rs", "README.md"]);
+    let later = commit_touching(dir.path(), "later", &["src/lib.rs", "tests/it.rs"]);
+
+    let touched = repository::paths_touched(dir.path(), &[root.clone(), later.clone()]).unwrap();
+
+    assert_eq!(
+        touched[&root],
+        vec![Path::new("README.md"), Path::new("src/lib.rs")]
+            .into_iter()
+            .map(Path::to_path_buf)
+            .collect::<Vec<_>>(),
+        "a root commit has no parent and still changed every file in it"
+    );
+    assert_eq!(
+        touched[&later],
+        vec![Path::new("src/lib.rs"), Path::new("tests/it.rs")]
+            .into_iter()
+            .map(Path::to_path_buf)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_path_outside_ascii_is_reported_as_it_is_written() {
+    let dir = repo();
+    let sha = commit_touching(dir.path(), "korean", &["문서/설계.md"]);
+
+    let touched = repository::paths_touched(dir.path(), std::slice::from_ref(&sha)).unwrap();
+
+    assert_eq!(touched[&sha], vec![Path::new("문서/설계.md").to_path_buf()]);
+}
+
+#[test]
+fn no_commits_asks_git_nothing() {
+    let dir = repo();
+    assert!(
+        repository::paths_touched(dir.path(), &[])
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn a_directory_that_is_not_a_work_tree_is_absent_rather_than_an_error() {
     let dir = TempDir::new().unwrap();

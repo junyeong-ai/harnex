@@ -99,18 +99,22 @@ pub struct Submission {
     /// Times the agent stopped to ask rather than choose — a floor, see
     /// [`CLARIFYING_QUESTION_TOOL`].
     pub questions: usize,
-    /// File edits the agent made under it.
+    /// File edits the agent made under it, through a tool the runtime records.
     pub edits: usize,
-    /// Distinct files those edits touched, in path order. Where the work
-    /// landed is the half of a run its counts cannot show: an instruction
-    /// about one subsystem answered entirely inside another is a guess the
-    /// agent made, and only the paths say so.
-    pub files: Vec<PathBuf>,
+    /// Distinct files those edits touched, in path order. A floor on where the
+    /// work went and not an account of it: a change written by a shell command
+    /// is an edit the runtime never saw, so an empty list is silence rather
+    /// than a run that changed nothing.
+    pub written: Vec<PathBuf>,
     /// Commits reported under it, as the transcript abbreviated them. Sparse
     /// by design: the agent commits when asked, so most instructions end
     /// without one and an absent commit is not a failed instruction. The shas
     /// are what joins an instruction to what became of its work.
     pub commits: Vec<String>,
+    /// Paths those commits changed, in path order. Where the work landed,
+    /// however it was made. Present only where the window was scoped to a
+    /// project and that project is a git work tree.
+    pub committed: Vec<PathBuf>,
     /// Interruptions the runtime marked while it stood — a floor, for the
     /// reason [`super::InterventionKind`] gives.
     pub interrupts: usize,
@@ -201,8 +205,9 @@ impl SubmissionAnalyzer {
             models: Vec::new(),
             questions: 0,
             edits: 0,
-            files: Vec::new(),
+            written: Vec::new(),
             commits: Vec::new(),
+            committed: Vec::new(),
             interrupts: 0,
             denials: 0,
             steered_away: false,
@@ -231,7 +236,7 @@ impl SubmissionAnalyzer {
 
     pub fn finish(mut self, with_text: bool) -> Vec<Submission> {
         for (at, files) in &self.touched {
-            self.out[*at].files = files.iter().cloned().collect();
+            self.out[*at].written = files.iter().cloned().collect();
         }
         for (at, models) in &self.models {
             self.out[*at].models = models.iter().cloned().collect();
@@ -361,8 +366,9 @@ mod sample_tests {
             models: Vec::new(),
             questions: 0,
             edits: 0,
-            files: Vec::new(),
+            written: Vec::new(),
             commits: Vec::new(),
+            committed: Vec::new(),
             interrupts: 0,
             denials: 0,
             steered_away: false,
