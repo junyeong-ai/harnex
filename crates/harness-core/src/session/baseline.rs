@@ -210,6 +210,13 @@ pub struct Baseline {
     /// What the reader saw and what it could not — including the observed
     /// span, which is what makes two baselines comparable or not.
     pub coverage: Coverage,
+    /// The build that measured this window. A metric whose definition moved
+    /// between two builds is a delta about the definition, for the same reason
+    /// the runtime versions and the model set ride along.
+    ///
+    /// `None` on a baseline written before this was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oracle_version: Option<String>,
     /// Keyed by [`SessionMetric::as_str`]. A metric the window could not
     /// measure is absent rather than zero.
     pub measurements: BTreeMap<String, Measurement>,
@@ -227,6 +234,7 @@ impl Baseline {
             recorded_at,
             project,
             coverage: facts.coverage.clone(),
+            oracle_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             measurements: SessionMetric::ALL
                 .iter()
                 .filter_map(|m| Some((m.as_str().to_string(), m.measure(facts)?)))
@@ -324,6 +332,10 @@ pub struct BaselineWindow {
     pub observed_to: Option<Timestamp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<PathBuf>,
+    /// The build that measured this window, for the reason
+    /// [`Baseline::oracle_version`] gives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oracle_version: Option<String>,
     /// Runtime versions the window spans. A delta across a version change is
     /// an observation about two different runtimes as much as about the
     /// operator.
@@ -341,6 +353,7 @@ impl BaselineWindow {
             observed_from: baseline.coverage.observed_from,
             observed_to: baseline.coverage.observed_to,
             project: baseline.project.clone(),
+            oracle_version: baseline.oracle_version.clone(),
             runtime_versions: baseline.coverage.runtime_versions.clone(),
             models: baseline.coverage.models.clone(),
             authorship_ratio: baseline.coverage.authorship_ratio(),

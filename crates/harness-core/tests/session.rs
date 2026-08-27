@@ -557,6 +557,22 @@ fn a_metric_the_window_could_not_measure_is_absent_rather_than_zero() {
 }
 
 #[test]
+fn a_baseline_records_the_build_that_measured_it() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+
+    let recorded = baseline_of(&config, None, "one");
+
+    assert_eq!(
+        recorded.oracle_version.as_deref(),
+        Some(env!("CARGO_PKG_VERSION")),
+        "a metric whose definition moved between builds is a delta about the build"
+    );
+}
+
+#[test]
 fn a_window_measured_after_the_last_one_ended_compares_against_it() {
     let (dir, config) = corpus(&[(
         "-Users-me-alpha/s1.jsonl",
