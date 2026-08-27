@@ -589,6 +589,35 @@ fn a_record_two_of_a_sessions_subagents_start_from_is_one_event() {
 }
 
 #[test]
+fn a_turn_replayed_into_a_second_session_is_not_a_paragraph_written_twice() {
+    // A resumed session can carry the earlier one's records verbatim under a
+    // new id and without the fork marker. Two sessions then hold one turn, and
+    // a paragraph typed once looks like one no harness was holding.
+    let original = typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING);
+    let replayed = original.replace("\"sessionId\":\"s1\"", "\"sessionId\":\"s2\"");
+    let (_dir, config) = corpus(&[
+        ("-Users-me-alpha/s1.jsonl", vec![original]),
+        (
+            "-Users-me-alpha/s2.jsonl",
+            vec![
+                replayed,
+                typed("s2", "b1", "2026-08-01T11:00:00Z", ALSO_STANDING),
+            ],
+        ),
+    ]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.coverage.records_duplicated, 1);
+    assert_eq!(facts.prompts.submissions, 2);
+    assert_eq!(
+        facts.prompts.across_sessions.as_ref().unwrap().chars,
+        0,
+        "one turn reached the reader twice; the operator typed it once"
+    );
+}
+
+#[test]
 fn a_window_scoped_to_a_fork_does_not_inherit_what_it_was_forked_from() {
     let original = typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING);
     let (_dir, config) = corpus(&[
