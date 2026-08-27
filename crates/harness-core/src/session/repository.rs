@@ -213,41 +213,44 @@ pub fn survey(
 /// A merge carries no diff of its own here and reports no paths, which is what
 /// it changed on its own.
 pub fn paths_touched(project: &Path, commits: &[String]) -> Result<BTreeMap<String, Vec<PathBuf>>> {
-    if commits.is_empty() {
+    // Same refusal as `resolve`: git is asked about object ids and never about
+    // a revision expression something else composed.
+    let query: String = commits
+        .iter()
+        .filter(|sha| OBJECT_ID_WIDTHS.contains(&sha.len()))
+        .filter(|sha| sha.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|sha| format!("{sha}\n"))
+        .collect();
+    if query.is_empty() {
         return Ok(BTreeMap::new());
     }
-    let query: String = commits.iter().map(|sha| format!("{sha}\n")).collect();
+    // A NUL before each commit is what separates a header from a path, and a
+    // path cannot contain one. Telling them apart by shape would misread a
+    // file whose name is an object id, and such a name is ordinary in a
+    // repository that stores objects or fixtures by hash.
     let listing = stdin_query(
         project,
         &[
             "-c",
             "core.quotePath=false",
-            "diff-tree",
-            "-r",
-            "--root",
-            "--name-only",
+            "log",
             "--stdin",
+            "--no-walk",
+            "--format=%x00%H",
+            "--name-only",
         ],
         &query,
-        "git diff-tree --stdin",
+        "git log --stdin --name-only",
     )?;
 
-    let mut out: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
-    let mut current: Option<&mut Vec<PathBuf>> = None;
-    for line in listing.lines() {
-        if line.is_empty() {
-            continue;
-        }
-        // git writes the commit it is describing on a line of its own, in full,
-        // before that commit's paths. An object id is the only line it can
-        // write in that shape, so the two never collide.
-        if OBJECT_ID_WIDTHS.contains(&line.len()) && line.chars().all(|c| c.is_ascii_hexdigit()) {
-            current = Some(out.entry(line.to_string()).or_default());
-            continue;
-        }
-        if let Some(paths) = current.as_deref_mut() {
-            paths.push(PathBuf::from(line));
-        }
+    let mut out = BTreeMap::new();
+    for commit in listing.split('\0').skip(1) {
+        let mut lines = commit.lines();
+        let Some(sha) = lines.next() else { continue };
+        out.insert(
+            sha.to_string(),
+            lines.filter(|l| !l.is_empty()).map(PathBuf::from).collect(),
+        );
     }
     Ok(out)
 }

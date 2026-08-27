@@ -77,6 +77,60 @@ fn a_commit_reports_the_paths_it_changed_including_the_first_one_in_the_tree() {
 }
 
 #[test]
+fn a_file_named_like_an_object_id_is_a_path_and_not_a_commit() {
+    let dir = repo();
+    let hex = "0123456789abcdef0123456789abcdef01234567";
+    let sha = commit_touching(dir.path(), "hashed", &[hex, "src/lib.rs"]);
+
+    let touched = repository::paths_touched(dir.path(), std::slice::from_ref(&sha)).unwrap();
+
+    assert_eq!(touched.len(), 1, "one commit was asked about");
+    assert_eq!(
+        touched[&sha],
+        vec![Path::new(hex), Path::new("src/lib.rs")]
+            .into_iter()
+            .map(Path::to_path_buf)
+            .collect::<Vec<_>>(),
+        "a name shaped like an object id is still a name"
+    );
+}
+
+#[test]
+fn a_merge_changed_nothing_of_its_own_and_reports_no_paths() {
+    let dir = repo();
+    let base = commit_touching(dir.path(), "base", &["src/lib.rs"]);
+    git(dir.path(), &["checkout", "-q", "-b", "side", &base]);
+    commit_touching(dir.path(), "side", &["side.rs"]);
+    git(dir.path(), &["checkout", "-q", "main"]);
+    commit_touching(dir.path(), "main", &["main.rs"]);
+    git(
+        dir.path(),
+        &["merge", "-q", "--no-ff", "side", "-m", "merge"],
+    );
+    let merge = git(dir.path(), &["rev-parse", "HEAD"]);
+
+    let touched = repository::paths_touched(dir.path(), std::slice::from_ref(&merge)).unwrap();
+
+    assert_eq!(
+        touched[&merge],
+        Vec::<std::path::PathBuf>::new(),
+        "present and empty, which is what a merge changed on its own"
+    );
+}
+
+#[test]
+fn a_revision_expression_is_not_asked_of_git_here_either() {
+    let dir = repo();
+    let sha = commit_touching(dir.path(), "one", &["src/lib.rs"]);
+
+    let touched =
+        repository::paths_touched(dir.path(), &["HEAD~1".into(), "main".into(), sha.clone()])
+            .unwrap();
+
+    assert_eq!(touched.keys().collect::<Vec<_>>(), vec![&sha]);
+}
+
+#[test]
 fn a_path_outside_ascii_is_reported_as_it_is_written() {
     let dir = repo();
     let sha = commit_touching(dir.path(), "korean", &["문서/설계.md"]);
