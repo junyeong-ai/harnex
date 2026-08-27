@@ -45,6 +45,11 @@ at `.claude-plugin/marketplace.json`. Install, then drive it by mode:
 sub-agent it dispatches to read instruction text. Both need the oracle; without
 it they say so and stop rather than estimating from the logs.
 
+It also comes last. `measure` answers whether a harness earns its place and
+what the operator repeats every session, so it has something to say once there
+is a harness and a few weeks of transcripts — `scaffold` is where a project
+without one starts.
+
 It detects the stack from lockfile + manifest (TypeScript/pnpm, Python/uv,
 Rust/cargo, JVM/Gradle-Maven for Java and Kotlin) and composes the harness
 from `templates/scaffold.toml`, which declares every artifact in two tiers: a

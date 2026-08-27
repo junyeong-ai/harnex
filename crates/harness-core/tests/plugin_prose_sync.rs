@@ -71,6 +71,9 @@ const CONTRACTS: &[(&str, &[&str])] = &[
             "RepositoryFacts.by_fate",
             "CommitOutcome.reverted_by",
             "Coverage.sessions",
+            "Submission.files",
+            "BaselineDiff.support_floor",
+            "MetricDelta.change",
             "SessionConfig.min_support",
             "SessionConfig.submission_sample",
         ],
@@ -95,7 +98,11 @@ fn schema_types() -> BTreeMap<String, BTreeSet<String>> {
     }
 
     let mut types = BTreeMap::new();
-    for target in [SchemaTarget::Session, SchemaTarget::Config] {
+    for target in [
+        SchemaTarget::Session,
+        SchemaTarget::SessionBaseline,
+        SchemaTarget::Config,
+    ] {
         let schema = schema_for(target);
         if let Some(title) = schema.get("title").and_then(serde_json::Value::as_str) {
             take(&mut types, title, &schema);
