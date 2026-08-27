@@ -464,6 +464,7 @@ struct RawOrigin {
 
 #[derive(Deserialize)]
 struct RawMessage {
+    id: Option<String>,
     content: Option<serde_json::Value>,
     model: Option<String>,
     usage: Option<RawUsage>,
@@ -645,6 +646,11 @@ pub fn read_transcript(
     // A tool call always precedes its result inside one transcript, so a single
     // forward pass resolves every denial to the tool it answered.
     let mut tool_calls: HashMap<String, (String, serde_json::Value)> = HashMap::new();
+    // Which record currently carries each assistant message's spend. The
+    // runtime writes one record per content block and repeats the message's
+    // usage on every one, so the charge belongs to the message and is held by
+    // exactly one of its records.
+    let mut charged: HashMap<String, usize> = HashMap::new();
     let mut agent_output_since_user_turn = false;
 
     for line in reader.lines() {
@@ -780,6 +786,17 @@ pub fn read_transcript(
                         .unwrap_or_default(),
                     model,
                 }));
+                // The latest record of a message holds its charge: while a
+                // message is still being written its earlier records report a
+                // partial output count and the last one reports the settled
+                // one. Clearing the record that held it before keeps the
+                // message counted once at its final value.
+                if let Some(id) = message.and_then(|m| m.id.as_deref())
+                    && let Some(previous) = charged.insert(id.to_string(), out.len() - 1)
+                    && let Record::Assistant(turn) = &mut out[previous]
+                {
+                    turn.tokens = TokenUse::default();
+                }
             }
             ConsumedType::Attachment => {
                 let attachment = raw.attachment.as_ref();

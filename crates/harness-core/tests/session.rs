@@ -738,6 +738,14 @@ fn spent(session: &str, uuid: &str, ts: &str, model: &str, output: u64) -> Strin
     )
 }
 
+/// One record of an assistant message, as the runtime writes them: a record per
+/// content block, each repeating the message's usage.
+fn block_of(session: &str, uuid: &str, ts: &str, id: &str, output: u64) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"id":"{id}","model":"claude-opus-5","usage":{{"input_tokens":7,"cache_creation_input_tokens":11,"cache_read_input_tokens":13,"output_tokens":{output}}},"content":[{{"type":"text","text":"working on it"}}]}}}}"#
+    )
+}
+
 /// The record the runtime writes where it cut an agent turn short.
 fn marked_interrupt(session: &str, uuid: &str, ts: &str) -> String {
     format!(
@@ -1169,6 +1177,38 @@ fn an_instruction_carries_what_it_spent_and_which_models_spent_it() {
         2,
         "the window's model set rides with its version set"
     );
+}
+
+#[test]
+fn a_message_split_across_records_is_charged_once_at_its_settled_count() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            // One message, three records: two written while it was still
+            // streaming and one after, all repeating the same usage.
+            block_of("s1", "x1", "2026-08-01T09:00:02Z", "msg_a", 4),
+            block_of("s1", "x2", "2026-08-01T09:00:03Z", "msg_a", 4),
+            block_of("s1", "x3", "2026-08-01T09:00:04Z", "msg_a", 400),
+            block_of("s1", "x4", "2026-08-01T09:00:06Z", "msg_b", 100),
+        ],
+    )]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(
+        facts.tokens.output, 500,
+        "two messages were answered, not four"
+    );
+    assert_eq!(
+        facts.tokens.cache_read, 26,
+        "a repeated usage is the same read, not another one"
+    );
+    assert_eq!(facts.submissions[0].tokens.output, 500);
 }
 
 #[test]
