@@ -29,34 +29,18 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::session::record::{Authorship, Citation, UserTurn};
+use crate::wire_enum::wire_enum;
 
-/// An act the operator took inside a turn the agent was still taking.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InterventionKind {
-    /// The operator sent an instruction while the agent was working, after it
-    /// had already produced output.
-    Steering,
-    /// The runtime recorded an agent turn as cut short. A floor: over the
-    /// local corpus the marker is present on 216 of 394 interruptions (54.8%).
-    MarkedInterrupt,
-}
-
-impl InterventionKind {
-    pub const ALL: &'static [Self] = &[Self::Steering, Self::MarkedInterrupt];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "steering" => Self::Steering,
-            "marked-interrupt" => Self::MarkedInterrupt,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Steering => "steering",
-            Self::MarkedInterrupt => "marked-interrupt",
-        }
+wire_enum! {
+    /// An act the operator took inside a turn the agent was still taking.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum InterventionKind {
+        /// The operator sent an instruction while the agent was working, after it
+        /// had already produced output.
+        Steering => "steering",
+        /// The runtime recorded an agent turn as cut short. A floor: over the
+        /// local corpus the marker is present on 216 of 394 interruptions (54.8%).
+        MarkedInterrupt => "marked-interrupt",
     }
 }
 

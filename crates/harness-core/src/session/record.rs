@@ -41,6 +41,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
+use crate::wire_enum::wire_enum;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -142,49 +143,33 @@ pub struct Citation {
     pub timestamp: Timestamp,
 }
 
-/// The runtime's attribution of a user turn, as recorded.
-///
-/// Only [`Authorship::Authored`] enters prompt statistics. The rest are
-/// reported separately so a consumer sees what was set aside and why.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Authorship {
-    /// `origin.kind == "human"` with a prompt source the operator types.
-    Authored,
-    /// `origin.kind == "human"` with a prompt source outside
-    /// [`AUTHORED_PROMPT_SOURCES`], including an absent one. The runtime says a
-    /// person is behind the turn but not that they wrote its text.
-    SourceUnrecognised,
-    /// `origin.kind` present and not `human` — the runtime attributed the turn
-    /// to something other than the operator.
-    Attributed,
-    /// A subagent transcript turn.
-    Sidechain,
-    /// No `origin.kind`. The runtime made no authorship claim, so neither does
-    /// this module. Measured at roughly 45% of text-bearing user records across
-    /// every runtime version in the local corpus — it is the ordinary shape of
-    /// interrupts, resumptions and injected context, not a defect.
-    Unclaimed,
+wire_enum! {
+    /// The runtime's attribution of a user turn, as recorded.
+    ///
+    /// Only [`Authorship::Authored`] enters prompt statistics. The rest are
+    /// reported separately so a consumer sees what was set aside and why.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum Authorship {
+        /// `origin.kind == "human"` with a prompt source the operator types.
+        Authored => "authored",
+        /// `origin.kind == "human"` with a prompt source outside
+        /// [`AUTHORED_PROMPT_SOURCES`], including an absent one. The runtime says a
+        /// person is behind the turn but not that they wrote its text.
+        SourceUnrecognised => "source-unrecognised",
+        /// `origin.kind` present and not `human` — the runtime attributed the turn
+        /// to something other than the operator.
+        Attributed => "attributed",
+        /// A subagent transcript turn.
+        Sidechain => "sidechain",
+        /// No `origin.kind`. The runtime made no authorship claim, so neither does
+        /// this module. Measured at roughly 45% of text-bearing user records across
+        /// every runtime version in the local corpus — it is the ordinary shape of
+        /// interrupts, resumptions and injected context, not a defect.
+        Unclaimed => "unclaimed",
+    }
 }
 
 impl Authorship {
-    pub const ALL: &'static [Self] = &[
-        Self::Authored,
-        Self::SourceUnrecognised,
-        Self::Attributed,
-        Self::Sidechain,
-        Self::Unclaimed,
-    ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Authored => "authored",
-            Self::SourceUnrecognised => "source-unrecognised",
-            Self::Attributed => "attributed",
-            Self::Sidechain => "sidechain",
-            Self::Unclaimed => "unclaimed",
-        }
-    }
-
     /// Whether the runtime claimed a person was behind this turn. The coverage
     /// ratio is taken over this population: turns the runtime never claimed are
     /// outside the question, not failures to answer it.

@@ -7,15 +7,16 @@ wrapper over these types.
 
 ### Closed-set discriminator enum (single source of truth)
 
-Each closed vocabulary follows the same shape:
+Every closed vocabulary is declared with `wire_enum!` ([file: crates/harness-core/src/wire_enum.rs]),
+which generates the variants, `ALL`, `as_str` and `from_str` from one list:
 
 ```rust
-pub enum FooKind { Bar, Baz }
-
-impl FooKind {
-    pub const ALL: &'static [Self] = &[Self::Bar, Self::Baz];
-    pub fn from_str(s: &str) -> Option<Self> { /* exhaustive match */ }
-    pub fn as_str(self) -> &'static str { /* exhaustive match */ }
+wire_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum FooKind {
+        Bar => "bar",
+        Baz => "baz",
+    }
 }
 ```
 
@@ -24,13 +25,11 @@ Both `Config::validate_*` (string → enum) and the factory function
 consuming site to update via the compiler's exhaustive-match check. No
 parallel `KNOWN_*` const — that pattern is forbidden because it drifts.
 
-`ALL` is the exception the compiler does not force: a variant left out of it
-still serialises, while whatever iterates `ALL` never sees it and nothing
-fails. Where something is *built* from `ALL` — a schema, the metric set a
-baseline records, a check set — declare the enum with `wire_enum!`
-(`src/wire_enum.rs`), which generates the variants, `ALL`, `as_str` and
-`from_str` from one list. The hand-written shape above stays where the enum
-carries its own derives or a parse the macro does not generate.
+`ALL` is the one part the compiler does not force, which is why it is
+generated rather than written: a variant left out of it still serialises,
+while whatever iterates `ALL` never sees it and nothing fails. Derives are the
+call site's; where one derives `Serialize`, `#[serde(rename_all)]` spells the
+wire string a second time and a test beside that type holds the two equal.
 
 **Suffix is chosen for what the enum names**, not for the pattern:
 `Strategy` for swappable algorithms (`VerifierStrategy`, `RendererStrategy`,

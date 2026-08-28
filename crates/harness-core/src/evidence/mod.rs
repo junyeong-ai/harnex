@@ -30,6 +30,7 @@ pub use claim::{Claim, ClaimKind, parse_claims};
 use crate::config::EvidenceConfig;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
+use crate::wire_enum::wire_enum;
 
 /// Provenance-specific verifier.
 ///
@@ -42,43 +43,17 @@ pub trait Verifier: Send + Sync {
     fn verify(&self, claim: &Claim, working_dir: &Path) -> VerifyOutcome;
 }
 
-/// Closed set of supported verifier strategies. Adding a variant requires
-/// updating [`from_str`], [`as_str`], [`ALL`], and the match in
-/// [`EvidenceVerifier::new`] — the compiler enforces all four sites via
-/// exhaustive `match`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VerifierStrategy {
-    FilePathLine,
-    Context7,
-    FetchedUrl,
-    MemoryOnly,
-}
-
-impl VerifierStrategy {
-    pub const ALL: &'static [Self] = &[
-        Self::FilePathLine,
-        Self::Context7,
-        Self::FetchedUrl,
-        Self::MemoryOnly,
-    ];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "file-path-line" => Self::FilePathLine,
-            "context7" => Self::Context7,
-            "fetched-url" => Self::FetchedUrl,
-            "memory-only" => Self::MemoryOnly,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::FilePathLine => "file-path-line",
-            Self::Context7 => "context7",
-            Self::FetchedUrl => "fetched-url",
-            Self::MemoryOnly => "memory-only",
-        }
+wire_enum! {
+    /// Closed set of supported verifier strategies. Adding a variant requires
+    /// updating [`from_str`], [`as_str`], [`ALL`], and the match in
+    /// [`EvidenceVerifier::new`] — the compiler enforces all four sites via
+    /// exhaustive `match`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum VerifierStrategy {
+        FilePathLine => "file-path-line",
+        Context7 => "context7",
+        FetchedUrl => "fetched-url",
+        MemoryOnly => "memory-only",
     }
 }
 

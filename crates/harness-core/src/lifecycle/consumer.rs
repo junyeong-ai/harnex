@@ -20,6 +20,7 @@ use walkdir::WalkDir;
 use crate::config::ConsumerDetectorDecl;
 use crate::error::{Error, Result};
 use crate::graph::{DefaultNodexRunner, NodexClient};
+use crate::wire_enum::wire_enum;
 
 /// Strategy for surfacing the files that reference a given slug.
 pub trait ConsumerDetector: Send + Sync {
@@ -30,32 +31,15 @@ pub trait ConsumerDetector: Send + Sync {
     fn find_consumers(&self, slug: &str) -> Result<Vec<PathBuf>>;
 }
 
-/// Closed set of supported consumer detection strategies. Adding a variant
-/// requires updating [`from_str`], [`as_str`], [`ALL`], and the match in
-/// [`consumer_detector_for`] — all enforced at compile time via exhaustive
-/// `match`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConsumerStrategy {
-    Grep,
-    GraphBacklinks,
-}
-
-impl ConsumerStrategy {
-    pub const ALL: &'static [Self] = &[Self::Grep, Self::GraphBacklinks];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "grep" => Self::Grep,
-            "graph-backlinks" => Self::GraphBacklinks,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Grep => "grep",
-            Self::GraphBacklinks => "graph-backlinks",
-        }
+wire_enum! {
+    /// Closed set of supported consumer detection strategies. Adding a variant
+    /// requires updating [`from_str`], [`as_str`], [`ALL`], and the match in
+    /// [`consumer_detector_for`] — all enforced at compile time via exhaustive
+    /// `match`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ConsumerStrategy {
+        Grep => "grep",
+        GraphBacklinks => "graph-backlinks",
     }
 }
 

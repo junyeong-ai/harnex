@@ -26,30 +26,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::TelemetryConfig;
 use crate::error::{Error, Result};
+use crate::wire_enum::wire_enum;
 
 pub use jsonl::JsonlStorage;
 pub use kind::KindSchema;
 
-/// Closed set of telemetry storage backends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StorageKind {
-    Jsonl,
-}
-
-impl StorageKind {
-    pub const ALL: &'static [Self] = &[Self::Jsonl];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "jsonl" => Self::Jsonl,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Jsonl => "jsonl",
-        }
+wire_enum! {
+    /// Closed set of telemetry storage backends.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum StorageKind {
+        Jsonl => "jsonl",
     }
 }
 

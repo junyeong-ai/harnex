@@ -26,6 +26,7 @@ use serde_json::Value;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 use crate::policy::{PermissionRule, RuleEffect};
+use crate::wire_enum::wire_enum;
 
 /// Valid values for `skillOverrides` per Claude Code spec.
 pub const KNOWN_SKILL_OVERRIDE_VALUES: &[&str] = &["on", "name-only", "user-invocable-only", "off"];
@@ -58,59 +59,40 @@ pub const KNOWN_PROJECT_SCOPE_NOOP_KEYS: &[&str] = &[
     "claudeMd",
 ];
 
-/// Closed-set of `settings.json` scopes per Claude Code spec /en/settings.
-///
-/// Scope decides which keys / values are honored: certain settings
-/// (`defaultMode: "auto"`, `autoMemoryDirectory`, `autoMode`,
-/// `useAutoModeDuringPlan`, `skipDangerousModePermissionPrompt`) silently
-/// no-op outside user / managed scope, so the validator must know its scope
-/// to fire the right
-/// findings. Caller-provided rather than path-inferred — path heuristics
-/// (HOME env, filename) are platform-brittle and the caller already knows
-/// which file it loaded.
-///
-/// Four variants rather than a binary (`ProjectLocalOrNot`) because:
-/// 1. Operator UX — the `--scope` CLI flag displays the full set; a binary
-///    would lose the labeling.
-/// 2. Future scope-specific checks — managed-only keys
-///    (`allowManagedPermissionRulesOnly`, `strictPluginOnlyCustomization`,
-///    …) should eventually fire only at `Managed` scope. The variant is
-///    ready for that check without a shape change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsScope {
-    /// `<project>/.claude/settings.json` — committed, team-shared.
-    Project,
-    /// `<project>/.claude/settings.local.json` — gitignored, per-developer.
-    Local,
-    /// `~/.claude/settings.json` — per-user, all projects.
-    User,
-    /// Org-managed (`/Library/Application Support/ClaudeCode/managed-settings.json`,
-    /// `/etc/claude-code/managed-settings.json`, Windows registry / plist).
-    Managed,
+wire_enum! {
+    /// Closed-set of `settings.json` scopes per Claude Code spec /en/settings.
+    ///
+    /// Scope decides which keys / values are honored: certain settings
+    /// (`defaultMode: "auto"`, `autoMemoryDirectory`, `autoMode`,
+    /// `useAutoModeDuringPlan`, `skipDangerousModePermissionPrompt`) silently
+    /// no-op outside user / managed scope, so the validator must know its scope
+    /// to fire the right
+    /// findings. Caller-provided rather than path-inferred — path heuristics
+    /// (HOME env, filename) are platform-brittle and the caller already knows
+    /// which file it loaded.
+    ///
+    /// Four variants rather than a binary (`ProjectLocalOrNot`) because:
+    /// 1. Operator UX — the `--scope` CLI flag displays the full set; a binary
+    ///    would lose the labeling.
+    /// 2. Future scope-specific checks — managed-only keys
+    ///    (`allowManagedPermissionRulesOnly`, `strictPluginOnlyCustomization`,
+    ///    …) should eventually fire only at `Managed` scope. The variant is
+    ///    ready for that check without a shape change.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SettingsScope {
+        /// `<project>/.claude/settings.json` — committed, team-shared.
+        Project => "project",
+        /// `<project>/.claude/settings.local.json` — gitignored, per-developer.
+        Local => "local",
+        /// `~/.claude/settings.json` — per-user, all projects.
+        User => "user",
+        /// Org-managed (`/Library/Application Support/ClaudeCode/managed-settings.json`,
+        /// `/etc/claude-code/managed-settings.json`, Windows registry / plist).
+        Managed => "managed",
+    }
 }
 
 impl SettingsScope {
-    pub const ALL: &'static [Self] = &[Self::Project, Self::Local, Self::User, Self::Managed];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "project" => Self::Project,
-            "local" => Self::Local,
-            "user" => Self::User,
-            "managed" => Self::Managed,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Project => "project",
-            Self::Local => "local",
-            Self::User => "user",
-            Self::Managed => "managed",
-        }
-    }
-
     /// True for the scopes where keys in [`KNOWN_PROJECT_SCOPE_NOOP_KEYS`]
     /// (and the `defaultMode: "auto"` value) silently no-op. User and
     /// managed scope honor those settings; project and local do not.
