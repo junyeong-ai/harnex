@@ -253,7 +253,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             let mut assigned = None;
             if let record::Record::User(turn) = rec {
                 assigned = index.assign(turn);
-                if let Some(id) = assigned {
+                if let Some(id) =
+                    assigned.filter(|_| turn.authorship == record::Authorship::Authored)
+                {
                     prompts.observe(turn, id);
                 }
                 interventions.observe(turn);

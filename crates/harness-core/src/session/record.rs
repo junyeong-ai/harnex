@@ -178,10 +178,18 @@ wire_enum! {
 }
 
 impl Authorship {
-    /// Whether the runtime claimed a person was behind this turn. The coverage
-    /// ratio is taken over this population: turns the runtime never claimed are
-    /// outside the question, not failures to answer it.
-    fn claims_a_person(self) -> bool {
+    /// Whether the runtime claimed a person was behind this turn.
+    ///
+    /// Two questions are answered from one classification and only this one
+    /// decides the instruction boundary: whether the operator *wrote* the text
+    /// is [`Self::Authored`], and it governs what the repetition statistics
+    /// read. A prompt the operator chose rather than typed is still an
+    /// instruction the agent worked under, and dropping it would attribute its
+    /// turns, tokens and commits to whatever came before.
+    ///
+    /// The coverage ratio is taken over this population: turns the runtime
+    /// never claimed are outside the question, not failures to answer it.
+    pub fn claims_a_person(self) -> bool {
         matches!(self, Self::Authored | Self::SourceUnrecognised)
     }
 }

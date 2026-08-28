@@ -25,7 +25,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::record::{Authorship, Citation, Record, TokenUse, ToolUse, UserTurn};
+#[cfg(test)]
+use super::record::Authorship;
+use super::record::{Citation, Record, TokenUse, ToolUse, UserTurn};
 
 /// The tool the runtime records when the agent stops and asks the operator
 /// rather than choosing for them.
@@ -53,7 +55,7 @@ impl SubmissionIndex {
     /// `None` for a turn that is not the operator's own text — a tool result,
     /// an injected record, a turn attributed to something other than a person.
     pub fn assign(&mut self, turn: &UserTurn) -> Option<u64> {
-        if turn.authorship != Authorship::Authored || turn.text.is_none() {
+        if !turn.authorship.claims_a_person() || turn.text.is_none() {
             return None;
         }
         // A queued turn continues what is already open only while the agent has

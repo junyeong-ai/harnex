@@ -2134,3 +2134,50 @@ fn a_window_says_how_long_its_runs_took_and_over_how_many_it_knows() {
         "a record this module now reads is not also reported as skipped"
     );
 }
+
+/// A prompt the operator chose rather than typed is still an instruction: the
+/// runtime attributes it to a person, and the work under it is theirs. Its text
+/// is not theirs, so it stays out of the repetition statistics.
+#[test]
+fn an_instruction_the_operator_chose_rather_than_typed_is_still_an_instruction() {
+    let chosen = |uuid: &str, ts: &str, text: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","origin":{{"kind":"human"}},"promptSource":"suggestion_accepted","message":{{"content":"{text}"}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spent("s1", "x1", "2026-08-01T09:00:01Z", "claude-opus-5", 100),
+            chosen("a2", "2026-08-01T09:00:02Z", STANDING),
+            spent("s1", "x2", "2026-08-01T09:00:03Z", "claude-opus-5", 900),
+        ],
+    )]);
+
+    let facts = session::collect(
+        &config,
+        &CollectOptions {
+            with_text: true,
+            ..CollectOptions::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        facts.prompts.submissions, 2,
+        "the second instruction opened its own, or its work is attributed to the first"
+    );
+    assert_eq!(
+        facts.prompts.authored_turns, 1,
+        "and only the typed one is text the operator wrote"
+    );
+    assert_eq!(
+        facts.prompts.within_sessions.chars, 0,
+        "so a paragraph the operator did not type is not a paragraph they wrote twice"
+    );
+    assert_eq!(
+        facts.coverage.user_turns_by_authorship["source-unrecognised"], 1,
+        "coverage still says the source was one this binary does not recognise"
+    );
+}
