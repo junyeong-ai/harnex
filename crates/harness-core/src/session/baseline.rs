@@ -86,10 +86,15 @@ wire_enum! {
     /// work does not read as a window that went worse.
     pub enum SessionMetric {
         /// Characters written again in a session that did not yet hold them —
-        /// text no harness was holding.
-        CrossSessionCharsPerSubmission => "cross_session_chars_per_submission",
+        /// text no harness was holding. Denominated in the sessions that
+        /// received instructions, because a session is the occasion to retype
+        /// what an earlier one held: an operator who starts a session per task
+        /// meets more of those occasions than one who works in long sittings,
+        /// at identical habits.
+        CrossSessionCharsPerSession => "cross_session_chars_per_session",
         /// Characters written again inside a session that already held them —
-        /// text that was in context and did not survive it.
+        /// text that was in context and did not survive it. Denominated in
+        /// submissions, which is where that repetition happens.
         WithinSessionCharsPerSubmission => "within_session_chars_per_submission",
         /// Characters of project memory the runtime loaded.
         RuleLoadCharsPerSubmission => "rule_load_chars_per_submission",
@@ -135,9 +140,10 @@ impl SessionMetric {
     pub fn measure(self, facts: &SessionFacts) -> Option<Measurement> {
         let submissions = facts.prompts.submissions;
         Some(match self {
-            Self::CrossSessionCharsPerSubmission => {
-                Measurement::new(facts.prompts.across_sessions.as_ref()?.chars, submissions)
-            }
+            Self::CrossSessionCharsPerSession => Measurement::new(
+                facts.prompts.across_sessions.as_ref()?.chars,
+                facts.prompts.sessions,
+            ),
             Self::WithinSessionCharsPerSubmission => {
                 Measurement::new(facts.prompts.within_sessions.chars, submissions)
             }
