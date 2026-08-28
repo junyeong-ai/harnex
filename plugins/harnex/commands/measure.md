@@ -158,14 +158,22 @@ something installation does not touch.
 than two sessions**, which any window scoped with `--session` does. Say that
 the question was not asked; a null there is not an answer of none.
 
-**A block is `[session] min_block_chars` long or it is not counted**, and a
-character is not a constant amount of meaning: the same instruction is two to
-three times shorter in a language that writes a word in one or two characters
-than in one that spells it out. Say how many instructions in the window fell
-under the floor and what share of `agent_turns` they carried — measured over a
-Korean-language window, 19 of 75 instructions and 17% of the turns sat below
-it, invisible to both fields. Where that share is large the floor is set for
-another language and belongs in `harness.toml`.
+**Say what the instrument looked at before saying what it found.**
+`block_chars` against `authored_chars` is the share of the operator's writing
+that was long enough to be a paragraph at all — measured, 93% and 96% over two
+projects. The rest is invisible to both fields, and so is anything restated in
+different words, because matching is exact by design: a similarity threshold is
+a language-dependent constant and this module refuses one. So a low repetition
+figure means either that little was repeated or that little was examined, and
+only these two numbers together say which.
+
+The floor is a length, and a character is not a constant amount of meaning: the
+same instruction is two to three times shorter in a language that writes a word
+in one or two characters than in one that spells it out. Say how many
+instructions fell under it and what share of `agent_turns` they carried —
+measured over a Korean-language window, 19 of 75 instructions and 17% of the
+turns. Where that share is large the floor is set for another language and
+belongs in `harness.toml`.
 
 **Neither field says a paragraph is a constraint.** It is an exact paragraph
 typed twice, which a pasted error, a spec excerpt and a code block all are.
@@ -211,7 +219,7 @@ next act is to keep working rather than to change anything.
 by its four counts, instructions, agent turns; against commits, files touched,
 and what `repository` says still stands. A report on how someone works with an
 agent that never says what the whole thing came to has skipped the question
-they asked. Cross-check the count against `repository.commits_in_span` and say
+they asked. Cross-check the count against `repository.authored_in_span` and say
 it plainly when the two disagree.
 
 **1. What was delegated, and how it went.** §4's portfolio. Then the three
@@ -278,11 +286,11 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - `blocked` lists only calls refused more than once; a single refusal is not a
   pattern and most refusals never repeat
 - a commit is a floor: the runtime records some and not others, so
-  `repository.commits_in_span` is what `commits` is a floor against — measured,
-  41 of 92 over one project. A per-commit **rate** is not high for that reason:
+  `repository.authored_in_span` is what `commits` is a floor against — measured,
+  41 of 115 over one project. A per-commit **rate** is not high for that reason:
   a re-edit is only found against a commit the window observed, so both sides
   of the ratio are over the same commits. Re-denominating it in
-  `commits_in_span` assumes the unobserved commits were never re-edited
+  `authored_in_span` assumes the unobserved commits were never re-edited
 - a hook's cost is exact and its value is not recorded at all
 - token counts are counts, never money; and a delta across a window whose
   `models` set moved is a delta about the model as much as the operator
@@ -299,18 +307,21 @@ metric that will show whether it worked. Everything else goes in an appendix.
   difference and is not work the project lost
 - a merge changed nothing on its own, so it contributes no paths to `committed`
 - `written` minus `committed` is bounded by the commits the transcript
-  recorded, not by the commits made — measured, 41 of 102 over one project — so
+  recorded, not by the commits made — measured, 41 of 115 over one project — so
   a file committed in an unobserved commit sits in that difference. It is a
   ceiling on what did not ship, never a count of wasted work, and no baseline
   metric is denominated in it for that reason
+- repetition is exact-paragraph only, so a constraint restated in other words
+  is invisible and `chars: 0` is not evidence that nothing leaks;
+  `block_chars` against `authored_chars` is what says how much was examined
 - `rule_loads` is the project memory the runtime attached to a turn. A rule
   loaded on every turn is never attached and is absent here, so this is a floor
   on what was in force
 - `files_discovered` is the corpus the run opened; `files_in_window` is what it
   answered about
 - `by_fate` counts the commits the transcript recorded, which is a floor
-  against `commits_in_span` — measured, 41 of 92 over one project and 1,717 of
-  4,470 over another, so anything denominated in observed commits reads high
+  against `authored_in_span` — measured, 41 of 115 over one project and 1,724 of
+  4,502 over another, so anything denominated in observed commits reads high
 - an event the runtime wrote into two transcripts is counted once — a record
   by its uuid, a message by the transcript that wrote it — and
   `records_duplicated` says how many were discarded. One shape escapes, 201 of

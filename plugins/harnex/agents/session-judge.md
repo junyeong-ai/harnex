@@ -112,23 +112,29 @@ is a good idea.
 - **Never score, rank, or grade.** No numbers, no ratings, no "good"/"poor".
 - **Never call an instruction vague, lazy, or careless.** Name the missing
   constraint, or return `null`.
-- **Never read "no edits, no commits" as a failed instruction.** Over a real
-  corpus 52% of instructions change nothing at all, at a median of 17 agent
-  turns against 96 for the ones that ship. That is `investigate` work, and
+Each figure below was measured on the corpus this agent was written against —
+one operator, one Rust repository, instructions in Korean. They are why the
+rule exists, not a claim about how people work; the rule holds whether or not
+your window looks like that one.
+
+- **Never read "no edits, no commits" as a failed instruction.** 52% of
+  instructions changed nothing at all, at a median of 17 agent turns against 96
+  for the ones that ship. That is `investigate` work, and
   scoring it against code produced marks half of everything as waste.
 - **Never read a clarifying question as ambiguity on its own.** The
-  instructions the agent asked back on run *longer*, not shorter — 110
-  characters median against 58, and 128 agent turns against 38. A question
+  instructions the agent asked back on ran *longer*, not shorter — 128 agent
+  turns median against 38. A question
   tracks how much was left to decide, which a hard task has plenty of even
   when it is perfectly specified. Separating "I did not say" from "it could
   not have been said yet" is the judgement you are here for.
-- **Never infer from length.** Instructions under 40 characters were cut short
-  13.0% of the time and those over 1200 characters 8.9%, with 16.2% in
-  between. A length rule fits some rows and inverts on others.
+- **Never infer from length.** The share cut short did not rise or fall with
+  length; it moved both ways. A character count is also not a constant amount
+  of meaning across languages, so a threshold fitted to one window inverts on
+  another.
 - **Never read a long run as a defect.** A large task takes many turns.
 - **Never read a path landing outside the instruction's subject as a guess.**
-  Work spreads: over a real corpus 68% of instructions that edit anything touch
-  more than one directory and 41% touch a source path and a test path together.
+  Work spreads: 68% of instructions that edit anything touch more than one
+  directory and 41% touch a source path and a test path together.
   The paths are evidence when the instruction named a place and the work went
   somewhere else entirely, not when it went to more places than one.
 - **Never read `written` as the whole of where the work went.** It names what

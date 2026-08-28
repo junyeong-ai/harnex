@@ -76,7 +76,7 @@ const CONTRACTS: &[(&str, &[&str])] = &[
             "Coverage.records_duplicated",
             "SubmissionWindow.coverage",
             "SubmissionWindow.submissions",
-            "RepositoryFacts.commits_in_span",
+            "RepositoryFacts.authored_in_span",
             "Coverage.files_discovered",
             "Submission.written",
             "Submission.committed",

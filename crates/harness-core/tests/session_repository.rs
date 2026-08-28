@@ -27,6 +27,12 @@ fn git(dir: &Path, args: &[&str]) -> String {
 fn repo() -> TempDir {
     let dir = TempDir::new().unwrap();
     git(dir.path(), &["init", "-q", "-b", "main"]);
+    // The identity the commits carry is also the one the repository names, as
+    // in any real checkout: the span count asks git which commits are this
+    // author's, and a repository whose config disagrees with its own history
+    // is a fixture shape rather than a project.
+    git(dir.path(), &["config", "user.name", "t"]);
+    git(dir.path(), &["config", "user.email", "t@t"]);
     dir
 }
 
@@ -296,7 +302,7 @@ fn the_observed_commits_are_reported_beside_what_the_repository_counts() {
         .unwrap();
 
     assert_eq!(facts.commits.len(), 1);
-    assert_eq!(facts.commits_in_span, Some(3));
+    assert_eq!(facts.authored_in_span, Some(3));
 }
 
 #[test]
@@ -422,5 +428,37 @@ fn a_repository_with_nothing_committed_yet_answers_rather_than_failing() {
             .unwrap()
             .is_none(),
         "and the harness it does not have yet is absent, not unreadable"
+    );
+}
+
+#[test]
+fn the_span_counts_this_author_and_not_the_repository() {
+    let dir = repo();
+    commit(dir.path(), "mine");
+    let out = std::process::Command::new("git")
+        .args(["commit", "-q", "--allow-empty", "-m", "theirs"])
+        .current_dir(dir.path())
+        .env("GIT_AUTHOR_NAME", "other")
+        .env("GIT_AUTHOR_EMAIL", "other@elsewhere")
+        .env("GIT_COMMITTER_NAME", "other")
+        .env("GIT_COMMITTER_EMAIL", "other@elsewhere")
+        .output()
+        .expect("git runs");
+    assert!(out.status.success());
+
+    let made_at: jiff::Timestamp = git(dir.path(), &["log", "-1", "--format=%aI"])
+        .parse()
+        .unwrap();
+    let span = Some((
+        made_at - jiff::SignedDuration::from_hours(1),
+        made_at + jiff::SignedDuration::from_hours(1),
+    ));
+    let facts = repository::survey(dir.path(), &[], span).unwrap().unwrap();
+
+    assert_eq!(
+        facts.authored_in_span,
+        Some(1),
+        "a teammate's commit is the repository's output, not a floor this \
+         operator's recorded commits should be read against"
     );
 }

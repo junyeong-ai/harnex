@@ -572,7 +572,7 @@ fn every_recorded_metric_computes_what_it_computed() {
     let facts = session::collect(&config, &CollectOptions::default()).unwrap();
 
     let pinned = [
-        ("cross_session_chars_per_submission", 72, 4),
+        ("cross_session_chars_per_session", 72, 2),
         ("within_session_chars_per_submission", 144, 4),
         ("rule_load_chars_per_submission", 5, 4),
         // 250 and 40, the running total each session reached — not 350, which
@@ -930,7 +930,7 @@ fn a_metric_the_window_could_not_measure_is_absent_rather_than_zero() {
             typed("s1", "a2", "2026-08-01T10:00:00Z", STANDING),
         ],
     )]);
-    const ACROSS: &str = "cross_session_chars_per_submission";
+    const ACROSS: &str = "cross_session_chars_per_session";
 
     let one_session = baseline_of(&config, None, "one");
     assert!(

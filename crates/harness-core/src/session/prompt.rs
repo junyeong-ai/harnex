@@ -84,6 +84,15 @@ pub struct PromptFacts {
     pub submissions: usize,
     /// Characters across every paragraph that met `min_block_chars`.
     pub block_chars: usize,
+    /// Characters the operator wrote, whatever shape they arrived in. What
+    /// `block_chars` is a share of: repetition is measured over paragraphs long
+    /// enough to be one, so a window whose instructions are mostly shorter than
+    /// the floor reports little repetition because little was examined, and the
+    /// two numbers together are what tell those apart.
+    pub authored_chars: usize,
+    /// Sessions the operator gave an instruction in. The exposure for
+    /// repetition across sessions, and what the window's shape is read from.
+    pub sessions: usize,
     /// Paragraphs written again inside a session that already held them.
     ///
     /// The session had the text and received it again. Why is not here: a
@@ -121,6 +130,7 @@ pub struct PromptAnalyzer {
     sessions: BTreeSet<String>,
     authored_turns: usize,
     block_chars: usize,
+    authored_chars: usize,
 }
 
 impl PromptAnalyzer {
@@ -131,6 +141,7 @@ impl PromptAnalyzer {
             sessions: BTreeSet::new(),
             authored_turns: 0,
             block_chars: 0,
+            authored_chars: 0,
         }
     }
 
@@ -139,6 +150,7 @@ impl PromptAnalyzer {
             return;
         };
         self.authored_turns += 1;
+        self.authored_chars += text.chars().count();
         let session = turn.citation.session.clone();
         self.sessions.insert(session.clone());
 
@@ -203,6 +215,8 @@ impl PromptAnalyzer {
         PromptFacts {
             authored_turns: self.authored_turns,
             submissions,
+            authored_chars: self.authored_chars,
+            sessions: self.sessions.len(),
             block_chars: self.block_chars,
             within_sessions: Repetition {
                 chars: restated_chars,

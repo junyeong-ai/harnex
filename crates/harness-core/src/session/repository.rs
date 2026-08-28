@@ -87,12 +87,18 @@ pub struct RepositoryFacts {
     /// records a commit only sometimes, so this is what the window saw and not
     /// what the window did.
     pub commits: Vec<CommitOutcome>,
-    /// Commits git counts over the same span, which is what the floor above is
-    /// a floor against. Absent when the window observed no span. Measured over
-    /// this project the transcript held 29 of git's 42, so a rate denominated
-    /// in observed commits reads high by however much this gap is.
+    /// Commits this repository's configured author made over the same span,
+    /// which is what the floor above is a floor against. Filtered to that
+    /// author because an unfiltered count is the whole team's output, and a
+    /// floor read against it would say more about headcount than about what
+    /// the runtime recorded. Measured over this project the transcript held 29
+    /// of git's 42, so a rate denominated in observed commits reads high by
+    /// however much this gap is.
+    ///
+    /// Absent when the window observed no span, or when the repository names
+    /// no author to filter to.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub commits_in_span: Option<usize>,
+    pub authored_in_span: Option<usize>,
     /// Counts keyed by [`CommitFate::as_str`].
     pub by_fate: BTreeMap<String, usize>,
 }
@@ -147,14 +153,15 @@ pub fn survey(
         });
     }
 
-    let commits_in_span = match span {
-        Some((from, to)) => Some(
+    let authored_in_span = match (span, configured_author(project)?) {
+        (Some((from, to)), Some(author)) => Some(
             run(
                 project,
                 &[
                     "log",
                     &format!("--since={from}"),
                     &format!("--until={to}"),
+                    &format!("--author={author}"),
                     "--format=%H",
                     "HEAD",
                 ],
@@ -163,13 +170,13 @@ pub fn survey(
             .filter(|l| !l.trim().is_empty())
             .count(),
         ),
-        None => None,
+        _ => None,
     };
 
     Ok(Some(RepositoryFacts {
         head,
         commits,
-        commits_in_span,
+        authored_in_span,
         by_fate,
     }))
 }
@@ -409,7 +416,29 @@ fn stdin_query(project: &Path, args: &[&str], query: &str, what: &str) -> Result
 /// ask about; git saying "not a work tree" is the same; a git that could not be
 /// spawned is a failure, and reporting that as an absent repository would say
 /// the project has no history rather than that nothing asked.
-/// Where git says this project's work tree begins.
+/// The identity this repository commits under, if it names one.
+///
+/// `None` rather than an unfiltered count: a repository with no configured
+/// author cannot say which commits are the operator own, and answering with
+/// everyone would be a different number under the same name.
+fn configured_author(project: &Path) -> Result<Option<String>> {
+    match Command::new("git")
+        .args(["config", "--get", "user.email"])
+        .current_dir(project)
+        .output()
+    {
+        Ok(out) if out.status.success() => {
+            let email = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            Ok((!email.is_empty()).then_some(email))
+        }
+        Ok(_) => Ok(None),
+        Err(e) => Err(Error::CheckGitFailure {
+            message: format!("git config --get user.email spawn: {e}"),
+        }),
+    }
+}
+
+/// Where git says this project work tree begins.
 ///
 /// Git resolves a pathspec against the directory it runs in, so a window
 /// scoped below the root would ask about that subtree alone. Both callers here
