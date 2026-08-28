@@ -368,3 +368,23 @@ fn a_project_below_the_work_tree_still_reports_a_path_that_can_be_opened() {
         work_tree(&project).join("crates/core/src/lib.rs")
     );
 }
+
+#[test]
+fn project_memory_beside_the_code_it_governs_is_part_of_the_harness() {
+    let dir = repo();
+    commit_touching(dir.path(), "root memory", &["CLAUDE.md"]);
+    let nested = commit_touching(dir.path(), "crate memory", &["crates/core/CLAUDE.md"]);
+
+    let state =
+        repository::harness_state(dir.path(), &harness_core::config::default_harness_paths())
+            .unwrap()
+            .expect("a work tree answers");
+
+    assert_eq!(
+        state.head.as_deref(),
+        Some(nested.as_str()),
+        "a bare pathspec is anchored at the work tree root, so memory nested \
+         beside a crate moves the harness and only `**/` sees it"
+    );
+    assert!(!state.uncommitted);
+}

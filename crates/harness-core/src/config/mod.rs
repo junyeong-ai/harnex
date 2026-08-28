@@ -101,6 +101,11 @@ pub struct SessionConfig {
     /// windows, which is the difference between a delta that could be an
     /// effect and one that cannot.
     ///
+    /// These are git pathspecs, so a bare name is anchored at the work tree
+    /// root and reaches no deeper: project memory nested beside the code it
+    /// governs takes the `**/` form alongside it, which is why the default
+    /// carries `CLAUDE.md` twice.
+    ///
     /// The default covers everywhere a scaffolded harness lands, held there by
     /// `every_scaffolded_artifact_is_inside_the_default_harness`. A project
     /// that keeps any of it elsewhere declares that here.
@@ -111,10 +116,16 @@ pub struct SessionConfig {
 /// Everywhere a scaffolded harness lands, which is what a window measures the
 /// change to when nothing else is declared.
 pub fn default_harness_paths() -> Vec<String> {
-    [".claude", "CLAUDE.md", "harness.toml", "hooks"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+    [
+        ".claude",
+        "CLAUDE.md",
+        "**/CLAUDE.md",
+        "harness.toml",
+        "hooks",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 fn default_min_block_chars() -> usize {
     40
