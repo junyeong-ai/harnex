@@ -70,6 +70,13 @@ pub struct SessionConfig {
     /// Shortest paragraph that counts as a repeatable block. Below it, ordinary
     /// sentence fragments recur between unrelated prompts and the repeat signal
     /// drowns.
+    ///
+    /// The default is a length, and a length carries different amounts of
+    /// meaning per language: a script that writes a word in one or two
+    /// characters says the same instruction in a third of the characters an
+    /// alphabetic one needs, so the same floor hides more of what was written.
+    /// A project working in one lowers it here rather than reading the absence
+    /// as nothing repeated.
     #[serde(default = "default_min_block_chars")]
     pub min_block_chars: usize,
     /// Share of person-attributed turns that must carry a recognised prompt

@@ -750,7 +750,7 @@
           }
         },
         "min_block_chars": {
-          "description": "Shortest paragraph that counts as a repeatable block. Below it, ordinary\nsentence fragments recur between unrelated prompts and the repeat signal\ndrowns.",
+          "description": "Shortest paragraph that counts as a repeatable block. Below it, ordinary\nsentence fragments recur between unrelated prompts and the repeat signal\ndrowns.\n\nThe default is a length, and a length carries different amounts of\nmeaning per language: a script that writes a word in one or two\ncharacters says the same instruction in a third of the characters an\nalphabetic one needs, so the same floor hides more of what was written.\nA project working in one lowers it here rather than reading the absence\nas nothing repeated.",
           "type": "integer",
           "format": "uint",
           "minimum": 0,
