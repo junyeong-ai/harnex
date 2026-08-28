@@ -14,47 +14,24 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::path_guard;
+use crate::wire_enum::wire_enum;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum PromotionDecision {
-    /// Pattern promoted to a rule. Excluded from future candidate surfacing.
-    Approved,
-    /// Pattern excluded from future candidate surfacing.
-    Rejected,
-    /// Suspended; keeps surfacing (informational) until re-decided.
-    Deferred,
-    /// Previously approved, now retracted. Excluded from future surfacing.
-    Demoted,
+wire_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum PromotionDecision {
+        /// Pattern promoted to a rule. Excluded from future candidate surfacing.
+        Approved => "approved",
+        /// Pattern excluded from future candidate surfacing.
+        Rejected => "rejected",
+        /// Suspended; keeps surfacing (informational) until re-decided.
+        Deferred => "deferred",
+        /// Previously approved, now retracted. Excluded from future surfacing.
+        Demoted => "demoted",
+    }
 }
 
 impl PromotionDecision {
-    pub const ALL: &'static [Self] = &[
-        Self::Approved,
-        Self::Rejected,
-        Self::Deferred,
-        Self::Demoted,
-    ];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "approved" => Self::Approved,
-            "rejected" => Self::Rejected,
-            "deferred" => Self::Deferred,
-            "demoted" => Self::Demoted,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Approved => "approved",
-            Self::Rejected => "rejected",
-            Self::Deferred => "deferred",
-            Self::Demoted => "demoted",
-        }
-    }
-
     /// Whether this decision suppresses future candidate surfacing.
     ///
     /// Exhaustive match — adding a new [`PromotionDecision`] variant forces
@@ -69,6 +46,17 @@ impl PromotionDecision {
 
 #[cfg(test)]
 mod strategy_tests {
+
+    #[test]
+    fn promotion_decision_spells_itself_the_same_way_twice() {
+        for variant in PromotionDecision::ALL {
+            assert_eq!(
+                serde_json::to_string(variant).unwrap(),
+                format!("{:?}", variant.as_str()),
+                "`rename_all` and the wire string are two spellings of one name"
+            );
+        }
+    }
     use super::PromotionDecision;
 
     #[test]

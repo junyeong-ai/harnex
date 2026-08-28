@@ -19,36 +19,18 @@
 use std::path::Path;
 
 use crate::error::{Error, Result};
+use crate::wire_enum::wire_enum;
 
-/// Closed set of supported codegen source serialization formats. Adding a
-/// variant requires updating [`from_str`], [`as_str`], [`ALL`], and the
-/// match in [`load_source`] — all of which the compiler enforces via
-/// exhaustive `match` on `Self`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SourceFormat {
-    Toml,
-    Json,
-    Yaml,
-}
-
-impl SourceFormat {
-    pub const ALL: &'static [Self] = &[Self::Toml, Self::Json, Self::Yaml];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "toml" => Self::Toml,
-            "json" => Self::Json,
-            "yaml" => Self::Yaml,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Toml => "toml",
-            Self::Json => "json",
-            Self::Yaml => "yaml",
-        }
+wire_enum! {
+    /// Closed set of supported codegen source serialization formats. Adding a
+    /// variant requires updating [`from_str`], [`as_str`], [`ALL`], and the
+    /// match in [`load_source`] — all of which the compiler enforces via
+    /// exhaustive `match` on `Self`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SourceFormat {
+        Toml => "toml",
+        Json => "json",
+        Yaml => "yaml",
     }
 }
 

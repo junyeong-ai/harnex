@@ -21,66 +21,22 @@ use crate::error::ErrorCode;
 use crate::policy::PermissionsBlock;
 use crate::session::{BaselineDiff, SessionFacts, SubmissionWindow};
 use crate::telemetry::Event;
+use crate::wire_enum::wire_enum;
 
-/// Closed enum of schema targets `harness export schema <target>` understands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum SchemaTarget {
-    Config,
-    Envelope,
-    Finding,
-    Event,
-    Permissions,
-    ErrorCodes,
-    Session,
-    SessionSubmissions,
-    SessionBaseline,
-    All,
-}
-
-impl SchemaTarget {
-    pub const ALL: &'static [Self] = &[
-        Self::Config,
-        Self::Envelope,
-        Self::Finding,
-        Self::Event,
-        Self::Permissions,
-        Self::ErrorCodes,
-        Self::Session,
-        Self::SessionSubmissions,
-        Self::SessionBaseline,
-        Self::All,
-    ];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "config" => Self::Config,
-            "envelope" => Self::Envelope,
-            "finding" => Self::Finding,
-            "event" => Self::Event,
-            "permissions" => Self::Permissions,
-            "error-codes" => Self::ErrorCodes,
-            "session" => Self::Session,
-            "session-submissions" => Self::SessionSubmissions,
-            "session-baseline" => Self::SessionBaseline,
-            "all" => Self::All,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Config => "config",
-            Self::Envelope => "envelope",
-            Self::Finding => "finding",
-            Self::Event => "event",
-            Self::Permissions => "permissions",
-            Self::ErrorCodes => "error-codes",
-            Self::Session => "session",
-            Self::SessionSubmissions => "session-submissions",
-            Self::SessionBaseline => "session-baseline",
-            Self::All => "all",
-        }
+wire_enum! {
+    /// Closed enum of schema targets `harness export schema <target>` understands.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum SchemaTarget {
+        Config => "config",
+        Envelope => "envelope",
+        Finding => "finding",
+        Event => "event",
+        Permissions => "permissions",
+        ErrorCodes => "error-codes",
+        Session => "session",
+        SessionSubmissions => "session-submissions",
+        SessionBaseline => "session-baseline",
+        All => "all",
     }
 }
 

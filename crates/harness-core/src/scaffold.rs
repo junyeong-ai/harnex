@@ -48,6 +48,7 @@ use serde::{Deserialize, Serialize};
 use crate::envelope::Location;
 use crate::error::{Error, Result};
 use crate::policy::PermissionProfile;
+use crate::wire_enum::wire_enum;
 
 const MANIFEST_FILENAME: &str = "scaffold.toml";
 
@@ -57,33 +58,16 @@ const MANIFEST_FILENAME: &str = "scaffold.toml";
 /// substitution step.
 const LANG_PLACEHOLDER: &str = "{lang}";
 
-/// Which half of a harness an artifact belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum Tier {
-    /// Language-agnostic: emitted for every project, including one whose
-    /// stack has no profile.
-    Foundation,
-    /// Needs a detected language profile.
-    Language,
-}
-
-impl Tier {
-    pub const ALL: &'static [Self] = &[Self::Foundation, Self::Language];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "foundation" => Self::Foundation,
-            "language" => Self::Language,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Foundation => "foundation",
-            Self::Language => "language",
-        }
+wire_enum! {
+    /// Which half of a harness an artifact belongs to.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Tier {
+        /// Language-agnostic: emitted for every project, including one whose
+        /// stack has no profile.
+        Foundation => "foundation",
+        /// Needs a detected language profile.
+        Language => "language",
     }
 }
 
@@ -382,6 +366,7 @@ fn contains(whole: &serde_json::Value, part: &serde_json::Value) -> bool {
 
 #[cfg(test)]
 mod containment_tests {
+
     use super::fragment_landed;
     use serde_json::json;
 
@@ -433,6 +418,17 @@ mod containment_tests {
 #[cfg(test)]
 mod tier_tests {
     use super::Tier;
+
+    #[test]
+    fn tier_spells_itself_the_same_way_twice() {
+        for variant in Tier::ALL {
+            assert_eq!(
+                serde_json::to_string(variant).unwrap(),
+                format!("{:?}", variant.as_str()),
+                "`rename_all` and the wire string are two spellings of one name"
+            );
+        }
+    }
 
     #[test]
     fn from_str_round_trips_every_variant() {

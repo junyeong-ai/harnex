@@ -16,126 +16,48 @@ use std::path::PathBuf;
 use thiserror::Error as ThisError;
 
 use crate::envelope::Location;
+use crate::wire_enum::wire_enum;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Stable, kebab-screaming-snake error codes that appear in the JSON
-/// envelope `error.code` field. Mapping is a public contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErrorCode {
-    ConfigInvalid,
-    ConfigNotFound,
-    ConfigVersionMismatch,
-    PathTraversal,
-    PathSymlinkRefused,
-    IoFailure,
-    TelemetryKindUnknown,
-    TelemetryPayloadInvalid,
-    CodegenSourceMissing,
-    CodegenSourceKeyMissing,
-    CodegenSourceShapeInvalid,
-    CodegenRendererUnknown,
-    CodegenSentinelMissing,
-    CodegenSentinelDuplicate,
-    CodegenCycle,
-    PolicyProfileUnknown,
-    PolicyRuleInert,
-    PolicyVersionFailure,
-    ValidateFrontmatterMalformed,
-    ValidateFrontmatterInvalid,
-    LifecycleObservationCorrupt,
-    LifecycleConsumerStrategyUnknown,
-    LifecycleDemoteWithoutApproval,
-    LifecycleDecisionTextEmpty,
-    GuardHookInputInvalid,
-    GuardSpawnFailure,
-    GraphResponseInvalid,
-    GraphSpawnFailure,
-    CheckGitFailure,
-    SessionRootUnreadable,
-    SessionCoverageBelowFloor,
-    SessionBaselineLabelRejected,
-    SessionBaselineNotComparable,
-}
-
-impl ErrorCode {
-    /// Every variant, in stable order. Single source for the
-    /// `export schema error-codes` vocabulary — the exhaustive `as_str`
-    /// match forces this list to stay complete (a new variant fails to
-    /// compile `as_str` until handled, and the `all_variants_in_ALL` test
-    /// asserts `ALL` carries it).
-    pub const ALL: &'static [Self] = &[
-        Self::ConfigInvalid,
-        Self::ConfigNotFound,
-        Self::ConfigVersionMismatch,
-        Self::PathTraversal,
-        Self::PathSymlinkRefused,
-        Self::IoFailure,
-        Self::TelemetryKindUnknown,
-        Self::TelemetryPayloadInvalid,
-        Self::CodegenSourceMissing,
-        Self::CodegenSourceKeyMissing,
-        Self::CodegenSourceShapeInvalid,
-        Self::CodegenRendererUnknown,
-        Self::CodegenSentinelMissing,
-        Self::CodegenSentinelDuplicate,
-        Self::CodegenCycle,
-        Self::PolicyProfileUnknown,
-        Self::PolicyRuleInert,
-        Self::PolicyVersionFailure,
-        Self::ValidateFrontmatterMalformed,
-        Self::ValidateFrontmatterInvalid,
-        Self::LifecycleObservationCorrupt,
-        Self::LifecycleConsumerStrategyUnknown,
-        Self::LifecycleDemoteWithoutApproval,
-        Self::LifecycleDecisionTextEmpty,
-        Self::GuardHookInputInvalid,
-        Self::GuardSpawnFailure,
-        Self::GraphResponseInvalid,
-        Self::GraphSpawnFailure,
-        Self::CheckGitFailure,
-        Self::SessionRootUnreadable,
-        Self::SessionCoverageBelowFloor,
-        Self::SessionBaselineLabelRejected,
-        Self::SessionBaselineNotComparable,
-    ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::ConfigInvalid => "CONFIG_INVALID",
-            Self::ConfigNotFound => "CONFIG_NOT_FOUND",
-            Self::ConfigVersionMismatch => "CONFIG_VERSION_MISMATCH",
-            Self::PathTraversal => "PATH_TRAVERSAL",
-            Self::PathSymlinkRefused => "PATH_SYMLINK_REFUSED",
-            Self::IoFailure => "IO_FAILURE",
-            Self::TelemetryKindUnknown => "TELEMETRY_KIND_UNKNOWN",
-            Self::TelemetryPayloadInvalid => "TELEMETRY_PAYLOAD_INVALID",
-            Self::CodegenSourceMissing => "CODEGEN_SOURCE_MISSING",
-            Self::CodegenSourceKeyMissing => "CODEGEN_SOURCE_KEY_MISSING",
-            Self::CodegenSourceShapeInvalid => "CODEGEN_SOURCE_SHAPE_INVALID",
-            Self::CodegenRendererUnknown => "CODEGEN_RENDERER_UNKNOWN",
-            Self::CodegenSentinelMissing => "CODEGEN_SENTINEL_MISSING",
-            Self::CodegenSentinelDuplicate => "CODEGEN_SENTINEL_DUPLICATE",
-            Self::CodegenCycle => "CODEGEN_CYCLE",
-            Self::PolicyProfileUnknown => "POLICY_PROFILE_UNKNOWN",
-            Self::PolicyRuleInert => "POLICY_RULE_INERT",
-            Self::PolicyVersionFailure => "POLICY_VERSION_FAILURE",
-            Self::ValidateFrontmatterMalformed => "VALIDATE_FRONTMATTER_MALFORMED",
-            Self::ValidateFrontmatterInvalid => "VALIDATE_FRONTMATTER_INVALID",
-            Self::LifecycleObservationCorrupt => "LIFECYCLE_OBSERVATION_CORRUPT",
-            Self::LifecycleConsumerStrategyUnknown => "LIFECYCLE_CONSUMER_STRATEGY_UNKNOWN",
-            Self::LifecycleDemoteWithoutApproval => "LIFECYCLE_DEMOTE_WITHOUT_APPROVAL",
-            Self::LifecycleDecisionTextEmpty => "LIFECYCLE_DECISION_TEXT_EMPTY",
-            Self::GuardHookInputInvalid => "GUARD_HOOK_INPUT_INVALID",
-            Self::GuardSpawnFailure => "GUARD_SPAWN_FAILURE",
-            Self::GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
-            Self::GraphSpawnFailure => "GRAPH_SPAWN_FAILURE",
-            Self::CheckGitFailure => "CHECK_GIT_FAILURE",
-            Self::SessionRootUnreadable => "SESSION_ROOT_UNREADABLE",
-            Self::SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
-            Self::SessionBaselineLabelRejected => "SESSION_BASELINE_LABEL_REJECTED",
-            Self::SessionBaselineNotComparable => "SESSION_BASELINE_NOT_COMPARABLE",
-        }
+wire_enum! {
+    /// Stable, kebab-screaming-snake error codes that appear in the JSON
+    /// envelope `error.code` field. Mapping is a public contract.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ErrorCode {
+        ConfigInvalid => "CONFIG_INVALID",
+        ConfigNotFound => "CONFIG_NOT_FOUND",
+        ConfigVersionMismatch => "CONFIG_VERSION_MISMATCH",
+        PathTraversal => "PATH_TRAVERSAL",
+        PathSymlinkRefused => "PATH_SYMLINK_REFUSED",
+        IoFailure => "IO_FAILURE",
+        TelemetryKindUnknown => "TELEMETRY_KIND_UNKNOWN",
+        TelemetryPayloadInvalid => "TELEMETRY_PAYLOAD_INVALID",
+        CodegenSourceMissing => "CODEGEN_SOURCE_MISSING",
+        CodegenSourceKeyMissing => "CODEGEN_SOURCE_KEY_MISSING",
+        CodegenSourceShapeInvalid => "CODEGEN_SOURCE_SHAPE_INVALID",
+        CodegenRendererUnknown => "CODEGEN_RENDERER_UNKNOWN",
+        CodegenSentinelMissing => "CODEGEN_SENTINEL_MISSING",
+        CodegenSentinelDuplicate => "CODEGEN_SENTINEL_DUPLICATE",
+        CodegenCycle => "CODEGEN_CYCLE",
+        PolicyProfileUnknown => "POLICY_PROFILE_UNKNOWN",
+        PolicyRuleInert => "POLICY_RULE_INERT",
+        PolicyVersionFailure => "POLICY_VERSION_FAILURE",
+        ValidateFrontmatterMalformed => "VALIDATE_FRONTMATTER_MALFORMED",
+        ValidateFrontmatterInvalid => "VALIDATE_FRONTMATTER_INVALID",
+        LifecycleObservationCorrupt => "LIFECYCLE_OBSERVATION_CORRUPT",
+        LifecycleConsumerStrategyUnknown => "LIFECYCLE_CONSUMER_STRATEGY_UNKNOWN",
+        LifecycleDemoteWithoutApproval => "LIFECYCLE_DEMOTE_WITHOUT_APPROVAL",
+        LifecycleDecisionTextEmpty => "LIFECYCLE_DECISION_TEXT_EMPTY",
+        GuardHookInputInvalid => "GUARD_HOOK_INPUT_INVALID",
+        GuardSpawnFailure => "GUARD_SPAWN_FAILURE",
+        GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
+        GraphSpawnFailure => "GRAPH_SPAWN_FAILURE",
+        CheckGitFailure => "CHECK_GIT_FAILURE",
+        SessionRootUnreadable => "SESSION_ROOT_UNREADABLE",
+        SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
+        SessionBaselineLabelRejected => "SESSION_BASELINE_LABEL_REJECTED",
+        SessionBaselineNotComparable => "SESSION_BASELINE_NOT_COMPARABLE",
     }
 }
 

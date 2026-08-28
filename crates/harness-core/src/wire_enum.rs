@@ -5,11 +5,12 @@
 //! exhaustive match: a variant left out of a hand-written `ALL` still
 //! serialises through `as_str`, while whatever was built from `ALL` — a
 //! schema, a measurement, a validator's check set — does not know it exists,
-//! and nothing fails. Declaring all four from one list removes that state
-//! rather than testing for it.
+//! and nothing fails.
 //!
-//! `from_str` is derived from `ALL` rather than written as a second match, so
-//! the round trip holds by construction.
+//! Derives belong to the call site, because a vocabulary that crosses a JSON
+//! boundary needs `Serialize` where one that stays in the process does not.
+//! Where a call site does derive it, `#[serde(rename_all)]` spells the wire
+//! string a second time, and a test beside that type holds the two equal.
 
 /// Declares a closed wire enum: variants, [`ALL`](Self::ALL), `as_str` and
 /// `from_str` from one list.
@@ -21,7 +22,6 @@ macro_rules! wire_enum {
         }
     ) => {
         $(#[$enum_meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
         $vis enum $name {
             $($(#[$variant_meta])* $variant),+
         }
@@ -52,8 +52,9 @@ pub(crate) use wire_enum;
 #[cfg(test)]
 mod tests {
     wire_enum! {
-        /// Two variants and a doc on each, which is the shape both call sites
-        /// use.
+        /// Two variants and a doc on each, which is the shape every call site
+        /// uses.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Sample {
             /// First.
             One => "one",

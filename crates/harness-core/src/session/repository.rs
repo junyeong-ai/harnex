@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::path_guard;
+use crate::wire_enum::wire_enum;
 
 /// The line `git revert` writes into the message it generates.
 ///
@@ -46,40 +47,21 @@ const REVERT_TRAILER: &str = "This reverts commit ";
 /// the second and say nothing about why.
 const OBJECT_ID_WIDTHS: &[usize] = &[40, 64];
 
-/// Where a commit stands relative to the branch that is checked out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommitFate {
-    /// An ancestor of `HEAD`.
-    Reachable,
-    /// In the object database, but `HEAD` does not reach it. Says history was
-    /// rewritten or the branch was never merged; says nothing about whether
-    /// the work was undone.
-    Unreachable,
-    /// This repository could not resolve the abbreviation the transcript
-    /// recorded: a commit from another clone, one collected away, or a prefix
-    /// too short to name one. Git answers all three the same way, so they are
-    /// one answer here rather than three guesses.
-    Missing,
-}
-
-impl CommitFate {
-    pub const ALL: &'static [Self] = &[Self::Reachable, Self::Unreachable, Self::Missing];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "reachable" => Self::Reachable,
-            "unreachable" => Self::Unreachable,
-            "missing" => Self::Missing,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Reachable => "reachable",
-            Self::Unreachable => "unreachable",
-            Self::Missing => "missing",
-        }
+wire_enum! {
+    /// Where a commit stands relative to the branch that is checked out.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CommitFate {
+        /// An ancestor of `HEAD`.
+        Reachable => "reachable",
+        /// In the object database, but `HEAD` does not reach it. Says history was
+        /// rewritten or the branch was never merged; says nothing about whether
+        /// the work was undone.
+        Unreachable => "unreachable",
+        /// This repository could not resolve the abbreviation the transcript
+        /// recorded: a commit from another clone, one collected away, or a prefix
+        /// too short to name one. Git answers all three the same way, so they are
+        /// one answer here rather than three guesses.
+        Missing => "missing",
     }
 }
 

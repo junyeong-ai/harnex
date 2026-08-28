@@ -72,6 +72,7 @@ impl Measurement {
 }
 
 wire_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     /// The rates a baseline carries.
     ///
     /// Closed, because a baseline written by one build is read by another: the
@@ -202,43 +203,26 @@ fn dropped_tokens(facts: &SessionFacts) -> u64 {
     per_session.into_values().sum()
 }
 
-/// Whether the harness moved between the two windows a comparison holds
-/// against each other.
-///
-/// A delta across an unchanged harness is a delta about something else — the
-/// work, the model, the runtime, the operator. That is the question a
-/// before-and-after is asked, and nothing else in the record answers it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HarnessChange {
-    /// Both windows name the same commit and neither had uncommitted changes.
-    Unchanged,
-    /// The windows name different commits.
-    Changed,
-    /// A window recorded no harness state, or had uncommitted changes, so what
-    /// it ran under is not identified by a commit.
-    Unknown,
+wire_enum! {
+    /// Whether the harness moved between the two windows a comparison holds
+    /// against each other.
+    ///
+    /// A delta across an unchanged harness is a delta about something else — the
+    /// work, the model, the runtime, the operator. That is the question a
+    /// before-and-after is asked, and nothing else in the record answers it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum HarnessChange {
+        /// Both windows name the same commit and neither had uncommitted changes.
+        Unchanged => "unchanged",
+        /// The windows name different commits.
+        Changed => "changed",
+        /// A window recorded no harness state, or had uncommitted changes, so what
+        /// it ran under is not identified by a commit.
+        Unknown => "unknown",
+    }
 }
 
 impl HarnessChange {
-    pub const ALL: &'static [Self] = &[Self::Unchanged, Self::Changed, Self::Unknown];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "unchanged" => Self::Unchanged,
-            "changed" => Self::Changed,
-            "unknown" => Self::Unknown,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Unchanged => "unchanged",
-            Self::Changed => "changed",
-            Self::Unknown => "unknown",
-        }
-    }
-
     fn between(from: Option<&HarnessState>, to: Option<&HarnessState>) -> Self {
         match (from, to) {
             (Some(a), Some(b)) if !a.uncommitted && !b.uncommitted && a.head.is_some() => {

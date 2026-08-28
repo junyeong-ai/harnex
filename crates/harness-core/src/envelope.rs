@@ -143,6 +143,7 @@ mod severity_tests {
 }
 
 wire_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     /// Closed set of auto-fix commands the safe-fix registry recognises.
     ///
     /// Lives in the envelope because it is the value of a [`Finding`] field:

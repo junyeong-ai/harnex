@@ -5,45 +5,24 @@
 //! (`Config::validate_codegen`) and the factory ([`renderer_for`]) consume
 //! the enum, so a new variant forces both sites to update at compile time.
 
+use crate::wire_enum::wire_enum;
+
 pub trait Renderer: Send + Sync {
     /// Render values for embedding between sentinels. `name` is used by
     /// assignment renderers (TOML/Bash); list renderers ignore it.
     fn render(&self, name: Option<&str>, values: &[String]) -> String;
 }
 
-/// Closed set of supported renderer strategies. Adding a variant requires
-/// updating [`from_str`], [`as_str`], [`ALL`], and the match in
-/// [`renderer_for`] — all of which the compiler enforces via exhaustive
-/// `match` on `Self`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RendererStrategy {
-    TomlArrayAssignment,
-    BashArrayAssignment,
-    MarkdownBulletList,
-}
-
-impl RendererStrategy {
-    pub const ALL: &'static [Self] = &[
-        Self::TomlArrayAssignment,
-        Self::BashArrayAssignment,
-        Self::MarkdownBulletList,
-    ];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "toml-array-assignment" => Self::TomlArrayAssignment,
-            "bash-array-assignment" => Self::BashArrayAssignment,
-            "markdown-bullet-list" => Self::MarkdownBulletList,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::TomlArrayAssignment => "toml-array-assignment",
-            Self::BashArrayAssignment => "bash-array-assignment",
-            Self::MarkdownBulletList => "markdown-bullet-list",
-        }
+wire_enum! {
+    /// Closed set of supported renderer strategies. Adding a variant requires
+    /// updating [`from_str`], [`as_str`], [`ALL`], and the match in
+    /// [`renderer_for`] — all of which the compiler enforces via exhaustive
+    /// `match` on `Self`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum RendererStrategy {
+        TomlArrayAssignment => "toml-array-assignment",
+        BashArrayAssignment => "bash-array-assignment",
+        MarkdownBulletList => "markdown-bullet-list",
     }
 }
 
