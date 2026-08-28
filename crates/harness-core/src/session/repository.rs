@@ -234,6 +234,14 @@ pub fn harness_state(project: &Path, paths: &[String]) -> Result<Option<HarnessS
     }))
 }
 
+/// Which files each commit changed, as absolute paths.
+///
+/// Git spells them relative to the work tree, and the work tree is not
+/// `project` — a project inside a repository gets paths prefixed with its own
+/// position. Only this module is in a position to ask git where the root is,
+/// so the join happens here: a caller holding these beside
+/// [`super::submission::Submission::written`], which the runtime records
+/// absolute and which reaches outside the repository, could not do it.
 pub fn paths_touched(project: &Path, commits: &[String]) -> Result<BTreeMap<String, Vec<PathBuf>>> {
     // Same refusal as `resolve`: git is asked about object ids and never about
     // a revision expression something else composed.
@@ -265,13 +273,18 @@ pub fn paths_touched(project: &Path, commits: &[String]) -> Result<BTreeMap<Stri
         "git log --stdin --name-only",
     )?;
 
+    let root = PathBuf::from(run(project, &["rev-parse", "--show-toplevel"])?.trim());
+
     let mut out = BTreeMap::new();
     for commit in listing.split('\0').skip(1) {
         let mut lines = commit.lines();
         let Some(sha) = lines.next() else { continue };
         out.insert(
             sha.to_string(),
-            lines.filter(|l| !l.is_empty()).map(PathBuf::from).collect(),
+            lines
+                .filter(|l| !l.is_empty())
+                .map(|l| root.join(l))
+                .collect(),
         );
     }
     Ok(out)

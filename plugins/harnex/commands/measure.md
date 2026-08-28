@@ -249,7 +249,10 @@ metric that will show whether it worked. Everything else goes in an appendix.
   from nowhere
 - `written` names what `Write` and `Edit` were pointed at, so work done through
   a shell leaves nothing there; `committed` is where the work landed, and needs
-  `--project` over a git work tree
+  `--project` over a git work tree. Both are absolute, so what an instruction
+  wrote and did not ship is `written` minus `committed` — and a write outside
+  the project, to a scratch directory or another repository, stays in that
+  difference and is not work the project lost
 - a merge changed nothing on its own, so it contributes no paths to `committed`
 - `rule_loads` is the project memory the runtime attached to a turn. A rule
   loaded on every turn is never attached and is absent here, so this is a floor
