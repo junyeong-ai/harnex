@@ -132,6 +132,28 @@ pub enum BaselineCommand {
 /// anchor a comparison.
 const THIN_WINDOW_CODE: &str = "SESSION_BASELINE_BELOW_SUPPORT";
 
+/// The code a consumer matches on when part of the operator's own text was
+/// written under a prompt source this binary does not recognise.
+const UNREAD_TEXT_CODE: &str = "SESSION_COVERAGE_BELOW_FLOOR";
+
+/// What the operator is owed when the window read only some of their writing.
+///
+/// The rates that read it are withheld and the rest answer, so the envelope
+/// looks like an ordinary one — this is what says it is not. Naming the sources
+/// matters more than the ratio: they are the vocabulary this binary has not
+/// caught up with, and an operator who recognises one can say so upstream.
+fn unread_text(coverage: &session::Coverage, floor: f64) -> Vec<Warning> {
+    let Some(ratio) = coverage.authorship_ratio().filter(|r| *r < floor) else {
+        return Vec::new();
+    };
+    vec![Warning {
+        code: UNREAD_TEXT_CODE.to_string(),
+        message: format!(
+            "{ratio:.3} of the turns the runtime attributed to a person carried a prompt source this binary recognises, below session.coverage_floor {floor}; the rates taken over the operator's own text are not recorded and the rest are"
+        ),
+    }]
+}
+
 /// What the operator is owed about a window too thin to compare against.
 ///
 /// Saving is not the failure — the ledger holds it and the next window starts
@@ -157,7 +179,7 @@ fn thin_window(baseline: &Baseline, support_floor: u64) -> Vec<Warning> {
 /// Collect a window and refuse to report rates the window does not support.
 fn measure(config: &SessionConfig, options: &CollectOptions) -> Result<session::SessionFacts> {
     let facts = session::collect(config, options)?;
-    session::require_coverage(&facts.coverage, config.coverage_floor)?;
+    session::require_coverage(&facts.coverage)?;
     Ok(facts)
 }
 
@@ -178,7 +200,8 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
         }
         SessionCommand::Facts { window, with_text } => {
             let facts = measure(session_config, &window.options(with_text, false)?)?;
-            write_envelope_success(out, facts)?;
+            let warnings = unread_text(&facts.coverage, session_config.coverage_floor);
+            write_envelope_success_warned(out, facts, warnings)?;
         }
         SessionCommand::Submissions {
             window,
@@ -193,7 +216,8 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                 });
             }
             let cap = sample.or(session_config.submission_sample);
-            write_envelope_success(
+            let warnings = unread_text(&facts.coverage, session_config.coverage_floor);
+            write_envelope_success_warned(
                 out,
                 session::SubmissionWindow {
                     submissions: match cap {
@@ -202,6 +226,7 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                     },
                     coverage: facts.coverage,
                 },
+                warnings,
             )?;
         }
         SessionCommand::Baseline { cmd } => {
@@ -239,6 +264,7 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                             label: &label,
                             recorded_at: Timestamp::now(),
                             min_block_chars: session_config.min_block_chars,
+                            coverage_floor: session_config.coverage_floor,
                             harness: match &project {
                                 Some(dir) => session::repository::harness_state(
                                     dir,
@@ -251,7 +277,8 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                         &facts,
                     );
                     ledger.append(&baseline)?;
-                    let warnings = thin_window(&baseline, session_config.min_support);
+                    let mut warnings = unread_text(&facts.coverage, session_config.coverage_floor);
+                    warnings.extend(thin_window(&baseline, session_config.min_support));
                     write_envelope_success_warned(out, baseline, warnings)?;
                 }
                 BaselineCommand::Diff { from, to } => {

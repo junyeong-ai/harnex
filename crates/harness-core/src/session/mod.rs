@@ -363,38 +363,21 @@ fn attribute_committed_paths(
     Ok(())
 }
 
-/// Refuse to report rates the input does not support.
+/// Refuse a window nothing in which was attributed to a person.
 ///
-/// Below the floor the honest answer is that the question was not answered.
-/// A biased number is worse than a withheld one because it is actionable.
-pub fn require_coverage(coverage: &Coverage, floor: f64) -> Result<()> {
+/// The only failure this cannot report around: with no person-attributed turn
+/// there is no operator to describe, and every rate would be taken over a
+/// population of none. A window that read *some* of the operator answers, and
+/// says how much — the floor decides which measurements are withheld, not
+/// whether the window is answered at all, because eight of ten rates never read
+/// operator text and refusing them for a prompt source this binary has not
+/// heard of describes the binary rather than the window.
+pub fn require_coverage(coverage: &Coverage) -> Result<()> {
     match coverage.authorship_ratio() {
         None => Err(Error::SessionCoverageBelowFloor {
             observed: 0.0,
-            floor,
+            floor: 0.0,
             message: "no turn in the window was attributed to a person".into(),
-        }),
-        Some(ratio) if ratio < floor => Err(Error::SessionCoverageBelowFloor {
-            observed: ratio,
-            floor,
-            message: format!(
-                "{} of {} turns the runtime attributed to a person carried a prompt source this binary recognises",
-                coverage
-                    .user_turns_by_authorship
-                    .get(Authorship::Authored.as_str())
-                    .copied()
-                    .unwrap_or(0),
-                coverage
-                    .user_turns_by_authorship
-                    .get(Authorship::Authored.as_str())
-                    .copied()
-                    .unwrap_or(0)
-                    + coverage
-                        .user_turns_by_authorship
-                        .get(Authorship::SourceUnrecognised.as_str())
-                        .copied()
-                        .unwrap_or(0)
-            ),
         }),
         Some(_) => Ok(()),
     }
@@ -536,15 +519,18 @@ mod tests {
     fn an_empty_corpus_withholds_rates_rather_than_reporting_zero() {
         let (_dir, config) = corpus(&[]);
         let facts = collect(&config, &CollectOptions::default()).unwrap();
-        let err = require_coverage(&facts.coverage, config.coverage_floor).unwrap_err();
+        let err = require_coverage(&facts.coverage).unwrap_err();
         assert_eq!(
             err.code(),
             crate::error::ErrorCode::SessionCoverageBelowFloor
         );
     }
 
+    /// The window is still answered: eight of ten rates never read the
+    /// operator's text, and a prompt source this binary has not heard of says
+    /// nothing about a hook's wall-clock or a permission rule's refusals.
     #[test]
-    fn unrecognised_prompt_sources_pull_coverage_below_the_floor() {
+    fn an_unrecognised_prompt_source_lowers_coverage_without_refusing_the_window() {
         let odd = r#"{"type":"user","uuid":"u","timestamp":"2026-08-01T00:00:00Z","sessionId":"s","origin":{"kind":"human"},"promptSource":"shipped-tomorrow","message":{"content":"hello"}}"#;
         let (_dir, config) = corpus(&[(
             "a.jsonl",
@@ -557,7 +543,7 @@ mod tests {
         let facts = collect(&config, &CollectOptions::default()).unwrap();
 
         assert_eq!(facts.coverage.authorship_ratio(), Some(0.5));
-        assert!(require_coverage(&facts.coverage, config.coverage_floor).is_err());
+        assert!(require_coverage(&facts.coverage).is_ok());
     }
 
     #[test]
@@ -577,6 +563,6 @@ mod tests {
             facts.coverage.record_types_unconsumed.get("worktree-state"),
             Some(&1)
         );
-        assert!(require_coverage(&facts.coverage, config.coverage_floor).is_ok());
+        assert!(require_coverage(&facts.coverage).is_ok());
     }
 }
