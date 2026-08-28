@@ -316,6 +316,11 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - repetition is exact-paragraph only, so a constraint restated in other words
   is invisible and `chars: 0` is not evidence that nothing leaks;
   `block_chars` against `authored_chars` is what says how much was examined
+- a `SESSION_COVERAGE_BELOW_FLOOR` warning means part of the operator's writing
+  arrived under a prompt source this binary does not recognise. Those
+  instructions are still counted and their work still attributed; only the two
+  rates taken over the text are withheld, and the window answers about
+  everything else
 - `rule_loads` is the project memory the runtime attached to a turn. A rule
   loaded on every turn is never attached and is absent here, so this is a floor
   on what was in force
