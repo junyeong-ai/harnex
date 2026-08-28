@@ -50,7 +50,7 @@ pub mod repository;
 pub mod rework;
 pub mod submission;
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
 use jiff::Timestamp;
@@ -180,6 +180,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     // and into a resumed session under a new id — so the same event reaches
     // this loop from more than one file and from more than one session.
     let mut seen: HashSet<String> = HashSet::new();
+    // A message is written to one transcript. Its records are several — one
+    // per block it produced — so within that file they are distinct events;
+    // another file reporting the same message is reporting copies of them,
+    // whatever uuids it gave them.
+    let mut wrote: HashMap<String, std::path::PathBuf> = HashMap::new();
     let mut in_window: BTreeSet<std::path::PathBuf> = BTreeSet::new();
 
     // A session's transcripts are read together and interleaved. A subagent
@@ -217,6 +222,22 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 coverage.records_duplicated += 1;
             }
             first
+        });
+        records.retain(|rec| {
+            let record::Record::Assistant(turn) = rec else {
+                return true;
+            };
+            let Some(message) = &turn.message else {
+                return true;
+            };
+            let first = wrote
+                .entry(message.clone())
+                .or_insert_with(|| turn.citation.file.clone());
+            let here = *first == turn.citation.file;
+            if !here {
+                coverage.records_duplicated += 1;
+            }
+            here
         });
         for rec in &records {
             sessions.insert(rec.citation().session.clone());
