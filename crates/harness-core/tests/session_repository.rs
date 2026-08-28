@@ -1,6 +1,6 @@
 //! The repository half of a project-scoped window, against a real git tree.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use harness_core::session::{CommitFate, repository};
@@ -51,6 +51,11 @@ fn commit_touching(dir: &Path, message: &str, paths: &[&str]) -> String {
     git(dir, &["rev-parse", "HEAD"])
 }
 
+/// Where git says the work tree is, which is what a reported path is joined to.
+fn work_tree(dir: &Path) -> PathBuf {
+    PathBuf::from(git(dir, &["rev-parse", "--show-toplevel"]))
+}
+
 #[test]
 fn a_commit_reports_the_paths_it_changed_including_the_first_one_in_the_tree() {
     let dir = repo();
@@ -59,20 +64,15 @@ fn a_commit_reports_the_paths_it_changed_including_the_first_one_in_the_tree() {
 
     let touched = repository::paths_touched(dir.path(), &[root.clone(), later.clone()]).unwrap();
 
+    let tree = work_tree(dir.path());
     assert_eq!(
         touched[&root],
-        vec![Path::new("README.md"), Path::new("src/lib.rs")]
-            .into_iter()
-            .map(Path::to_path_buf)
-            .collect::<Vec<_>>(),
+        vec![tree.join("README.md"), tree.join("src/lib.rs")],
         "a root commit has no parent and still changed every file in it"
     );
     assert_eq!(
         touched[&later],
-        vec![Path::new("src/lib.rs"), Path::new("tests/it.rs")]
-            .into_iter()
-            .map(Path::to_path_buf)
-            .collect::<Vec<_>>()
+        vec![tree.join("src/lib.rs"), tree.join("tests/it.rs")]
     );
 }
 
@@ -85,12 +85,10 @@ fn a_file_named_like_an_object_id_is_a_path_and_not_a_commit() {
     let touched = repository::paths_touched(dir.path(), std::slice::from_ref(&sha)).unwrap();
 
     assert_eq!(touched.len(), 1, "one commit was asked about");
+    let tree = work_tree(dir.path());
     assert_eq!(
         touched[&sha],
-        vec![Path::new(hex), Path::new("src/lib.rs")]
-            .into_iter()
-            .map(Path::to_path_buf)
-            .collect::<Vec<_>>(),
+        vec![tree.join(hex), tree.join("src/lib.rs")],
         "a name shaped like an object id is still a name"
     );
 }
@@ -137,7 +135,10 @@ fn a_path_outside_ascii_is_reported_as_it_is_written() {
 
     let touched = repository::paths_touched(dir.path(), std::slice::from_ref(&sha)).unwrap();
 
-    assert_eq!(touched[&sha], vec![Path::new("문서/설계.md").to_path_buf()]);
+    assert_eq!(
+        touched[&sha],
+        vec![work_tree(dir.path()).join("문서/설계.md")]
+    );
 }
 
 #[test]
@@ -344,5 +345,26 @@ fn the_revert_trailer_is_a_line_and_not_a_phrase_in_a_paragraph() {
     assert!(
         facts.commits[0].reverted_by.is_empty(),
         "a sentence about a revert is not a revert"
+    );
+}
+
+#[test]
+fn a_project_below_the_work_tree_still_reports_a_path_that_can_be_opened() {
+    let dir = repo();
+    let sha = commit_touching(dir.path(), "nested", &["crates/core/src/lib.rs"]);
+    let project = dir.path().join("crates/core");
+
+    let touched = repository::paths_touched(&project, std::slice::from_ref(&sha)).unwrap();
+
+    let reported = &touched[&sha][0];
+    assert!(
+        reported.is_file(),
+        "git spells a path from the work tree root, not from the project it was \
+         asked in, so joining it to the project would name a file that is not there: {}",
+        reported.display()
+    );
+    assert_eq!(
+        *reported,
+        work_tree(&project).join("crates/core/src/lib.rs")
     );
 }

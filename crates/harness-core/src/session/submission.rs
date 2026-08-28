@@ -111,9 +111,11 @@ pub struct Submission {
     /// without one and an absent commit is not a failed instruction. The shas
     /// are what joins an instruction to what became of its work.
     pub commits: Vec<String>,
-    /// Paths those commits changed, in path order. Where the work landed,
-    /// however it was made. Present only where the window was scoped to a
-    /// project and that project is a git work tree.
+    /// Paths those commits changed, in path order, absolute as `written` is
+    /// so the two can be held against each other — what was written and did
+    /// not ship is the difference. Where the work landed, however it was made.
+    /// Present only where the window was scoped to a project and that project
+    /// is a git work tree.
     pub committed: Vec<PathBuf>,
     /// Interruptions the runtime marked while it stood — a floor, for the
     /// reason [`super::InterventionKind`] gives.
