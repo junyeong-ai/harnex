@@ -42,9 +42,9 @@ does not exist — do not supply it from reading transcripts by hand.
 **If a cost source is installed, take it too.** The transcripts carry token
 counts and no clock and no price: nothing in them says how long a tool call
 took, whether it failed, or what any of it cost. A telemetry collector keyed by
-`session_id` — `hatel` is the one this plugin knows — supplies exactly that
-gap, and every citation here carries the session it belongs to, so the join is
-exact. Ask it for the same window, check its own wiring first, and add:
+`session_id` supplies exactly that gap, and every citation here carries the
+session it belongs to, so the join is exact. Any collector that keys on it
+will do; ask it for the same window, check its own wiring first, and add:
 
 | what it adds | why the transcript cannot |
 |---|---|
@@ -74,6 +74,14 @@ crossing worth reading: if the labels are wrong the observed strata still hold.
 Report per kind — instructions, median `agent_turns`, `tokens.output`, share
 cut short, share that shipped — and withhold a rate for any kind with fewer
 instructions than `[session] min_support`.
+
+A median answers what a kind costs *each time*, which is the question for
+every kind but one. `continue` — "keep going", "next round" — carries no
+content of its own, so what it costs is a total: the share of the window's
+`agent_turns` and `tokens.output` spent under instructions that added nothing
+to what was already standing. Report that share, and never prescribe from it
+alone — a long continuation is an operator letting good work run as often as
+it is one who stopped saying where to stop.
 
 Read `tools` beside `harness.denials`, which groups by the same tool names.
 Friction is as much a function of which tool the work goes through as of how
@@ -134,6 +142,15 @@ something installation does not touch.
 **`across_sessions` is null where the window holds instructions from fewer
 than two sessions**, which any window scoped with `--session` does. Say that
 the question was not asked; a null there is not an answer of none.
+
+**A block is `[session] min_block_chars` long or it is not counted**, and a
+character is not a constant amount of meaning: the same instruction is two to
+three times shorter in a language that writes a word in one or two characters
+than in one that spells it out. Say how many instructions in the window fell
+under the floor and what share of `agent_turns` they carried — measured over a
+Korean-language window, 19 of 75 instructions and 17% of the turns sat below
+it, invisible to both fields. Where that share is large the floor is set for
+another language and belongs in `harness.toml`.
 
 **Neither field says a paragraph is a constraint.** It is an exact paragraph
 typed twice, which a pasted error, a spec excerpt and a code block all are.
@@ -254,6 +271,11 @@ metric that will show whether it worked. Everything else goes in an appendix.
   the project, to a scratch directory or another repository, stays in that
   difference and is not work the project lost
 - a merge changed nothing on its own, so it contributes no paths to `committed`
+- `written` minus `committed` is bounded by the commits the transcript
+  recorded, not by the commits made — measured, 41 of 102 over one project — so
+  a file committed in an unobserved commit sits in that difference. It is a
+  ceiling on what did not ship, never a count of wasted work, and no baseline
+  metric is denominated in it for that reason
 - `rule_loads` is the project memory the runtime attached to a turn. A rule
   loaded on every turn is never attached and is absent here, so this is a floor
   on what was in force
