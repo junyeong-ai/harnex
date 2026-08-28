@@ -58,6 +58,7 @@ wire_enum! {
         SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
         SessionBaselineLabelRejected => "SESSION_BASELINE_LABEL_REJECTED",
         SessionBaselineNotComparable => "SESSION_BASELINE_NOT_COMPARABLE",
+        SessionBaselineUnreadable => "SESSION_BASELINE_UNREADABLE",
     }
 }
 
@@ -188,6 +189,9 @@ pub enum Error {
 
     #[error("baselines cannot be compared: {message}")]
     SessionBaselineNotComparable { message: String },
+
+    #[error("{path}: {message}")]
+    SessionBaselineUnreadable { path: PathBuf, message: String },
 }
 
 impl Error {
@@ -230,6 +234,7 @@ impl Error {
             Self::SessionCoverageBelowFloor { .. } => ErrorCode::SessionCoverageBelowFloor,
             Self::SessionBaselineLabelRejected { .. } => ErrorCode::SessionBaselineLabelRejected,
             Self::SessionBaselineNotComparable { .. } => ErrorCode::SessionBaselineNotComparable,
+            Self::SessionBaselineUnreadable { .. } => ErrorCode::SessionBaselineUnreadable,
         }
     }
 
@@ -302,6 +307,9 @@ impl Error {
             ),
             Self::SessionBaselineNotComparable { .. } => Some(
                 "a comparison needs two recorded windows of the same scope that do not overlap; `baseline save` starts where the last window of that scope ended",
+            ),
+            Self::SessionBaselineUnreadable { .. } => Some(
+                "the line named is not a window this build can place: move the ledger aside and record the next window from here",
             ),
             _ => None,
         }

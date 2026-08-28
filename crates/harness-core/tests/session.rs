@@ -954,33 +954,6 @@ fn a_metric_the_window_could_not_measure_is_absent_rather_than_zero() {
     assert_eq!(unmatched.code(), ErrorCode::SessionBaselineNotComparable);
 }
 
-/// A baseline as an earlier build wrote it: no `oracle_version`, and none of
-/// the coverage counters added since. The ledger is append-only and is the
-/// operator's, so a build that cannot read what an earlier one recorded takes
-/// their history away.
-const BASELINE_FROM_AN_EARLIER_BUILD: &str = r#"{"label":"round-1","recorded_at":"2026-08-26T00:00:00Z","project":"/p","coverage":{"files_discovered":2,"files_read":2,"files_unreadable":0,"records_total":9,"records_malformed":0,"record_types_unconsumed":{},"user_turns_by_authorship":{"authored":4},"runtime_versions":["2.1.246"],"models":["claude-opus-5"],"sessions":2,"observed_from":"2026-08-25T00:00:00Z","observed_to":"2026-08-26T00:00:00Z"},"measurements":{"denials_per_submission":{"numerator":3,"denominator":4}}}"#;
-
-#[test]
-fn a_baseline_an_earlier_build_recorded_still_loads() {
-    let (dir, _config) = corpus(&[(
-        "-Users-me-alpha/s1.jsonl",
-        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
-    )]);
-    let path = dir.path().join("older.jsonl");
-    std::fs::write(&path, format!("{BASELINE_FROM_AN_EARLIER_BUILD}\n")).unwrap();
-
-    let recorded = session::BaselineLedger::new(path).load_all().unwrap();
-
-    assert_eq!(recorded.len(), 1);
-    assert_eq!(recorded[0].label, "round-1");
-    assert_eq!(
-        recorded[0].oracle_version, None,
-        "which is how a reader knows not to believe the counters it did not record"
-    );
-    assert_eq!(recorded[0].coverage.records_forked, 0);
-    assert_eq!(recorded[0].coverage.sessions, 2);
-}
-
 #[test]
 fn a_record_on_the_boundary_belongs_to_one_of_the_two_windows() {
     // Both turns land on the same instant, which 5.55% of adjacent records do.
@@ -1064,33 +1037,52 @@ fn a_comparison_says_whether_the_two_windows_were_measured_the_same_way() {
     assert_eq!(change(&before, &after), "unchanged", "one build, one floor");
 
     let mut other_build = after.clone();
-    other_build.oracle_version = Some("0.0.1-other".into());
+    other_build.oracle_version = "0.0.1-other".into();
     assert_eq!(change(&before, &other_build), "changed");
 
     let mut other_floor = after.clone();
-    other_floor.min_block_chars = Some(config.min_block_chars + 1);
+    other_floor.min_block_chars = config.min_block_chars + 1;
     assert_eq!(
         change(&before, &other_floor),
         "changed",
         "the paragraph floor decides what the repetition metrics counted"
     );
+}
 
-    for absent in [
-        session::Baseline {
-            oracle_version: None,
-            ..after.clone()
-        },
-        session::Baseline {
-            min_block_chars: None,
-            ..after.clone()
-        },
-    ] {
-        assert_eq!(
-            change(&before, &absent),
-            "unknown",
-            "a baseline written before this was kept says nothing, and is not read as agreement"
-        );
-    }
+/// A ledger written before a window recorded what measured it holds numbers no
+/// comparison can place, so it is refused at the line rather than read as a
+/// window that happens to agree.
+#[test]
+fn a_ledger_that_predates_what_measured_it_is_refused_by_the_line() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("baselines.jsonl");
+    std::fs::write(
+        &path,
+        concat!(
+            r#"{"label":"old","recorded_at":"2026-08-01T00:00:00Z","#,
+            r#""coverage":{"files_discovered":1,"files_read":1,"files_unreadable":0,"#,
+            r#""records_total":1,"records_malformed":0,"record_types_unconsumed":{},"#,
+            r#""user_turns_by_authorship":{},"runtime_versions":[],"models":[],"sessions":1},"#,
+            r#""measurements":{}}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+
+    let err = session::BaselineLedger::new(path.clone())
+        .load_all()
+        .expect_err("a row missing what measured it is not a baseline");
+    assert_eq!(
+        err.code(),
+        harness_core::error::ErrorCode::SessionBaselineUnreadable,
+        "the file read; the row is not a window"
+    );
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("baseline line 1"),
+        "the refusal names the line to open: {rendered}"
+    );
+    assert!(err.hint().is_some(), "and what to do about it");
 }
 
 #[test]
@@ -1146,8 +1138,8 @@ fn a_baseline_records_the_build_that_measured_it() {
     let recorded = baseline_of(&config, None, "one");
 
     assert_eq!(
-        recorded.oracle_version.as_deref(),
-        Some(env!("CARGO_PKG_VERSION")),
+        recorded.oracle_version,
+        env!("CARGO_PKG_VERSION"),
         "a metric whose definition moved between builds is a delta about the build"
     );
 }
@@ -1328,7 +1320,7 @@ fn a_corrupt_ledger_line_stops_the_read_rather_than_shortening_the_history() {
 
     let err = ledger.load_all().unwrap_err();
 
-    assert_eq!(err.code(), ErrorCode::IoFailure);
+    assert_eq!(err.code(), ErrorCode::SessionBaselineUnreadable);
 }
 
 #[test]

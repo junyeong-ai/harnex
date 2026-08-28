@@ -253,21 +253,13 @@ wire_enum! {
         /// One of the two moved, so a delta is a reading about the method as
         /// much as about the work.
         Changed => "changed",
-        /// A window did not record what measured it, which every baseline
-        /// written before these were kept is.
-        Unknown => "unknown",
     }
 }
 
 impl MethodChange {
     fn between(from: &Baseline, to: &Baseline) -> Self {
-        let (Some(a), Some(b)) = (&from.oracle_version, &to.oracle_version) else {
-            return Self::Unknown;
-        };
-        let (Some(x), Some(y)) = (from.min_block_chars, to.min_block_chars) else {
-            return Self::Unknown;
-        };
-        match a == b && x == y {
+        match from.oracle_version == to.oracle_version && from.min_block_chars == to.min_block_chars
+        {
             true => Self::Unchanged,
             false => Self::Changed,
         }
@@ -308,16 +300,12 @@ pub struct Baseline {
     /// The build that measured this window. A metric whose definition moved
     /// between two builds is a delta about the definition, for the same reason
     /// the runtime versions and the model set ride along.
-    ///
-    /// `None` on a baseline written before this was recorded.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub oracle_version: Option<String>,
+    pub oracle_version: String,
     /// `[session] min_block_chars` as this window was measured. The shortest
     /// paragraph that counts as one, so the repetition metrics mean something
     /// different either side of a change to it — the operator's half of what
     /// `oracle_version` says about the build.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min_block_chars: Option<usize>,
+    pub min_block_chars: usize,
     /// The harness the window ran under. Absent where the window was not
     /// scoped to a project, or that project is not a git work tree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -334,8 +322,8 @@ impl Baseline {
             recorded_at: measured.recorded_at,
             project: measured.project,
             coverage: facts.coverage.clone(),
-            oracle_version: Some(env!("CARGO_PKG_VERSION").to_string()),
-            min_block_chars: Some(measured.min_block_chars),
+            oracle_version: env!("CARGO_PKG_VERSION").to_string(),
+            min_block_chars: measured.min_block_chars,
             harness: measured.harness,
             measurements: SessionMetric::ALL
                 .iter()
@@ -418,9 +406,9 @@ impl BaselineLedger {
     }
 
     fn corrupt(&self, message: String) -> Error {
-        Error::IoFailure {
+        Error::SessionBaselineUnreadable {
             path: self.path.clone(),
-            source: std::io::Error::new(std::io::ErrorKind::InvalidData, message),
+            message,
         }
     }
 }
@@ -436,12 +424,10 @@ pub struct BaselineWindow {
     pub project: Option<PathBuf>,
     /// The build that measured this window, for the reason
     /// [`Baseline::oracle_version`] gives.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub oracle_version: Option<String>,
+    pub oracle_version: String,
     /// The paragraph floor this window was measured under, for the reason
     /// [`Baseline::min_block_chars`] gives.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min_block_chars: Option<usize>,
+    pub min_block_chars: usize,
     /// The harness this window ran under, for the reason
     /// [`Baseline::harness`] gives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
