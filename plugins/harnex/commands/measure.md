@@ -193,7 +193,11 @@ clock time, and what changed under them. The citation belongs in a footnote for
 whoever wants to reopen the file, not in the sentence doing the work.
 
 **2. What leaks every session.** §5, plus `interventions` by kind and
-`post_commit_reedits` per commit. Compaction belongs here when present: report
+`post_commit_reedits`. Say over how many distinct `commit` values it is spread
+before saying it per commit: re-edits concentrated in one interval are one
+commit called done early, and the same count spread across many is a habit of
+declaring early — measured, 244 of 246 fell in a single interval, where
+"commit later" is the wrong prescription. Compaction belongs here when present: report
 tokens in and out, and that the runtime's `cumulative_dropped_tokens` is a
 running total per session, so it is read from the last event and never summed.
 
