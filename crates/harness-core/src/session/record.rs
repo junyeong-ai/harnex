@@ -77,6 +77,38 @@ const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
 /// The system record marking where the session's context was compacted.
 const COMPACT_BOUNDARY_SUBTYPE: &str = "compact_boundary";
 
+/// The slash command that compacts a session, and the tags its record wraps the
+/// operator's arguments in.
+const COMPACT_COMMAND: &str = "<command-name>/compact</command-name>";
+const COMMAND_ARGS_OPEN: &str = "<command-args>";
+const COMMAND_ARGS_CLOSE: &str = "</command-args>";
+
+/// What the operator asked a compaction to keep, from one turn.
+///
+/// The runtime writes the command into a record of its own and the operator
+/// never types that wrapper, so a turn it attributes to the operator quoting the
+/// tag — a prompt about this very feature — is their prose and not a command.
+/// Both conditions are the measured shape: over the local corpus all 373 command
+/// records open with the tag and none carries a prompt source.
+///
+/// `None` where the turn is not a compact command. `Some("")` where it is one
+/// given no arguments — the operator compacting without saying what to keep,
+/// which is a different answer from the runtime compacting on its own.
+pub(crate) fn compact_instruction(turn: &UserTurn) -> Option<String> {
+    if turn.authorship == Authorship::Authored {
+        return None;
+    }
+    let text = turn.text.as_deref()?;
+    if !text.trim_start().starts_with(COMPACT_COMMAND) {
+        return None;
+    }
+    let Some((_, rest)) = text.split_once(COMMAND_ARGS_OPEN) else {
+        return Some(String::new());
+    };
+    let args = rest.split_once(COMMAND_ARGS_CLOSE).map_or(rest, |(a, _)| a);
+    Some(args.trim().to_string())
+}
+
 /// Tools that invoke a harness element, and the input key naming it.
 ///
 /// The only per-tool argument vocabulary this module admits, and it is admitted
@@ -313,6 +345,14 @@ pub struct Compaction {
     /// session counts the same tokens again at every boundary.
     pub cumulative_dropped_tokens: u64,
     pub duration_ms: u64,
+    /// How much the operator asked the compaction to keep, in characters.
+    /// `None` where no `/compact` preceded the boundary — the runtime compacted
+    /// on its own. `Some(0)` where the operator compacted and asked for nothing.
+    pub instruction_chars: Option<usize>,
+    /// What they asked, verbatim. Operator text, so it is withheld unless the
+    /// caller asked for text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instruction: Option<String>,
 }
 
 /// What one turn, instruction or window spent.
@@ -938,6 +978,11 @@ pub fn read_transcript(
                             .cumulative_dropped_tokens
                             .unwrap_or_default(),
                         duration_ms: meta.duration_ms.unwrap_or_default(),
+                        // Joined to the command that caused it once the whole
+                        // session is read — the command's record is written
+                        // after this one. See `session::attach_instructions`.
+                        instruction_chars: None,
+                        instruction: None,
                     }));
                     continue;
                 }
