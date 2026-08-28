@@ -785,7 +785,7 @@
           "default": null
         },
         "harness_paths": {
-          "description": "What a baseline treats as the harness, relative to the project it was\nscoped to. A comparison reports whether these moved between two\nwindows, which is the difference between a delta that could be an\neffect and one that cannot.\n\nThe default covers everywhere a scaffolded harness lands, held there by\n`every_scaffolded_artifact_is_inside_the_default_harness`. A project\nthat keeps any of it elsewhere declares that here.",
+          "description": "What a baseline treats as the harness, relative to the project it was\nscoped to. A comparison reports whether these moved between two\nwindows, which is the difference between a delta that could be an\neffect and one that cannot.\n\nThese are git pathspecs, so a bare name is anchored at the work tree\nroot and reaches no deeper: project memory nested beside the code it\ngoverns takes the `**/` form alongside it, which is why the default\ncarries `CLAUDE.md` twice.\n\nThe default covers everywhere a scaffolded harness lands, held there by\n`every_scaffolded_artifact_is_inside_the_default_harness`. A project\nthat keeps any of it elsewhere declares that here.",
           "type": "array",
           "items": {
             "type": "string"
@@ -793,6 +793,7 @@
           "default": [
             ".claude",
             "CLAUDE.md",
+            "**/CLAUDE.md",
             "harness.toml",
             "hooks"
           ]
