@@ -264,10 +264,9 @@ is what was actually called; an element the operator built and never invoked is 
 their habits disagree — report the concentration first (attempts against
 distinct calls), because diffuse friction points at a broad rule and repeated
 friction points at a habit, and the prescriptions are opposite. Then hook
-wall-clock against `elapsed`, which is the only thing that says whether it is
-worth anything: a hook holding two seconds is most of a ten-second run and none
-of a ten-minute one. Report the share with both populations beside it, because
-each is a floor over its own. Then rule-load characters.
+wall-clock against the `elapsed_ms` of the instructions in the window, which is
+what says whether it is worth anything: a hook holding two seconds is most of a
+ten-second instruction and none of a ten-minute one. Then rule-load characters.
 
 Relativise against the operator, never against other people: "this instruction
 ran 27 times your median" names an outlier without a population.
@@ -294,11 +293,14 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - a hook's cost is exact and its value is not recorded at all
 - token counts are counts, never money; and a delta across a window whose
   `models` set moved is a delta about the model as much as the operator
-- `tools` counts calls and the calls that came back an error; per-call time
-  comes from a cost source or from nowhere. `elapsed` is the runtime's own
-  timing of a whole run and is written for some runs and not others — measured,
-  44 of 132 stops — so a share denominated in it is a share of the time that
-  was timed
+- `tools` counts calls and the calls that came back an error, and `failed` is a
+  floor — a result whose call is in another transcript is not attributed.
+  Per-call time comes from a cost source or from nowhere; `elapsed_ms` is the
+  span from an instruction to the last record made under it, so it holds the
+  agent's work and not the wait before the next instruction. The runtime's own
+  `turn_duration` is not read: it measures stop to stop, which over the local
+  corpus reaches 245 hours for one record and charges a session left open to
+  whoever spoke last
 - `written` names what `Write` and `Edit` were pointed at, so work done through
   a shell leaves nothing there; `committed` is where the work landed, and needs
   `--project` over a git work tree. Both are absolute, so what an instruction

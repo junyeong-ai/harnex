@@ -78,7 +78,7 @@ pub struct Repetition {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PromptFacts {
     /// Turns the operator wrote, before queued ones are folded into what they
-    /// continue. Matches the `authored` count in coverage.
+    /// continue.
     pub authored_turns: usize,
     /// Instructions, after folding. The denominator for anything per-instruction.
     pub submissions: usize,

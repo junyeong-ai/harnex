@@ -52,8 +52,9 @@ impl SubmissionIndex {
 
     /// The submission this turn belongs to.
     ///
-    /// `None` for a turn that is not the operator's own text — a tool result,
-    /// an injected record, a turn attributed to something other than a person.
+    /// `None` for a turn no person is behind — a tool result, an injected
+    /// record, a subagent's turn. A prompt the operator chose rather than typed
+    /// opens one: they sent it, and the work under it is theirs.
     pub fn assign(&mut self, turn: &UserTurn) -> Option<u64> {
         if !turn.authorship.claims_a_person() || turn.text.is_none() {
             return None;
@@ -92,9 +93,14 @@ pub struct Submission {
     pub agent_turns: usize,
     /// What those turns spent.
     pub tokens: TokenUse,
-    /// Wall-clock the runtime timed under it, summed over the runs it recorded
-    /// one for. A floor, for the reason the record's own doc gives: an
-    /// instruction whose runs went untimed reports zero rather than nothing.
+    /// Wall-clock from this instruction to the last record made under it.
+    ///
+    /// Taken from the records' own timestamps rather than from the runtime's
+    /// `turn_duration`, which measures the interval between two stops and so
+    /// counts the operator's idle time as the agent's: measured over the local
+    /// corpus its longest value is 245 hours, matching the gap since the
+    /// previous stop to within a percent. This ends at the agent's last output,
+    /// so time spent waiting for the next instruction is nobody's work.
     pub elapsed_ms: u64,
     /// Tool calls made under it, by tool. How the work was actually done,
     /// which is the half of a costly instruction its wording does not show.
@@ -173,11 +179,6 @@ impl SubmissionAnalyzer {
                 Some(id) => self.observe_instruction(turn, id),
                 None => self.observe_event(turn),
             },
-            Record::TurnDuration(timed) => {
-                if let Some((_, at)) = self.active.get(session).copied() {
-                    self.out[at].elapsed_ms += timed.duration_ms;
-                }
-            }
             Record::Assistant(turn) => {
                 if let Some((_, at)) = self.active.get(session).copied() {
                     let held = &mut self.out[at];
@@ -194,6 +195,17 @@ impl SubmissionAnalyzer {
                     if let Some(model) = &turn.model {
                         self.models.entry(at).or_default().insert(model.clone());
                     }
+                    // The agent's own output is the only record that says it was
+                    // still working. Anything else arriving under an open
+                    // instruction — a system note, the operator's next message
+                    // before it opens one of its own — can land after the run
+                    // ended, and would charge the wait to the work.
+                    held.elapsed_ms = turn
+                        .citation
+                        .timestamp
+                        .duration_since(held.citation.timestamp)
+                        .as_millis()
+                        .max(0) as u64;
                 }
             }
             Record::RuleLoad(_) | Record::StopSummary(_) | Record::Compaction(_) => {}
