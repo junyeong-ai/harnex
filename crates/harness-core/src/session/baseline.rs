@@ -33,6 +33,7 @@ use crate::error::{Error, Result};
 use crate::path_guard;
 use crate::session::SessionFacts;
 use crate::session::record::Coverage;
+use crate::session::repository::HarnessState;
 
 /// A rate, kept as the two counts it came from.
 ///
@@ -195,6 +196,73 @@ impl SessionMetric {
     }
 }
 
+/// Whether the harness moved between the two windows a comparison holds
+/// against each other.
+///
+/// A delta across an unchanged harness is a delta about something else — the
+/// work, the model, the runtime, the operator. That is the question a
+/// before-and-after is asked, and nothing else in the record answers it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HarnessChange {
+    /// Both windows name the same commit and neither had uncommitted changes.
+    Unchanged,
+    /// The windows name different commits.
+    Changed,
+    /// A window recorded no harness state, or had uncommitted changes, so what
+    /// it ran under is not identified by a commit.
+    Unknown,
+}
+
+impl HarnessChange {
+    pub const ALL: &'static [Self] = &[Self::Unchanged, Self::Changed, Self::Unknown];
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "unchanged" => Self::Unchanged,
+            "changed" => Self::Changed,
+            "unknown" => Self::Unknown,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unchanged => "unchanged",
+            Self::Changed => "changed",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    fn between(from: Option<&HarnessState>, to: Option<&HarnessState>) -> Self {
+        match (from, to) {
+            (Some(a), Some(b)) if !a.uncommitted && !b.uncommitted && a.head.is_some() => {
+                match a.head == b.head {
+                    true => Self::Unchanged,
+                    false => Self::Changed,
+                }
+            }
+            (Some(a), Some(b)) if a.head != b.head => Self::Changed,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// What a window was measured under, beside what it measured.
+///
+/// A baseline is read months after it was written, by a build that may compute
+/// its metrics differently and against a harness that has moved since. These
+/// are what let that reader say whether the two numbers are comparable.
+pub struct Measured<'a> {
+    pub label: &'a str,
+    pub recorded_at: Timestamp,
+    /// The project this window was scoped to, if it was scoped to one.
+    pub project: Option<PathBuf>,
+    /// `[session] min_block_chars` as this window was measured.
+    pub min_block_chars: usize,
+    /// The harness the project carried at this moment, where it could be asked.
+    pub harness: Option<HarnessState>,
+}
+
 /// One window, as it was measured.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Baseline {
@@ -223,26 +291,25 @@ pub struct Baseline {
     /// `oracle_version` says about the build.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_block_chars: Option<usize>,
+    /// The harness the window ran under. Absent where the window was not
+    /// scoped to a project, or that project is not a git work tree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<HarnessState>,
     /// Keyed by [`SessionMetric::as_str`]. A metric the window could not
     /// measure is absent rather than zero.
     pub measurements: BTreeMap<String, Measurement>,
 }
 
 impl Baseline {
-    pub fn of(
-        label: &str,
-        recorded_at: Timestamp,
-        project: Option<PathBuf>,
-        min_block_chars: usize,
-        facts: &SessionFacts,
-    ) -> Self {
+    pub fn of(measured: Measured<'_>, facts: &SessionFacts) -> Self {
         Self {
-            label: label.to_string(),
-            recorded_at,
-            project,
+            label: measured.label.to_string(),
+            recorded_at: measured.recorded_at,
+            project: measured.project,
             coverage: facts.coverage.clone(),
             oracle_version: Some(env!("CARGO_PKG_VERSION").to_string()),
-            min_block_chars: Some(min_block_chars),
+            min_block_chars: Some(measured.min_block_chars),
+            harness: measured.harness,
             measurements: SessionMetric::ALL
                 .iter()
                 .filter_map(|m| Some((m.as_str().to_string(), m.measure(facts)?)))
@@ -348,6 +415,10 @@ pub struct BaselineWindow {
     /// [`Baseline::min_block_chars`] gives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_block_chars: Option<usize>,
+    /// The harness this window ran under, for the reason
+    /// [`Baseline::harness`] gives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<HarnessState>,
     /// Runtime versions the window spans. A delta across a version change is
     /// an observation about two different runtimes as much as about the
     /// operator.
@@ -367,6 +438,7 @@ impl BaselineWindow {
             project: baseline.project.clone(),
             oracle_version: baseline.oracle_version.clone(),
             min_block_chars: baseline.min_block_chars,
+            harness: baseline.harness.clone(),
             runtime_versions: baseline.coverage.runtime_versions.clone(),
             models: baseline.coverage.models.clone(),
             authorship_ratio: baseline.coverage.authorship_ratio(),
@@ -392,6 +464,11 @@ pub struct BaselineDiff {
     pub from: BaselineWindow,
     pub to: BaselineWindow,
     pub support_floor: u64,
+    /// Whether the harness moved between the two windows, by
+    /// [`HarnessChange::as_str`]. A delta measured across `unchanged` is not
+    /// an effect of a harness change, and one across `unknown` cannot be said
+    /// either way.
+    pub harness_change: String,
     pub metrics: Vec<MetricDelta>,
     /// Metrics one side carries and the other does not, because the builds
     /// that wrote them measured different things. Named rather than filled in.
@@ -458,6 +535,9 @@ pub fn diff(from: &Baseline, to: &Baseline, support_floor: u64) -> Result<Baseli
     }
 
     Ok(BaselineDiff {
+        harness_change: HarnessChange::between(from.harness.as_ref(), to.harness.as_ref())
+            .as_str()
+            .to_string(),
         from: BaselineWindow::of(from),
         to: BaselineWindow::of(to),
         support_floor,

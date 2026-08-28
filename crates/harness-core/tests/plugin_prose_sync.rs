@@ -81,6 +81,8 @@ const CONTRACTS: &[(&str, &[&str])] = &[
             "Submission.written",
             "Submission.committed",
             "BaselineDiff.support_floor",
+            "BaselineDiff.harness_change",
+            "Coverage.record_types_unconsumed",
             "MetricDelta.change",
             "SessionConfig.min_support",
             "SessionConfig.submission_sample",

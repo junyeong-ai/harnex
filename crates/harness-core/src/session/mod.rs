@@ -60,7 +60,8 @@ use crate::config::SessionConfig;
 use crate::error::{Error, Result};
 
 pub use baseline::{
-    Baseline, BaselineDiff, BaselineLedger, Measurement, MetricDelta, SessionMetric,
+    Baseline, BaselineDiff, BaselineLedger, HarnessChange, Measured, Measurement, MetricDelta,
+    SessionMetric,
 };
 pub use harness::{
     AssetInvocation, BlockedCall, DenialGroup, HarnessFacts, HookCost, RuleLoadGroup,
@@ -68,7 +69,7 @@ pub use harness::{
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock, Repetition};
 pub use record::{Authorship, Citation, Compaction, Coverage, TokenUse};
-pub use repository::{CommitFate, CommitOutcome, RepositoryFacts};
+pub use repository::{CommitFate, CommitOutcome, HarnessState, RepositoryFacts};
 pub use rework::{PostCommitReedit, ReworkFacts};
 pub use submission::{Submission, SubmissionIndex, SubmissionWindow, systematic_sample};
 
@@ -410,6 +411,7 @@ mod tests {
             min_support: 1,
             baseline_path: dir.path().join("baselines.jsonl"),
             submission_sample: None,
+            harness_paths: Vec::new(),
         };
         (dir, config)
     }

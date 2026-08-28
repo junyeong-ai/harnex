@@ -89,8 +89,23 @@ pub struct SessionConfig {
     /// instruction. Absent returns the window whole.
     #[serde(default)]
     pub submission_sample: Option<usize>,
+    /// What a baseline treats as the harness, relative to the project it was
+    /// scoped to. A comparison reports whether these moved between two
+    /// windows, which is the difference between a delta that could be an
+    /// effect and one that cannot.
+    ///
+    /// The default is what Claude Code reads; a project that keeps hooks or
+    /// generated rules elsewhere declares them here.
+    #[serde(default = "default_harness_paths")]
+    pub harness_paths: Vec<String>,
 }
 
+fn default_harness_paths() -> Vec<String> {
+    [".claude", "CLAUDE.md", "harness.toml"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
 fn default_min_block_chars() -> usize {
     40
 }
@@ -934,6 +949,18 @@ impl Config {
                 message: format!(
                     "[session] coverage_floor {} is outside 0.0..=1.0",
                     sess.coverage_floor
+                ),
+                location: None,
+            });
+        }
+        if let Some(bad) = sess
+            .harness_paths
+            .iter()
+            .find(|p| p.trim().is_empty() || std::path::Path::new(p).is_absolute())
+        {
+            return Err(Error::ConfigInvalid {
+                message: format!(
+                    "[session] harness_paths entry '{bad}' is empty or absolute; each is relative to the project a window is scoped to"
                 ),
                 location: None,
             });

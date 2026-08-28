@@ -783,6 +783,18 @@
           "format": "uint",
           "minimum": 0,
           "default": null
+        },
+        "harness_paths": {
+          "description": "What a baseline treats as the harness, relative to the project it was\nscoped to. A comparison reports whether these moved between two\nwindows, which is the difference between a delta that could be an\neffect and one that cannot.\n\nThe default is what Claude Code reads; a project that keeps hooks or\ngenerated rules elsewhere declares them here.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".claude",
+            "CLAUDE.md",
+            "harness.toml"
+          ]
         }
       },
       "additionalProperties": false,
