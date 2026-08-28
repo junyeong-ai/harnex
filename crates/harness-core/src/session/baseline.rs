@@ -92,11 +92,21 @@ wire_enum! {
         WithinSessionCharsPerSubmission => "within_session_chars_per_submission",
         /// Characters of project memory the runtime loaded.
         RuleLoadCharsPerSubmission => "rule_load_chars_per_submission",
+        /// Context discarded to keep a session going. The count rather than
+        /// the number of compactions: what a compaction costs is the tokens it
+        /// dropped, and that is the same cost whether the operator asked for
+        /// it or the runtime reached the wall.
+        DroppedTokensPerSubmission => "dropped_tokens_per_submission",
         /// Tool calls a permission rule or the operator stopped.
         DenialsPerSubmission => "denials_per_submission",
         /// Instructions the operator sent without waiting for the agent that
         /// was already answering the previous one.
         SteeringPerSubmission => "steering_per_submission",
+        /// Runs the operator stopped mid-answer. A floor for the reason
+        /// [`crate::session::InterventionKind`] gives, as steering is, and
+        /// reported beside it because the two are the same act at different
+        /// moments.
+        InterruptsPerSubmission => "interrupts_per_submission",
         /// Files edited again after a commit and before the next one.
         /// Denominated in observed commits, which is a floor, so this reads
         /// high; compare it only against another window measured the same way.
@@ -129,6 +139,10 @@ impl SessionMetric {
                 facts.harness.rule_loads.iter().map(|r| r.chars).sum(),
                 submissions,
             ),
+            Self::DroppedTokensPerSubmission => Measurement {
+                numerator: dropped_tokens(facts),
+                denominator: submissions as u64,
+            },
             Self::DenialsPerSubmission => Measurement::new(
                 facts.harness.denials.iter().map(|d| d.denials).sum(),
                 submissions,
@@ -138,6 +152,15 @@ impl SessionMetric {
                     .interventions
                     .by_kind
                     .get(crate::session::InterventionKind::Steering.as_str())
+                    .copied()
+                    .unwrap_or(0),
+                submissions,
+            ),
+            Self::InterruptsPerSubmission => Measurement::new(
+                facts
+                    .interventions
+                    .by_kind
+                    .get(crate::session::InterventionKind::MarkedInterrupt.as_str())
                     .copied()
                     .unwrap_or(0),
                 submissions,
@@ -161,6 +184,22 @@ impl SessionMetric {
             },
         })
     }
+}
+
+/// Context every session in the window discarded, counted once per session.
+///
+/// `cumulative_dropped_tokens` is the session's running total rather than the
+/// event's own drop, and it rises monotonically, so a session's largest is its
+/// whole and adding the earlier ones would count the same tokens again.
+fn dropped_tokens(facts: &SessionFacts) -> u64 {
+    let mut per_session: BTreeMap<&str, u64> = BTreeMap::new();
+    for compaction in &facts.compactions {
+        let session = per_session
+            .entry(compaction.citation.session.as_str())
+            .or_default();
+        *session = (*session).max(compaction.cumulative_dropped_tokens);
+    }
+    per_session.into_values().sum()
 }
 
 /// Whether the harness moved between the two windows a comparison holds
