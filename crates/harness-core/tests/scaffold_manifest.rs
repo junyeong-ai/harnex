@@ -389,3 +389,27 @@ fn shape_of(value: &serde_json::Value) -> &'static str {
         _ => "scalar",
     }
 }
+
+/// What a baseline treats as the harness has to reach everywhere a harness is
+/// written, or a project scaffolded by this plugin has part of its harness
+/// invisible to the comparison that asks whether changing it did anything.
+#[test]
+fn every_scaffolded_artifact_is_inside_the_default_harness() {
+    let harness = harness_core::config::default_harness_paths();
+    let m = manifest();
+
+    for artifact in m.artifacts() {
+        for language in languages().into_iter().map(Some).chain([None]) {
+            let Some(destination) = artifact.destination_for(language) else {
+                continue;
+            };
+            let destination = destination.to_string_lossy().to_string();
+            assert!(
+                harness.iter().any(
+                    |root| destination == *root || destination.starts_with(&format!("{root}/"))
+                ),
+                "`{destination}` is scaffolded and no default harness path reaches it"
+            );
+        }
+    }
+}

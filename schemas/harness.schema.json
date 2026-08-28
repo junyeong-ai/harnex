@@ -785,7 +785,7 @@
           "default": null
         },
         "harness_paths": {
-          "description": "What a baseline treats as the harness, relative to the project it was\nscoped to. A comparison reports whether these moved between two\nwindows, which is the difference between a delta that could be an\neffect and one that cannot.\n\nThe default is what Claude Code reads; a project that keeps hooks or\ngenerated rules elsewhere declares them here.",
+          "description": "What a baseline treats as the harness, relative to the project it was\nscoped to. A comparison reports whether these moved between two\nwindows, which is the difference between a delta that could be an\neffect and one that cannot.\n\nThe default covers everywhere a scaffolded harness lands, held there by\n`every_scaffolded_artifact_is_inside_the_default_harness`. A project\nthat keeps any of it elsewhere declares that here.",
           "type": "array",
           "items": {
             "type": "string"
@@ -793,7 +793,8 @@
           "default": [
             ".claude",
             "CLAUDE.md",
-            "harness.toml"
+            "harness.toml",
+            "hooks"
           ]
         }
       },

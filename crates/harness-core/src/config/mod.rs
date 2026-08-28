@@ -94,14 +94,17 @@ pub struct SessionConfig {
     /// windows, which is the difference between a delta that could be an
     /// effect and one that cannot.
     ///
-    /// The default is what Claude Code reads; a project that keeps hooks or
-    /// generated rules elsewhere declares them here.
+    /// The default covers everywhere a scaffolded harness lands, held there by
+    /// `every_scaffolded_artifact_is_inside_the_default_harness`. A project
+    /// that keeps any of it elsewhere declares that here.
     #[serde(default = "default_harness_paths")]
     pub harness_paths: Vec<String>,
 }
 
-fn default_harness_paths() -> Vec<String> {
-    [".claude", "CLAUDE.md", "harness.toml"]
+/// Everywhere a scaffolded harness lands, which is what a window measures the
+/// change to when nothing else is declared.
+pub fn default_harness_paths() -> Vec<String> {
+    [".claude", "CLAUDE.md", "harness.toml", "hooks"]
         .into_iter()
         .map(str::to_string)
         .collect()
