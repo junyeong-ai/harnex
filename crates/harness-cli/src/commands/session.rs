@@ -235,10 +235,19 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                         },
                     )?;
                     let baseline = Baseline::of(
-                        &label,
-                        Timestamp::now(),
-                        project,
-                        session_config.min_block_chars,
+                        session::Measured {
+                            label: &label,
+                            recorded_at: Timestamp::now(),
+                            min_block_chars: session_config.min_block_chars,
+                            harness: match &project {
+                                Some(dir) => session::repository::harness_state(
+                                    dir,
+                                    &session_config.harness_paths,
+                                )?,
+                                None => None,
+                            },
+                            project,
+                        },
                         &facts,
                     );
                     ledger.append(&baseline)?;

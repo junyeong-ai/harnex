@@ -154,9 +154,16 @@ why — an empty section with its reason is worth more than a filled one that
 guessed.
 
 **0. This window.** `files_in_window` and records, span, runtime versions,
-coverage, scope. `files_discovered` is the corpus the run opened to find them,
+coverage, scope. Coverage is the authorship ratio and what could not be read —
+`record_types_unconsumed` names what this binary skipped and belongs in an
+appendix, not a report about the operator. `files_discovered` is the corpus the run opened to find them,
 which is what it cost and not what it measured — a scoped window is routinely
 a handful of files out of thousands.
+**`harness_change` first, then the delta.** `unchanged` means whatever moved,
+a harness change is not why; `changed` means one moved and the operator can ask
+git which; `unknown` means a window did not record what it ran under. A delta
+reported without it is an association presented as an effect.
+
 Then the delta from `baseline diff`, or "first measurement" — never zeros.
 Where `change` is null on every metric the window is too thin to compare: say
 so with `support_floor` and the denominators beside it, because the operator's
@@ -226,8 +233,11 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - `blocked` lists only calls refused more than once; a single refusal is not a
   pattern and most refusals never repeat
 - a commit is a floor: the runtime records some and not others, so
-  `repository.commits_in_span` is what `commits` is a floor against and
-  anything per-commit reads high
+  `repository.commits_in_span` is what `commits` is a floor against — measured,
+  41 of 92 over one project. A per-commit **rate** is not high for that reason:
+  a re-edit is only found against a commit the window observed, so both sides
+  of the ratio are over the same commits. Re-denominating it in
+  `commits_in_span` assumes the unobserved commits were never re-edited
 - a hook's cost is exact and its value is not recorded at all
 - token counts are counts, never money; and a delta across a window whose
   `models` set moved is a delta about the model as much as the operator
@@ -245,11 +255,12 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - `by_fate` counts the commits the transcript recorded, which is a floor
   against `commits_in_span` — measured, 41 of 92 over one project and 1,717 of
   4,470 over another, so anything denominated in observed commits reads high
-- an event the runtime wrote into two transcripts is counted once, by uuid,
-  and `records_duplicated` says how many. Two shapes escape that count and are
-  measured at 9 and 201 of 285,233 messages: a message whose copies carry
-  different uuids, and a copy of a message the earlier file recorded while it
-  was still streaming
+- an event the runtime wrote into two transcripts is counted once — a record
+  by its uuid, a message by the transcript that wrote it — and
+  `records_duplicated` says how many were discarded. One shape escapes, 201 of
+  285,233 messages: where the transcript that reported a message first had its
+  stream cut, its partial count is the one kept
+- a path containing a control character is reported as git spells it, escaped
 - `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
   sample size, and they never enter a baseline
@@ -261,3 +272,9 @@ Write the report in the language the operator instructs in.
 Offer, do not run: `harness session baseline save --label <name>`. The next
 measurement starts where this one ended, and §0's delta is the answer to
 whether any of this worked.
+
+**Say what the baseline will record the harness as.** A window measured over a
+tree with uncommitted harness changes records `uncommitted`, and every
+comparison against it answers `unknown` — so the change being tested has to be
+committed before the window that tests it, not after. If the prescription above
+was tagged `apply`, that is the order: apply it, commit it, then save.

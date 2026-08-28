@@ -151,6 +151,51 @@ fn no_commits_asks_git_nothing() {
 }
 
 #[test]
+fn the_harness_is_the_last_commit_to_touch_it_and_whether_it_has_moved_since() {
+    let dir = repo();
+    commit_touching(dir.path(), "code", &["src/lib.rs"]);
+    let rules = commit_touching(dir.path(), "rules", &[".claude/rules/a.md"]);
+    let later = commit_touching(dir.path(), "more code", &["src/main.rs"]);
+    let paths = vec![".claude".to_string(), "CLAUDE.md".to_string()];
+
+    let state = repository::harness_state(dir.path(), &paths)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        state.head.as_deref(),
+        Some(rules.as_str()),
+        "a commit that changed no harness path did not move the harness"
+    );
+    assert_ne!(state.head.as_deref(), Some(later.as_str()));
+    assert!(!state.uncommitted);
+
+    std::fs::write(dir.path().join(".claude/rules/a.md"), "edited").unwrap();
+    let dirty = repository::harness_state(dir.path(), &paths)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(dirty.head, state.head);
+    assert!(
+        dirty.uncommitted,
+        "the harness on disk is no longer the one that commit names"
+    );
+}
+
+#[test]
+fn a_project_whose_harness_was_never_committed_names_no_commit() {
+    let dir = repo();
+    commit_touching(dir.path(), "code", &["src/lib.rs"]);
+
+    let state = repository::harness_state(dir.path(), &[".claude".to_string()])
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(state.head, None);
+    assert!(!state.uncommitted);
+}
+
+#[test]
 fn a_directory_that_is_not_a_work_tree_is_absent_rather_than_an_error() {
     let dir = TempDir::new().unwrap();
     assert!(

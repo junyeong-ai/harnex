@@ -46,6 +46,7 @@ fn corpus(files: &[(&str, Vec<String>)]) -> (TempDir, SessionConfig) {
         min_support: 1,
         baseline_path: dir.path().join("baselines.jsonl"),
         submission_sample: None,
+        harness_paths: vec![".claude".into()],
     };
     (dir, config)
 }
@@ -154,6 +155,7 @@ fn a_run_that_reads_nothing_is_an_error_rather_than_a_report_of_zero() {
         min_support: 1,
         baseline_path: dir.path().join("baselines.jsonl"),
         submission_sample: None,
+        harness_paths: vec![".claude".into()],
     };
 
     let err = session::collect(&config, &CollectOptions::default()).unwrap_err();
@@ -517,6 +519,79 @@ fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
     assert_eq!(facts.coverage.records_malformed, 0);
 }
 
+/// A window that exercises every metric a baseline records, at values chosen so
+/// no two are equal.
+fn every_metric_corpus() -> (TempDir, SessionConfig) {
+    let mut alpha = vec![
+        typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+        spent("s1", "x1", "2026-08-01T09:00:01Z", "claude-opus-5", 700),
+        rule_load(
+            "s1",
+            "r1",
+            "2026-08-01T09:00:02Z",
+            "/p/.claude/rules/a.md",
+            "abcde",
+        ),
+        edit("s1", "e1", "2026-08-01T09:00:03Z", "/p/src/lib.rs"),
+        commit("s1", "c1", "2026-08-01T09:00:04Z", "abc1234"),
+        edit("s1", "e2", "2026-08-01T09:00:05Z", "/p/src/lib.rs"),
+        stop_summary("s1", "h1", "2026-08-01T09:00:06Z", "check.sh", 90),
+    ];
+    alpha.extend(call_and_denial("s1", "Bash", "permission-rule", 7));
+    alpha.push(spoke("s1", "x2", "2026-08-01T09:00:08Z"));
+    // Queued after the agent spoke: a second instruction, and steering.
+    alpha.push(queued("s1", "a2", "2026-08-01T09:00:09Z", STANDING));
+
+    let beta = vec![
+        typed("s2", "b1", "2026-08-02T09:00:00Z", STANDING),
+        typed("s2", "b2", "2026-08-02T10:00:00Z", STANDING),
+    ];
+    corpus(&[
+        ("-Users-me-alpha/s1.jsonl", alpha),
+        ("-Users-me-alpha/s2.jsonl", beta),
+    ])
+}
+
+/// Every metric a baseline records, pinned to the window above.
+///
+/// A metric is compared against one an earlier build wrote, so a change to how
+/// it is computed is a change to what a recorded number means. The module's
+/// answer is to rename rather than redefine; this is what makes that a decision
+/// somebody takes rather than one they can make by accident.
+#[test]
+fn every_recorded_metric_computes_what_it_computed() {
+    let (_dir, config) = every_metric_corpus();
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    let pinned = [
+        ("cross_session_chars_per_submission", 72, 4),
+        ("within_session_chars_per_submission", 144, 4),
+        ("rule_load_chars_per_submission", 5, 4),
+        ("denials_per_submission", 1, 4),
+        ("steering_per_submission", 1, 4),
+        ("reedits_per_commit", 1, 1),
+        ("hook_milliseconds_per_stop", 90, 1),
+        ("output_tokens_per_submission", 700, 4),
+    ];
+    assert_eq!(
+        pinned.len(),
+        session::SessionMetric::ALL.len(),
+        "a metric was added without a value to hold it to"
+    );
+
+    for (name, numerator, denominator) in pinned {
+        let metric = session::SessionMetric::from_str(name).expect("a metric by that name");
+        assert_eq!(
+            metric.measure(&facts),
+            Some(session::Measurement {
+                numerator,
+                denominator
+            }),
+            "`{name}` no longer computes what it computed; rename it rather than redefining it"
+        );
+    }
+}
+
 fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> session::Baseline {
     let facts = session::collect(
         config,
@@ -528,10 +603,13 @@ fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> sess
     )
     .unwrap();
     session::Baseline::of(
-        label,
-        "2026-09-01T00:00:00Z".parse().unwrap(),
-        None,
-        config.min_block_chars,
+        session::Measured {
+            label,
+            recorded_at: "2026-09-01T00:00:00Z".parse().unwrap(),
+            project: None,
+            min_block_chars: config.min_block_chars,
+            harness: None,
+        },
         &facts,
     )
 }
@@ -930,6 +1008,67 @@ fn a_record_on_the_boundary_belongs_to_one_of_the_two_windows() {
         to.measurements["denials_per_submission"].denominator, 0,
         "and the window resuming after it measured none of the same records"
     );
+}
+
+fn baseline_under(
+    config: &SessionConfig,
+    label: &str,
+    harness: Option<session::HarnessState>,
+) -> session::Baseline {
+    let facts = session::collect(config, &CollectOptions::default()).unwrap();
+    session::Baseline::of(
+        session::Measured {
+            label,
+            recorded_at: "2026-09-01T00:00:00Z".parse().unwrap(),
+            project: Some("/w/alpha".into()),
+            min_block_chars: config.min_block_chars,
+            harness,
+        },
+        &facts,
+    )
+}
+
+#[test]
+fn a_comparison_says_whether_the_harness_moved_between_the_two_windows() {
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let at = |sha: &str, uncommitted: bool| {
+        Some(session::HarnessState {
+            head: Some(sha.into()),
+            uncommitted,
+        })
+    };
+    let later = |label: &str, harness| {
+        std::fs::write(
+            dir.path().join("-Users-me-alpha/s2.jsonl"),
+            [typed("s2", "b1", "2026-08-09T09:00:00Z", ALSO_STANDING)].join("\n"),
+        )
+        .unwrap();
+        baseline_under(&config, label, harness)
+    };
+
+    let before = baseline_under(&config, "before", at("aaa", false));
+    let same = later("same", at("aaa", false));
+    let moved = later("moved", at("bbb", false));
+    let dirty = later("dirty", at("aaa", true));
+    let absent = later("absent", None);
+
+    let change = |a: &session::Baseline, b: &session::Baseline| {
+        session::baseline::diff(a, b, config.min_support)
+            .unwrap()
+            .harness_change
+    };
+
+    assert_eq!(change(&before, &same), "unchanged");
+    assert_eq!(change(&before, &moved), "changed");
+    assert_eq!(
+        change(&before, &dirty),
+        "unknown",
+        "the same commit, and one window did not run what it names"
+    );
+    assert_eq!(change(&before, &absent), "unknown");
 }
 
 #[test]
@@ -1447,10 +1586,13 @@ fn baselines_measured_over_different_scopes_are_not_subtracted() {
     )
     .unwrap();
     let scoped = session::Baseline::of(
-        "scoped",
-        "2026-09-01T00:00:00Z".parse().unwrap(),
-        Some("/w/alpha".into()),
-        config.min_block_chars,
+        session::Measured {
+            label: "scoped",
+            recorded_at: "2026-09-01T00:00:00Z".parse().unwrap(),
+            project: Some("/w/alpha".into()),
+            min_block_chars: config.min_block_chars,
+            harness: None,
+        },
         &facts,
     );
 

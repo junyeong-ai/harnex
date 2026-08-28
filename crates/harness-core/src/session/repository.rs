@@ -128,21 +128,8 @@ pub fn survey(
     // to ask about; git saying "not a work tree" is the same; a git that could
     // not be spawned is a failure, and reporting that as an absent repository
     // would say the project has no history rather than that nothing asked.
-    if !project.is_dir() {
+    if !project.is_dir() || !is_work_tree(project)? {
         return Ok(None);
-    }
-    match Command::new("git")
-        .args(["rev-parse", "--is-inside-work-tree"])
-        .current_dir(project)
-        .output()
-    {
-        Ok(out) if !out.status.success() => return Ok(None),
-        Ok(_) => {}
-        Err(e) => {
-            return Err(Error::CheckGitFailure {
-                message: format!("git rev-parse --is-inside-work-tree spawn: {e}"),
-            });
-        }
     }
     let head = run(project, &["rev-parse", "HEAD"])?.trim().to_string();
     let resolved = resolve(project, observed)?;
@@ -212,6 +199,41 @@ pub fn survey(
 ///
 /// A merge carries no diff of its own here and reports no paths, which is what
 /// it changed on its own.
+/// The harness as it stood when a window was measured.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct HarnessState {
+    /// The last commit to touch any declared harness path. `None` where none
+    /// ever has.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
+    /// Whether any of them differed from that commit on disk. A harness that
+    /// did is not identified by one, so two windows carrying the same `head`
+    /// are only known to hold the same harness while this is false.
+    pub uncommitted: bool,
+}
+
+/// Ask the project's repository what its harness was at this moment.
+///
+/// `None` when the path is not a git work tree, for the reason [`survey`]
+/// gives.
+pub fn harness_state(project: &Path, paths: &[String]) -> Result<Option<HarnessState>> {
+    if !project.is_dir() || !is_work_tree(project)? {
+        return Ok(None);
+    }
+    let mut args = vec!["log", "-1", "--format=%H", "HEAD", "--"];
+    args.extend(paths.iter().map(String::as_str));
+    let head = run(project, &args)?.trim().to_string();
+
+    let mut status = vec!["status", "--porcelain", "--"];
+    status.extend(paths.iter().map(String::as_str));
+    let dirty = run(project, &status)?;
+
+    Ok(Some(HarnessState {
+        head: (!head.is_empty()).then_some(head),
+        uncommitted: dirty.lines().any(|l| !l.trim().is_empty()),
+    }))
+}
+
 pub fn paths_touched(project: &Path, commits: &[String]) -> Result<BTreeMap<String, Vec<PathBuf>>> {
     // Same refusal as `resolve`: git is asked about object ids and never about
     // a revision expression something else composed.
@@ -382,6 +404,23 @@ fn stdin_query(project: &Path, args: &[&str], query: &str, what: &str) -> Result
         });
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Three answers, kept apart. A directory that is not there has no history to
+/// ask about; git saying "not a work tree" is the same; a git that could not be
+/// spawned is a failure, and reporting that as an absent repository would say
+/// the project has no history rather than that nothing asked.
+fn is_work_tree(project: &Path) -> Result<bool> {
+    match Command::new("git")
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .current_dir(project)
+        .output()
+    {
+        Ok(out) => Ok(out.status.success()),
+        Err(e) => Err(Error::CheckGitFailure {
+            message: format!("git rev-parse --is-inside-work-tree spawn: {e}"),
+        }),
+    }
 }
 
 fn run(project: &Path, args: &[&str]) -> Result<String> {

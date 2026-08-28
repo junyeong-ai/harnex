@@ -200,6 +200,14 @@ window's span, coverage, runtime versions and model mix, so a saved envelope is
 self-describing — that is the export, and two of them are readable side by side
 without the binary having to claim they measured the same work.
 
+`baseline save` records what the window was measured under as well as what it
+measured: the build, the paragraph floor, and — where the window was scoped to
+a git work tree — the commit the project's harness stood at and whether it had
+uncommitted changes. `baseline diff` answers `harness_change` from those, so a
+delta across an unchanged harness is not read as the effect of one. What counts
+as the harness is `[session] harness_paths`, defaulting to what Claude Code
+reads.
+
 By default every command emits one JSON envelope on stdout; the explicit raw
 modes (`export schema --raw`, `completions --raw`) emit the bare artifact for
 committing to disk. Exit code: 0 = success, 1 = gating finding (blocker or
