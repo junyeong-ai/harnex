@@ -77,14 +77,6 @@ const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
 /// The system record marking where the session's context was compacted.
 const COMPACT_BOUNDARY_SUBTYPE: &str = "compact_boundary";
 
-/// The system record carrying how long one agent run took.
-///
-/// The one clock in the transcript. The runtime writes it at a Stop, so it
-/// counts runs rather than instructions, and it is a floor on both: measured
-/// over one project it accompanied 44 of 132 stops, so what it sums is the time
-/// it was written for and never the time the window took.
-const TURN_DURATION_SUBTYPE: &str = "turn_duration";
-
 /// Tools that invoke a harness element, and the input key naming it.
 ///
 /// The only per-tool argument vocabulary this module admits, and it is admitted
@@ -227,6 +219,9 @@ pub struct Denial {
 )]
 pub struct ToolUse {
     pub calls: usize,
+    /// A floor: a result whose call is recorded in another transcript cannot be
+    /// attributed to a tool and is not counted here — 1 of 7,194 over the local
+    /// corpus.
     pub failed: usize,
 }
 
@@ -368,24 +363,6 @@ pub struct StopSummary {
     pub prevented_continuation: bool,
 }
 
-/// Wall-clock the runtime timed across a window, and how many runs it timed.
-///
-/// Both, because either alone misleads: the total is over the runs that
-/// recorded one, not over the window, and the count is what says how much of
-/// the window that is.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ElapsedFacts {
-    pub milliseconds: u64,
-    pub turns: usize,
-}
-
-/// How long one agent run took, as the runtime timed it.
-#[derive(Debug, Clone)]
-pub struct TurnDuration {
-    pub citation: Citation,
-    pub duration_ms: u64,
-}
-
 #[derive(Debug, Clone)]
 pub enum Record {
     User(UserTurn),
@@ -393,7 +370,6 @@ pub enum Record {
     RuleLoad(RuleLoad),
     StopSummary(StopSummary),
     Compaction(Compaction),
-    TurnDuration(TurnDuration),
 }
 
 impl Record {
@@ -404,7 +380,6 @@ impl Record {
             Self::RuleLoad(r) => &r.citation,
             Self::StopSummary(s) => &s.citation,
             Self::Compaction(c) => &c.citation,
-            Self::TurnDuration(t) => &t.citation,
         }
     }
 }
@@ -604,8 +579,6 @@ struct RawRecord {
     interrupted_message_id: Option<String>,
     #[serde(rename = "compactMetadata")]
     compact_metadata: Option<RawCompactMetadata>,
-    #[serde(rename = "durationMs")]
-    duration_ms: Option<u64>,
     cwd: Option<PathBuf>,
 }
 
@@ -965,17 +938,6 @@ pub fn read_transcript(
                             .cumulative_dropped_tokens
                             .unwrap_or_default(),
                         duration_ms: meta.duration_ms.unwrap_or_default(),
-                    }));
-                    continue;
-                }
-                if subtype == TURN_DURATION_SUBTYPE {
-                    let Some(duration_ms) = raw.duration_ms else {
-                        coverage.records_malformed += 1;
-                        continue;
-                    };
-                    out.push(Record::TurnDuration(TurnDuration {
-                        citation,
-                        duration_ms,
                     }));
                     continue;
                 }

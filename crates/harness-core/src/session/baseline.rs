@@ -119,11 +119,6 @@ wire_enum! {
         ReeditsPerCommit => "reedits_per_commit",
         /// Wall-clock the Stop hooks held.
         HookMillisecondsPerStop => "hook_milliseconds_per_stop",
-        /// Wall-clock a run took, over the runs the runtime timed. What the
-        /// hook figure is a share of: a hook that holds two seconds is most of
-        /// a ten-second run and none of a ten-minute one, and the two are
-        /// denominated apart because each is a floor over its own population.
-        ElapsedMillisecondsPerTurn => "elapsed_milliseconds_per_turn",
         /// Tokens the agent generated. Read beside the window's model set: a
         /// mix that moved moves this for a reason that is not the operator.
         OutputTokensPerSubmission => "output_tokens_per_submission",
@@ -189,10 +184,6 @@ impl SessionMetric {
             Self::HookMillisecondsPerStop => Measurement {
                 numerator: facts.harness.hooks.iter().map(|h| h.total_ms).sum(),
                 denominator: facts.harness.stops as u64,
-            },
-            Self::ElapsedMillisecondsPerTurn => Measurement {
-                numerator: facts.elapsed.milliseconds,
-                denominator: facts.elapsed.turns as u64,
             },
             Self::OutputTokensPerSubmission => Measurement {
                 numerator: facts.tokens.output,

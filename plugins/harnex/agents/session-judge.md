@@ -32,7 +32,7 @@ text and what followed it:
 | `commits` · `committed` | what shipped, and the paths those commits changed |
 | `tokens` · `models` | what it spent, and which models spent it |
 | `tools` | tool calls made under it, by tool, with `calls` and the `failed` that came back an error — how the work was actually done, and where it fought |
-| `elapsed_ms` | wall-clock the runtime timed under it. A floor: some runs go untimed, so zero is silence |
+| `elapsed_ms` | from this instruction to the last record made under it — the work, not the wait after it |
 | `interrupts` · `denials` | interruptions marked, tool calls stopped |
 | `steered_away` | the next instruction arrived before this one was answered |
 

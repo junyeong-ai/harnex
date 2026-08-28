@@ -546,8 +546,6 @@ fn every_metric_corpus() -> (TempDir, SessionConfig) {
     // number as the session's own.
     alpha.push(compacted("s1", "k1", "2026-08-01T09:00:11Z", 900, 100, 100));
     alpha.push(compacted("s1", "k2", "2026-08-01T09:00:12Z", 800, 150, 250));
-    alpha.push(timed("s1", "d1", "2026-08-01T09:00:13Z", 700));
-    alpha.push(timed("s1", "d2", "2026-08-01T09:00:14Z", 500));
 
     let beta = vec![
         typed("s2", "b1", "2026-08-02T09:00:00Z", STANDING),
@@ -582,7 +580,6 @@ fn every_recorded_metric_computes_what_it_computed() {
         ("steering_per_submission", 1, 4),
         ("interrupts_per_submission", 1, 4),
         ("reedits_per_commit", 1, 1),
-        ("elapsed_milliseconds_per_turn", 1200, 2),
         ("hook_milliseconds_per_stop", 90, 1),
         ("output_tokens_per_submission", 700, 4),
     ];
@@ -1251,11 +1248,7 @@ fn a_window_names_the_rates_no_comparison_against_it_will_answer() {
     );
     assert_eq!(
         baseline.unsupported(0),
-        [
-            "elapsed_milliseconds_per_turn",
-            "hook_milliseconds_per_stop",
-            "reedits_per_commit"
-        ],
+        ["hook_milliseconds_per_stop", "reedits_per_commit"],
         "a rate over an empty population is withheld at any floor, zero included"
     );
 }
@@ -1748,13 +1741,6 @@ fn a_sub_agent_counts_the_same_however_the_runtime_named_its_tool() {
 }
 
 /// The system record marking where the context was compacted.
-/// The record the runtime writes at a Stop saying how long the run took.
-fn timed(session: &str, uuid: &str, ts: &str, ms: u64) -> String {
-    format!(
-        r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","subtype":"turn_duration","durationMs":{ms},"messageCount":3}}"#
-    )
-}
-
 fn compacted(session: &str, uuid: &str, ts: &str, pre: u64, post: u64, cumulative: u64) -> String {
     format!(
         r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","subtype":"compact_boundary","compactMetadata":{{"trigger":"manual","preTokens":{pre},"postTokens":{post},"cumulativeDroppedTokens":{cumulative},"durationMs":1200}}}}"#
@@ -2107,34 +2093,6 @@ fn a_call_the_harness_refused_is_not_a_call_that_failed() {
     );
 }
 
-/// The one clock in the transcript, and the population it was written for.
-#[test]
-fn a_window_says_how_long_its_runs_took_and_over_how_many_it_knows() {
-    let (_dir, config) = corpus(&[(
-        "-Users-me-alpha/s1.jsonl",
-        vec![
-            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
-            timed("s1", "d1", "2026-08-01T09:00:01Z", 400),
-            timed("s1", "d2", "2026-08-01T09:00:02Z", 600),
-        ],
-    )]);
-
-    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
-
-    assert_eq!(facts.elapsed.milliseconds, 1000);
-    assert_eq!(
-        facts.elapsed.turns, 2,
-        "the total is over the runs that recorded one, never over the window"
-    );
-    assert!(
-        !facts
-            .coverage
-            .record_types_unconsumed
-            .contains_key("system:turn_duration"),
-        "a record this module now reads is not also reported as skipped"
-    );
-}
-
 /// A prompt the operator chose rather than typed is still an instruction: the
 /// runtime attributes it to a person, and the work under it is theirs. Its text
 /// is not theirs, so it stays out of the repetition statistics.
@@ -2179,5 +2137,42 @@ fn an_instruction_the_operator_chose_rather_than_typed_is_still_an_instruction()
     assert_eq!(
         facts.coverage.user_turns_by_authorship["source-unrecognised"], 1,
         "coverage still says the source was one this binary does not recognise"
+    );
+}
+
+/// An instruction's span ends at the last record made under it, so time the
+/// operator spent before sending the next one belongs to nobody. The runtime's
+/// own `turn_duration` measures stop-to-stop and would have charged it here.
+#[test]
+fn an_instruction_is_as_long_as_its_work_and_not_as_long_as_the_wait_after_it() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spent("s1", "x1", "2026-08-01T09:00:30Z", "claude-opus-5", 100),
+            // The run ends, and three hours pass with the session open. The
+            // stop and the operator's next message both land inside the first
+            // instruction's interval and neither is it working.
+            stop_summary("s1", "h1", "2026-08-01T09:00:31Z", "check.sh", 5),
+            typed("s1", "a2", "2026-08-01T12:00:00Z", ALSO_STANDING),
+            spent("s1", "x2", "2026-08-01T12:00:10Z", "claude-opus-5", 100),
+        ],
+    )]);
+
+    let facts = session::collect(
+        &config,
+        &CollectOptions {
+            with_submissions: true,
+            ..CollectOptions::default()
+        },
+    )
+    .unwrap();
+    let subs = facts.submissions;
+
+    assert_eq!(subs[0].elapsed_ms, 30_000, "half a minute of work");
+    assert_eq!(subs[1].elapsed_ms, 10_000);
+    assert!(
+        subs.iter().all(|s| s.elapsed_ms < 3_600_000),
+        "the three idle hours between them are in neither"
     );
 }

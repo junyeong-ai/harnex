@@ -68,7 +68,7 @@ pub use harness::{
 };
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock, Repetition};
-pub use record::{Authorship, Citation, Compaction, Coverage, ElapsedFacts, TokenUse, ToolUse};
+pub use record::{Authorship, Citation, Compaction, Coverage, TokenUse, ToolUse};
 pub use repository::{CommitFate, CommitOutcome, HarnessState, RepositoryFacts};
 pub use rework::{PostCommitReedit, ReworkFacts};
 pub use submission::{Submission, SubmissionIndex, SubmissionWindow, systematic_sample};
@@ -115,10 +115,6 @@ pub struct SessionFacts {
     /// how broad a rule is, and a call the harness refused is counted there
     /// rather than here.
     pub tools: BTreeMap<String, ToolUse>,
-    /// Wall-clock the runtime timed, and the runs it timed. A floor on both, so
-    /// the two ride together: the total means nothing without the population it
-    /// was summed over.
-    pub elapsed: ElapsedFacts,
     /// What became of the commits the window produced. Present only for a
     /// window scoped to a project, and only when that project is a git work
     /// tree — nothing else can be asked what survived.
@@ -179,7 +175,6 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut tokens = TokenUse::default();
     let mut commits: Vec<String> = Vec::new();
     let mut tools: BTreeMap<String, ToolUse> = BTreeMap::new();
-    let mut elapsed = ElapsedFacts::default();
     let mut sessions: BTreeSet<String> = BTreeSet::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
@@ -276,10 +271,6 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                         tools.entry(tool.clone()).or_default().failed += 1;
                     }
                 }
-                record::Record::TurnDuration(timed) => {
-                    elapsed.milliseconds += timed.duration_ms;
-                    elapsed.turns += 1;
-                }
                 _ => {}
             }
             submissions.observe(rec, assigned);
@@ -328,7 +319,6 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         },
         tokens,
         tools,
-        elapsed,
         repository,
         rework: rework.finish(),
         harness: harness.finish(options.with_text),

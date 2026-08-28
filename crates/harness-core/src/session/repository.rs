@@ -412,15 +412,13 @@ fn stdin_query(project: &Path, args: &[&str], query: &str, what: &str) -> Result
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// Three answers, kept apart. A directory that is not there has no history to
-/// ask about; git saying "not a work tree" is the same; a git that could not be
-/// spawned is a failure, and reporting that as an absent repository would say
-/// the project has no history rather than that nothing asked.
 /// The identity this repository commits under, if it names one.
 ///
 /// `None` rather than an unfiltered count: a repository with no configured
-/// author cannot say which commits are the operator own, and answering with
-/// everyone would be a different number under the same name.
+/// author cannot say which commits are the operator's, and answering with
+/// everyone's would be a different number under the same name. An email is
+/// matched as git matches it — a substring of the author line — so an address
+/// that is a prefix of a colleague's counts both.
 fn configured_author(project: &Path) -> Result<Option<String>> {
     match Command::new("git")
         .args(["config", "--get", "user.email"])
@@ -438,12 +436,6 @@ fn configured_author(project: &Path) -> Result<Option<String>> {
     }
 }
 
-/// Where git says this project work tree begins.
-///
-/// Git resolves a pathspec against the directory it runs in, so a window
-/// scoped below the root would ask about that subtree alone. Both callers here
-/// mean the whole tree — one reports where a commit landed, the other what the
-/// harness is — so both ask from the root.
 /// Whether this work tree has a commit yet.
 ///
 /// `rev-parse HEAD` fails on an unborn branch, and that failure is a fact about
@@ -461,6 +453,12 @@ fn has_commits(project: &Path) -> Result<bool> {
     }
 }
 
+/// Where git says this project's work tree begins.
+///
+/// Git resolves a pathspec against the directory it runs in, so a window
+/// scoped below the root would ask about that subtree alone. Both callers here
+/// mean the whole tree — one reports where a commit landed, the other what the
+/// harness is — so both ask from the root.
 fn work_tree_root(project: &Path) -> Result<PathBuf> {
     Ok(PathBuf::from(
         run(project, &["rev-parse", "--show-toplevel"])?.trim(),

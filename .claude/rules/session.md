@@ -62,7 +62,7 @@ floor, named for that, and carries the coverage it was measured at.
   and its test asserts the ordering it exists for.
 - **A commit is a floor, not a count.** The runtime attaches `gitOperation` to
   some commits and not others — 29 of git's 42 over this project. Anything
-  denominated in commits reads high, and `repository.commits_in_span` reports
+  denominated in commits reads high, and `repository.authored_in_span` reports
   what the floor is a floor against so a consumer can see the gap.
 - **Never pipe stdin to a subprocess that also writes stdout.** The repository
   survey ([file: crates/harness-core/src/session/repository.rs]) passes its
