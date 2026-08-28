@@ -273,6 +273,10 @@ pub struct AssistantTurn {
     pub citation: Citation,
     pub actions: Vec<ToolAction>,
     pub tokens: TokenUse,
+    /// The message this turn is a block of. A message is one charge however
+    /// many records report it, and the runtime writes those records into more
+    /// than one file.
+    pub message: Option<String>,
     /// The model that produced this turn, as the runtime named it.
     pub model: Option<String>,
 }
@@ -831,10 +835,12 @@ pub fn read_transcript(
                     .map(RawUsage::tokens)
                     .unwrap_or_default();
                 let spent = message.and_then(|m| m.usage.as_ref()).is_some();
+                let named = message.and_then(|m| m.id.clone());
                 out.push(Record::Assistant(AssistantTurn {
                     citation,
                     actions,
                     tokens,
+                    message: named,
                     model,
                 }));
                 // The latest record of a message holds its charge: while a

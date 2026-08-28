@@ -564,6 +564,71 @@ fn a_fork_replaying_its_parent_does_not_make_one_instruction_into_two() {
 }
 
 #[test]
+fn a_message_copied_into_another_transcript_under_new_uuids_is_one_message() {
+    // The copies carry different uuids, so identity by record does not see
+    // them. A message is written to one transcript; another reporting it is
+    // reporting copies of its blocks, and its tool calls with them.
+    let block = |uuid: &str, ts: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","message":{{"id":"msg_a","model":"claude-opus-5","usage":{{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":400}},"content":[{{"type":"tool_use","id":"call-1","name":"Bash","input":{{"command":"true"}}}}]}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+        ),
+        (
+            "-Users-me-alpha/s1/subagents/agent-one.jsonl",
+            vec![block("x1", "2026-08-01T09:00:02Z")],
+        ),
+        (
+            "-Users-me-alpha/s1/subagents/agent-two.jsonl",
+            vec![block("x2", "2026-08-01T09:00:03Z")],
+        ),
+    ]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.tokens.output, 400, "one message, charged once");
+    assert_eq!(facts.tools["Bash"], 1, "one tool call, counted once");
+    assert_eq!(facts.coverage.records_duplicated, 1);
+    assert_eq!(facts.submissions[0].agent_turns, 1);
+}
+
+#[test]
+fn a_message_split_into_blocks_stays_every_block_it_produced() {
+    // Two records of one message inside the file that wrote it are two events:
+    // the message made two tool calls, and neither is a copy of the other.
+    let block = |uuid: &str, ts: &str, call: &str, output: u64| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","message":{{"id":"msg_a","model":"claude-opus-5","usage":{{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":{output}}},"content":[{{"type":"tool_use","id":"{call}","name":"Bash","input":{{"command":"true"}}}}]}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            block("x1", "2026-08-01T09:00:02Z", "call-1", 4),
+            block("x2", "2026-08-01T09:00:03Z", "call-2", 400),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.tools["Bash"], 2);
+    assert_eq!(
+        facts.tokens.output, 400,
+        "and one charge, at its settled count"
+    );
+    assert_eq!(facts.coverage.records_duplicated, 0);
+}
+
+#[test]
 fn a_record_two_of_a_sessions_subagents_start_from_is_one_event() {
     let shared = spent("s1", "x1", "2026-08-01T09:00:02Z", "claude-opus-5", 400);
     let (_dir, config) = corpus(&[
