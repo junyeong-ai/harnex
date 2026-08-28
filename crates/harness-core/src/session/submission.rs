@@ -269,6 +269,9 @@ impl SubmissionAnalyzer {
             self.out[at].edits += 1;
             self.touched.entry(at).or_default().insert(file.clone());
         }
+        if let Some(tool) = &turn.failed_tool {
+            self.out[at].tools.entry(tool.clone()).or_default().failed += 1;
+        }
     }
 
     pub fn finish(mut self, with_text: bool) -> Vec<Submission> {
