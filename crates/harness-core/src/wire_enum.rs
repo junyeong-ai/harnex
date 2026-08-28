@@ -44,7 +44,47 @@ macro_rules! wire_enum {
                 Self::ALL.iter().copied().find(|v| v.as_str() == s)
             }
         }
+
+        // `from_str` returns the first variant whose string matches, so a
+        // repeated string makes every later variant unreachable. The
+        // exhaustive match this replaced got that from the compiler as an
+        // unreachable pattern; here it is asked for.
+        const _: () = {
+            let wires: &[&str] = &[$($wire),+];
+            let mut i = 0;
+            while i < wires.len() {
+                let mut j = i + 1;
+                while j < wires.len() {
+                    assert!(
+                        !$crate::wire_enum::str_eq(wires[i], wires[j]),
+                        concat!(
+                            "two variants of ",
+                            stringify!($name),
+                            " share a wire string, so one of them can never be parsed"
+                        )
+                    );
+                    j += 1;
+                }
+                i += 1;
+            }
+        };
     };
+}
+
+/// Byte equality in a const context, which `==` on `str` is not.
+pub(crate) const fn str_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }
 
 pub(crate) use wire_enum;

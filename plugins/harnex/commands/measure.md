@@ -324,9 +324,11 @@ metric that will show whether it worked. Everything else goes in an appendix.
   4,502 over another, so anything denominated in observed commits reads high
 - an event the runtime wrote into two transcripts is counted once — a record
   by its uuid, a message by the transcript that wrote it — and
-  `records_duplicated` says how many were discarded. One shape escapes, 201 of
-  285,233 messages: where the transcript that reported a message first had its
-  stream cut, its partial count is the one kept
+  `records_duplicated` says how many were discarded. One shape escapes: where
+  the transcript that reported a message first had its stream cut, its partial
+  count is the one kept. Seen at 201 of 285,233 messages on one corpus and at
+  none on a later, smaller one, so it is a shape to know about rather than a
+  rate to expect
 - a path containing a control character is reported as git spells it, escaped
 - `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
