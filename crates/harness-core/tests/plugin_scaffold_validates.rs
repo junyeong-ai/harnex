@@ -337,6 +337,18 @@ fn run_scaffold_validation(lang: &str) {
     // every real project and green in this test.
     let scaffolded = harness_core::config::Config::load_from(&proj_root.join("harness.toml"))
         .unwrap_or_else(|e| panic!("[{lang}] scaffolded harness.toml: {e}"));
+    // The plugin ships `/harnex:measure`, and the oracle refuses every session
+    // command without this section. A scaffold that omits it hands the operator
+    // a command that cannot run and no document naming what to write.
+    let session = scaffolded
+        .session
+        .as_ref()
+        .unwrap_or_else(|| panic!("[{lang}] the scaffold's harness.toml declares no [session], so `/harnex:measure` cannot run on it"));
+    assert!(
+        !session.roots.is_empty(),
+        "[{lang}] [session] roots is empty, which discovers nothing"
+    );
+
     let declared = scaffolded
         .validate
         .as_ref()

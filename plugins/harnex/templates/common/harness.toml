@@ -73,6 +73,16 @@ strategy = "file-path-line"
 # rules send you to — answer CONFIG_INVALID.
 [lifecycle]
 
+# Where Claude Code writes the transcripts `/harnex:measure` reads. The oracle
+# ships no default for this — a machine-global path compiled into a binary is
+# the author's layout running on someone else's machine — but a harness written
+# by a Claude Code plugin knows the layout, and without the section `measure`
+# and the retirement sweep both answer that `[session]` is not configured.
+# Set it to `$CLAUDE_CONFIG_DIR/projects` instead if that variable relocates
+# `~/.claude` here; `~` is the only expansion this field performs.
+[session]
+roots = ["~/.claude/projects"]
+
 # `lifecycle retire` derives its Silent verdict from this ledger, so the sweep
 # needs the section even before the project records anything. `kinds` starts
 # empty: an event schema is a project's own vocabulary and inventing one here
