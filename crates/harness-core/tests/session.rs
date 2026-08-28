@@ -2077,7 +2077,12 @@ fn a_call_the_harness_refused_is_not_a_call_that_failed() {
         ],
     )]);
 
-    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
 
     assert_eq!(facts.tools["Bash"].calls, 2, "both calls were made");
     assert_eq!(
@@ -2094,6 +2099,17 @@ fn a_call_the_harness_refused_is_not_a_call_that_failed() {
         1,
         "and the refusal is counted where refusals are counted"
     );
+
+    let one = &facts.submissions[0];
+    assert_eq!(
+        one.tools["Bash"].calls, 2,
+        "the instruction made both calls"
+    );
+    assert_eq!(
+        one.tools["Bash"].failed, 1,
+        "the instruction that made the call carries its failure, as the window does"
+    );
+    assert_eq!(one.denials, 1, "and its refusal stays a refusal");
 }
 
 /// A prompt the operator chose rather than typed is still an instruction: the
