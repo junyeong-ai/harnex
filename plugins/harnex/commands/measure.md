@@ -46,9 +46,13 @@ harness session submissions --since <t> [--project <dir>] --with-text --sample <
 `facts` carries, so either result read alone still says which window it is.
 
 `--sample` defaults to `[session] submission_sample`. **Absent, that returns
-the window whole**, and §3 dispatches an agent per 25 of them — set it, or say
-in the report how many agents the run cost. Evidence the envelopes do not carry
-does not exist — do not supply it from reading transcripts by hand.
+the window whole**, and §3 dispatches an agent per 25 of them. Divide before
+dispatching and say the number then: measured, 97 instructions cost four agents
+and 648k tokens, and a first run with no baseline takes the corpus whole, which
+is every project on the machine unless `--project` narrows it. Above a handful
+of batches, tell the operator the count and let them cap it. Evidence the
+envelopes do not carry does not exist — do not supply it from reading
+transcripts by hand.
 
 **If a cost source is installed, take it too.** The transcripts time a run and
 never a call, and they carry no price at all. A telemetry collector keyed by
@@ -81,9 +85,14 @@ read, and the same is true of a batch where everything is.
 
 The kinds come from a model and the outcomes do not, which is what makes the
 crossing worth reading: if the labels are wrong the observed strata still hold.
-Report per kind — instructions, median `agent_turns`, `tokens.output`, share
-cut short, share that shipped — and withhold a rate for any kind with fewer
-instructions than `[session] min_support`.
+Report per kind — instructions, median `agent_turns`, `tokens.output`,
+`elapsed_ms`, and how many were cut short and how many shipped **as counts
+against that kind's own instruction count**, never as a share. `min_support` is
+the floor for subtracting two rates in a comparison and this is one window
+described, where the denominator is on the page: applied here it withholds
+everything, because a kind holds a fraction of a window and the smallest would
+need a thousand instructions to clear it — measured over 97, the largest kind
+was 28.
 
 A median answers what a kind costs *each time*, which is the question for
 every kind but one. `continue` — "keep going", "next round" — carries no
