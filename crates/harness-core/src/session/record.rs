@@ -368,7 +368,6 @@ pub struct Coverage {
     pub files_unreadable: usize,
     /// Of those, the ones a record in the window came from. The file count
     /// that belongs beside `records_total`.
-    #[serde(default)]
     pub files_in_window: usize,
     pub records_total: usize,
     pub records_malformed: usize,
@@ -380,18 +379,15 @@ pub struct Coverage {
     ///
     /// Zero on a baseline whose `oracle_version` predates this counter, which
     /// is what that field is for.
-    #[serde(default)]
     pub records_forked: usize,
     /// Records already counted from another of the same session's transcripts.
     /// Dispatching several subagents at once copies the state they start from
     /// into each of their files, and one event is counted once.
-    #[serde(default)]
     pub records_duplicated: usize,
     /// Turns that reported what they spent without naming the message they
     /// belong to, so the charge could not be held against its message and was
     /// taken as new. Zero across every record of the local corpus; a non-zero
     /// here says the shape moved and the token counts are a ceiling.
-    #[serde(default)]
     pub turns_charged_without_a_message: usize,
     /// Record kinds present in the input that this module does not consume.
     /// A type with a sub-vocabulary is keyed `type:subtype`, so consuming one
