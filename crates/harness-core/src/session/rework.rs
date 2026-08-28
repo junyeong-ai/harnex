@@ -163,6 +163,7 @@ mod tests {
             commit: None,
             edited_file: None,
             denial: None,
+            failed_tool: None,
         }
     }
 

@@ -249,6 +249,7 @@ impl HarnessAnalyzer {
 
     pub fn observe(&mut self, record: &Record) {
         match record {
+            Record::TurnDuration(_) => {}
             Record::User(turn) => {
                 if let Some(denial) = &turn.denial {
                     self.denials
@@ -458,6 +459,7 @@ mod tests {
                 tool: tool.map(str::to_string),
                 input: None,
             }),
+            failed_tool: None,
         })
     }
 
