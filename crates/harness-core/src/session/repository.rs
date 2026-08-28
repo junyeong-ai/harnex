@@ -106,11 +106,13 @@ pub fn survey(
     observed: &[String],
     span: Option<(jiff::Timestamp, jiff::Timestamp)>,
 ) -> Result<Option<RepositoryFacts>> {
-    // Three answers, kept apart. A directory that is not there has no history
-    // to ask about; git saying "not a work tree" is the same; a git that could
-    // not be spawned is a failure, and reporting that as an absent repository
-    // would say the project has no history rather than that nothing asked.
-    if !project.is_dir() || !is_work_tree(project)? {
+    // Four answers, kept apart. A directory that is not there has no history
+    // to ask about; git saying "not a work tree" is the same; a work tree whose
+    // HEAD is unborn is a repository with nothing in it yet, which is where a
+    // scaffolded harness starts; and a git that could not be spawned is a
+    // failure, because reporting that as an absent repository would say the
+    // project has no history rather than that nothing asked.
+    if !project.is_dir() || !is_work_tree(project)? || !has_commits(project)? {
         return Ok(None);
     }
     let head = run(project, &["rev-parse", "HEAD"])?.trim().to_string();
@@ -199,16 +201,18 @@ pub struct HarnessState {
 /// `None` when the path is not a git work tree, for the reason [`survey`]
 /// gives.
 pub fn harness_state(project: &Path, paths: &[String]) -> Result<Option<HarnessState>> {
-    if !project.is_dir() || !is_work_tree(project)? {
+    if !project.is_dir() || !is_work_tree(project)? || !has_commits(project)? {
         return Ok(None);
     }
+    let root = work_tree_root(project)?;
+
     let mut args = vec!["log", "-1", "--format=%H", "HEAD", "--"];
     args.extend(paths.iter().map(String::as_str));
-    let head = run(project, &args)?.trim().to_string();
+    let head = run(&root, &args)?.trim().to_string();
 
     let mut status = vec!["status", "--porcelain", "--"];
     status.extend(paths.iter().map(String::as_str));
-    let dirty = run(project, &status)?;
+    let dirty = run(&root, &status)?;
 
     Ok(Some(HarnessState {
         head: (!head.is_empty()).then_some(head),
@@ -255,7 +259,7 @@ pub fn paths_touched(project: &Path, commits: &[String]) -> Result<BTreeMap<Stri
         "git log --stdin --name-only",
     )?;
 
-    let root = PathBuf::from(run(project, &["rev-parse", "--show-toplevel"])?.trim());
+    let root = work_tree_root(project)?;
 
     let mut out = BTreeMap::new();
     for commit in listing.split('\0').skip(1) {
@@ -405,6 +409,35 @@ fn stdin_query(project: &Path, args: &[&str], query: &str, what: &str) -> Result
 /// ask about; git saying "not a work tree" is the same; a git that could not be
 /// spawned is a failure, and reporting that as an absent repository would say
 /// the project has no history rather than that nothing asked.
+/// Where git says this project's work tree begins.
+///
+/// Git resolves a pathspec against the directory it runs in, so a window
+/// scoped below the root would ask about that subtree alone. Both callers here
+/// mean the whole tree — one reports where a commit landed, the other what the
+/// harness is — so both ask from the root.
+/// Whether this work tree has a commit yet.
+///
+/// `rev-parse HEAD` fails on an unborn branch, and that failure is a fact about
+/// the repository rather than about git, so it is asked for rather than caught.
+fn has_commits(project: &Path) -> Result<bool> {
+    match Command::new("git")
+        .args(["rev-parse", "--verify", "--quiet", "HEAD"])
+        .current_dir(project)
+        .output()
+    {
+        Ok(out) => Ok(out.status.success()),
+        Err(e) => Err(Error::CheckGitFailure {
+            message: format!("git rev-parse --verify HEAD spawn: {e}"),
+        }),
+    }
+}
+
+fn work_tree_root(project: &Path) -> Result<PathBuf> {
+    Ok(PathBuf::from(
+        run(project, &["rev-parse", "--show-toplevel"])?.trim(),
+    ))
+}
+
 fn is_work_tree(project: &Path) -> Result<bool> {
     match Command::new("git")
         .args(["rev-parse", "--is-inside-work-tree"])

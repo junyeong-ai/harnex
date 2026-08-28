@@ -9,7 +9,18 @@ Report how the operator works with Claude Code, from the transcripts Claude
 Code already wrote. The oracle decides what is countable; `session-judge` reads
 what is not; this command joins them and never blurs which is which.
 
-Requires `[session]` in `harness.toml`. Without the binary there are no numbers
+Requires `[session]` in `harness.toml`, which a scaffolded harness ships and a
+hand-written one may not:
+
+```toml
+[session]
+roots = ["~/.claude/projects"]   # or $CLAUDE_CONFIG_DIR/projects, spelled out
+```
+
+`roots` has no built-in default on purpose — it is a machine-global path, and
+one compiled in would be its author's layout running on someone else's machine.
+`~` is the only expansion the field performs, so a relocated config directory is
+written out in full. Without the binary there are no numbers
 — say so and stop rather than estimating from the logs by hand, and name
 `curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash`
 as how it is installed. Enabling this plugin does not install it.

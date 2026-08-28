@@ -388,3 +388,39 @@ fn project_memory_beside_the_code_it_governs_is_part_of_the_harness() {
     );
     assert!(!state.uncommitted);
 }
+
+#[test]
+fn a_window_scoped_below_the_root_is_told_about_the_whole_harness() {
+    let dir = repo();
+    let root_memory = commit_touching(dir.path(), "root memory", &["CLAUDE.md"]);
+    commit_touching(dir.path(), "unrelated", &["crates/core/src/lib.rs"]);
+    let project = dir.path().join("crates/core");
+
+    let state = repository::harness_state(&project, &harness_core::config::default_harness_paths())
+        .unwrap()
+        .expect("a directory inside a work tree is one");
+
+    assert_eq!(
+        state.head.as_deref(),
+        Some(root_memory.as_str()),
+        "git resolves a pathspec against the directory it runs in, so a window \
+         scoped to a package would answer about that package's harness alone \
+         and call a root memory change no change at all"
+    );
+}
+
+#[test]
+fn a_repository_with_nothing_committed_yet_answers_rather_than_failing() {
+    let dir = repo();
+
+    assert!(
+        repository::survey(dir.path(), &[], None).unwrap().is_none(),
+        "an unborn HEAD is a repository with nothing in it, not a git failure"
+    );
+    assert!(
+        repository::harness_state(dir.path(), &harness_core::config::default_harness_paths())
+            .unwrap()
+            .is_none(),
+        "and the harness it does not have yet is absent, not unreadable"
+    );
+}
