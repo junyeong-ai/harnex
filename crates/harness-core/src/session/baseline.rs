@@ -34,6 +34,7 @@ use crate::path_guard;
 use crate::session::SessionFacts;
 use crate::session::record::Coverage;
 use crate::session::repository::HarnessState;
+use crate::wire_enum::wire_enum;
 
 /// A rate, kept as the two counts it came from.
 ///
@@ -70,79 +71,45 @@ impl Measurement {
     }
 }
 
-/// The rates a baseline carries.
-///
-/// Closed, because a baseline written by one build is read by another: the
-/// wire names are the join between them, and an exhaustive match is what keeps
-/// a new variant from being measured on one side of a comparison only. A
-/// metric whose definition changes is renamed rather than redefined, so an
-/// older baseline lands in `metrics_unmatched` instead of being compared
-/// against a number that no longer means the same thing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionMetric {
-    /// Characters written again in a session that did not yet hold them — text
-    /// no harness was holding.
-    CrossSessionCharsPerSubmission,
-    /// Characters written again inside a session that already held them — text
-    /// that was in context and did not survive it.
-    WithinSessionCharsPerSubmission,
-    /// Characters of project memory the runtime loaded.
-    RuleLoadCharsPerSubmission,
-    /// Tool calls a permission rule or the operator stopped.
-    DenialsPerSubmission,
-    /// Instructions the operator sent without waiting for the agent that was
-    /// already answering the previous one.
-    SteeringPerSubmission,
-    /// Files edited again after a commit and before the next one. Denominated
-    /// in observed commits, which is a floor, so this reads high; compare it
-    /// only against another window measured the same way.
-    ReeditsPerCommit,
-    /// Wall-clock the Stop hooks held.
-    HookMillisecondsPerStop,
-    /// Tokens the agent generated. Read beside the window's model set: a mix
-    /// that moved moves this for a reason that is not the operator.
-    OutputTokensPerSubmission,
+wire_enum! {
+    /// The rates a baseline carries.
+    ///
+    /// Closed, because a baseline written by one build is read by another: the
+    /// wire names are the join between them, and an exhaustive match is what
+    /// keeps a new variant from being measured on one side of a comparison
+    /// only. A metric whose definition changes is renamed rather than
+    /// redefined, so an older baseline lands in `metrics_unmatched` instead of
+    /// being compared against a number that no longer means the same thing.
+    ///
+    /// Every rate is denominated in what causes it, so a window that did more
+    /// work does not read as a window that went worse.
+    pub enum SessionMetric {
+        /// Characters written again in a session that did not yet hold them —
+        /// text no harness was holding.
+        CrossSessionCharsPerSubmission => "cross_session_chars_per_submission",
+        /// Characters written again inside a session that already held them —
+        /// text that was in context and did not survive it.
+        WithinSessionCharsPerSubmission => "within_session_chars_per_submission",
+        /// Characters of project memory the runtime loaded.
+        RuleLoadCharsPerSubmission => "rule_load_chars_per_submission",
+        /// Tool calls a permission rule or the operator stopped.
+        DenialsPerSubmission => "denials_per_submission",
+        /// Instructions the operator sent without waiting for the agent that
+        /// was already answering the previous one.
+        SteeringPerSubmission => "steering_per_submission",
+        /// Files edited again after a commit and before the next one.
+        /// Denominated in observed commits, which is a floor, so this reads
+        /// high; compare it only against another window measured the same way.
+        ReeditsPerCommit => "reedits_per_commit",
+        /// Wall-clock the Stop hooks held.
+        HookMillisecondsPerStop => "hook_milliseconds_per_stop",
+        /// Tokens the agent generated. Read beside the window's model set: a
+        /// mix that moved moves this for a reason that is not the operator.
+        OutputTokensPerSubmission => "output_tokens_per_submission",
+    }
 }
 
 impl SessionMetric {
-    pub const ALL: &'static [Self] = &[
-        Self::CrossSessionCharsPerSubmission,
-        Self::WithinSessionCharsPerSubmission,
-        Self::RuleLoadCharsPerSubmission,
-        Self::DenialsPerSubmission,
-        Self::SteeringPerSubmission,
-        Self::ReeditsPerCommit,
-        Self::HookMillisecondsPerStop,
-        Self::OutputTokensPerSubmission,
-    ];
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "cross_session_chars_per_submission" => Self::CrossSessionCharsPerSubmission,
-            "within_session_chars_per_submission" => Self::WithinSessionCharsPerSubmission,
-            "rule_load_chars_per_submission" => Self::RuleLoadCharsPerSubmission,
-            "denials_per_submission" => Self::DenialsPerSubmission,
-            "steering_per_submission" => Self::SteeringPerSubmission,
-            "reedits_per_commit" => Self::ReeditsPerCommit,
-            "hook_milliseconds_per_stop" => Self::HookMillisecondsPerStop,
-            "output_tokens_per_submission" => Self::OutputTokensPerSubmission,
-            _ => return None,
-        })
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::CrossSessionCharsPerSubmission => "cross_session_chars_per_submission",
-            Self::WithinSessionCharsPerSubmission => "within_session_chars_per_submission",
-            Self::RuleLoadCharsPerSubmission => "rule_load_chars_per_submission",
-            Self::DenialsPerSubmission => "denials_per_submission",
-            Self::SteeringPerSubmission => "steering_per_submission",
-            Self::ReeditsPerCommit => "reedits_per_commit",
-            Self::HookMillisecondsPerStop => "hook_milliseconds_per_stop",
-            Self::OutputTokensPerSubmission => "output_tokens_per_submission",
-        }
-    }
-
     /// Read this metric off a window's facts.
     ///
     /// `None` where the window cannot answer this metric at all, which is not

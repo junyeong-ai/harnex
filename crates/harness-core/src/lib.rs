@@ -55,5 +55,6 @@ pub mod session;
 pub mod spec;
 pub mod telemetry;
 pub mod validate;
+mod wire_enum;
 
 pub use error::{Error, ErrorCode, Result};
