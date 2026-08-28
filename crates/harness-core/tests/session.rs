@@ -225,7 +225,7 @@ fn a_record_type_this_binary_does_not_know_is_counted_and_the_run_continues() {
         Some(&1)
     );
     assert_eq!(facts.coverage.records_malformed, 0);
-    assert!(session::require_coverage(&facts.coverage, config.coverage_floor).is_ok());
+    assert!(session::require_coverage(&facts.coverage).is_ok());
 }
 
 /// A tool-result record reporting an edit, as `Edit` and `Write` write one.
@@ -618,6 +618,7 @@ fn baseline_of(config: &SessionConfig, since: Option<&str>, label: &str) -> sess
             recorded_at: "2026-09-01T00:00:00Z".parse().unwrap(),
             project: None,
             min_block_chars: config.min_block_chars,
+            coverage_floor: config.coverage_floor,
             harness: None,
         },
         &facts,
@@ -1005,6 +1006,7 @@ fn baseline_under(
             recorded_at: "2026-09-01T00:00:00Z".parse().unwrap(),
             project: Some("/w/alpha".into()),
             min_block_chars: config.min_block_chars,
+            coverage_floor: config.coverage_floor,
             harness,
         },
         &facts,
@@ -1648,6 +1650,7 @@ fn baselines_measured_over_different_scopes_are_not_subtracted() {
             recorded_at: "2026-09-01T00:00:00Z".parse().unwrap(),
             project: Some("/w/alpha".into()),
             min_block_chars: config.min_block_chars,
+            coverage_floor: config.coverage_floor,
             harness: None,
         },
         &facts,
@@ -2175,4 +2178,53 @@ fn an_instruction_is_as_long_as_its_work_and_not_as_long_as_the_wait_after_it() 
         subs.iter().all(|s| s.elapsed_ms < 3_600_000),
         "the three idle hours between them are in neither"
     );
+}
+
+/// The coverage floor describes how much of the operator's writing was read, so
+/// it decides the rates taken over that writing and nothing else.
+#[test]
+fn a_window_that_read_some_of_the_writing_still_answers_about_everything_else() {
+    let odd = |uuid: &str, ts: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","origin":{{"kind":"human"}},"promptSource":"shipped-tomorrow","message":{{"content":"{STANDING}"}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            odd("a2", "2026-08-01T09:00:01Z"),
+            stop_summary("s1", "h1", "2026-08-01T09:00:02Z", "check.sh", 90),
+        ],
+    )]);
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+    assert_eq!(facts.coverage.authorship_ratio(), Some(0.5));
+
+    let recorded = session::Baseline::of(
+        session::Measured {
+            label: "half-read",
+            recorded_at: "2026-09-01T00:00:00Z".parse().unwrap(),
+            project: None,
+            min_block_chars: config.min_block_chars,
+            coverage_floor: config.coverage_floor,
+            harness: None,
+        },
+        &facts,
+    );
+
+    assert!(
+        recorded
+            .measurements
+            .contains_key("hook_milliseconds_per_stop"),
+        "a hook's wall-clock does not depend on a prompt source this binary has not heard of"
+    );
+    for text_rate in [
+        "cross_session_chars_per_session",
+        "within_session_chars_per_submission",
+    ] {
+        assert!(
+            !recorded.measurements.contains_key(text_rate),
+            "`{text_rate}` is taken over writing the window only partly read"
+        );
+    }
 }

@@ -126,6 +126,18 @@ wire_enum! {
 }
 
 impl SessionMetric {
+    /// Whether this rate is taken over text the operator typed.
+    ///
+    /// The two that are cannot be measured over a window whose prompt sources
+    /// this binary did not all recognise; the rest never read the text and are
+    /// unaffected by it.
+    pub fn reads_operator_text(self) -> bool {
+        matches!(
+            self,
+            Self::CrossSessionCharsPerSession | Self::WithinSessionCharsPerSubmission
+        )
+    }
+
     /// Read this metric off a window's facts.
     ///
     /// `None` where the window cannot answer this metric at all, which is not
@@ -284,6 +296,11 @@ pub struct Measured<'a> {
     pub project: Option<PathBuf>,
     /// `[session] min_block_chars` as this window was measured.
     pub min_block_chars: usize,
+    /// `[session] coverage_floor` as this window was measured. Below it the
+    /// rates taken over the operator's own text are not recorded: the window
+    /// read some of what they are taken over and a number from the rest would
+    /// understate by however much it did not read.
+    pub coverage_floor: f64,
     /// The harness the project carried at this moment, where it could be asked.
     pub harness: Option<HarnessState>,
 }
@@ -333,6 +350,13 @@ impl Baseline {
             harness: measured.harness,
             measurements: SessionMetric::ALL
                 .iter()
+                .filter(|m| {
+                    !m.reads_operator_text()
+                        || facts
+                            .coverage
+                            .authorship_ratio()
+                            .is_some_and(|r| r >= measured.coverage_floor)
+                })
                 .filter_map(|m| Some((m.as_str().to_string(), m.measure(facts)?)))
                 .collect(),
         }
