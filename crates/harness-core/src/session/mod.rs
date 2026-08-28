@@ -68,7 +68,7 @@ pub use harness::{
 };
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock, Repetition};
-pub use record::{Authorship, Citation, Compaction, Coverage, TokenUse};
+pub use record::{Authorship, Citation, Compaction, Coverage, ElapsedFacts, TokenUse, ToolUse};
 pub use repository::{CommitFate, CommitOutcome, HarnessState, RepositoryFacts};
 pub use rework::{PostCommitReedit, ReworkFacts};
 pub use submission::{Submission, SubmissionIndex, SubmissionWindow, systematic_sample};
@@ -109,10 +109,16 @@ pub struct SessionFacts {
     /// What the window spent, whether or not the caller asked for the
     /// instruction list.
     pub tokens: TokenUse,
-    /// Tool calls across the window, by tool. Read beside `harness.denials`,
-    /// which groups by the same names: friction is as much a function of which
-    /// tool the work goes through as of how broad a rule is.
-    pub tools: BTreeMap<String, usize>,
+    /// Tool calls across the window, by tool, with the calls that came back an
+    /// error. Read beside `harness.denials`, which groups by the same names:
+    /// friction is as much a function of which tool the work goes through as of
+    /// how broad a rule is, and a call the harness refused is counted there
+    /// rather than here.
+    pub tools: BTreeMap<String, ToolUse>,
+    /// Wall-clock the runtime timed, and the runs it timed. A floor on both, so
+    /// the two ride together: the total means nothing without the population it
+    /// was summed over.
+    pub elapsed: ElapsedFacts,
     /// What became of the commits the window produced. Present only for a
     /// window scoped to a project, and only when that project is a git work
     /// tree — nothing else can be asked what survived.
@@ -172,7 +178,8 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut compactions: Vec<Compaction> = Vec::new();
     let mut tokens = TokenUse::default();
     let mut commits: Vec<String> = Vec::new();
-    let mut tools: BTreeMap<String, usize> = BTreeMap::new();
+    let mut tools: BTreeMap<String, ToolUse> = BTreeMap::new();
+    let mut elapsed = ElapsedFacts::default();
     let mut sessions: BTreeSet<String> = BTreeSet::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
@@ -256,13 +263,20 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 record::Record::Assistant(turn) => {
                     tokens.add(turn.tokens);
                     for action in &turn.actions {
-                        *tools.entry(action.tool.clone()).or_default() += 1;
+                        tools.entry(action.tool.clone()).or_default().calls += 1;
                     }
                 }
                 record::Record::User(turn) => {
                     if let Some(sha) = &turn.commit {
                         commits.push(sha.clone());
                     }
+                    if let Some(tool) = &turn.failed_tool {
+                        tools.entry(tool.clone()).or_default().failed += 1;
+                    }
+                }
+                record::Record::TurnDuration(timed) => {
+                    elapsed.milliseconds += timed.duration_ms;
+                    elapsed.turns += 1;
                 }
                 _ => {}
             }
@@ -312,6 +326,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         },
         tokens,
         tools,
+        elapsed,
         repository,
         rework: rework.finish(),
         harness: harness.finish(options.with_text),

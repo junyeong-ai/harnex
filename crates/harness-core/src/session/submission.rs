@@ -25,7 +25,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::record::{Authorship, Citation, Record, TokenUse, UserTurn};
+use super::record::{Authorship, Citation, Record, TokenUse, ToolUse, UserTurn};
 
 /// The tool the runtime records when the agent stops and asks the operator
 /// rather than choosing for them.
@@ -90,9 +90,13 @@ pub struct Submission {
     pub agent_turns: usize,
     /// What those turns spent.
     pub tokens: TokenUse,
+    /// Wall-clock the runtime timed under it, summed over the runs it recorded
+    /// one for. A floor, for the reason the record's own doc gives: an
+    /// instruction whose runs went untimed reports zero rather than nothing.
+    pub elapsed_ms: u64,
     /// Tool calls made under it, by tool. How the work was actually done,
     /// which is the half of a costly instruction its wording does not show.
-    pub tools: BTreeMap<String, usize>,
+    pub tools: BTreeMap<String, ToolUse>,
     /// Models that answered it. More than one means a comparison of token
     /// counts against another instruction is comparing model mixes too.
     pub models: Vec<String>,
@@ -167,6 +171,11 @@ impl SubmissionAnalyzer {
                 Some(id) => self.observe_instruction(turn, id),
                 None => self.observe_event(turn),
             },
+            Record::TurnDuration(timed) => {
+                if let Some((_, at)) = self.active.get(session).copied() {
+                    self.out[at].elapsed_ms += timed.duration_ms;
+                }
+            }
             Record::Assistant(turn) => {
                 if let Some((_, at)) = self.active.get(session).copied() {
                     let held = &mut self.out[at];
@@ -178,7 +187,7 @@ impl SubmissionAnalyzer {
                         .filter(|a| a.tool == CLARIFYING_QUESTION_TOOL)
                         .count();
                     for action in &turn.actions {
-                        *held.tools.entry(action.tool.clone()).or_default() += 1;
+                        held.tools.entry(action.tool.clone()).or_default().calls += 1;
                     }
                     if let Some(model) = &turn.model {
                         self.models.entry(at).or_default().insert(model.clone());
@@ -214,6 +223,7 @@ impl SubmissionAnalyzer {
             chars: text.chars().count(),
             agent_turns: 0,
             tokens: TokenUse::default(),
+            elapsed_ms: 0,
             tools: BTreeMap::new(),
             models: Vec::new(),
             questions: 0,
@@ -300,6 +310,7 @@ mod boundary_tests {
             commit: None,
             edited_file: None,
             denial: None,
+            failed_tool: None,
         }
     }
 
@@ -375,6 +386,7 @@ mod sample_tests {
             chars: 1,
             agent_turns: 0,
             tokens: TokenUse::default(),
+            elapsed_ms: 0,
             tools: BTreeMap::new(),
             models: Vec::new(),
             questions: 0,

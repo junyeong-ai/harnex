@@ -50,16 +50,15 @@ the window whole**, and §3 dispatches an agent per 25 of them — set it, or sa
 in the report how many agents the run cost. Evidence the envelopes do not carry
 does not exist — do not supply it from reading transcripts by hand.
 
-**If a cost source is installed, take it too.** The transcripts carry token
-counts and no clock and no price: nothing in them says how long a tool call
-took, whether it failed, or what any of it cost. A telemetry collector keyed by
+**If a cost source is installed, take it too.** The transcripts time a run and
+never a call, and they carry no price at all. A telemetry collector keyed by
 `session_id` supplies exactly that gap, and every citation here carries the
 session it belongs to, so the join is exact. Any collector that keys on it
 will do; ask it for the same window, check its own wiring first, and add:
 
 | what it adds | why the transcript cannot |
 |---|---|
-| wall-clock per tool, and how often a tool *failed* | a tool result records what came back, not how long or whether it worked |
+| wall-clock per tool | the runtime times a whole run, not the calls inside it |
 | money, split by model and by main / subagent | pricing is not in the record and is not this plugin's to know |
 | active time per session | the transcript has timestamps, not attention |
 
@@ -99,6 +98,11 @@ Friction is as much a function of which tool the work goes through as of how
 broad a rule is: a window where most calls are the one tool permission rules
 must guard will meet refusals whatever the rules say, and read-only tools meet
 none. Say which it is before prescribing a rule change.
+
+`tools` carries `calls` and `failed` per tool. A failed call is one that ran
+and came back an error, which is a different population from `harness.denials`
+— those were refused and never ran — so report them apart: friction from the
+harness and friction from the work want opposite fixes.
 
 `tokens` carries four counts and no total, because they price differently by
 orders of magnitude and this command does not know a price list. Rank on
@@ -252,7 +256,10 @@ is what was actually called; an element the operator built and never invoked is 
 their habits disagree — report the concentration first (attempts against
 distinct calls), because diffuse friction points at a broad rule and repeated
 friction points at a habit, and the prescriptions are opposite. Then hook
-wall-clock and rule-load characters.
+wall-clock against `elapsed`, which is the only thing that says whether it is
+worth anything: a hook holding two seconds is most of a ten-second run and none
+of a ten-minute one. Report the share with both populations beside it, because
+each is a floor over its own. Then rule-load characters.
 
 Relativise against the operator, never against other people: "this instruction
 ran 27 times your median" names an outlier without a population.
@@ -279,8 +286,11 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - a hook's cost is exact and its value is not recorded at all
 - token counts are counts, never money; and a delta across a window whose
   `models` set moved is a delta about the model as much as the operator
-- `tools` counts calls, not time or success; those come from a cost source or
-  from nowhere
+- `tools` counts calls and the calls that came back an error; per-call time
+  comes from a cost source or from nowhere. `elapsed` is the runtime's own
+  timing of a whole run and is written for some runs and not others — measured,
+  44 of 132 stops — so a share denominated in it is a share of the time that
+  was timed
 - `written` names what `Write` and `Edit` were pointed at, so work done through
   a shell leaves nothing there; `committed` is where the work landed, and needs
   `--project` over a git work tree. Both are absolute, so what an instruction

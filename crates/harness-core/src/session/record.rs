@@ -77,6 +77,14 @@ const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
 /// The system record marking where the session's context was compacted.
 const COMPACT_BOUNDARY_SUBTYPE: &str = "compact_boundary";
 
+/// The system record carrying how long one agent run took.
+///
+/// The one clock in the transcript. The runtime writes it at a Stop, so it
+/// counts runs rather than instructions, and it is a floor on both: measured
+/// over one project it accompanied 44 of 132 stops, so what it sums is the time
+/// it was written for and never the time the window took.
+const TURN_DURATION_SUBTYPE: &str = "turn_duration";
+
 /// Tools that invoke a harness element, and the input key naming it.
 ///
 /// The only per-tool argument vocabulary this module admits, and it is admitted
@@ -197,6 +205,23 @@ pub struct Denial {
     pub input: Option<serde_json::Value>,
 }
 
+/// What a tool did: how often it was called, and how often a call came back an
+/// error.
+///
+/// A refused call is not a failure — it never ran, and it is grouped in
+/// `harness.denials` instead. The runtime marks a refusal with its own field
+/// and marks the result an error as well, so counting the error flag alone
+/// would report the harness's refusals as the tool's failures: measured over
+/// one corpus, 528 of 1,944 flagged results are refusals, and no refusal
+/// arrives without the flag.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
+pub struct ToolUse {
+    pub calls: usize,
+    pub failed: usize,
+}
+
 /// One tool invocation, reduced to what this module reads.
 ///
 /// The arguments do not survive the record: a Bash input carries the
@@ -250,6 +275,10 @@ pub struct UserTurn {
     pub edited_file: Option<PathBuf>,
     /// The refusal a tool result on this record reported.
     pub denial: Option<Denial>,
+    /// The tool of a call that ran and came back an error, resolved through
+    /// `tool_use_id`. `None` where the call was refused instead — a refusal is
+    /// [`UserTurn::denial`] and never both.
+    pub failed_tool: Option<String>,
 }
 
 /// An assistant turn, reduced to the actions it took.
@@ -331,6 +360,24 @@ pub struct StopSummary {
     pub prevented_continuation: bool,
 }
 
+/// Wall-clock the runtime timed across a window, and how many runs it timed.
+///
+/// Both, because either alone misleads: the total is over the runs that
+/// recorded one, not over the window, and the count is what says how much of
+/// the window that is.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ElapsedFacts {
+    pub milliseconds: u64,
+    pub turns: usize,
+}
+
+/// How long one agent run took, as the runtime timed it.
+#[derive(Debug, Clone)]
+pub struct TurnDuration {
+    pub citation: Citation,
+    pub duration_ms: u64,
+}
+
 #[derive(Debug, Clone)]
 pub enum Record {
     User(UserTurn),
@@ -338,6 +385,7 @@ pub enum Record {
     RuleLoad(RuleLoad),
     StopSummary(StopSummary),
     Compaction(Compaction),
+    TurnDuration(TurnDuration),
 }
 
 impl Record {
@@ -348,6 +396,7 @@ impl Record {
             Self::RuleLoad(r) => &r.citation,
             Self::StopSummary(s) => &s.citation,
             Self::Compaction(c) => &c.citation,
+            Self::TurnDuration(t) => &t.citation,
         }
     }
 }
@@ -547,7 +596,17 @@ struct RawRecord {
     interrupted_message_id: Option<String>,
     #[serde(rename = "compactMetadata")]
     compact_metadata: Option<RawCompactMetadata>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
     cwd: Option<PathBuf>,
+}
+
+/// Whether a result block reported the call it answers as an error.
+fn errored(content: &serde_json::Value) -> bool {
+    blocks_of(Some(content)).iter().any(|b| {
+        b.get("type").and_then(serde_json::Value::as_str) == Some("tool_result")
+            && b.get("is_error").and_then(serde_json::Value::as_bool) == Some(true)
+    })
 }
 
 /// The commit a tool result reported, if it reported one.
@@ -765,6 +824,13 @@ pub fn read_transcript(
                         input: call.map(|(_, input)| input.clone()),
                     }
                 });
+                let failed_tool = (raw.tool_denial_kind.is_none() && content.is_some_and(errored))
+                    .then(|| {
+                        tool_use_id_of(content)
+                            .and_then(|id| tool_calls.get(id))
+                            .map(|(tool, _)| tool.clone())
+                    })
+                    .flatten();
                 out.push(Record::User(UserTurn {
                     citation,
                     authorship,
@@ -775,6 +841,7 @@ pub fn read_transcript(
                     commit: result.and_then(commit_of),
                     edited_file: result.and_then(edited_file_of),
                     denial,
+                    failed_tool,
                 }));
                 // Only a turn the runtime attributed to a person closes the
                 // interval. A tool result is also a `user` record, and letting
@@ -890,6 +957,17 @@ pub fn read_transcript(
                             .cumulative_dropped_tokens
                             .unwrap_or_default(),
                         duration_ms: meta.duration_ms.unwrap_or_default(),
+                    }));
+                    continue;
+                }
+                if subtype == TURN_DURATION_SUBTYPE {
+                    let Some(duration_ms) = raw.duration_ms else {
+                        coverage.records_malformed += 1;
+                        continue;
+                    };
+                    out.push(Record::TurnDuration(TurnDuration {
+                        citation,
+                        duration_ms,
                     }));
                     continue;
                 }
@@ -1010,7 +1088,7 @@ mod tests {
             format_args!(
                 r#"{{"type":"attachment",{BASE},"attachment":{{"type":"hook_success"}}}}"#
             ),
-            format_args!(r#"{{"type":"system",{BASE},"subtype":"turn_duration"}}"#)
+            format_args!(r#"{{"type":"system",{BASE},"subtype":"local_command"}}"#)
         ));
         assert!(recs.is_empty());
         assert_eq!(
@@ -1018,7 +1096,7 @@ mod tests {
             Some(&1)
         );
         assert_eq!(
-            cov.record_types_unconsumed.get("system:turn_duration"),
+            cov.record_types_unconsumed.get("system:local_command"),
             Some(&1)
         );
     }

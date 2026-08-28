@@ -496,7 +496,7 @@ fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
         vec![
             typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
             r#"{"type":"attachment","uuid":"x1","timestamp":"2026-08-01T09:00:01Z","sessionId":"s1","attachment":{"type":"hook_success"}}"#.to_string(),
-            r#"{"type":"system","uuid":"x2","timestamp":"2026-08-01T09:00:02Z","sessionId":"s1","subtype":"turn_duration"}"#.to_string(),
+            r#"{"type":"system","uuid":"x2","timestamp":"2026-08-01T09:00:02Z","sessionId":"s1","subtype":"local_command"}"#.to_string(),
         ],
     )]);
 
@@ -513,7 +513,7 @@ fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
         facts
             .coverage
             .record_types_unconsumed
-            .get("system:turn_duration"),
+            .get("system:local_command"),
         Some(&1)
     );
     assert_eq!(facts.coverage.records_malformed, 0);
@@ -546,6 +546,8 @@ fn every_metric_corpus() -> (TempDir, SessionConfig) {
     // number as the session's own.
     alpha.push(compacted("s1", "k1", "2026-08-01T09:00:11Z", 900, 100, 100));
     alpha.push(compacted("s1", "k2", "2026-08-01T09:00:12Z", 800, 150, 250));
+    alpha.push(timed("s1", "d1", "2026-08-01T09:00:13Z", 700));
+    alpha.push(timed("s1", "d2", "2026-08-01T09:00:14Z", 500));
 
     let beta = vec![
         typed("s2", "b1", "2026-08-02T09:00:00Z", STANDING),
@@ -580,6 +582,7 @@ fn every_recorded_metric_computes_what_it_computed() {
         ("steering_per_submission", 1, 4),
         ("interrupts_per_submission", 1, 4),
         ("reedits_per_commit", 1, 1),
+        ("elapsed_milliseconds_per_turn", 1200, 2),
         ("hook_milliseconds_per_stop", 90, 1),
         ("output_tokens_per_submission", 700, 4),
     ];
@@ -683,7 +686,7 @@ fn a_message_copied_into_another_transcript_under_new_uuids_is_one_message() {
     let facts = session::collect(&config, &options).unwrap();
 
     assert_eq!(facts.tokens.output, 400, "one message, charged once");
-    assert_eq!(facts.tools["Bash"], 1, "one tool call, counted once");
+    assert_eq!(facts.tools["Bash"].calls, 1, "one tool call, counted once");
     assert_eq!(facts.coverage.records_duplicated, 1);
     assert_eq!(facts.submissions[0].agent_turns, 1);
 }
@@ -708,7 +711,7 @@ fn a_message_split_into_blocks_stays_every_block_it_produced() {
 
     let facts = session::collect(&config, &CollectOptions::default()).unwrap();
 
-    assert_eq!(facts.tools["Bash"], 2);
+    assert_eq!(facts.tools["Bash"].calls, 2);
     assert_eq!(
         facts.tokens.output, 400,
         "and one charge, at its settled count"
@@ -1248,7 +1251,11 @@ fn a_window_names_the_rates_no_comparison_against_it_will_answer() {
     );
     assert_eq!(
         baseline.unsupported(0),
-        ["hook_milliseconds_per_stop", "reedits_per_commit"],
+        [
+            "elapsed_milliseconds_per_turn",
+            "hook_milliseconds_per_stop",
+            "reedits_per_commit"
+        ],
         "a rate over an empty population is withheld at any floor, zero included"
     );
 }
@@ -1741,6 +1748,13 @@ fn a_sub_agent_counts_the_same_however_the_runtime_named_its_tool() {
 }
 
 /// The system record marking where the context was compacted.
+/// The record the runtime writes at a Stop saying how long the run took.
+fn timed(session: &str, uuid: &str, ts: &str, ms: u64) -> String {
+    format!(
+        r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","subtype":"turn_duration","durationMs":{ms},"messageCount":3}}"#
+    )
+}
+
 fn compacted(session: &str, uuid: &str, ts: &str, pre: u64, post: u64, cumulative: u64) -> String {
     format!(
         r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","subtype":"compact_boundary","compactMetadata":{{"trigger":"manual","preTokens":{pre},"postTokens":{post},"cumulativeDroppedTokens":{cumulative},"durationMs":1200}}}}"#
@@ -1892,9 +1906,9 @@ fn the_tool_mix_is_counted_per_window_and_per_instruction() {
 
     let facts = session::collect(&config, &options).unwrap();
 
-    assert_eq!(facts.tools["Bash"], 2);
-    assert_eq!(facts.tools["Skill"], 1);
-    assert_eq!(facts.submissions[0].tools["Bash"], 2);
+    assert_eq!(facts.tools["Bash"].calls, 2);
+    assert_eq!(facts.tools["Skill"].calls, 1);
+    assert_eq!(facts.submissions[0].tools["Bash"].calls, 2);
     assert!(facts.submissions[1].tools.is_empty());
     assert_eq!(facts.coverage.sessions, 2);
 }
@@ -2040,5 +2054,83 @@ fn a_paragraph_that_is_both_failures_is_counted_as_both() {
         facts.prompts.within_sessions.blocks.len(),
         1,
         "the same paragraph is in both lists because it wants both fixes"
+    );
+}
+
+/// A refused call never ran, and the runtime flags its result an error too, so
+/// counting the flag alone reports the harness's refusals as the tool's
+/// failures.
+#[test]
+fn a_call_the_harness_refused_is_not_a_call_that_failed() {
+    let call = |uuid: &str, ts: &str, id: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","message":{{"id":"m_{uuid}","content":[{{"type":"tool_use","id":"{id}","name":"Bash","input":{{}}}}]}}}}"#
+        )
+    };
+    let result = |uuid: &str, ts: &str, id: &str, denial: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1"{denial},"message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","is_error":true,"content":"no"}}]}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            call("c1", "2026-08-01T09:00:01Z", "t1"),
+            result("r1", "2026-08-01T09:00:02Z", "t1", ""),
+            call("c2", "2026-08-01T09:00:03Z", "t2"),
+            result(
+                "r2",
+                "2026-08-01T09:00:04Z",
+                "t2",
+                r#","toolDenialKind":"permission-rule""#,
+            ),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.tools["Bash"].calls, 2, "both calls were made");
+    assert_eq!(
+        facts.tools["Bash"].failed, 1,
+        "one ran and failed; the other was refused and never ran"
+    );
+    assert_eq!(
+        facts
+            .harness
+            .denials
+            .iter()
+            .map(|d| d.denials)
+            .sum::<usize>(),
+        1,
+        "and the refusal is counted where refusals are counted"
+    );
+}
+
+/// The one clock in the transcript, and the population it was written for.
+#[test]
+fn a_window_says_how_long_its_runs_took_and_over_how_many_it_knows() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            timed("s1", "d1", "2026-08-01T09:00:01Z", 400),
+            timed("s1", "d2", "2026-08-01T09:00:02Z", 600),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.elapsed.milliseconds, 1000);
+    assert_eq!(
+        facts.elapsed.turns, 2,
+        "the total is over the runs that recorded one, never over the window"
+    );
+    assert!(
+        !facts
+            .coverage
+            .record_types_unconsumed
+            .contains_key("system:turn_duration"),
+        "a record this module now reads is not also reported as skipped"
     );
 }
