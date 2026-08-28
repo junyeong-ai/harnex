@@ -1038,6 +1038,61 @@ fn baseline_under(
     )
 }
 
+/// A metric can become wrong without its definition moving — a build that
+/// counted a record twice reported an honest name over a dishonest set — so a
+/// comparison says whether the ruler was the same before it says anything
+/// about the work.
+#[test]
+fn a_comparison_says_whether_the_two_windows_were_measured_the_same_way() {
+    let (dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)],
+    )]);
+    let before = baseline_under(&config, "before", None);
+    std::fs::write(
+        dir.path().join("-Users-me-alpha/s2.jsonl"),
+        [typed("s2", "b1", "2026-08-09T09:00:00Z", ALSO_STANDING)].join("\n"),
+    )
+    .unwrap();
+    let after = baseline_under(&config, "after", None);
+
+    let change = |a: &session::Baseline, b: &session::Baseline| {
+        session::baseline::diff(a, b, config.min_support)
+            .unwrap()
+            .method_change
+    };
+    assert_eq!(change(&before, &after), "unchanged", "one build, one floor");
+
+    let mut other_build = after.clone();
+    other_build.oracle_version = Some("0.0.1-other".into());
+    assert_eq!(change(&before, &other_build), "changed");
+
+    let mut other_floor = after.clone();
+    other_floor.min_block_chars = Some(config.min_block_chars + 1);
+    assert_eq!(
+        change(&before, &other_floor),
+        "changed",
+        "the paragraph floor decides what the repetition metrics counted"
+    );
+
+    for absent in [
+        session::Baseline {
+            oracle_version: None,
+            ..after.clone()
+        },
+        session::Baseline {
+            min_block_chars: None,
+            ..after.clone()
+        },
+    ] {
+        assert_eq!(
+            change(&before, &absent),
+            "unknown",
+            "a baseline written before this was kept says nothing, and is not read as agreement"
+        );
+    }
+}
+
 #[test]
 fn a_comparison_says_whether_the_harness_moved_between_the_two_windows() {
     let (dir, config) = corpus(&[(

@@ -237,6 +237,43 @@ impl HarnessChange {
     }
 }
 
+wire_enum! {
+    /// Whether the two windows a comparison holds together were measured the
+    /// same way.
+    ///
+    /// A metric can become wrong without its definition moving: a build that
+    /// counted a record twice reported an honest name over a dishonest set.
+    /// Renaming catches a definition that changed on purpose; this catches a
+    /// ruler that changed at all, and it is the first thing a delta has to
+    /// survive.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum MethodChange {
+        /// Both windows name the same oracle build and the same paragraph floor.
+        Unchanged => "unchanged",
+        /// One of the two moved, so a delta is a reading about the method as
+        /// much as about the work.
+        Changed => "changed",
+        /// A window did not record what measured it, which every baseline
+        /// written before these were kept is.
+        Unknown => "unknown",
+    }
+}
+
+impl MethodChange {
+    fn between(from: &Baseline, to: &Baseline) -> Self {
+        let (Some(a), Some(b)) = (&from.oracle_version, &to.oracle_version) else {
+            return Self::Unknown;
+        };
+        let (Some(x), Some(y)) = (from.min_block_chars, to.min_block_chars) else {
+            return Self::Unknown;
+        };
+        match a == b && x == y {
+            true => Self::Unchanged,
+            false => Self::Changed,
+        }
+    }
+}
+
 /// What a window was measured under, beside what it measured.
 ///
 /// A baseline is read months after it was written, by a build that may compute
@@ -454,6 +491,10 @@ pub struct BaselineDiff {
     pub from: BaselineWindow,
     pub to: BaselineWindow,
     pub support_floor: u64,
+    /// Whether the two windows were measured the same way, by
+    /// [`MethodChange::as_str`]. Read before `harness_change`: a delta across
+    /// a method that moved is about the ruler first.
+    pub method_change: String,
     /// Whether the harness moved between the two windows, by
     /// [`HarnessChange::as_str`]. A delta measured across `unchanged` is not
     /// an effect of a harness change, and one across `unknown` cannot be said
@@ -525,6 +566,7 @@ pub fn diff(from: &Baseline, to: &Baseline, support_floor: u64) -> Result<Baseli
     }
 
     Ok(BaselineDiff {
+        method_change: MethodChange::between(from, to).as_str().to_string(),
         harness_change: HarnessChange::between(from.harness.as_ref(), to.harness.as_ref())
             .as_str()
             .to_string(),
