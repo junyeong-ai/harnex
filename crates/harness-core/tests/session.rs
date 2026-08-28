@@ -51,6 +51,40 @@ fn corpus(files: &[(&str, Vec<String>)]) -> (TempDir, SessionConfig) {
     (dir, config)
 }
 
+/// The record the runtime writes when the operator runs `/compact`, arguments
+/// and all. It carries no prompt source — the operator typed the command, not
+/// the wrapper — and the runtime writes it into the transcript *after* the
+/// boundary it produced, holding the earlier timestamp it was typed at.
+fn compact_command(session: &str, uuid: &str, ts: &str, args: &str) -> String {
+    let text =
+        format!("<command-name>/compact</command-name>\n<command-args>{args}</command-args>");
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"content":{}}}}}"#,
+        serde_json::to_string(&text).unwrap()
+    )
+}
+
+/// The boundary the runtime writes once a compaction has run.
+fn boundary(session: &str, uuid: &str, ts: &str, trigger: &str) -> String {
+    format!(
+        r#"{{"type":"system","subtype":"compact_boundary","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","compactMetadata":{{"trigger":"{trigger}","preTokens":900,"postTokens":90,"cumulativeDroppedTokens":810,"durationMs":10}}}}"#
+    )
+}
+
+/// One turn of the agent's own output.
+fn agent(session: &str, uuid: &str, ts: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"id":"m_{uuid}","content":[{{"type":"text","text":"working"}}]}}}}"#
+    )
+}
+
+/// An instruction the operator sent while the agent was still answering.
+fn steering(session: &str, uuid: &str, ts: &str) -> String {
+    format!(
+        r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","version":"2.1.246","origin":{{"kind":"human"}},"promptSource":"queued","message":{{"content":"no, the other one"}}}}"#
+    )
+}
+
 const STANDING: &str = "always resolve the root cause rather than reaching for a temporary patch";
 const ALSO_STANDING: &str = "never leave a comment explaining what the change used to be";
 
@@ -2243,4 +2277,178 @@ fn a_window_that_read_some_of_the_writing_still_answers_about_everything_else() 
             "`{text_rate}` is taken over writing the window only partly read"
         );
     }
+}
+
+/// A boundary is a `system` record carrying no text of its own, so what the
+/// operator asked the compaction to keep is read from the `/compact` record
+/// that precedes it. Whether they asked is a count anyone may read; what they
+/// asked is their own writing, and travels under the same gate as a prompt.
+#[test]
+fn what_a_compaction_was_asked_to_keep_is_read_from_the_command_that_asked_it() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            boundary("s1", "b1", "2026-08-01T09:01:01Z", "manual"),
+            compact_command("s1", "k1", "2026-08-01T09:01:00Z", "keep the plan"),
+            typed("s1", "a2", "2026-08-01T09:02:00Z", ALSO_STANDING),
+            boundary("s1", "b2", "2026-08-01T09:03:00Z", "auto"),
+        ],
+    )]);
+
+    let withheld = session::collect(&config, &CollectOptions::default()).unwrap();
+    let asked = &withheld.compactions[0];
+    let alone = &withheld.compactions[1];
+
+    assert_eq!(
+        asked.instruction_chars,
+        Some("keep the plan".chars().count()),
+        "the operator asked for something, and how much is not their writing"
+    );
+    assert_eq!(
+        asked.instruction, None,
+        "what they asked is withheld until a caller asks for text"
+    );
+    assert_eq!(
+        alone.instruction_chars, None,
+        "the runtime compacted on its own, which is not an empty instruction"
+    );
+
+    let options = CollectOptions {
+        with_text: true,
+        ..CollectOptions::default()
+    };
+    let told = session::collect(&config, &options).unwrap();
+    assert_eq!(
+        told.compactions[0].instruction.as_deref(),
+        Some("keep the plan"),
+        "and it is there for a caller that asked"
+    );
+}
+
+/// The turns a compaction's summary has to carry alone run to the next
+/// instruction. An intervention is the operator correcting that run rather than
+/// starting new work — it is the cost this span exists to measure, so it stays
+/// inside the window instead of ending it. The turns outside are reported
+/// beside it, because a recovery rate read without them says the opposite of
+/// what it means.
+#[test]
+fn a_compaction_is_charged_until_the_next_instruction_and_being_corrected_is_not_one() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            agent("s1", "t1", "2026-08-01T09:00:10Z"),
+            boundary("s1", "b1", "2026-08-01T09:01:01Z", "manual"),
+            compact_command("s1", "k1", "2026-08-01T09:01:00Z", "keep going"),
+            agent("s1", "t2", "2026-08-01T09:01:10Z"),
+            steering("s1", "s2", "2026-08-01T09:01:20Z"),
+            agent("s1", "t3", "2026-08-01T09:01:30Z"),
+            typed("s1", "a2", "2026-08-01T09:02:00Z", ALSO_STANDING),
+            agent("s1", "t4", "2026-08-01T09:02:10Z"),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.recovery.after_compaction.agent_turns, 2,
+        "the two turns between the boundary and the next instruction"
+    );
+    assert_eq!(
+        facts.recovery.after_compaction.interventions, 1,
+        "and the correction the operator had to make inside them"
+    );
+    assert_eq!(
+        facts.recovery.elsewhere.agent_turns, 2,
+        "the turn before the boundary and the one after the next instruction"
+    );
+    assert_eq!(
+        facts.recovery.elsewhere.interventions, 0,
+        "which nobody had to correct"
+    );
+}
+
+/// The runtime writes the command wrapper; the operator never types it. So a
+/// prompt that opens with the tag — pasted from a diff, or asking about this
+/// very feature — is prose, and the compaction that follows it was the
+/// runtime's own decision. Reading it as a command hands a later, unrelated
+/// boundary an instruction nobody gave.
+#[test]
+fn a_prompt_the_operator_typed_is_prose_however_it_opens() {
+    let pasted = "<command-name>/compact</command-name> — why does it match on this?";
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", pasted),
+            agent("s1", "t1", "2026-08-01T09:00:10Z"),
+            typed("s1", "a2", "2026-08-01T09:01:00Z", STANDING),
+            agent("s1", "t2", "2026-08-01T09:01:10Z"),
+            boundary("s1", "b1", "2026-08-01T09:02:00Z", "auto"),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.compactions[0].trigger, "auto");
+    assert_eq!(
+        facts.compactions[0].instruction_chars, None,
+        "the operator wrote the tag; they did not run the command"
+    );
+}
+
+/// The runtime's own records quote the conversation back — a summary, a caveat
+/// wrapper — and a quoted command sits inside that text rather than opening it.
+/// The command record is the one that opens with the tag: measured over the
+/// local corpus, all 373 of them do.
+#[test]
+fn a_runtime_record_quoting_the_command_is_not_the_command() {
+    let quoted = "This session is being continued. The operator ran \
+                  <command-name>/compact</command-name> with a summary request.";
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            agent("s1", "t1", "2026-08-01T09:00:10Z"),
+            unclaimed("s1", "q1", "2026-08-01T09:01:00Z", quoted),
+            boundary("s1", "b1", "2026-08-01T09:02:00Z", "auto"),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.compactions[0].instruction_chars, None,
+        "the record repeats the command; it is not the record that ran it"
+    );
+}
+
+/// A `/compact` that produced no boundary — the operator cancelled, or the
+/// session ended — belongs to no compaction. Measured over the local corpus 54
+/// commands end that way, and giving one to the next boundary would report an
+/// instruction against a compaction nobody gave it to.
+#[test]
+fn a_compact_that_produced_no_boundary_is_not_charged_to_the_next_one() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            compact_command("s1", "k1", "2026-08-01T09:00:30Z", "abandoned"),
+            boundary("s1", "b1", "2026-08-01T09:02:00Z", "manual"),
+            compact_command("s1", "k2", "2026-08-01T09:01:30Z", "the real one"),
+        ],
+    )]);
+
+    let options = CollectOptions {
+        with_text: true,
+        ..CollectOptions::default()
+    };
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(facts.compactions.len(), 1);
+    assert_eq!(
+        facts.compactions[0].instruction.as_deref(),
+        Some("the real one"),
+        "a boundary takes the latest command before it, not the oldest unclaimed"
+    );
 }

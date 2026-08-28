@@ -96,6 +96,77 @@ pub struct CollectOptions {
     pub with_submissions: bool,
 }
 
+/// Agent turns and the operator's acts inside them.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TurnSpan {
+    pub agent_turns: usize,
+    pub interventions: usize,
+}
+
+/// What a compaction cost, against what an uncompacted turn costs.
+///
+/// The obvious proxy does not work. Whether the agent re-reads a file it had
+/// already read separates the two spans by nothing — measured over three
+/// projects, 75.3% of the file touches inside a window against 77.4% outside
+/// one — because a compaction lands where work turns over, and both spans are
+/// mostly an agent iterating on files it has open. What separates them is the
+/// operator: corrections per thousand agent turns run 93.0 against 0.9, 21.6
+/// against 0.6, and 15.4 against 0.6 on those same three projects, and the
+/// second number holds near 0.6 across all of them.
+///
+/// That second number is why this is a pair. A recovery rate published alone
+/// reads as the compaction's fault when part of it is the rate of any work at
+/// all, so neither span ships without the other.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct RecoveryFacts {
+    /// Between a boundary and the next instruction — the work the compaction's
+    /// summary had to carry on its own.
+    pub after_compaction: TurnSpan,
+    /// Every other agent turn in the window.
+    pub elsewhere: TurnSpan,
+}
+
+/// Give each boundary the command that caused it.
+///
+/// The runtime writes a `/compact` record into the transcript *after* the
+/// boundary it produced, carrying the earlier timestamp it was typed at, so the
+/// two are joined by time rather than by position. Measured over 378 boundaries,
+/// this join and a search forward through the file agree on all 369 either
+/// resolves, disagree on none, and the nine left over are the compactions the
+/// runtime made on its own.
+///
+/// Each command is claimed once and each boundary takes the latest still
+/// unclaimed before it, so a `/compact` that produced no boundary — 54 over the
+/// same corpus — is passed over rather than charged to a later compaction.
+fn attach_instructions(compactions: &mut [Compaction], commands: &mut Vec<(Timestamp, String)>) {
+    commands.sort_by_key(|(at, _)| *at);
+    compactions.sort_by_key(|c| c.citation.timestamp);
+    for compaction in compactions.iter_mut() {
+        let at = commands.partition_point(|(at, _)| *at < compaction.citation.timestamp);
+        let Some(index) = at.checked_sub(1) else {
+            continue;
+        };
+        let (_, args) = commands.remove(index);
+        compaction.instruction_chars = Some(args.chars().count());
+        compaction.instruction = Some(args);
+    }
+}
+
+impl RecoveryFacts {
+    /// The span a record belongs to, by whether its session is still running on
+    /// a compaction's summary.
+    fn charge(
+        &mut self,
+        recovering: &std::collections::HashSet<String>,
+        session: &str,
+    ) -> &mut TurnSpan {
+        match recovering.contains(session) {
+            true => &mut self.after_compaction,
+            false => &mut self.elsewhere,
+        }
+    }
+}
+
 /// Counts and citations for one window of the corpus.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SessionFacts {
@@ -106,6 +177,8 @@ pub struct SessionFacts {
     pub submissions: Vec<Submission>,
     /// Where the session's context was compacted, oldest first.
     pub compactions: Vec<Compaction>,
+    /// What each compaction cost the operator, and what an ordinary turn costs.
+    pub recovery: RecoveryFacts,
     /// What the window spent, whether or not the caller asked for the
     /// instruction list.
     pub tokens: TokenUse,
@@ -172,6 +245,11 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut submissions = submission::SubmissionAnalyzer::new();
     let mut interventions = intervention::InterventionAnalyzer::new();
     let mut compactions: Vec<Compaction> = Vec::new();
+    let mut recovery = RecoveryFacts::default();
+    // Sessions whose last compaction has not yet been followed by fresh work.
+    // Keyed by session because one window interleaves several, and a boundary
+    // in one says nothing about the turns of another.
+    let mut recovering: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut tokens = TokenUse::default();
     let mut commits: Vec<String> = Vec::new();
     let mut tools: BTreeMap<String, ToolUse> = BTreeMap::new();
@@ -242,8 +320,13 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             }
             here
         });
+        // Joined after the group is read, because the command that caused a
+        // boundary is written into the transcript behind it.
+        let first_compaction = compactions.len();
+        let mut commands: Vec<(Timestamp, String)> = Vec::new();
         for rec in &records {
-            sessions.insert(rec.citation().session.clone());
+            let session = &rec.citation().session;
+            sessions.insert(session.clone());
             in_window.insert(rec.citation().file.clone());
             let mut assigned = None;
             if let record::Record::User(turn) = rec {
@@ -253,12 +336,27 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 {
                     prompts.observe(turn, id);
                 }
-                interventions.observe(turn);
+                if let Some(args) = record::compact_instruction(turn) {
+                    commands.push((turn.citation.timestamp, args));
+                }
+                let acts = interventions.observe(turn);
+                recovery.charge(&recovering, session).interventions += acts;
+                // An intervention is the operator correcting a run rather than
+                // starting one, and it is the very thing this span measures, so
+                // it leaves the window open. Only work the operator asked for
+                // next closes it.
+                if assigned.is_some() && acts == 0 {
+                    recovering.remove(session);
+                }
             }
             match rec {
-                record::Record::Compaction(c) => compactions.push(c.clone()),
+                record::Record::Compaction(c) => {
+                    compactions.push(c.clone());
+                    recovering.insert(session.clone());
+                }
                 record::Record::Assistant(turn) => {
                     tokens.add(turn.tokens);
+                    recovery.charge(&recovering, session).agent_turns += 1;
                     for action in &turn.actions {
                         tools.entry(action.tool.clone()).or_default().calls += 1;
                     }
@@ -277,6 +375,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             harness.observe(rec);
         }
         rework.observe(&records);
+        attach_instructions(&mut compactions[first_compaction..], &mut commands);
     }
 
     if coverage.files_discovered > 0 && coverage.files_read == 0 {
@@ -315,8 +414,14 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         interventions: interventions.finish(),
         compactions: {
             compactions.sort_by_key(|c| c.citation.timestamp);
+            if !options.with_text {
+                for c in &mut compactions {
+                    c.instruction = None;
+                }
+            }
             compactions
         },
+        recovery,
         tokens,
         tools,
         repository,

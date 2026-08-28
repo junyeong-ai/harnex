@@ -69,15 +69,24 @@ impl InterventionAnalyzer {
         Self::default()
     }
 
-    pub fn observe(&mut self, turn: &UserTurn) {
+    /// Records what the turn was, and answers how many acts it was.
+    ///
+    /// A turn can be both — interrupted and steering — so the answer is a count
+    /// rather than a kind. Callers that attribute an act to a span read it here
+    /// instead of testing the turn again, so the predicate has one home.
+    pub fn observe(&mut self, turn: &UserTurn) -> usize {
+        let mut acts = 0;
         // The marker rides a record the runtime wrote, not one the operator
         // typed, so it is read before authorship rather than under it.
         if turn.interrupted {
             self.push(InterventionKind::MarkedInterrupt, turn);
+            acts += 1;
         }
         if turn.authorship == Authorship::Authored && turn.queued && turn.follows_agent_output {
             self.push(InterventionKind::Steering, turn);
+            acts += 1;
         }
+        acts
     }
 
     fn push(&mut self, kind: InterventionKind, turn: &UserTurn) {

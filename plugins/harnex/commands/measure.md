@@ -256,6 +256,18 @@ declaring early — measured, 244 of 246 fell in a single interval, where
 tokens in and out, and that the runtime's `cumulative_dropped_tokens` is a
 running total per session, so it is read from the last event and never summed.
 
+**Report what a compaction cost only as a pair.** `recovery.after_compaction`
+counts the agent turns a summary had to carry alone and the corrections the
+operator made inside them; `recovery.elsewhere` counts the same two things
+everywhere else. Give both rates in the same sentence or give neither — a
+recovery rate alone reads as the compaction's fault when it is the rate of the
+work that follows one. `compactions[].instruction_chars` says whether the
+operator told that compaction what to keep (absent = the runtime compacted on
+its own, `0` = they compacted and said nothing); under `--with-text`,
+`instruction` is what they said. Compare the two groups only where each clears
+`min_support` — measured over one project, compactions given no instruction
+numbered four, which answers nothing.
+
 **3. What survived.** Present only under `--project`, and only where that
 project is a git work tree. `repository.by_fate` counts what the branch still
 reaches; `reverted_by` names commits undone with `git revert`. Join it to
