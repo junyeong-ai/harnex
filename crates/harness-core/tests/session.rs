@@ -541,9 +541,15 @@ fn every_metric_corpus() -> (TempDir, SessionConfig) {
     alpha.push(spoke("s1", "x2", "2026-08-01T09:00:08Z"));
     // Queued after the agent spoke: a second instruction, and steering.
     alpha.push(queued("s1", "a2", "2026-08-01T09:00:09Z", STANDING));
+    alpha.push(marked_interrupt("s1", "i1", "2026-08-01T09:00:10Z"));
+    // Two in one session, so a running total summed twice is not the same
+    // number as the session's own.
+    alpha.push(compacted("s1", "k1", "2026-08-01T09:00:11Z", 900, 100, 100));
+    alpha.push(compacted("s1", "k2", "2026-08-01T09:00:12Z", 800, 150, 250));
 
     let beta = vec![
         typed("s2", "b1", "2026-08-02T09:00:00Z", STANDING),
+        compacted("s2", "k3", "2026-08-02T09:30:00Z", 500, 60, 40),
         typed("s2", "b2", "2026-08-02T10:00:00Z", STANDING),
     ];
     corpus(&[
@@ -567,8 +573,12 @@ fn every_recorded_metric_computes_what_it_computed() {
         ("cross_session_chars_per_submission", 72, 4),
         ("within_session_chars_per_submission", 144, 4),
         ("rule_load_chars_per_submission", 5, 4),
+        // 250 and 40, the running total each session reached — not 350, which
+        // is what adding both of s1's boundaries would give.
+        ("dropped_tokens_per_submission", 290, 4),
         ("denials_per_submission", 1, 4),
         ("steering_per_submission", 1, 4),
+        ("interrupts_per_submission", 1, 4),
         ("reedits_per_commit", 1, 1),
         ("hook_milliseconds_per_stop", 90, 1),
         ("output_tokens_per_submission", 700, 4),
