@@ -104,6 +104,13 @@ pub struct Submission {
     pub elapsed_ms: u64,
     /// Tool calls made under it, by tool. How the work was actually done,
     /// which is the half of a costly instruction its wording does not show.
+    ///
+    /// Summing these across a window is a floor on the window's own counts,
+    /// not a second way to compute them: a result that arrives with no
+    /// instruction open belongs to no instruction and is counted only where
+    /// the window counts it. Measured over three projects the failures that
+    /// land that way are 3 of 98, 12 of 3,856, and none of 549 — the same
+    /// shortfall `denials`, `edits` and `commits` carry, for the same reason.
     pub tools: BTreeMap<String, ToolUse>,
     /// Models that answered it. More than one means a comparison of token
     /// counts against another instruction is comparing model mixes too.
