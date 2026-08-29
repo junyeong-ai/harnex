@@ -64,15 +64,17 @@ table — never invent a new one without extending this table first.
 
 ### Adding an `ErrorCode` variant
 
-1. Add the variant to `error::ErrorCode`, its `as_str()` arm, and
-   `ErrorCode::ALL` — the exhaustive `as_str` match fails to compile until
-   the arm exists; the schema (`export::error_code_strings`) derives from
-   `ALL`, so a variant missing from `ALL` is missing from the schema.
-2. Add a typed variant to `error::Error` with `#[error(...)]` mapping and
-   the matching `code()` arm.
+1. Add one `Variant => "WIRE_STRING"` line to the `wire_enum!` block above
+   `error::Error`. The macro writes `as_str`, `from_str` and `ALL`, and the
+   schema (`export::error_code_strings`) derives from `ALL` — so the line is
+   the whole edit, and there is no hand-written arm to forget.
+2. Add a typed variant to `error::Error` with `#[error(...)]` mapping, the
+   matching `code()` arm, and a `hint()` arm where the caller can act on it.
+   These are exhaustive matches, so the compiler names each one.
 3. The `error_code_tests` (in `error.rs`) assert `ALL` is unique and
    non-shrinking; `error_codes_schema_lists_all_variants` (in `export.rs`)
-   asserts the schema surfaces them.
+   asserts the schema surfaces them. A duplicate wire string fails to compile
+   inside the macro rather than at either test.
 
 ### Adding a config section
 
