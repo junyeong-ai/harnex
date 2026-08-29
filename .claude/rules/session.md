@@ -73,10 +73,13 @@ floor, named for that, and carries the coverage it was measured at.
 
 `SessionMetric`, `InterventionKind` and `CommitFate` are wire vocabularies: a
 baseline written by one build is read by another, and a report is written
-against the names. Add a variant to the enum, its `ALL`, `from_str` and
-`as_str` (the exhaustive match forces the rest), and add it to the `CONTRACTS`
-table ([file: crates/harness-core/tests/plugin_prose_sync.rs]) as `Type.field`
-when a shipped document depends on it.
+against the names. Add one line to the `wire_enum!` block (it writes `ALL`, `from_str` and
+`as_str`, and the exhaustive match forces the rest). Where a shipped document
+depends on the new name, add it to the `CONTRACTS` table
+([file: crates/harness-core/tests/plugin_prose_sync.rs]) as `Type.field` **and
+move that document's declared citation count**: the count is the guard's
+denominator, so a document that gains a citation fails the build until the
+citation is either watched or the count is moved deliberately.
 
 A variant no input can produce is deleted rather than kept — `CommitFate` had
 one until git was asked what it actually answers.
