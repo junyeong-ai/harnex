@@ -96,7 +96,16 @@ pub struct CollectOptions {
     pub with_submissions: bool,
 }
 
-/// Agent turns and the operator's acts inside them.
+/// Main-thread agent turns and the operator's acts inside them.
+///
+/// A subagent's transcript carries its parent's session id but not its
+/// context: a compaction of the parent leaves a running subagent's own window
+/// untouched, so its turns ran on nothing the summary had to carry. Counting
+/// them would answer a rate question with a denominator from another thread,
+/// and how much that is depends on how a project works: of the turns a boundary
+/// would otherwise claim, one project's subagents supply 41.6% and two others
+/// none at all. Both spans therefore read the main thread, and together they
+/// still cover all of it.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TurnSpan {
     pub agent_turns: usize,
@@ -110,17 +119,20 @@ pub struct TurnSpan {
 /// projects, 75.3% of the file touches inside a window against 77.4% outside
 /// one — because a compaction lands where work turns over, and both spans are
 /// mostly an agent iterating on files it has open. What separates them is the
-/// operator: corrections per thousand agent turns run 93.0 against 0.9, 21.6
-/// against 0.6, and 15.4 against 0.6 on those same three projects, and the
-/// second number holds near 0.6 across all of them.
+/// operator: corrections per thousand main-thread turns run 93.0 against 1.4,
+/// 29.3 against 1.2, and 15.4 against 0.9 on those same three projects —
+/// between sixteen and sixty-nine times, on projects sharing no language, size
+/// or rhythm.
 ///
 /// That second number is why this is a pair. A recovery rate published alone
 /// reads as the compaction's fault when part of it is the rate of any work at
 /// all, so neither span ships without the other.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RecoveryFacts {
-    /// Between a boundary and the next instruction — the work the compaction's
-    /// summary had to carry on its own.
+    /// Between a boundary and the next instruction that is not itself an
+    /// intervention — the work the compaction's summary had to carry alone. A
+    /// correction holds the window open rather than ending it, because being
+    /// corrected is what this span is here to count.
     pub after_compaction: TurnSpan,
     /// Every other agent turn in the window.
     pub elsewhere: TurnSpan,
@@ -340,7 +352,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                     commands.push((turn.citation.timestamp, args));
                 }
                 let acts = interventions.observe(turn);
-                recovery.charge(&recovering, session).interventions += acts;
+                if turn.authorship != record::Authorship::Sidechain {
+                    recovery.charge(&recovering, session).interventions += acts;
+                }
                 // An intervention is the operator correcting a run rather than
                 // starting one, and it is the very thing this span measures, so
                 // it leaves the window open. Only work the operator asked for
@@ -356,7 +370,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 }
                 record::Record::Assistant(turn) => {
                     tokens.add(turn.tokens);
-                    recovery.charge(&recovering, session).agent_turns += 1;
+                    if !turn.sidechain {
+                        recovery.charge(&recovering, session).agent_turns += 1;
+                    }
                     for action in &turn.actions {
                         tools.entry(action.tool.clone()).or_default().calls += 1;
                     }
