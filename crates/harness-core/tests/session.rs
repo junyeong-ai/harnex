@@ -2452,3 +2452,55 @@ fn a_compact_that_produced_no_boundary_is_not_charged_to_the_next_one() {
         "a boundary takes the latest command before it, not the oldest unclaimed"
     );
 }
+
+/// A subagent's transcript carries its parent's session id, and nothing else
+/// separates the two threads. It does not carry the parent's context: a
+/// compaction of the parent leaves a running subagent's own window alone, so
+/// its turns ran on nothing the summary had to hold. Counting them answers a
+/// rate question with another thread's denominator.
+#[test]
+fn a_subagents_turns_are_not_the_work_a_summary_had_to_carry() {
+    let sidechain_agent = |uuid: &str, ts: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","isSidechain":true,"message":{{"id":"m_{uuid}","content":[{{"type":"text","text":"digging"}}]}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            boundary("s1", "b1", "2026-08-01T09:01:00Z", "auto"),
+            agent("s1", "t1", "2026-08-01T09:01:10Z"),
+            sidechain_agent("g1", "2026-08-01T09:01:20Z"),
+            // A subagent turn the runtime cut short. It is an interruption of
+            // the subagent's own run, not of the work the summary carries.
+            format!(
+                r#"{{"type":"user","uuid":"x1","timestamp":"2026-08-01T09:01:25Z","sessionId":"s1","isSidechain":true,"interruptedMessageId":"m_g1","message":{{"content":"stop"}}}}"#
+            ),
+            sidechain_agent("g2", "2026-08-01T09:01:30Z"),
+            typed("s1", "a2", "2026-08-01T09:02:00Z", ALSO_STANDING),
+            agent("s1", "t2", "2026-08-01T09:02:10Z"),
+            sidechain_agent("g3", "2026-08-01T09:02:20Z"),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.recovery.after_compaction.agent_turns, 1,
+        "the one main-thread turn the summary had to carry"
+    );
+    assert_eq!(
+        facts.recovery.elsewhere.agent_turns, 1,
+        "and the one main-thread turn after the next instruction"
+    );
+    assert_eq!(
+        facts.recovery.after_compaction.interventions, 0,
+        "the subagent's own run was cut short; the operator corrected nothing here"
+    );
+    assert_eq!(
+        facts.interventions.interventions.len(),
+        1,
+        "the window still records the interruption where interruptions are recorded"
+    );
+}

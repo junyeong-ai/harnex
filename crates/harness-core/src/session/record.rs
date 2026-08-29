@@ -328,6 +328,11 @@ pub struct AssistantTurn {
     pub message: Option<String>,
     /// The model that produced this turn, as the runtime named it.
     pub model: Option<String>,
+    /// Whether a subagent took it. A subagent's transcript carries its
+    /// parent's session id, so nothing else separates the two threads, and
+    /// they do not share a context: a compaction of the parent leaves a
+    /// running subagent's own window untouched.
+    pub sidechain: bool,
 }
 
 /// Where a session's context was compacted, and what it cost.
@@ -911,6 +916,7 @@ pub fn read_transcript(
                     tokens,
                     message: named,
                     model,
+                    sidechain: raw.is_sidechain.unwrap_or(false),
                 }));
                 // The latest record of a message holds its charge: while a
                 // message is still being written its earlier records report a
