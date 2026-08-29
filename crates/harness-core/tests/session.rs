@@ -830,9 +830,7 @@ fn every_analyser_sees_the_same_records_after_a_copy_is_discarded() {
                 // Edited, shipped, then edited again — the shape a re-edit is.
                 edit.replace("\"uuid\":\"e1\"", "\"uuid\":\"e0\"")
                     .replace("09:00:20", "09:00:05"),
-                format!(
-                    r#"{{"type":"user","uuid":"c1","timestamp":"2026-08-01T09:00:10Z","sessionId":"s1","toolUseResult":{{"gitOperation":{{"commit":{{"sha":"abc1234"}}}}}},"message":{{"content":[{{"type":"tool_result","content":"ok"}}]}}}}"#
-                ),
+                r#"{"type":"user","uuid":"c1","timestamp":"2026-08-01T09:00:10Z","sessionId":"s1","toolUseResult":{"gitOperation":{"commit":{"sha":"abc1234"}}},"message":{"content":[{"type":"tool_result","content":"ok"}]}}"#.to_string(),
                 edit.clone(),
             ],
         ),
@@ -883,9 +881,7 @@ fn a_tool_result_is_not_a_turn_the_runtime_declined_to_attribute() {
                 "2026-08-01T09:00:05Z",
                 "[Request interrupted by user]",
             ),
-            format!(
-                r#"{{"type":"user","uuid":"t1","timestamp":"2026-08-01T09:00:06Z","sessionId":"s1","message":{{"content":[{{"type":"tool_result","content":"ok"}}]}}}}"#
-            ),
+            r#"{"type":"user","uuid":"t1","timestamp":"2026-08-01T09:00:06Z","sessionId":"s1","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#.to_string(),
         ],
     )]);
 
@@ -2474,9 +2470,7 @@ fn a_subagents_turns_are_not_the_work_a_summary_had_to_carry() {
             sidechain_agent("g1", "2026-08-01T09:01:20Z"),
             // A subagent turn the runtime cut short. It is an interruption of
             // the subagent's own run, not of the work the summary carries.
-            format!(
-                r#"{{"type":"user","uuid":"x1","timestamp":"2026-08-01T09:01:25Z","sessionId":"s1","isSidechain":true,"interruptedMessageId":"m_g1","message":{{"content":"stop"}}}}"#
-            ),
+            r#"{"type":"user","uuid":"x1","timestamp":"2026-08-01T09:01:25Z","sessionId":"s1","isSidechain":true,"interruptedMessageId":"m_g1","message":{"content":"stop"}}"#.to_string(),
             sidechain_agent("g2", "2026-08-01T09:01:30Z"),
             typed("s1", "a2", "2026-08-01T09:02:00Z", ALSO_STANDING),
             agent("s1", "t2", "2026-08-01T09:02:10Z"),
