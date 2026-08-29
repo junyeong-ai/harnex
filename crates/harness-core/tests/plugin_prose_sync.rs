@@ -22,10 +22,20 @@ use std::path::PathBuf;
 
 use harness_core::export::{SchemaTarget, schema_for};
 
-/// Plugin documents and the fields each is written against, as `Type.field`.
-const CONTRACTS: &[(&str, &[&str])] = &[
+/// Plugin documents, how many schema names each one cites, and the fields it is
+/// written against as `Type.field`.
+///
+/// The count is the denominator this guard would otherwise not have. A field
+/// list is an allow-list, so a document that gains a citation gains it
+/// unwatched, and the suite still says every test passed — the shape of failure
+/// this repository refuses everywhere else, arriving here as a guard that
+/// reports coverage it never measured. Declaring the count makes a new citation
+/// break the build at the moment it is written, and both sides are counted by
+/// the same function, so there is nothing to match approximately.
+const CONTRACTS: &[(&str, usize, &[&str])] = &[
     (
         "reference/retire.md",
+        9,
         &[
             "SessionFacts.harness",
             "HarnessFacts.hooks",
@@ -36,6 +46,7 @@ const CONTRACTS: &[(&str, &[&str])] = &[
     (
         // The agent judges one submission, and reads it field by field.
         "agents/session-judge.md",
+        26,
         &[
             "Submission.citation",
             "Submission.chars",
@@ -56,6 +67,7 @@ const CONTRACTS: &[(&str, &[&str])] = &[
     ),
     (
         "commands/measure.md",
+        57,
         &[
             "PromptFacts.across_sessions",
             "PromptFacts.within_sessions",
@@ -159,10 +171,43 @@ fn cited_identifiers(doc: &str, body: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// Every property name any schema carries, whichever type carries it.
+///
+/// A citation in prose is a bare name, so this is the set a citation can be
+/// tested against without resolving which type it belongs to — enough to say
+/// whether the guard is watching a document, and not enough to say what it is
+/// watching, which is what the field list is for.
+fn schema_property_names() -> BTreeSet<String> {
+    schema_types().into_values().flatten().collect()
+}
+
+#[test]
+fn each_document_declares_how_many_schema_names_it_cites() {
+    let names = schema_property_names();
+    for (doc, declared, fields) in CONTRACTS {
+        let cited = cited_identifiers(doc, &plugin_file(doc));
+        let schema_names: BTreeSet<&String> = cited.intersection(&names).collect();
+        let watched: BTreeSet<String> = fields.iter().map(|f| split(f).1.to_string()).collect();
+        let unwatched: Vec<&&String> = schema_names
+            .iter()
+            .filter(|name| !watched.contains(**name))
+            .collect();
+        assert_eq!(
+            schema_names.len(),
+            *declared,
+            "{doc} cites {} schema names and this guard is declared against {declared}; \
+             it watches {} of them, and these it does not: {unwatched:?}. Register the \
+             new citation above, or move the count deliberately",
+            schema_names.len(),
+            watched.len()
+        );
+    }
+}
+
 #[test]
 fn every_field_the_prose_depends_on_is_carried_by_the_type_named_with_it() {
     let types = schema_types();
-    for (doc, fields) in CONTRACTS {
+    for (doc, _, fields) in CONTRACTS {
         for qualified in *fields {
             let (owner, field) = split(qualified);
             let properties = types.get(owner).unwrap_or_else(|| {
@@ -178,7 +223,7 @@ fn every_field_the_prose_depends_on_is_carried_by_the_type_named_with_it() {
 
 #[test]
 fn every_field_this_guard_watches_is_still_cited_in_a_code_span() {
-    for (doc, fields) in CONTRACTS {
+    for (doc, _, fields) in CONTRACTS {
         let cited = cited_identifiers(doc, &plugin_file(doc));
         for qualified in *fields {
             let (_, field) = split(qualified);
