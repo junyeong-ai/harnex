@@ -298,4 +298,4 @@ directly by Claude.
 
 ## License
 
-MIT.
+MIT. See [`LICENSE`](LICENSE).
