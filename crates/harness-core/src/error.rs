@@ -56,6 +56,7 @@ wire_enum! {
         CheckGitFailure => "CHECK_GIT_FAILURE",
         SessionRootUnreadable => "SESSION_ROOT_UNREADABLE",
         SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
+        SessionWindowUnattributed => "SESSION_WINDOW_UNATTRIBUTED",
         SessionBaselineLabelRejected => "SESSION_BASELINE_LABEL_REJECTED",
         SessionBaselineNotComparable => "SESSION_BASELINE_NOT_COMPARABLE",
         SessionBaselineUnreadable => "SESSION_BASELINE_UNREADABLE",
@@ -184,6 +185,13 @@ pub enum Error {
         message: String,
     },
 
+    /// A window with nothing to measure, which is not a low measurement. It
+    /// carries no ratio because none was taken: reporting the absence as `0.000
+    /// below a floor of 0.000` states a measurement and a comparison that never
+    /// happened, and sends the reader to a floor that was not the reason.
+    #[error("no turn in the window was attributed to a person: {message}")]
+    SessionWindowUnattributed { message: String },
+
     #[error("baseline label '{label}' rejected: {message}")]
     SessionBaselineLabelRejected { label: String, message: String },
 
@@ -232,6 +240,7 @@ impl Error {
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
             Self::SessionRootUnreadable { .. } => ErrorCode::SessionRootUnreadable,
             Self::SessionCoverageBelowFloor { .. } => ErrorCode::SessionCoverageBelowFloor,
+            Self::SessionWindowUnattributed { .. } => ErrorCode::SessionWindowUnattributed,
             Self::SessionBaselineLabelRejected { .. } => ErrorCode::SessionBaselineLabelRejected,
             Self::SessionBaselineNotComparable { .. } => ErrorCode::SessionBaselineNotComparable,
             Self::SessionBaselineUnreadable { .. } => ErrorCode::SessionBaselineUnreadable,
@@ -301,6 +310,9 @@ impl Error {
             ),
             Self::SessionCoverageBelowFloor { .. } => Some(
                 "widen the window, or lower [session] coverage_floor once you accept the bias it admits",
+            ),
+            Self::SessionWindowUnattributed { .. } => Some(
+                "widen the window with --since: `baseline save` starts where the last window of the same scope ended, and nothing was asked of this project since then",
             ),
             Self::SessionBaselineLabelRejected { .. } => Some(
                 "choose a label no earlier baseline used; the ledger is append-only and a label names one window",

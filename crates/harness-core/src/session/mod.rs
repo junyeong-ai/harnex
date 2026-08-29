@@ -495,10 +495,8 @@ fn attribute_committed_paths(
 /// heard of describes the binary rather than the window.
 pub fn require_coverage(coverage: &Coverage) -> Result<()> {
     match coverage.authorship_ratio() {
-        None => Err(Error::SessionCoverageBelowFloor {
-            observed: 0.0,
-            floor: 0.0,
-            message: "no turn in the window was attributed to a person".into(),
+        None => Err(Error::SessionWindowUnattributed {
+            message: "every rate would be taken over a population of none".into(),
         }),
         Some(_) => Ok(()),
     }
@@ -643,7 +641,13 @@ mod tests {
         let err = require_coverage(&facts.coverage).unwrap_err();
         assert_eq!(
             err.code(),
-            crate::error::ErrorCode::SessionCoverageBelowFloor
+            crate::error::ErrorCode::SessionWindowUnattributed,
+            "nothing to measure is its own failure, not a low measurement"
+        );
+        let said = err.to_string();
+        assert!(
+            !said.contains('0'),
+            "the window carries no ratio, so the sentence may state no number: {said}"
         );
     }
 
