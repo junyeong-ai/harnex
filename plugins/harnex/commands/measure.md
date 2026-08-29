@@ -257,16 +257,21 @@ tokens in and out, and that the runtime's `cumulative_dropped_tokens` is a
 running total per session, so it is read from the last event and never summed.
 
 **Report what a compaction cost only as a pair.** `recovery.after_compaction`
-counts the agent turns a summary had to carry alone and the corrections the
-operator made inside them; `recovery.elsewhere` counts the same two things
-everywhere else. Give both rates in the same sentence or give neither — a
-recovery rate alone reads as the compaction's fault when it is the rate of the
-work that follows one. `compactions[].instruction_chars` says whether the
-operator told that compaction what to keep (absent = the runtime compacted on
-its own, `0` = they compacted and said nothing); under `--with-text`,
-`instruction` is what they said. Compare the two groups only where each clears
-`min_support` — measured over one project, compactions given no instruction
-numbered four, which answers nothing.
+counts the main-thread turns a summary had to carry alone and the corrections
+the operator made inside them; `recovery.elsewhere` counts the same two things
+across the rest of the main thread. Give both rates in the same sentence or
+give neither — a recovery rate alone reads as the compaction's fault when it is
+the rate of the work that follows one. Neither span counts a subagent's turns,
+which ran on their own context, so the two do not sum to every turn in the
+window and must not be held against `tokens` or `tools`.
+
+`compactions[].instruction_chars` says whether the operator told that
+compaction what to keep (absent = the runtime compacted on its own, `0` = they
+compacted and said nothing); under `--with-text`, `instruction` is what they
+said. Do not report a with-instruction against without-instruction comparison:
+absent means the runtime hit its own limit, so the two groups differ by who
+decided as well as by what was said, and the smaller one is 11 of 317 over the
+local corpus — under `min_support` before the confound is even reached.
 
 **3. What survived.** Present only under `--project`, and only where that
 project is a git work tree. `repository.by_fate` counts what the branch still
