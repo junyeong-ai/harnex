@@ -6,9 +6,9 @@ members = ["crates/harness-core", "crates/harness-cli"]
 version = "0.1.17"
 edition = "2024"
 # Fully specified so the floor is a single toolchain. `rustup toolchain
-# install 1.97` resolves to the latest 1.97.x, which is the pin — the MSRV job
+# install 1.98` resolves to the latest 1.98.x, which is the pin — the MSRV job
 # would then re-check the pinned compiler and call it a floor test.
-rust-version = "1.97.0"
+rust-version = "1.98.0"
 license = "MIT"
 repository = "https://github.com/junyeong-ai/harnex"
 

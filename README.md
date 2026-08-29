@@ -82,7 +82,7 @@ scripts/install.sh --check            # what is installed, changing nothing
 scripts/install.sh --help             # every option
 ```
 
-`--build` needs Rust 1.97+; the script reads that floor from `Cargo.toml`
+`--build` needs Rust 1.98+; the script reads that floor from `Cargo.toml`
 rather than holding a second copy, and `rust-toolchain.toml` pins the exact
 toolchain so a checkout builds with the same compiler CI uses. `cargo build
 --release` still works for a local build without installing.
