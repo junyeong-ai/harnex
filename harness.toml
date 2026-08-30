@@ -5,10 +5,11 @@
 # their sections stay on so the first one added is checked from its first
 # commit rather than whenever someone remembers to widen this file.
 #
-# The remaining feature sections (telemetry, policy, codegen, lifecycle) are
-# absent because this repo runs none of those loops on itself. `harness check`
-# reports each as skipped with its reason, which is the honest answer; enabling
-# a section to look thorough would assert a subject that is not there.
+# policy and codegen stay absent: this repo runs neither loop on itself, and
+# `harness check` reporting them skipped with a reason is the honest answer.
+# lifecycle and telemetry are ON (below): the promotion/retirement loop this
+# repo ships was field-tested only by its consumers until 2026-08 — the loop's
+# own friction has to be findable here, on the corpus that builds it.
 
 [meta]
 harnex_version = ">=0.1, <0.2"
@@ -45,3 +46,16 @@ always_loaded_slugs = ["constitution", "making-changes"]
 
 [session]
 roots = ["~/.claude/projects"]
+
+# The loop this repo ships, run on this repo. Thresholds keep their defaults
+# until the ledger is large enough to have an opinion (same reasoning as the
+# scaffold template). Ledgers land under `.harness/` (gitignored — one
+# operator, one machine today; committing the decision ledger is the follow-up
+# the day a second contributor arrives).
+[lifecycle]
+
+# Empty kinds on purpose: an event schema is declared when there is something
+# to count (template rationale). The section exists so `lifecycle retire` can
+# derive its Silent verdict from an honest, present-but-empty ledger.
+[telemetry]
+storage_dir = ".harness/telemetry"
