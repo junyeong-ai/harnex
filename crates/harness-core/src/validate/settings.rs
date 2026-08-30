@@ -144,6 +144,8 @@ pub const KNOWN_HOOK_EVENTS: &[&str] = &[
     "MessageDisplay",
     "PreCompact",
     "PostCompact",
+    "PreModelSwitch",
+    "PostModelSwitch",
     "InstructionsLoaded",
     "ConfigChange",
     "CwdChanged",
