@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # git pre-commit arm — the review grammar's commit floor.
 #
-# For every staged spec plan, `harnex plan audit` holds what is being
-# committed to the contract the gates wrote: no open Critical/Blocker row, no
-# row deleted, reworded or downgraded instead of gaining its terminal
+# For every spec whose plan OR spec is staged, `harnex plan audit` holds what
+# is being committed to the contract the gates wrote: no open Critical/Blocker
+# row, no row deleted, reworded or downgraded instead of gaining its terminal
 # disposition, and a decision log that only ever appends. The staged content
 # is what is judged — the worktree may be further along — and HEAD is the
 # baseline both append-only contracts are held against. Paths are read
@@ -24,18 +24,13 @@ command -v harnex >/dev/null 2>&1 || {
 }
 
 PLAN_GLOB="specs/*/plan.md"
+SPEC_GLOB="specs/*/spec.md"
 
 status=0
 while IFS= read -r -d '' f; do
-  # shellcheck disable=SC2254 -- the glob is the match
-  case "$f" in
-  $PLAN_GLOB) ;;
-  *) continue ;;
-  esac
-
   tmp=$(mktemp -d) || {
     echo "[harnex] mktemp failed — plan audit skipped." >&2
-    exit 0
+    exit "$status"
   }
   # The staged content is judged from a temp tree that mirrors the repo's
   # relative paths, so findings name the file the operator knows.
@@ -68,5 +63,17 @@ while IFS= read -r -d '' f; do
     echo "[harnex] plan audit could not run on $f (exit $code) — skipped." >&2
     ;;
   esac
-done < <(git -c core.quotePath=off diff --cached --name-only -z --no-renames --diff-filter=ACMRD)
+done < <(
+  # A staged spec.md alone is enough to rewrite the decision log, so both
+  # artifacts trigger, mapped to their spec's plan path and de-duplicated —
+  # one audit per spec, whichever half the commit stages.
+  git -c core.quotePath=off diff --cached --name-only -z --no-renames --diff-filter=ACMRD |
+    while IFS= read -r -d '' p; do
+      # shellcheck disable=SC2254 -- the globs are the match
+      case "$p" in
+      $PLAN_GLOB) printf '%s\0' "$p" ;;
+      $SPEC_GLOB) printf '%s\0' "${p%spec.md}plan.md" ;;
+      esac
+    done | sort -zu
+)
 exit $status

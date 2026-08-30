@@ -366,7 +366,10 @@ enum Section {
         loose: Vec<(u32, String)>,
     },
     Missing {
-        fenced_copy: bool,
+        /// The heading's spelling occurs somewhere unreadable — fenced,
+        /// commented, or a near-miss ATX form — which deserves a message
+        /// distinct from a section that was simply never written.
+        stray_spelling: bool,
     },
     Unreadable {
         line: u32,
@@ -380,6 +383,31 @@ struct Item {
     line: u32,
     canonical_marker: bool,
     text: String,
+}
+
+/// The visible remainder of `line` once HTML comments are stripped; `None`
+/// while the whole line sits inside one. `comment` carries the opening line
+/// of an unterminated `<!--` so an unreadable verdict can name it.
+fn strip_html_comments(line: &str, line_no: u32, comment: &mut Option<u32>) -> Option<String> {
+    let mut out = String::new();
+    let mut rest = line;
+    if comment.is_some() {
+        let end = rest.find("-->")?;
+        *comment = None;
+        rest = &rest[end + 3..];
+    }
+    while let Some(open) = rest.find("<!--") {
+        out.push_str(&rest[..open]);
+        match rest[open + 4..].find("-->") {
+            Some(end) => rest = &rest[open + 4 + end + 3..],
+            None => {
+                *comment = Some(line_no);
+                return Some(out);
+            }
+        }
+    }
+    out.push_str(rest);
+    Some(out)
 }
 
 /// The ATX heading a line spells, as (level, title) — up to three leading
@@ -423,13 +451,17 @@ fn atx_heading(line: &str) -> Option<(usize, &str)> {
 /// fails another. CommonMark-shaped: fences open on 3+ backticks or tildes
 /// (an info string containing a backtick is not a fence), close on a run of
 /// the same character at least as long, and a heading or list marker inside
-/// one is content. Unreadable — a duplicate heading, or a fence left open
-/// across the section — is its own outcome, never conflated with empty: the
-/// difference between "no open findings" and "findings this reader cannot
-/// see" is the difference the append-only contract exists to protect.
+/// one is content; HTML comments are invisible to a renderer, so their
+/// content is invisible here too. Setext headings are not boundaries — a
+/// section can only over-collect past one, which fails loud. Unreadable — a
+/// duplicate heading, or a fence or comment left open across the section —
+/// is its own outcome, never conflated with empty: the difference between
+/// "no open findings" and "findings this reader cannot see" is the
+/// difference the append-only contract exists to protect.
 fn section_of(text: &str, heading: &str) -> Section {
     let wanted = format!("## {heading}");
     let mut fence: Option<(u8, usize, u32)> = None;
+    let mut comment: Option<u32> = None;
     let mut found_at: Option<u32> = None;
     let mut ended = false;
     let mut items: Vec<Item> = Vec::new();
@@ -438,12 +470,27 @@ fn section_of(text: &str, heading: &str) -> Section {
 
     for (idx, raw) in text.lines().enumerate() {
         let line_no = u32::try_from(idx + 1).unwrap_or(u32::MAX);
-        let line = raw.strip_suffix('\r').unwrap_or(raw);
-        let unindented = line.trim_start_matches(' ');
-        let indent = line.len() - unindented.len();
+        let raw_line = raw.strip_suffix('\r').unwrap_or(raw);
 
+        // Fences first — inside one, a comment marker is content.
+        if fence.is_none() && comment.is_none() {
+            let unindented = raw_line.trim_start_matches(' ');
+            if raw_line.len() - unindented.len() <= 3 {
+                let ticks = unindented.bytes().take_while(|&b| b == b'`').count();
+                let tildes = unindented.bytes().take_while(|&b| b == b'~').count();
+                if ticks >= 3 && !unindented[ticks..].contains('`') {
+                    fence = Some((b'`', ticks, line_no));
+                    continue;
+                }
+                if tildes >= 3 {
+                    fence = Some((b'~', tildes, line_no));
+                    continue;
+                }
+            }
+        }
         if let Some((char_, len, _)) = fence {
-            if indent <= 3
+            let unindented = raw_line.trim_start_matches(' ');
+            if raw_line.len() - unindented.len() <= 3
                 && unindented.bytes().take_while(|&b| b == char_).count() >= len
                 && unindented.trim_end().bytes().all(|b| b == char_)
             {
@@ -451,18 +498,18 @@ fn section_of(text: &str, heading: &str) -> Section {
             }
             continue;
         }
-        if indent <= 3 {
-            let ticks = unindented.bytes().take_while(|&b| b == b'`').count();
-            let tildes = unindented.bytes().take_while(|&b| b == b'~').count();
-            if ticks >= 3 && !unindented[ticks..].contains('`') {
-                fence = Some((b'`', ticks, line_no));
-                continue;
-            }
-            if tildes >= 3 {
-                fence = Some((b'~', tildes, line_no));
-                continue;
-            }
-        }
+
+        // HTML comments are what a renderer never shows: their content is
+        // neither a row nor a loose line, and a heading inside one anchors
+        // nothing. Stripped span-wise so prose around an inline comment
+        // still reads.
+        let line = match strip_html_comments(raw_line, line_no, &mut comment) {
+            Some(cleaned) => cleaned,
+            None => continue,
+        };
+        let line = line.as_str();
+        let unindented = line.trim_start_matches(' ');
+        let indent = line.len() - unindented.len();
 
         let is_wanted = atx_heading(line) == Some((2, heading));
         match found_at {
@@ -522,13 +569,24 @@ fn section_of(text: &str, heading: &str) -> Section {
             ),
         };
     }
+    if let (Some(opened), false) = (comment, ended)
+        && found_at.is_some()
+    {
+        return Section::Unreadable {
+            line: opened,
+            reason: format!(
+                "an HTML comment opened at line {opened} never closes, so what the section \
+                 shows a reader cannot be told from what it hides"
+            ),
+        };
+    }
     if let Some(item) = open_item.take() {
         items.push(item);
     }
     match found_at {
         Some(_) => Section::Found { items, loose },
         None => Section::Missing {
-            fenced_copy: text.contains(&wanted),
+            stray_spelling: text.contains(&wanted),
         },
     }
 }
@@ -697,15 +755,15 @@ impl<'a> PlanAuditor<'a> {
     fn plan_rows(&self, findings: &mut Vec<Finding>) -> Option<Vec<FindingRow>> {
         let text = self.plan?;
         match section_of(text, OUTSTANDING_HEADING) {
-            Section::Missing { fenced_copy } => {
+            Section::Missing { stray_spelling } => {
                 findings.push(Finding {
                     slug: "plan-outstanding-missing".into(),
                     severity: Severity::Major,
                     location: Location::file(self.plan_path),
-                    message: if fenced_copy {
+                    message: if stray_spelling {
                         format!(
-                            "`## {OUTSTANDING_HEADING}` exists only inside a code fence or \
-                             malformed context — no readable section carries the findings"
+                            "a `## {OUTSTANDING_HEADING}` spelling exists but no readable \
+                             section carries it — fenced, commented, or a near-miss heading"
                         )
                     } else {
                         format!("no `## {OUTSTANDING_HEADING}` section")
@@ -787,15 +845,15 @@ impl<'a> PlanAuditor<'a> {
         findings: &mut Vec<Finding>,
     ) {
         let items = match section_of(spec_text, DECISION_LOG_HEADING) {
-            Section::Missing { fenced_copy } => {
+            Section::Missing { stray_spelling } => {
                 findings.push(Finding {
                     slug: "plan-log-missing".into(),
                     severity: Severity::Major,
                     location: Location::file(spec_path),
-                    message: if fenced_copy {
+                    message: if stray_spelling {
                         format!(
-                            "`## {DECISION_LOG_HEADING}` exists only inside a code fence or \
-                             malformed context"
+                            "a `## {DECISION_LOG_HEADING}` spelling exists but no readable \
+                             section carries it — fenced, commented, or a near-miss heading"
                         )
                     } else {
                         format!("no `## {DECISION_LOG_HEADING}` section")
@@ -981,7 +1039,7 @@ impl<'a> PlanAuditor<'a> {
         // Identity is rank AND text: matching text alone let a one-word
         // severity downgrade dismiss a Critical without a disposition — the
         // cheapest possible laundering of the contract this check holds.
-        let current: Vec<(ReviewSeverity, &str)> = match (self.plan, rows) {
+        let mut current: Vec<(ReviewSeverity, &str)> = match (self.plan, rows) {
             // The current section is unreadable; its own finding stands and
             // a vanish verdict against rows nobody read would be noise.
             (Some(_), None) => return,
@@ -995,7 +1053,18 @@ impl<'a> PlanAuditor<'a> {
             else {
                 continue;
             };
-            if row.open() && !current.contains(&(row.severity, row.text.as_str())) {
+            if !row.open() {
+                continue;
+            }
+            // Claimed on match, never merely tested: two identical baseline
+            // rows are two obligations, and one disposed current row must
+            // not satisfy both.
+            let claimed = current
+                .iter()
+                .position(|c| *c == (row.severity, row.text.as_str()));
+            if let Some(index) = claimed {
+                current.swap_remove(index);
+            } else {
                 findings.push(Finding {
                     slug: "plan-row-vanished".into(),
                     severity: Severity::Blocker,
@@ -1224,7 +1293,11 @@ mod tests {
         let text = "```\n## Outstanding issues\n- [Critical] x\n```\n";
         let findings = audit(text);
         assert_eq!(slugs(&findings), ["plan-outstanding-missing"]);
-        assert!(findings[0].message.contains("code fence"));
+        assert!(
+            findings[0]
+                .message
+                .contains("no readable section carries it")
+        );
     }
 
     #[test]
@@ -1626,6 +1699,41 @@ mod tests {
             slugs(&findings).contains(&"plan-log-rewritten"),
             "{findings:#?}"
         );
+    }
+
+    #[test]
+    fn two_identical_baseline_rows_are_two_obligations() {
+        // Set membership let one disposed current row satisfy both copies —
+        // the second, still-open Critical vanished with zero trace.
+        let baseline =
+            plan("- [Critical] the migration drops rows\n- [Critical] the migration drops rows");
+        let current =
+            plan("- [Critical] the migration drops rows [fixed: test_migration_keeps_rows]");
+        let findings = audit_against(&baseline, Some(&current));
+        assert_eq!(slugs(&findings), ["plan-row-vanished"]);
+    }
+
+    #[test]
+    fn html_comment_content_is_invisible_here_as_it_is_to_a_reader() {
+        let findings = audit(&plan(
+            "<!-- example: - [Critical] this is how a row looks -->\n\
+             <!-- a comment\nspanning lines with - [Blocker] inside\n-->\n\
+             - [Minor] real row <!-- inline [Critical] note -->",
+        ));
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn an_unterminated_comment_across_the_section_is_unreadable() {
+        let text = "## Outstanding issues\n\n<!-- opened and never closed\n- [Critical] hidden\n";
+        assert_eq!(slugs(&audit(text)), ["plan-section-unreadable"]);
+    }
+
+    #[test]
+    fn a_commented_out_heading_anchors_nothing() {
+        let text =
+            "<!--\n## Outstanding issues\n-->\n\n## Outstanding issues\n\n- [Blocker] real\n";
+        assert_eq!(slugs(&audit(text)), ["plan-open-blocker"]);
     }
 
     #[test]
