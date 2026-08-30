@@ -388,6 +388,12 @@ struct Item {
 /// The visible remainder of `line` once HTML comments are stripped; `None`
 /// while the whole line sits inside one. `comment` carries the opening line
 /// of an unterminated `<!--` so an unreadable verdict can name it.
+///
+/// A code span protects its content, `<!--` included — CommonMark's
+/// leftmost-delimiter rule, and the difference between a row that QUOTES the
+/// marker and a comment. Read without it, one backticked `` `<!--` `` opened
+/// a phantom comment that swallowed every row until an incidental `-->`
+/// downstream — an open Critical erased by ordinary prose.
 fn strip_html_comments(line: &str, line_no: u32, comment: &mut Option<u32>) -> Option<String> {
     let mut out = String::new();
     let mut rest = line;
@@ -397,9 +403,32 @@ fn strip_html_comments(line: &str, line_no: u32, comment: &mut Option<u32>) -> O
         rest = &rest[end + 3..];
     }
     while let Some(open) = rest.find("<!--") {
+        if let Some(tick) = rest.find('`')
+            && tick < open
+        {
+            let run = rest[tick..].bytes().take_while(|&b| b == b'`').count();
+            if let Some(close) = find_backtick_run(&rest[tick + run..], run) {
+                let span_end = tick + run + close + run;
+                out.push_str(&rest[..span_end]);
+                rest = &rest[span_end..];
+                continue;
+            }
+        }
         out.push_str(&rest[..open]);
-        match rest[open + 4..].find("-->") {
-            Some(end) => rest = &rest[open + 4 + end + 3..],
+        let after = &rest[open + 4..];
+        // `<!-->` and `<!--->` are complete, empty comments to a renderer —
+        // read as unterminated openers, they swallowed the visible rows
+        // after them.
+        if let Some(tail) = after.strip_prefix('>') {
+            rest = tail;
+            continue;
+        }
+        if let Some(tail) = after.strip_prefix("->") {
+            rest = tail;
+            continue;
+        }
+        match after.find("-->") {
+            Some(end) => rest = &after[end + 3..],
             None => {
                 *comment = Some(line_no);
                 return Some(out);
@@ -1727,6 +1756,40 @@ mod tests {
     fn an_unterminated_comment_across_the_section_is_unreadable() {
         let text = "## Outstanding issues\n\n<!-- opened and never closed\n- [Critical] hidden\n";
         assert_eq!(slugs(&audit(text)), ["plan-section-unreadable"]);
+    }
+
+    #[test]
+    fn a_quoted_comment_marker_is_a_quote_not_a_comment() {
+        // Unprotected, the backticked `<!--` opened a phantom comment and an
+        // incidental `-->` in later prose closed it — erasing the open
+        // Critical and Blocker between them with a clean exit.
+        let findings = audit(&plan(
+            "- [Minor] mentions escape `<!--` syntax in backticks\n\
+             - [Critical] this row should absolutely block the commit\n\
+             - [Blocker] this one too, wide open\n\
+             - [Minor] closing marker appears in this row's text -->\n\
+             - [Minor] disposed row, fine [fixed: x]",
+        ));
+        assert_eq!(
+            slugs(&findings),
+            ["plan-open-blocker", "plan-open-blocker"],
+            "{findings:#?}"
+        );
+        // With no incidental closer the quoting row itself stays readable.
+        let findings = audit(&plan("- [Critical] escape the `<!--` marker here"));
+        assert_eq!(slugs(&findings), ["plan-open-blocker"]);
+    }
+
+    #[test]
+    fn an_empty_comment_is_complete_not_an_opener() {
+        // `<!-->` and `<!--->` render as finished comments; read as open,
+        // they swallowed the visible Critical after them until a stray `-->`.
+        for empty in ["<!-->", "<!--->"] {
+            let findings = audit(&plan(&format!(
+                "{empty}\n- [Critical] a reader sees this row\n-->"
+            )));
+            assert_eq!(slugs(&findings), ["plan-open-blocker"], "{empty}");
+        }
     }
 
     #[test]
