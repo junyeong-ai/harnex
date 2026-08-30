@@ -25,7 +25,10 @@ by dependency, not by size.>
 
 ## Outstanding issues
 
-<Findings a gate transcribed and nobody has resolved. Empty at plan time; the
-gates write here. A non-empty list does NOT block: `review` passes on zero
-Critical and zero Blocker, and Major and Minor stay here as follow-up signal.
-This is what the next session reads instead of rediscovering it.>
+<Findings a gate transcribed. Empty at plan time; the gates write here, and a
+row is never deleted — cleared, it gains a terminal disposition (`fixed` with
+what pinned it, `refuted` with the ground truth, `accepted` with who accepted
+it). A non-empty list does NOT block: `review` passes on zero Critical and
+zero Blocker rows without a terminal disposition, and Major and Minor stay
+here as follow-up signal. This is what the next session reads instead of
+rediscovering it.>

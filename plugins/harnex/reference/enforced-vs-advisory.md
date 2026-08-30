@@ -33,6 +33,15 @@ thing that survives a confused, careless, or adversarial agent turn.
 3. **Workflow → skill.** Repeatable multi-step procedures (the harnex modes
    themselves) are skills: description costs ~nothing until invoked;
    `disable-model-invocation: true` for side-effectful flows.
+4. **A declared control names its computer.** A cap, floor, threshold, or
+   convergence criterion stated in prose is an intention until something
+   computes it — a hook, a test, a validator, or a recorded count the next
+   step must read before proceeding. State the computer beside the control;
+   one with no computer is an observation for the lifecycle ledger, not a
+   rule. The measured failure shape: a review gate whose "stop when the
+   count does not fall" lived in prose while no round count was recorded —
+   it ran eleven rounds, and clearing findings was indistinguishable from
+   narrating them away.
 
 ## What this means for a generated harness
 

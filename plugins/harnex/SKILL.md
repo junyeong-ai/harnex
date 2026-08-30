@@ -388,6 +388,14 @@ would put it, and let the operator decide. State plainly when a gap is one
 harnex has no template for — an unsupported stack, an artifact class outside
 the template set — rather than proposing a substitute.
 
+Also read the harness's own prose — rules, skill bodies, gate documents — for
+**declared controls no computer holds** (enforced-vs-advisory rule 4): a cap,
+floor, or convergence criterion stated in prose with nothing that computes it —
+no hook, no test, no validator, no recorded count a next step must read. Report
+each as an observation naming the control and where its computer would live.
+This is the judgment half's counterpart to the enforcer sweep: that sweep lists
+enforcers that exist, this lists enforcement that is claimed.
+
 Write nothing in either half.
 
 ## Mode: regenerate (spec drift)
