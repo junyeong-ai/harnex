@@ -68,6 +68,12 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::guard::GuardCommand,
     },
+    /// Spec-workflow review gate — finding rows, dispositions, decision-log
+    /// convergence
+    Plan {
+        #[command(subcommand)]
+        cmd: commands::plan::PlanCommand,
+    },
     /// Emit JSON Schema for the toolkit's user-facing types
     Export {
         #[command(subcommand)]
@@ -126,6 +132,7 @@ fn main() -> ExitCode {
         Command::Validate { cmd } => commands::validate::run(cmd, &mut out),
         Command::Lifecycle { cmd } => commands::lifecycle::run(cmd, &mut out),
         Command::Guard { cmd } => commands::guard::run(cmd, &mut out),
+        Command::Plan { cmd } => commands::plan::run(cmd, &mut out),
         Command::Export { cmd } => commands::export::run(cmd, &mut out),
         Command::Session { cmd } => commands::session::run(cmd, &mut out),
         Command::Graph { cmd } => commands::graph::run(cmd, &mut out),

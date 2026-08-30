@@ -34,5 +34,8 @@ gate does not read an omission as an oversight.>
 ## Decision log
 
 <!-- One bullet per gate firing, appended, never rewritten. The orchestrator
-     writes these; the format is `<date> · <gate> · <token> · <rationale>` and
-     the token is one of approved | rejected | needs_revision | deferred. -->
+     writes these; the format is
+     `<YYYY-MM-DD> · <gate> · <token> · <counts>? · <rationale>`, the token is
+     one of approved | rejected | needs_revision | deferred, and a
+     review-class firing carries its counts as `<n>C/<n>B/<n>M/<n>m`.
+     `harnex plan audit` reads exactly this grammar. -->

@@ -103,3 +103,13 @@ re-reads it from the repository and there is no second copy to go stale; the
 table that does the reading is in `.claude/skills/spec/SKILL.md`. Findings land
 in `plan.md ## Outstanding issues`, which is what makes the next session read
 what the last one found.
+
+## Enforcement
+
+`hooks/pre-commit.d/check-plan.sh` runs `harnex plan audit` over every staged
+plan: an open Critical/Blocker row, a row deleted or reworded instead of
+gaining its terminal disposition, and a decision log whose Critical+Blocker
+count will not fall each block the commit — the grammar the gates write is
+computed there, never trusted to narration. For a gate before the session ends
+rather than at the commit, `harnex guard stop-audit` (`[guard.stop_audit]` in
+`harness.toml`) adds a bounded fresh-context critique at Stop.

@@ -44,8 +44,11 @@ invoked the loop — the skill writes nothing outside the files the fixes touch
 (SKILL § Report). Two things make up the record, both append-only:
 
 - one line per pass — pass number, findings by severity, files touched;
-- every finding's terminal disposition — `fixed` (with what pinned it),
-  `refuted` (with the ground truth), or `accepted` (with who accepted it).
+- every finding's terminal disposition, end-anchored on its row —
+  `[fixed: what pinned it]`, `[refuted: the ground truth]`, or
+  `[accepted: who accepted it and why]`. Spec-bound, `harnex plan audit`
+  computes the whole contract — open rows, vanished rows, non-falling
+  counts — and the pre-commit arm holds it at the commit.
 
 A cleared finding keeps its row and gains its disposition. Prose that narrates
 findings away — "these became inexpressible after the redesign" — leaves a gate

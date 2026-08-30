@@ -38,6 +38,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::evidence` | provenance verifier (strategy enum per claim shape) |
 | `harness-core::telemetry` | append-only JSONL ledger with closed payload schema |
 | `harness-core::codegen` | sentinel-block source → target sync |
+| `harness-core::plan` | spec-workflow review grammar — finding rows, dispositions, decision-log convergence — computed by `plan audit` |
 | `harness-core::policy` | permission rule grammar + profiles + version pins |
 | `harness-core::scaffold` | composition manifest (`scaffold.toml`) + tier model |
 | `harness-core::spec` | measurement stamps for the Claude Code vocabularies |
