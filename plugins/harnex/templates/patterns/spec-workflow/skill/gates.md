@@ -33,12 +33,13 @@ last one. `git log specs/<slug>/` is the timeline this rides on.
 
 A review-class firing (`design_review`, `review`) writes its counts into the
 line — `<n>C/<n>B/<n>M/<n>m` — because the next firing reads them: a re-fire
-whose Critical + Blocker total did not fall below the previous firing's names
-both totals in its rationale, and a second non-falling re-fire escalates to the
-operator instead of firing again. The rule is computed from the log's own
-lines, never recalled — a convergence floor nothing reads is prose, and the
-measured failure of that shape is a gate that recorded eleven firings while
-its rule said stop at the second.
+whose Critical + Blocker total did not fall below the previous firing's
+escalates to the operator instead of firing, and firing on anyway takes the
+operator's own recorded acknowledgement in the line, naming why another round
+is justified. The rule is computed from the log's own lines, never recalled —
+a convergence floor nothing reads is prose, and the measured failure of that
+shape is a gate that recorded eleven firings while its rule said stop at the
+second.
 
 ## clarify — inline, during specify
 

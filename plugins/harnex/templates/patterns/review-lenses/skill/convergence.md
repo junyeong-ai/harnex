@@ -24,20 +24,24 @@ fix moved something the finding did not cover. Let it run.
 
 Stalled catches the loop with nothing left to try. The slower failure keeps
 editing: files change every pass while the Critical + Blocker count stays level
-or rises — each fix opening what the last one closed. Two consecutive passes
-without that count falling is that shape; escalate there rather than riding to
-the cap. The comparison reads the recorded pass lines (below), never memory —
-a convergence floor nothing computes is prose, and the measured failure of that
-shape is a gate that recorded eleven firings while its own rule said stop at
-the second.
+or rises — each fix opening what the last one closed. A pass whose count did
+not fall below the previous pass's escalates rather than riding to the cap;
+riding on anyway takes the operator's own recorded acknowledgement naming why
+another pass is justified — the same rule, at the same threshold, the
+spec-workflow gates hold their re-fires to. The comparison reads the recorded
+pass lines (below), never memory — a convergence floor nothing computes is
+prose, and the measured failure of that shape is a gate that recorded eleven
+firings while its own rule said stop at the second.
 
 ## The record outlives the context
 
 Convergence state that lives only in conversation is erased by exactly what a
-long review meets — a compaction, a session end, a re-invocation. So the loop
-keeps its record on disk: spec-bound, in the spec's decision log and
-`plan.md ## Outstanding issues`; standalone, in one scratch file the report
-names. Two things go there, both append-only:
+long review meets — a compaction, a session end, a re-invocation. So the
+record goes where the invocation can keep it: spec-bound, in the spec's
+decision log and `plan.md ## Outstanding issues`; standalone, the record rides
+the terminal report, and keeping it across invocations belongs to whatever
+invoked the loop — the skill writes nothing outside the files the fixes touch
+(SKILL § Report). Two things make up the record, both append-only:
 
 - one line per pass — pass number, findings by severity, files touched;
 - every finding's terminal disposition — `fixed` (with what pinned it),
