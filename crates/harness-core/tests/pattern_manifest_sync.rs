@@ -154,7 +154,8 @@ fn the_review_class_gates_are_the_ones_the_doc_documents() {
         .expect("read gates.md");
     for gate in harness_core::plan::REVIEW_CLASS_GATES {
         assert!(
-            text.contains(&format!("## {gate} ")),
+            text.lines()
+                .any(|l| l.trim_end().starts_with(&format!("## {gate} "))),
             "gates.md documents no `## {gate}` event, yet the parser holds it to the counts \
              contract"
         );

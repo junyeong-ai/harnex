@@ -27,6 +27,10 @@ pub enum PlanCommand {
         /// holds must survive in `--plan` or carry a terminal disposition
         #[arg(long)]
         baseline: Option<PathBuf>,
+        /// The committed baseline of the spec: its decision-log bullets must
+        /// stand verbatim as a prefix of `--spec`'s
+        #[arg(long)]
+        baseline_spec: Option<PathBuf>,
     },
 }
 
@@ -38,6 +42,7 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         plan,
         spec,
         baseline,
+        baseline_spec,
     } = cmd;
 
     let plan_text = match std::fs::read_to_string(&plan) {
@@ -64,12 +69,18 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         })
         .transpose()?;
 
+    let baseline_spec_text = baseline_spec
+        .as_deref()
+        .map(|p| std::fs::read_to_string(p).map_err(|e| io_failure(p, e)))
+        .transpose()?;
+
     let spec_input = spec.as_deref().zip(spec_text.as_deref());
     let findings = PlanAuditor::new(
         &plan,
         plan_text.as_deref(),
         spec_input,
         baseline_text.as_deref(),
+        baseline_spec_text.as_deref(),
     )
     .audit();
 

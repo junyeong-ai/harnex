@@ -107,9 +107,10 @@ what the last one found.
 ## Enforcement
 
 `hooks/pre-commit.d/check-plan.sh` runs `harnex plan audit` over every staged
-plan: an open Critical/Blocker row, a row deleted or reworded instead of
-gaining its terminal disposition, and a decision log whose Critical+Blocker
-count will not fall each block the commit — the grammar the gates write is
+plan: an open Critical/Blocker row, a row deleted, reworded or downgraded
+instead of gaining its terminal disposition, a decision log whose
+Critical+Blocker count will not fall, and a committed decision bullet edited
+instead of appended each block the commit — the grammar the gates write is
 computed there, never trusted to narration. For a gate before the session ends
 rather than at the commit, `harnex guard stop-audit` (`[guard.stop_audit]` in
 `harness.toml`) adds a bounded fresh-context critique at Stop.
