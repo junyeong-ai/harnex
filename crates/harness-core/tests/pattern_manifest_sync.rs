@@ -83,10 +83,10 @@ fn reference_patterns_doc_mirrors_the_manifest() {
 
     let mut doc_slugs = BTreeSet::new();
     for line in doc.lines() {
-        if let Some(rest) = line.strip_prefix("- `") {
-            if let Some((slug, _)) = rest.split_once('`') {
-                doc_slugs.insert(slug.to_string());
-            }
+        if let Some(rest) = line.strip_prefix("- `")
+            && let Some((slug, _)) = rest.split_once('`')
+        {
+            doc_slugs.insert(slug.to_string());
         }
     }
     let manifest_slugs: BTreeSet<String> =
