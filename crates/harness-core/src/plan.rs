@@ -23,8 +23,9 @@
 //! - Never guesses at project layout. Callers name the files; where specs
 //!   live is project vocabulary and stays out of this crate (Constitution
 //!   VII).
-//! - Never reads git. The baseline is text the caller supplies; the shipped
-//!   pre-commit arm pipes `git show` into it.
+//! - Never reads git. The baselines — the committed plan for the vanish
+//!   check, the committed spec for the log's append-only check — are text the
+//!   caller supplies; the shipped pre-commit arm pipes `git show` into both.
 //! - Never judges substance. Whether a disposition's evidence is honest is
 //!   review-held; this computer holds shape, presence and arithmetic.
 //! - Never accepts a variant row silently. A list item carrying a bracketed
@@ -284,7 +285,9 @@ fn normalize(text: &str) -> String {
 /// disarm every gate that reads it. Code spans are stripped first — a row
 /// legitimately quotes grammar it is a finding about.
 fn finding_shaped(text: &str) -> bool {
-    let stripped = strip_code_spans(text);
+    // Fullwidth brackets are what a CJK IME plausibly emits around the same
+    // token; the net reads them as the brackets they are.
+    let stripped = strip_code_spans(text).replace('［', "[").replace('］', "]");
     let mut rest = stripped.as_str();
     while let Some(open) = rest.find('[') {
         let after = &rest[open + 1..];
@@ -298,7 +301,10 @@ fn finding_shaped(text: &str) -> bool {
         {
             return true;
         }
-        rest = &after[close + 1..];
+        // Advance past the opening bracket only: pairing this `[` with the
+        // next `]` and skipping everything between let one stray `[` earlier
+        // on the line swallow a real `**[Critical]**` after it.
+        rest = after;
     }
     false
 }
@@ -352,9 +358,20 @@ fn find_backtick_run(text: &str, len: usize) -> Option<usize> {
 
 /// A `## <heading>` section read out of a document, fence-aware.
 enum Section {
-    Found { items: Vec<Item> },
-    Missing { fenced_copy: bool },
-    Unreadable { line: u32, reason: String },
+    Found {
+        items: Vec<Item>,
+        /// Section lines that are neither an item nor a continuation of one —
+        /// the wide net reads these too, because a row a reader sees and no
+        /// parser claims is precisely what must not pass in silence.
+        loose: Vec<(u32, String)>,
+    },
+    Missing {
+        fenced_copy: bool,
+    },
+    Unreadable {
+        line: u32,
+        reason: String,
+    },
 }
 
 /// One top-level list item in a section: its 1-based line, its marker, and
@@ -363,6 +380,40 @@ struct Item {
     line: u32,
     canonical_marker: bool,
     text: String,
+}
+
+/// The ATX heading a line spells, as (level, title) — up to three leading
+/// spaces, one to six `#`s, whitespace (or end of line), and an optional
+/// closing run of `#`s, per CommonMark. A reader that recognizes fewer
+/// heading spellings than a renderer turns a cosmetic trailing `#` into a
+/// missing section, and a missing section disarms every check that reads it.
+fn atx_heading(line: &str) -> Option<(usize, &str)> {
+    let unindented = line.trim_start_matches(' ');
+    if line.len() - unindented.len() > 3 {
+        return None;
+    }
+    let level = unindented.bytes().take_while(|&b| b == b'#').count();
+    if !(1..=6).contains(&level) {
+        return None;
+    }
+    let rest = &unindented[level..];
+    if !rest.is_empty() && !rest.starts_with([' ', '\t']) {
+        return None;
+    }
+    let title = rest.trim_matches([' ', '\t']);
+    let stripped = title.trim_end_matches('#');
+    if stripped.len() == title.len() {
+        return Some((level, title));
+    }
+    // A closing sequence counts only when whitespace separates it from the
+    // title (or it is the whole remainder) — `## a#b` keeps its `#`.
+    if stripped.is_empty() {
+        return Some((level, stripped));
+    }
+    match stripped.ends_with([' ', '\t']) {
+        true => Some((level, stripped.trim_end_matches([' ', '\t']))),
+        false => Some((level, title)),
+    }
 }
 
 /// Extract the items under `## <heading>`.
@@ -382,6 +433,7 @@ fn section_of(text: &str, heading: &str) -> Section {
     let mut found_at: Option<u32> = None;
     let mut ended = false;
     let mut items: Vec<Item> = Vec::new();
+    let mut loose: Vec<(u32, String)> = Vec::new();
     let mut open_item: Option<Item> = None;
 
     for (idx, raw) in text.lines().enumerate() {
@@ -412,32 +464,32 @@ fn section_of(text: &str, heading: &str) -> Section {
             }
         }
 
-        let is_heading = indent <= 3 && unindented.starts_with('#');
+        let is_wanted = atx_heading(line) == Some((2, heading));
         match found_at {
             None => {
-                if line.trim_end() == wanted {
+                if is_wanted {
                     found_at = Some(line_no);
                 }
             }
             Some(at) if !ended => {
-                if is_heading {
-                    if line.trim_end() == wanted {
-                        return Section::Unreadable {
-                            line: line_no,
-                            reason: format!(
-                                "`{wanted}` appears again at line {line_no} (first at line {at}) \
-                                 — two sections with one name cannot be read as one"
-                            ),
-                        };
-                    }
-                    let level = unindented.bytes().take_while(|&b| b == b'#').count();
-                    if level <= 2 {
-                        ended = true;
-                        continue;
-                    }
+                if is_wanted {
+                    return Section::Unreadable {
+                        line: line_no,
+                        reason: format!(
+                            "`{wanted}` appears again at line {line_no} (first at line {at}) \
+                             — two sections with one name cannot be read as one"
+                        ),
+                    };
+                }
+                if let Some((level, _)) = atx_heading(line)
+                    && level <= 2
+                {
+                    ended = true;
+                    continue;
                 }
                 collect(
                     &mut items,
+                    &mut loose,
                     &mut open_item,
                     line_no,
                     line,
@@ -446,7 +498,7 @@ fn section_of(text: &str, heading: &str) -> Section {
                 );
             }
             Some(_) => {
-                if line.trim_end() == wanted {
+                if is_wanted {
                     return Section::Unreadable {
                         line: line_no,
                         reason: format!(
@@ -474,21 +526,26 @@ fn section_of(text: &str, heading: &str) -> Section {
         items.push(item);
     }
     match found_at {
-        Some(_) => Section::Found { items },
+        Some(_) => Section::Found { items, loose },
         None => Section::Missing {
             fenced_copy: text.contains(&wanted),
         },
     }
 }
 
-/// Grow `items` by one line of section content.
+/// Grow `items` — or `loose` — by one line of section content.
 ///
-/// A top-level item opens at indent ≤ 3; every following non-blank, non-item
-/// line continues it wherever it is indented — CommonMark's lazy continuation,
-/// and the direction that cannot silently split a row from its disposition. A
-/// blank line closes the open item.
+/// A top-level item opens at indent ≤ 3 with a space-indented marker; every
+/// following non-blank, non-item line continues it wherever it is indented —
+/// CommonMark's lazy continuation, and the direction that cannot silently
+/// split a row from its disposition. A blank line closes the open item. A
+/// non-blank line that neither opens nor continues an item — tab-indented,
+/// blockquoted, indented past the item margin, an out-of-range ordinal — goes
+/// to `loose`, where the wide net still reads it: dropping it is how a row a
+/// reader sees becomes a row no gate does.
 fn collect(
     items: &mut Vec<Item>,
+    loose: &mut Vec<(u32, String)>,
     open_item: &mut Option<Item>,
     line_no: u32,
     line: &str,
@@ -517,7 +574,9 @@ fn collect(
     if let Some(item) = open_item.as_mut() {
         item.text.push(' ');
         item.text.push_str(line.trim());
+        return;
     }
+    loose.push((line_no, line.trim().to_string()));
 }
 
 /// The text after a list marker, for any CommonMark marker.
@@ -552,6 +611,10 @@ pub struct PlanAuditor<'a> {
     plan: Option<&'a str>,
     spec: Option<(&'a Path, &'a str)>,
     baseline: Option<&'a str>,
+    /// The committed baseline of the spec, holding the decision log to its
+    /// append-only contract — without it, editing an earlier bullet's counts
+    /// launders the convergence comparison the log exists to compute.
+    baseline_spec: Option<&'a str>,
 }
 
 impl<'a> PlanAuditor<'a> {
@@ -560,12 +623,14 @@ impl<'a> PlanAuditor<'a> {
         plan: Option<&'a str>,
         spec: Option<(&'a Path, &'a str)>,
         baseline: Option<&'a str>,
+        baseline_spec: Option<&'a str>,
     ) -> Self {
         Self {
             plan_path,
             plan,
             spec,
             baseline,
+            baseline_spec,
         }
     }
 
@@ -574,9 +639,56 @@ impl<'a> PlanAuditor<'a> {
         let rows = self.plan_rows(&mut findings);
         if let Some((spec_path, spec_text)) = self.spec {
             self.audit_log(spec_path, spec_text, rows.as_deref(), &mut findings);
+            self.audit_log_rewrite(spec_path, spec_text, &mut findings);
         }
         self.audit_vanish(rows.as_deref(), &mut findings);
         findings
+    }
+
+    /// The decision log is append-only: the baseline's bullets must stand as
+    /// a prefix of the current log, verbatim. An edited, reordered or removed
+    /// bullet rewrites the history every convergence comparison reads — the
+    /// same laundering the vanish check refuses for finding rows. An
+    /// unreadable or absent baseline holds nothing.
+    fn audit_log_rewrite(&self, spec_path: &Path, spec_text: &str, findings: &mut Vec<Finding>) {
+        let Some(baseline_spec) = self.baseline_spec else {
+            return;
+        };
+        let Section::Found { items: held, .. } = section_of(baseline_spec, DECISION_LOG_HEADING)
+        else {
+            return;
+        };
+        let Section::Found { items: current, .. } = section_of(spec_text, DECISION_LOG_HEADING)
+        else {
+            // The current log's own Missing/Unreadable finding stands.
+            return;
+        };
+        for (index, item) in held.iter().enumerate() {
+            let kept = current
+                .get(index)
+                .is_some_and(|c| normalize(&c.text) == normalize(&item.text));
+            if !kept {
+                findings.push(Finding {
+                    slug: "plan-log-rewritten".into(),
+                    severity: Severity::Blocker,
+                    location: Location::file(spec_path),
+                    message: format!(
+                        "the committed decision log's bullet {} is edited, moved or gone: {}",
+                        index + 1,
+                        normalize(&item.text)
+                    ),
+                    hint: Some(
+                        "the log is append-only — a gate that fires again appends a new bullet; \
+                         restore the committed bullets verbatim and record the new decision \
+                         after them"
+                            .into(),
+                    ),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
+                return;
+            }
+        }
     }
 
     /// The plan's rows, with the row-level findings; `None` when the section
@@ -599,9 +711,9 @@ impl<'a> PlanAuditor<'a> {
                         format!("no `## {OUTSTANDING_HEADING}` section")
                     },
                     hint: Some(format!(
-                        "restore the `## {OUTSTANDING_HEADING}` section from \
-                         `specs/_template/plan.md` — the gates write findings there and every \
-                         reader of this plan starts from it"
+                        "restore the `## {OUTSTANDING_HEADING}` section from this project's \
+                         spec plan template — the gates write findings there and every reader \
+                         of this plan starts from it"
                     )),
                     auto_fixable: false,
                     fix_command: None,
@@ -612,7 +724,7 @@ impl<'a> PlanAuditor<'a> {
                 findings.push(unreadable(self.plan_path, line, &reason));
                 None
             }
-            Section::Found { items } => {
+            Section::Found { items, loose } => {
                 let mut rows = Vec::new();
                 for item in items {
                     match (item.canonical_marker, parse_row(&item.text)) {
@@ -638,26 +750,28 @@ impl<'a> PlanAuditor<'a> {
                                     fix_command: None,
                                 });
                             }
+                            // A severity token buried past the row's own —
+                            // a nested sub-row merged in as continuation —
+                            // must not ride out inside a lower rank's text.
+                            let body = &item.text[item.text.find(']').map_or(0, |i| i + 1)..];
+                            if finding_shaped(body) {
+                                findings.push(unparseable_row(
+                                    self.plan_path,
+                                    item.line,
+                                    &item.text,
+                                ));
+                            }
                             rows.push(row);
                         }
-                        _ if finding_shaped(&item.text) => findings.push(Finding {
-                            slug: "plan-row-unparseable".into(),
-                            severity: Severity::Major,
-                            location: Location::line(self.plan_path, item.line),
-                            message: format!(
-                                "finding-shaped row no gate can read: {}",
-                                normalize(&item.text)
-                            ),
-                            hint: Some(
-                                "write rows as `- [Critical|Blocker|Major|Minor] <finding>` — a \
-                                 variant marker, case or bolding is invisible to the gates that \
-                                 read this section"
-                                    .into(),
-                            ),
-                            auto_fixable: false,
-                            fix_command: None,
-                        }),
+                        _ if finding_shaped(&item.text) => {
+                            findings.push(unparseable_row(self.plan_path, item.line, &item.text));
+                        }
                         _ => {}
+                    }
+                }
+                for (line, text) in loose {
+                    if finding_shaped(&text) {
+                        findings.push(unparseable_row(self.plan_path, line, &text));
                     }
                 }
                 Some(rows)
@@ -687,9 +801,8 @@ impl<'a> PlanAuditor<'a> {
                         format!("no `## {DECISION_LOG_HEADING}` section")
                     },
                     hint: Some(format!(
-                        "restore the `## {DECISION_LOG_HEADING}` section from \
-                         `specs/_template/spec.md` — an unrecorded gate is a gate that did not \
-                         fire"
+                        "restore the `## {DECISION_LOG_HEADING}` section from this project's \
+                         spec template — an unrecorded gate is a gate that did not fire"
                     )),
                     auto_fixable: false,
                     fix_command: None,
@@ -700,37 +813,47 @@ impl<'a> PlanAuditor<'a> {
                 findings.push(unreadable(spec_path, line, &reason));
                 return;
             }
-            Section::Found { items } => items,
+            Section::Found { items, .. } => items,
         };
 
         let mut decisions = Vec::new();
         for item in items {
             match parse_decision(&item.text) {
                 Some(line) if item.canonical_marker => decisions.push((item.line, line)),
-                _ if item.text.contains('·') => findings.push(Finding {
-                    slug: "plan-log-unparseable".into(),
-                    severity: Severity::Major,
-                    location: Location::line(spec_path, item.line),
-                    message: format!(
-                        "decision bullet no gate can read: {}",
-                        normalize(&item.text)
-                    ),
-                    hint: Some(
-                        "write decisions as `- <YYYY-MM-DD> · <gate> · approved|rejected|\
-                         needs_revision|deferred [· <n>C/<n>B/<n>M/<n>m] · <rationale>`"
-                            .into(),
-                    ),
-                    auto_fixable: false,
-                    fix_command: None,
-                }),
+                // Decision-shaped is the grammar's own separator, or a bullet
+                // opening on a date — a lookalike dot (`•` for `·`) must not
+                // drop a line out of every accounting check in silence.
+                _ if item.text.contains('·') || item.text.get(..10).is_some_and(is_iso_date) => {
+                    findings.push(Finding {
+                        slug: "plan-log-unparseable".into(),
+                        severity: Severity::Major,
+                        location: Location::line(spec_path, item.line),
+                        message: format!(
+                            "decision bullet no gate can read: {}",
+                            normalize(&item.text)
+                        ),
+                        hint: Some(
+                            "write decisions as `- <YYYY-MM-DD> · <gate> · approved|rejected|\
+                             needs_revision|deferred [· <n>C/<n>B/<n>M/<n>m] · <rationale>` — \
+                             the separator is `·` (U+00B7)"
+                                .into(),
+                        ),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                }
                 _ => {}
             }
         }
 
-        let mut last_blocking: BTreeMap<&str, u32> = BTreeMap::new();
+        // Keyed case-folded: `Review` and `review` are one gate to a reader,
+        // and letting them track separately reset the comparison a case-typo
+        // was enough to escape.
+        let mut last_blocking: BTreeMap<String, u32> = BTreeMap::new();
         for (line_no, decision) in &decisions {
             let gate = decision.gate.as_str();
-            let review_class = REVIEW_CLASS_GATES.contains(&gate);
+            let gate_key = gate.to_ascii_lowercase();
+            let review_class = REVIEW_CLASS_GATES.contains(&gate_key.as_str());
             if review_class
                 && matches!(
                     decision.decision,
@@ -758,7 +881,7 @@ impl<'a> PlanAuditor<'a> {
             match decision.decision {
                 GateDecision::NeedsRevision => {
                     if let Some(counts) = decision.counts {
-                        if let Some(&previous) = last_blocking.get(gate)
+                        if let Some(&previous) = last_blocking.get(&gate_key)
                             && counts.blocking() >= previous
                             && !decision.rationale.starts_with(ACKNOWLEDGED_PREFIX)
                         {
@@ -780,11 +903,11 @@ impl<'a> PlanAuditor<'a> {
                                 fix_command: None,
                             });
                         }
-                        last_blocking.insert(gate, counts.blocking());
+                        last_blocking.insert(gate_key.clone(), counts.blocking());
                     }
                 }
                 GateDecision::Approved | GateDecision::Rejected | GateDecision::Deferred => {
-                    last_blocking.remove(gate);
+                    last_blocking.remove(&gate_key);
                 }
             }
             if decision.decision == GateDecision::Approved
@@ -811,10 +934,11 @@ impl<'a> PlanAuditor<'a> {
         }
 
         if let Some(rows) = rows
-            && let Some((line_no, decision)) = decisions
-                .iter()
-                .rev()
-                .find(|(_, d)| REVIEW_CLASS_GATES.contains(&d.gate.as_str()))
+            && let Some((line_no, decision)) = decisions.iter().rev().find(|(_, d)| {
+                REVIEW_CLASS_GATES
+                    .iter()
+                    .any(|g| g.eq_ignore_ascii_case(&d.gate))
+            })
             && decision.decision == GateDecision::Approved
         {
             let open_blocking = rows
@@ -851,15 +975,18 @@ impl<'a> PlanAuditor<'a> {
         let Some(baseline) = self.baseline else {
             return;
         };
-        let Section::Found { items } = section_of(baseline, OUTSTANDING_HEADING) else {
+        let Section::Found { items, .. } = section_of(baseline, OUTSTANDING_HEADING) else {
             return;
         };
-        let current: Vec<&str> = match (self.plan, rows) {
+        // Identity is rank AND text: matching text alone let a one-word
+        // severity downgrade dismiss a Critical without a disposition — the
+        // cheapest possible laundering of the contract this check holds.
+        let current: Vec<(ReviewSeverity, &str)> = match (self.plan, rows) {
             // The current section is unreadable; its own finding stands and
             // a vanish verdict against rows nobody read would be noise.
             (Some(_), None) => return,
             (None, _) => Vec::new(),
-            (Some(_), Some(rows)) => rows.iter().map(|r| r.text.as_str()).collect(),
+            (Some(_), Some(rows)) => rows.iter().map(|r| (r.severity, r.text.as_str())).collect(),
         };
         for item in items {
             let Some(row) = (item.canonical_marker) // structural filter first
@@ -868,7 +995,7 @@ impl<'a> PlanAuditor<'a> {
             else {
                 continue;
             };
-            if row.open() && !current.contains(&row.text.as_str()) {
+            if row.open() && !current.contains(&(row.severity, row.text.as_str())) {
                 findings.push(Finding {
                     slug: "plan-row-vanished".into(),
                     severity: Severity::Blocker,
@@ -879,8 +1006,8 @@ impl<'a> PlanAuditor<'a> {
                         row.text
                     ),
                     hint: Some(
-                        "a row is never deleted or reworded — restore it verbatim and end it \
-                         with `[fixed: …]`, `[refuted: …]` or `[accepted: …]`"
+                        "a row is never deleted, reworded or downgraded — restore it verbatim at \
+                         its rank and end it with `[fixed: …]`, `[refuted: …]` or `[accepted: …]`"
                             .into(),
                     ),
                     auto_fixable: false,
@@ -888,6 +1015,23 @@ impl<'a> PlanAuditor<'a> {
                 });
             }
         }
+    }
+}
+
+fn unparseable_row(path: &Path, line: u32, text: &str) -> Finding {
+    Finding {
+        slug: "plan-row-unparseable".into(),
+        severity: Severity::Major,
+        location: Location::line(path, line),
+        message: format!("finding-shaped row no gate can read: {}", normalize(text)),
+        hint: Some(
+            "write each finding as its own flat `- [Critical|Blocker|Major|Minor] <finding>` \
+             row — a variant marker, case, bolding, nesting or indentation is invisible to the \
+             gates that read this section"
+                .into(),
+        ),
+        auto_fixable: false,
+        fix_command: None,
     }
 }
 
@@ -913,7 +1057,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn audit(plan: &str) -> Vec<Finding> {
-        PlanAuditor::new(&PathBuf::from("plan.md"), Some(plan), None, None).audit()
+        PlanAuditor::new(&PathBuf::from("plan.md"), Some(plan), None, None, None).audit()
     }
 
     fn audit_with_spec(plan: &str, spec: &str) -> Vec<Finding> {
@@ -923,12 +1067,25 @@ mod tests {
             Some(plan),
             Some((&spec_path, spec)),
             None,
+            None,
         )
         .audit()
     }
 
     fn audit_against(baseline: &str, plan: Option<&str>) -> Vec<Finding> {
-        PlanAuditor::new(&PathBuf::from("plan.md"), plan, None, Some(baseline)).audit()
+        PlanAuditor::new(&PathBuf::from("plan.md"), plan, None, Some(baseline), None).audit()
+    }
+
+    fn audit_log_against(baseline_spec: &str, current_spec: &str) -> Vec<Finding> {
+        let spec_path = PathBuf::from("spec.md");
+        PlanAuditor::new(
+            &PathBuf::from("plan.md"),
+            Some(&plan("")),
+            Some((&spec_path, current_spec)),
+            None,
+            Some(baseline_spec),
+        )
+        .audit()
     }
 
     fn slugs(findings: &[Finding]) -> Vec<&str> {
@@ -1325,8 +1482,156 @@ mod tests {
             Some(&plan("- [Major] fresh finding")),
             None,
             None,
+            None,
         )
         .audit();
         assert!(findings.is_empty());
+    }
+
+    // ---- the wide net over what the parser does not claim ----
+
+    #[test]
+    fn a_severity_downgrade_is_a_vanished_row() {
+        // Text alone as the identity let `[Critical] x` become `[Minor] x`
+        // with no disposition and no finding — the cheapest laundering.
+        let baseline = plan("- [Critical] the migration drops rows");
+        let findings = audit_against(&baseline, Some(&plan("- [Minor] the migration drops rows")));
+        assert_eq!(slugs(&findings), ["plan-row-vanished"]);
+    }
+
+    #[test]
+    fn a_row_no_parser_claims_is_loud_wherever_it_hides() {
+        for row in [
+            "\t- [Critical] tab-indented",
+            "> - [Critical] blockquoted",
+            "1234567890. [Critical] ordinal past the CommonMark limit",
+            "- ［Critical］ fullwidth brackets",
+        ] {
+            let findings = audit(&plan(row));
+            assert_eq!(slugs(&findings), ["plan-row-unparseable"], "row: {row}");
+        }
+        // Indented past the item margin as the section's first content line.
+        let text = "## Outstanding issues\n\n    - [Critical] indented-code position\n";
+        assert_eq!(slugs(&audit(text)), ["plan-row-unparseable"]);
+    }
+
+    #[test]
+    fn a_nested_row_merged_into_a_parent_is_loud_not_buried() {
+        for body in [
+            "- [Minor] parent note\n    - [Critical] real nested finding",
+            "- [Minor] parent note\n\t- [Critical] tab-nested finding",
+        ] {
+            let findings = audit(&plan(body));
+            assert_eq!(slugs(&findings), ["plan-row-unparseable"], "body: {body}");
+        }
+    }
+
+    #[test]
+    fn a_stray_bracket_does_not_hide_the_marker_after_it() {
+        let findings = audit(&plan("- unmatched [ then real **[Critical]** marker"));
+        assert_eq!(slugs(&findings), ["plan-row-unparseable"]);
+    }
+
+    #[test]
+    fn loose_prose_without_a_severity_stays_quiet() {
+        let findings = audit(&plan(
+            "> a blockquoted note\n\t- a tab-indented bullet naming nothing",
+        ));
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    // ---- ATX heading spellings ----
+
+    #[test]
+    fn commonmark_heading_spellings_anchor_the_section() {
+        for text in [
+            "## Outstanding issues #\n\n- [Critical] behind a closing hash\n",
+            "## Outstanding issues ##\n\n- [Critical] behind a closing run\n",
+            "##  Outstanding issues\n\n- [Critical] behind a double space\n",
+            "  ## Outstanding issues\n\n- [Critical] behind an indented heading\n",
+        ] {
+            assert_eq!(slugs(&audit(text)), ["plan-open-blocker"], "text: {text}");
+        }
+    }
+
+    #[test]
+    fn a_closing_hash_on_the_log_heading_keeps_the_accounting_alive() {
+        let spec = "# t\n\n## Decision log #\n\n\
+                    - 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · first\n\
+                    - 2026-01-16 · review · needs_revision · 0C/2B/0M/0m · level\n";
+        let findings = audit_with_spec(&plan(""), spec);
+        assert_eq!(slugs(&findings), ["plan-log-not-falling"]);
+    }
+
+    #[test]
+    fn a_heading_mangled_baseline_still_holds_its_rows() {
+        let baseline = "## Outstanding issues ##\n\n- [Critical] committed finding\n";
+        let findings = audit_against(baseline, Some(&plan("")));
+        assert_eq!(slugs(&findings), ["plan-row-vanished"]);
+    }
+
+    // ---- log accounting hardening ----
+
+    #[test]
+    fn a_gate_name_case_change_does_not_reset_the_comparison() {
+        let log = "- 2026-01-15 · review · needs_revision · 3C/2B/0M/0m · first\n\
+                   - 2026-01-16 · Review · needs_revision · 5C/4B/0M/0m · rising";
+        let findings = audit_with_spec(&plan(""), &spec(log));
+        assert_eq!(slugs(&findings), ["plan-log-not-falling"]);
+    }
+
+    #[test]
+    fn a_lookalike_separator_is_loud_not_dropped() {
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec(
+                "- 2026-01-15 \u{2022} review \u{2022} approved \u{2022} 1C/0B/0M/0m \u{2022} fine",
+            ),
+        );
+        assert_eq!(slugs(&findings), ["plan-log-unparseable"]);
+    }
+
+    // ---- the log's append-only baseline ----
+
+    #[test]
+    fn an_appended_log_satisfies_its_baseline() {
+        let held = spec("- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · two");
+        let current = spec(
+            "- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · two\n\
+             - 2026-01-16 · review · approved · 0C/0B/0M/0m · clean",
+        );
+        assert!(audit_log_against(&held, &current).is_empty());
+    }
+
+    #[test]
+    fn an_edited_committed_bullet_is_a_rewritten_log() {
+        let held = spec("- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · two");
+        let current = spec("- 2026-01-15 · review · needs_revision · 0C/9B/0M/0m · two");
+        let findings = audit_log_against(&held, &current);
+        assert!(
+            slugs(&findings).contains(&"plan-log-rewritten"),
+            "{findings:#?}"
+        );
+    }
+
+    #[test]
+    fn a_removed_committed_bullet_is_a_rewritten_log() {
+        let held = spec(
+            "- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · two\n\
+             - 2026-01-16 · review · needs_revision · 0C/1B/0M/0m · one",
+        );
+        let current = spec("- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · two");
+        let findings = audit_log_against(&held, &current);
+        assert!(
+            slugs(&findings).contains(&"plan-log-rewritten"),
+            "{findings:#?}"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_baseline_log_holds_nothing() {
+        let held = "# t\n\n## Decision log\n\n```\nunclosed\n";
+        let current = spec("- 2026-01-15 · review · approved · 0C/0B/0M/0m · clean");
+        assert!(audit_log_against(held, &current).is_empty());
     }
 }

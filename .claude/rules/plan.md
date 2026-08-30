@@ -29,4 +29,8 @@ every prose site.
 - Unreadable is never empty. A duplicate heading or an unclosed fence is its
   own Blocker; a missing section is a Major, not a pass.
 - Vanish semantics: every open baseline row survives verbatim (whitespace
-  collapsed) or carries a disposition. Rewording is deletion.
+  collapsed) at its rank, or carries a disposition. Rewording is deletion;
+  a severity downgrade is deletion.
+- The decision log is append-only against its own baseline: committed
+  bullets stand verbatim as a prefix of the current log, or
+  `plan-log-rewritten` blocks.

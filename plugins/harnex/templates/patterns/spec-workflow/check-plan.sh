@@ -3,10 +3,13 @@
 #
 # For every staged spec plan, `harnex plan audit` holds what is being
 # committed to the contract the gates wrote: no open Critical/Blocker row, no
-# row deleted or reworded instead of gaining its terminal disposition, and a
-# decision log whose counts converge. The staged content is what is judged —
-# the worktree may be further along — and HEAD is the baseline the append-only
-# contract is held against.
+# row deleted, reworded or downgraded instead of gaining its terminal
+# disposition, and a decision log that only ever appends. The staged content
+# is what is judged — the worktree may be further along — and HEAD is the
+# baseline both append-only contracts are held against. Paths are read
+# NUL-delimited with renames split into delete + add: a rename that also
+# deletes a row, or a spec directory named with a space or outside ASCII,
+# must reach the audit like any other path.
 #
 # Fail-open on a missing binary and on a runtime failure of the tool itself;
 # only findings block. Escape hatch via HARNEX_SKIP_PLANCHECK=1 when the
@@ -22,19 +25,20 @@ command -v harnex >/dev/null 2>&1 || {
 
 PLAN_GLOB="specs/*/plan.md"
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACMRD) || exit 0
-
 status=0
-for f in $STAGED; do
+while IFS= read -r -d '' f; do
   # shellcheck disable=SC2254 -- the glob is the match
   case "$f" in
   $PLAN_GLOB) ;;
   *) continue ;;
   esac
 
+  tmp=$(mktemp -d) || {
+    echo "[harnex] mktemp failed — plan audit skipped." >&2
+    exit 0
+  }
   # The staged content is judged from a temp tree that mirrors the repo's
   # relative paths, so findings name the file the operator knows.
-  tmp=$(mktemp -d) || exit 0
   mkdir -p "$tmp/$(dirname "$f")"
   args=(--plan "$f")
   git show ":$f" >"$tmp/$f" 2>/dev/null || rm -f "$tmp/$f"
@@ -44,6 +48,9 @@ for f in $STAGED; do
   fi
   if git show "HEAD:$f" >"$tmp/$f.baseline" 2>/dev/null; then
     args+=(--baseline "$f.baseline")
+  fi
+  if git show "HEAD:$spec" >"$tmp/$spec.baseline" 2>/dev/null; then
+    args+=(--baseline-spec "$spec.baseline")
   fi
 
   out=$(cd "$tmp" && harnex plan audit "${args[@]}" 2>/dev/null)
@@ -61,5 +68,5 @@ for f in $STAGED; do
     echo "[harnex] plan audit could not run on $f (exit $code) — skipped." >&2
     ;;
   esac
-done
+done < <(git -c core.quotePath=off diff --cached --name-only -z --no-renames --diff-filter=ACMRD)
 exit $status
