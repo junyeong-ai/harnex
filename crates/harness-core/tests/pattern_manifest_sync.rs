@@ -69,6 +69,56 @@ fn manifest_slugs_match_pattern_directories() {
     );
 }
 
+/// Every manifest slug has its analysis entry in `reference/patterns.md`, and
+/// every backtick-quoted bullet lead there is a manifest slug. The reference
+/// is a projection of the manifest (Constitution IX): an added pattern with
+/// no analysis entry ships the blank-page problem, and an entry for a
+/// removed pattern instructs an install that cannot happen.
+#[test]
+fn reference_patterns_doc_mirrors_the_manifest() {
+    let manifest = load_manifest();
+    let doc_path = patterns_dir().join("../../reference/patterns.md");
+    let doc = std::fs::read_to_string(&doc_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", doc_path.display()));
+
+    let mut doc_slugs = BTreeSet::new();
+    for line in doc.lines() {
+        if let Some(rest) = line.strip_prefix("- `") {
+            if let Some((slug, _)) = rest.split_once('`') {
+                doc_slugs.insert(slug.to_string());
+            }
+        }
+    }
+    let manifest_slugs: BTreeSet<String> =
+        manifest.pattern.iter().map(|p| p.slug.clone()).collect();
+    assert_eq!(
+        manifest_slugs, doc_slugs,
+        "reference/patterns.md entries drifted from manifest.toml slugs"
+    );
+}
+
+/// The disposition vocabulary is stated in three template files across two
+/// patterns, and no test-free duplication is allowed to drift: every file
+/// carries all three tokens or the set was renamed in one place only.
+#[test]
+fn disposition_vocabulary_is_stated_identically() {
+    for rel in [
+        "spec-workflow/skill/gates.md",
+        "spec-workflow/specs/plan.md",
+        "review-lenses/skill/convergence.md",
+    ] {
+        let path = patterns_dir().join(rel);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        for token in ["`fixed`", "`refuted`", "`accepted`"] {
+            assert!(
+                text.contains(token),
+                "{rel} lost the disposition token {token} — the three files state one vocabulary"
+            );
+        }
+    }
+}
+
 /// Every file a manifest entry declares actually exists on disk.
 #[test]
 fn manifest_declared_files_exist() {
