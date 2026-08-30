@@ -274,9 +274,9 @@ fn aws_strict() -> PermissionProfile {
 /// keeps that move visible to the operator; legitimate moves still succeed on
 /// approval. `mkdir -p` stays — creating a directory cannot exfiltrate.
 ///
-/// `harness` is here because a generated harness ships `harness.toml` and
-/// rules that send their reader to `harness lifecycle` / `harness telemetry` /
-/// `harness check`. A documented loop whose every step raises a prompt is a
+/// `harnex` is here because a generated harness ships `harness.toml` and
+/// rules that send their reader to `harnex lifecycle` / `harnex telemetry` /
+/// `harnex check`. A documented loop whose every step raises a prompt is a
 /// loop nobody runs twice.
 fn workspace() -> PermissionProfile {
     PermissionProfile {
@@ -291,7 +291,7 @@ fn workspace() -> PermissionProfile {
             "Bash(git stash *)",
             "Bash(git checkout -b *)",
             "Bash(git switch *)",
-            "Bash(harness *)",
+            "Bash(harnex *)",
         ],
         ask: vec![],
         deny: vec![],
@@ -637,7 +637,7 @@ mod tests {
             "Write",
             "Bash(mkdir -p *)",
             "Bash(git commit *)",
-            "Bash(harness *)",
+            "Bash(harnex *)",
         ] {
             assert!(p.allow.contains(&rule), "workspace must allow {rule}");
         }

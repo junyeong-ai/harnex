@@ -374,7 +374,7 @@ fn fix_command_serialises_round_trips_and_matches_its_schema() {
         "the schema does not describe what Serialize emits"
     );
 
-    let outside = serde_json::json!("harness policy permissions generate --profile baseline");
+    let outside = serde_json::json!("harnex policy permissions generate --profile baseline");
     assert!(
         serde_json::from_value::<FixCommand>(outside).is_err(),
         "a command outside the registry must not deserialize — that is the class this type exists to reject"

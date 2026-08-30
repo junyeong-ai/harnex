@@ -1,4 +1,4 @@
-//! `harness` — JSON-first CLI wrapping `harness-core`.
+//! `harnex` — JSON-first CLI wrapping `harness-core`.
 //!
 //! Every command emits exactly one envelope on stdout. Exit codes:
 //! - 0 = success
@@ -22,7 +22,7 @@ mod commands;
 
 #[derive(Parser)]
 #[command(
-    name = "harness",
+    name = "harnex",
     version,
     about = "Harness engineering toolkit for Claude Code projects"
 )]

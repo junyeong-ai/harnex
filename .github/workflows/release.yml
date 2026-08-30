@@ -58,7 +58,7 @@ jobs:
             'provenance attesting it was built by this workflow from this tag:' \
             '' \
             '```' \
-            "gh attestation verify harness-<target>.tar.gz --repo $GITHUB_REPOSITORY" \
+            "gh attestation verify harnex-<target>.tar.gz --repo $GITHUB_REPOSITORY" \
             '```')
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "release $GITHUB_REF_NAME already exists — the assets attach to it"
@@ -102,7 +102,7 @@ jobs:
       - id: build
         uses: taiki-e/upload-rust-binary-action@v1
         with:
-          bin: harness
+          bin: harnex
           target: ${{ matrix.target }}
           locked: true
           checksum: sha256

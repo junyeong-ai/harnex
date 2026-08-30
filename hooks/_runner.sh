@@ -16,7 +16,7 @@
 # is checked once for every arm rather than per interpreter: dispatching to a
 # file that is not there ends the hook non-zero on every edit (127 from bash,
 # an interpreter error from the others), which is the one outcome this
-# wrapper exists to prevent. `harness audit` reports the absence as coverage.
+# wrapper exists to prevent. `harnex audit` reports the absence as coverage.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "[harnex-skipped: git root not found]" >&2; exit 0; }

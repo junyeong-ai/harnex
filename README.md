@@ -8,7 +8,7 @@ Harness engineering for Claude Code projects. harnex has two surfaces:
   language, from verified spec-correct templates. The value is the
   knowledge of getting the Claude Code spec right, distributed as a skill —
   not a runtime you depend on.
-- **The `harness` binary** (oracle) — a Pure-Rust, JSON-first CLI that
+- **The `harnex` binary** (oracle) — a Pure-Rust, JSON-first CLI that
   deterministically verifies a harness: provenance, closed-schema telemetry,
   lifecycle, runtime guards, a unified validation gate. It is the
   spec-correct reference the plugin's templates are checked against.
@@ -16,7 +16,7 @@ Harness engineering for Claude Code projects. harnex has two surfaces:
 ## Why
 
 Modern Claude follows in-context conventions well. What it cannot do alone
-is keep its harness spec-correct as the upstream surface evolves, enforce
+is keep its harnex spec-correct as the upstream surface evolves, enforce
 what the runtime would silently corrupt, or fit one harness to many
 languages and module shapes. harnex centralizes the *correctness knowledge*
 and emits a harness each project owns — never a shared binary every project
@@ -91,7 +91,7 @@ Every asset is built by `.github/workflows/release.yml` from the tag it is
 attached to, and carries provenance saying so:
 
 ```bash
-gh attestation verify harness-<target>.tar.gz --repo junyeong-ai/harnex
+gh attestation verify harnex-<target>.tar.gz --repo junyeong-ai/harnex
 ```
 
 Installing the plugin does not install the binary. Enabling a plugin is not
@@ -113,7 +113,7 @@ language server at it for autocomplete + validation on `harness.toml`:
 Regenerate after upstream schema changes:
 
 ```bash
-harness export schema config --raw > schemas/harness.schema.json
+harnex export schema config --raw > schemas/harness.schema.json
 ```
 
 (`--raw` emits the bare schema; without it the schema is wrapped in the
@@ -131,8 +131,8 @@ cd your-project/
 cp <harnex>/examples/harness.toml.minimal harness.toml
 
 # Unified gate — every enabled validator in one JSON envelope
-./harness check
-./harness check --fix      # auto-fix what can be fixed (currently: codegen sync)
+./harnex check
+./harnex check --fix      # auto-fix what can be fixed (currently: codegen sync)
 ```
 
 `examples/harness.toml.minimal` enables just evidence (provenance verifier)
@@ -146,53 +146,53 @@ project grows.
 ## Command surface
 
 ```
-harness check [--since <ref>] [--fix]                  # unified validation gate
-harness audit [--plugin-root <path>]                   # generated harness vs. its composition
+harnex check [--since <ref>] [--fix]                  # unified validation gate
+harnex audit [--plugin-root <path>]                   # generated harness vs. its composition
 
 harness evidence verify <files...>
-harness telemetry append --kind K --payload <json>
-harness telemetry count --kind K [--since <rfc3339>]
-harness telemetry report [--kind K] [--window 1,7,30,90]
+harnex telemetry append --kind K --payload <json>
+harnex telemetry count --kind K [--since <rfc3339>]
+harnex telemetry report [--kind K] [--window 1,7,30,90]
 
 harness codegen sync | check
 
-harness policy permissions generate | audit [--path <p>]
-harness policy versions show | check --tool T --installed V
+harnex policy permissions generate | audit [--path <p>]
+harnex policy versions show | check --tool T --installed V
 
-harness validate rules <files...>
-harness validate skills <files...>
-harness validate agents <files...>
-harness validate output-styles <files...>
-harness validate settings [<path>]
-harness validate commit-msg <path>                     # closed-enum trailer
+harnex validate rules <files...>
+harnex validate skills <files...>
+harnex validate agents <files...>
+harnex validate output-styles <files...>
+harnex validate settings [<path>]
+harnex validate commit-msg <path>                     # closed-enum trailer
 
-harness session index  [--since <t>] [--project <dir>] [--session <id>]
-harness session facts  [--since <t>] [--with-text]      # counts + citations, no judgement
-harness session submissions [--with-text] [--sample N]  # one entry per instruction, and what followed it
-harness session baseline save --label <name>            # freeze the window; resumes where the last one ended
-harness session baseline diff [--from <a>] [--to <b>]   # rates across two windows, with each window's span
+harnex session index  [--since <t>] [--project <dir>] [--session <id>]
+harnex session facts  [--since <t>] [--with-text]      # counts + citations, no judgement
+harnex session submissions [--with-text] [--sample N]  # one entry per instruction, and what followed it
+harnex session baseline save --label <name>            # freeze the window; resumes where the last one ended
+harnex session baseline diff [--from <a>] [--to <b>]   # rates across two windows, with each window's span
 
-harness lifecycle observe --tag T --text X --source S
-harness lifecycle candidates
-harness lifecycle promote --tag T --text X --decision-text "..."
-harness lifecycle reject  --tag T --text X --decision-text "..."
-harness lifecycle defer   --tag T --text X --decision-text "..."
-harness lifecycle demote  --tag T --text X --decision-text "..."
-harness lifecycle classify --kind K --path P [--silent]
-harness lifecycle retire [--window N]
-harness lifecycle decisions [--tag T] [--decision D]
+harnex lifecycle observe --tag T --text X --source S
+harnex lifecycle candidates
+harnex lifecycle promote --tag T --text X --decision-text "..."
+harnex lifecycle reject  --tag T --text X --decision-text "..."
+harnex lifecycle defer   --tag T --text X --decision-text "..."
+harnex lifecycle demote  --tag T --text X --decision-text "..."
+harnex lifecycle classify --kind K --path P [--silent]
+harnex lifecycle retire [--window N]
+harnex lifecycle decisions [--tag T] [--decision D]
 
-harness guard hook-event                               # parse stdin hook JSON
-harness guard hook-run <prog> [args...]                # standard hook wrapper
-harness guard hook-stop <prog> [args...]               # Stop hook (always exit 0)
-harness guard stop-audit [--session ID]                # fresh-context Stop audit
+harnex guard hook-event                               # parse stdin hook JSON
+harnex guard hook-run <prog> [args...]                # standard hook wrapper
+harnex guard hook-stop <prog> [args...]               # Stop hook (always exit 0)
+harnex guard stop-audit [--session ID]                # fresh-context Stop audit
 
-harness graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
+harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
 
-harness export schema {config|envelope|finding|event|permissions|error-codes|
+harnex export schema {config|envelope|finding|event|permissions|error-codes|
                        session|session-submissions|session-baseline|all}
 
-harness completions <bash|zsh|fish|powershell|elvish> [--raw]
+harnex completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```
 `index`, `facts` and `submissions` take the same window: `--since`, `--project`
 and `--session`, in any combination. Each emits one JSON envelope carrying the
@@ -215,7 +215,7 @@ major), 2 = runtime failure.
 
 ## What the oracle covers
 
-The `harness` binary covers the universal Claude Code harness patterns;
+The `harnex` binary covers the universal Claude Code harness patterns;
 the plugin generates the project-native wiring that uses them. Universal
 patterns covered out of the box:
 

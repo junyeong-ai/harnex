@@ -201,7 +201,7 @@ making, and naming them is what turns a floor into this project's harness.
 Suggest them; do not write them unasked.
 
 Verify: `bash -n` on every `.sh` and on every extensionless hook under
-`hooks/`, JSON-parse settings.json. Run `harness check` / `harness audit` if the binary oracle is
+`hooks/`, JSON-parse settings.json. Run `harnex check` / `harnex audit` if the binary oracle is
 available. On a repo that already had artifacts, the scaffolded `harness.toml`
 points validators at them for the first time, so report those findings as part
 of what the scaffold revealed rather than leaving them to be discovered — a
@@ -252,7 +252,7 @@ operator to re-phrase using a verb from this list.
      *exclude*. The governance rubric rejects a rule that restates them.
 
   Then one hard rule: **an invariant with no enforcer in the tree does not
-  become a rule.** It becomes `harness lifecycle observe --tag <slug> --text
+  become a rule.** It becomes `harnex lifecycle observe --tag <slug> --text
   "<observation>"`, which is where a candidate waits until it has recurred.
   This is what keeps derivation from becoming invention, and it is not a
   matter of judgment — no enforcer, no bullet.
@@ -269,14 +269,14 @@ operator to re-phrase using a verb from this list.
   side-effecting skill never auto-fires); the operator fills the procedure and,
   for a knowledge skill Claude should auto-apply, removes
   `disable-model-invocation`. `name` is omitted (defaults to the directory) so
-  it cannot drift from the folder. `harness validate skills` verifies the
+  it cannot drift from the folder. `harnex validate skills` verifies the
   result — and the new skill is a first-class promotion/retirement target the
   lifecycle + governance loop already recognizes (`.claude/skills/**`).
 - **`extend permission deny <pattern>`** — append `<pattern>` to the
   `permissions.deny` array in `.claude/settings.json`. The pattern must
   follow the spec grammar (`Bash(cmd *)`, `Read(path)`, `Edit(path)`,
   `WebFetch(domain:...)`, `Tool(param:value)`, `mcp__server[__tool]`).
-  `harness validate settings` rejects a rule no permission check consults, so
+  `harnex validate settings` rejects a rule no permission check consults, so
   the pattern is verified rather than trusted.
 - **`extend permission ask <pattern>`** — same, into `permissions.ask`.
 - **`extend permission allow <pattern>`** — same, into `permissions.allow`.
@@ -304,7 +304,7 @@ operator to re-phrase using a verb from this list.
   generic defaults with project-specific observations. Every
   `<!-- harnex-fill: … -->` marker MUST be replaced — with an observed value,
   or an explicit "none observed yet — <default behavior>" note. That token is
-  the only marker the templates carry and the only one `harness audit` reads;
+  the only marker the templates carry and the only one `harnex audit` reads;
   a marker may wrap across lines, so search for `harnex-fill` rather than for
   a whole one-line comment. Never leave one in a generated file: a placeholder
   that ships is the blank-page problem in disguise, and
@@ -344,7 +344,7 @@ Two halves, split by what is decidable. The binary decides what is provably
 wrong; the skill judges what is missing, because "missing" depends on what
 the project already guarantees elsewhere and no binary can see that.
 
-**1 — Drive `harness audit`** and present its `AuditOutcome` envelope. Every
+**1 — Drive `harnex audit`** and present its `AuditOutcome` envelope. Every
 finding is a defect against the spec or against the harness's own wiring:
 - `audit-ms-timeout` — hook timeout values that look like milliseconds
   (≥ 1000) instead of seconds.
@@ -430,26 +430,26 @@ operator supplies the reason. Read it before running this mode.
 - **`drop-rule <path>`** — a rule absent from `rule_loads` across a window that
   did observe this project.
 
-Run `harness session facts` first; evidence the envelope does not carry does
+Run `harnex session facts` first; evidence the envelope does not carry does
 not exist. Then, for the chosen verb:
 
 1. Present the evidence with its limit. Never call an element useless because
    nothing recorded it being useful.
 2. Take the operator's decision text. Without it, stop — this is the same
-   refusal `harness lifecycle` makes.
+   refusal `harnex lifecycle` makes.
 3. Locate the entry by the rendering rule in `retire.md`. No match or more than
    one → report and stop.
 4. Refuse anything outside the managed partition (§ Invariants 6) and report
    where it lives instead.
 5. Remove the entry, leaving every sibling and every other key intact.
-6. Record the decision with `harness lifecycle`, then commit that removal alone.
+6. Record the decision with `harnex lifecycle`, then commit that removal alone.
 
 Verify as `regenerate` does: the settings file still parses and still passes
-`harness validate settings`.
+`harnex validate settings`.
 
 ## Verify before finishing
 
 Generated shell hooks pass `bash -n`; generated JSON parses; the harness the
-skill emits would itself pass `harness check` / `harness validate settings`
-/ `harness audit`. For UI-less generation, state what was emitted and what
+skill emits would itself pass `harnex check` / `harnex validate settings`
+/ `harnex audit`. For UI-less generation, state what was emitted and what
 the operator must run.

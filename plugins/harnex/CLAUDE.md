@@ -14,7 +14,7 @@ guides editing it, not using it):
   `common/permissions.deny.json`, `common/permissions.allow.json` and
   `<lang>/permissions.allow.json` are generated from the oracle's
   `crates/harness-core/src/policy/profiles.rs` (`baseline` / `workspace` /
-  `<lang>-dev`). Edit the profile, regenerate with `harness policy permissions
+  `<lang>-dev`). Edit the profile, regenerate with `harnex policy permissions
   generate`, copy the array across; the `policy_template_sync` test fails on
   drift and holds the foundation and language allow sets disjoint
   (constitution IX). Never hand-edit a template's rules. The two floors are
@@ -53,7 +53,7 @@ guides editing it, not using it):
   contains, where each lands, which tier it belongs to, and how the project's
   copy relates to its template (`content.kind`: `copy` | `seed` | `managed` |
   `merge`) are declared there and nowhere else. The skill emits from it, the oracle's fixture test builds
-  from it, and `harness audit` reports coverage against it, so a file list
+  from it, and `harnex audit` reports coverage against it, so a file list
   restated in prose is the one that drifts (constitution IX). The `foundation`
   tier is what a stack with no language profile still receives; nothing in it
   may reference a `language`-tier artifact, and `scaffold_manifest` fails if

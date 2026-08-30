@@ -31,7 +31,7 @@ it.
 ## Invariants — every verb, no exceptions
 
 1. **Evidence alone never removes anything.** The oracle supplies cost and
-   absence; the operator supplies the reason. `harness lifecycle` refuses empty
+   absence; the operator supplies the reason. `harnex lifecycle` refuses empty
    decision text, and so does this.
 2. **The window must have seen the project.** Absence of evidence in a window
    that never observed this project is not evidence of absence. Each verb

@@ -11,7 +11,7 @@ set -Eeuo pipefail
 
 readonly REPO="junyeong-ai/harnex"
 readonly REPO_URL="https://github.com/$REPO"
-readonly BINARY="harness"
+readonly BINARY="harnex"
 readonly CRATE_PATH="crates/harness-cli"
 
 BOLD='' DIM='' RED='' GREEN='' RESET=''
@@ -272,9 +272,9 @@ fi
 cat >&2 <<EOF
 
 ${DIM}next${RESET}
-  harness --help                  what the oracle answers
-  harness check                   run every gate this project declares
-  harness completions zsh --raw   shell completions
+  harnex --help                  what the oracle answers
+  harnex check                   run every gate this project declares
+  harnex completions zsh --raw   shell completions
   /plugin marketplace add $REPO
   /plugin install harnex@harnex   the skill and commands that call it
 

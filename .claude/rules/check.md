@@ -50,7 +50,7 @@ Codegen drift is reported with `auto_fixable: true` and
 `fix_command: Some(FixCommand::CodegenSync)` — downstream
 agents (CI, pre-commit) can execute the fix without operator intervention.
 
-`harness check --fix` (and `ProjectChecker::fix`) close the loop: groups
+`harnex check --fix` (and `ProjectChecker::fix`) close the loop: groups
 findings by `fix_command`, dispatches each through the [`FixCommand`]
 enum's exhaustive match in `try_fix`, then re-runs the check. Returns
 `FixReport { before, fixes_attempted, after }` — the consumer compares

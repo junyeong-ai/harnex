@@ -32,7 +32,7 @@ pub enum GraphCommand {
 pub fn run<W: Write>(cmd: GraphCommand, out: &mut W) -> Result<ExitCode> {
     let (_config, _config_path, working_dir) = load_config()?;
     let client = NodexClient::anchored(&working_dir).ok_or_else(|| Error::GraphSpawnFailure {
-        message: "nodex binary not found on PATH (install nodex to use `harness graph`)".into(),
+        message: "nodex binary not found on PATH (install nodex to use `harnex graph`)".into(),
     })?;
 
     match cmd {

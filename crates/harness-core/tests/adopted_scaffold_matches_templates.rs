@@ -12,7 +12,7 @@
 //!
 //! Not hypothetical. The commit that adopted the foundation hooks left
 //! `hooks/post-format.sh` six comment lines behind its template, and every
-//! gate — full suite, clippy, `harness audit` — stayed green, because the
+//! gate — full suite, clippy, `harnex audit` — stayed green, because the
 //! mechanism built to catch drift only reads artifacts marked `managed`.
 //!
 //! Each destination is held to the template that emits IT, paired by the

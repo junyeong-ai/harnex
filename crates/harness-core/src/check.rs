@@ -525,7 +525,7 @@ impl<'a> ProjectChecker<'a> {
                 location: Location::file(settings_path.clone()),
                 message: pf.message.clone(),
                 hint: Some(
-                    "regenerate from the canonical profiles: run `harness policy permissions \
+                    "regenerate from the canonical profiles: run `harnex policy permissions \
                      generate` and copy its `data` under `permissions` in .claude/settings.json. \
                      The profiles come from `[policy.permissions] profiles` in harness.toml — \
                      the subcommand takes no arguments."

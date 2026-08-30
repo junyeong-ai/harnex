@@ -214,7 +214,7 @@ impl SettingsValidator {
                     message: format!("json parse: {e}"),
                     hint: Some(
                         "fix the JSON syntax. To rebuild the permissions block, declare \
-                         `[policy.permissions] profiles` in harness.toml, run `harness policy \
+                         `[policy.permissions] profiles` in harness.toml, run `harnex policy \
                          permissions generate`, and copy its `data` under the `permissions` key \
                          — the command emits an envelope, so redirecting it into this file \
                          would leave the file invalid a second time"
@@ -272,7 +272,7 @@ impl SettingsValidator {
                 severity: Severity::Minor,
                 location: Location::file(path.to_path_buf()),
                 message: "permissions.deny is missing or empty".into(),
-                hint: Some("seed it via `harness policy permissions generate`".into()),
+                hint: Some("seed it via `harnex policy permissions generate`".into()),
                 auto_fixable: false,
                 fix_command: None,
             });

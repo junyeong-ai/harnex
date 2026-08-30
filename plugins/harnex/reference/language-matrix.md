@@ -134,7 +134,7 @@ repo is never penalised for the tool it does not install.
 - Two permission floors, both foundation-tier and neither language-dependent:
   `templates/common/permissions.deny.json` (the oracle's `baseline` profile)
   and `templates/common/permissions.allow.json` (its `workspace` profile —
-  `Edit`, `Write`, `mkdir -p`, the mutating git verbs, and `harness`, which the
+  `Edit`, `Write`, `mkdir -p`, the mutating git verbs, and `harnex`, which the
   generated `governance.md` sends its reader to on every loop pass). Copy both
   verbatim; the language tier merges its toolchain grants beside them as a set
   union, never a replacement.

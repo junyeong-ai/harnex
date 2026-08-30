@@ -1,11 +1,11 @@
 //! Drift guard: the harnex plugin ships permission templates as committed
-//! JSON so it never needs the `harness` binary at scaffold time, but those
+//! JSON so it never needs the `harnex` binary at scaffold time, but those
 //! files are a *projection* of the built-in profiles — `profiles.rs` is the
 //! single source of truth. This test fails if a template diverges from the
 //! profile it is generated from.
 //!
 //! Regenerate a drifted template with:
-//!   harness policy permissions generate   # with [policy.permissions] profiles=["<profile>"]
+//!   harnex policy permissions generate   # with [policy.permissions] profiles=["<profile>"]
 //! then copy the `deny` (baseline) or `allow` (dev profile) array into the
 //! matching template file.
 

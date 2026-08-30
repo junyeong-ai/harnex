@@ -17,7 +17,7 @@ pub enum ExportCommand {
         /// Emit the bare schema (pretty-printed) — no envelope wrapper.
         /// Use this when committing a schema file to disk for IDE
         /// autocomplete; the default envelope shape is for programmatic
-        /// consumers. Mirrors `harness completions --raw`.
+        /// consumers. Mirrors `harnex completions --raw`.
         #[arg(long)]
         raw: bool,
     },

@@ -17,7 +17,7 @@ pub struct CompletionsArgs {
     /// wrapping it in a JSON envelope. Use this when piping to a file
     /// the shell will `source`:
     ///
-    ///     harness completions bash --raw > ~/.bashrc.d/harness
+    ///     harnex completions bash --raw > ~/.bashrc.d/harness
     #[arg(long, default_value_t = false)]
     pub raw: bool,
 }

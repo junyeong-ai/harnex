@@ -3,7 +3,7 @@
 #
 # Three consumers read this file and no other statement of the composition
 # exists: the skill emits these artifacts, the `plugin_scaffold_validates`
-# test builds its fixture from them, and `harness audit` reports which
+# test builds its fixture from them, and `harnex audit` reports which
 # destinations a project already holds. A file list written a second time in
 # prose is what let a scaffold fixture drift into omitting every hook while
 # still reporting green (Constitution IX).

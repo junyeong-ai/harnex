@@ -61,7 +61,7 @@ own vocabulary, which harnex may never invent (Constitution VII) — but a guard
 the codebase already runs is an observation, and naming it is the same act as
 reading a lockfile. The bound is mechanical rather than tasteful: a candidate
 with an enforcer becomes a rule bullet citing it; a candidate without one
-becomes a `harness lifecycle observe` entry and waits for a second sighting.
+becomes a `harnex lifecycle observe` entry and waits for a second sighting.
 Scaffold *reports* what it found so the operator knows which `extend rule`
 calls are worth making; `extend rule` is what writes one.
 
@@ -99,7 +99,7 @@ an operator whether the harness covers their project or a corner of it.
 Most of N−M has one of three reasons, and each is legitimate: the tool already
 owns it (formatter, type checker — keep-soften-cut CUT tier), a rule already
 names it, or the invariant is real but nothing in the tree enforces it — that
-last one is `harness lifecycle observe`, not a rule.
+last one is `harnex lifecycle observe`, not a rule.
 
 **Group before writing.** One rule per *decision the project made*, not one per
 enforcer: three i18n audits guarding one catalogue contract are one rule naming
@@ -190,7 +190,7 @@ never overwrite; on an unavoidable conflict, surface it for the operator rather
 than pick a side.** Produce additive artifacts only; never regenerate
 `settings.json` wholesale, the gate order, permissions, telemetry schema, or
 per-module CLAUDE.md. `audit` writes nothing; its report is assembled from two
-sources that must not be merged — `harness audit`'s findings, which are
+sources that must not be merged — `harnex audit`'s findings, which are
 defects the binary can prove (spec drift, a hook naming a script that is not
 on disk, an edited managed region), and the coverage comparison the skill
 makes from `existing_harness`, which is an observation rather than a verdict

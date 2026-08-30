@@ -16,8 +16,8 @@ A candidate starts as an observation, not a rule. Record it where it survives
 the session without spending always-loaded context:
 
 - **Commit body** — always available; `git log` is the durable trail.
-- **Oracle ledger** (if the project runs the `harness` oracle) —
-  `harness lifecycle observe --tag <topic> --text "<observation>" --source <where>`
+- **Oracle ledger** (if the project runs the `harnex` oracle) —
+  `harnex lifecycle observe --tag <topic> --text "<observation>" --source <where>`
   appends to the per-tag ledger that surfacing reads. Preferred when adopted:
   thresholds are enforced deterministically.
 
@@ -58,14 +58,14 @@ Reach for it rather than working the steps by hand.
 
 The commands are deterministic and never invent text:
 
-- `harness lifecycle candidates` — observations that crossed the configured
+- `harnex lifecycle candidates` — observations that crossed the configured
   instance + age thresholds.
-- `harness telemetry report` — hit counts; a rule with zero activity is a
+- `harnex telemetry report` — hit counts; a rule with zero activity is a
   retirement candidate.
-- `harness lifecycle retire` — Stale / NoConsumers / Silent verdicts.
+- `harnex lifecycle retire` — Stale / NoConsumers / Silent verdicts.
 
 Record each decision in a commit body, or with the oracle:
-`harness lifecycle {promote|reject|defer|demote} --tag <t> --text <text>
+`harnex lifecycle {promote|reject|defer|demote} --tag <t> --text <text>
 --decision-text "<rationale>"`. The decision text is the operator's, never
 the model's.
 
