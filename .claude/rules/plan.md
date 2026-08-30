@@ -20,7 +20,8 @@ every prose site.
   is harness vocabulary. Where specs live is project vocabulary and never
   enters this crate (constitution VII).
 - No git in the module: the baseline is text the caller supplies. The shipped
-  `check-plan.sh` arm pipes `git show` into it.
+  `check-plan.sh` arm pipes `git show` into it, and `plan_template_sync`
+  (harness-cli) holds the flags that arm spells to the clap surface.
 - Gate names stay open. Only the two `REVIEW_CLASS_GATES` owe counts; any
   gate that writes counts opts into the convergence comparison.
 - A finding-shaped list item that does not parse is a Major finding, never a

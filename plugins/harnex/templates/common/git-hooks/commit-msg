@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # git commit-msg hook — validate commit message structure.
 #
-# Delegates to `harness validate commit-msg` when the binary is available;
+# Delegates to `harnex validate commit-msg` when the binary is available;
 # otherwise skips. The oracle validates closed-enum trailer values and
 # required-trailer presence.
 #
-# Fail-open: missing harness binary → skip.
+# Fail-open: missing harnex binary → skip.
 # Escape hatch via HARNEX_SKIP_COMMITMSG=1.
 set -uo pipefail
 
 [[ "${HARNEX_SKIP_COMMITMSG:-}" == "1" ]] && exit 0
 
-command -v harness >/dev/null 2>&1 || exit 0
+command -v harnex >/dev/null 2>&1 || exit 0
 
-OUTPUT=$(harness validate commit-msg "$1" 2>&1)
+OUTPUT=$(harnex validate commit-msg "$1" 2>&1)
 STATUS=$?
 
 case $STATUS in
