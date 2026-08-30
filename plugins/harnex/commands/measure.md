@@ -58,7 +58,8 @@ transcripts by hand.
 never a call, and they carry no price at all. A telemetry collector keyed by
 `session_id` supplies exactly that gap, and every citation here carries the
 session it belongs to, so the join is exact. Any collector that keys on it
-will do; ask it for the same window, check its own wiring first, and add:
+will do — hatel's report tool is one that does, and any equivalent serves; ask
+it for the same window, check its own wiring first, and add:
 
 | what it adds | why the transcript cannot |
 |---|---|
@@ -286,7 +287,12 @@ undone by hand carries no revert trailer and is invisible.
 **4. Whether the harness earns its place.** Report `sessions` and instructions
 per session first — the shape of the work is what the rest is per. `invocations`
 is what was actually called; an element the operator built and never invoked is only visible under
-`--project`, where the tree can be listed. `blocked` is where the harness and
+`--project`, where the tree can be listed. Read an agent's spawn count beside
+the skill that owns its procedure: an agent dispatched an order of magnitude
+more often than the loop built to drive it says the procedure is being run
+ad hoc, without the convergence accounting the skill carries — measured, one
+reviewer agent at 668 spawns against 13 invocations of its loop. Report the
+ratio, not a verdict; the operator knows which dispatches were deliberate. `blocked` is where the harness and
 their habits disagree — report the concentration first (attempts against
 distinct calls), because diffuse friction points at a broad rule and repeated
 friction points at a habit, and the prescriptions are opposite. Then hook
