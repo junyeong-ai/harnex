@@ -45,34 +45,37 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         baseline_spec,
     } = cmd;
 
-    let plan_text = match std::fs::read_to_string(&plan) {
+    // An absent plan is a judged state when anything else anchors the audit —
+    // a deletion the baseline witnesses, or a spec-only spec whose log is
+    // still held. A bare --plan pointing at nothing stays a runtime failure:
+    // auditing nothing against nothing would read as a pass.
+    let plan_text = match read_lossy(&plan) {
         Ok(text) => Some(text),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound && baseline.is_some() => None,
-        Err(e) => return Err(io_failure(&plan, e)),
+        Err(Error::IoFailure { ref source, .. })
+            if source.kind() == std::io::ErrorKind::NotFound
+                && (baseline.is_some() || spec.is_some()) =>
+        {
+            None
+        }
+        Err(e) => return Err(e),
     };
-    let spec_text = spec
-        .as_deref()
-        .map(|p| std::fs::read_to_string(p).map_err(|e| io_failure(p, e)))
-        .transpose()?;
+    let spec_text = spec.as_deref().map(read_lossy).transpose()?;
     let baseline_text = baseline
         .as_deref()
         .map(|p| {
             if p == Path::new("-") {
-                let mut text = String::new();
+                let mut bytes = Vec::new();
                 std::io::stdin()
-                    .read_to_string(&mut text)
+                    .read_to_end(&mut bytes)
                     .map_err(|e| io_failure(p, e))?;
-                Ok(text)
+                Ok(String::from_utf8_lossy(&bytes).into_owned())
             } else {
-                std::fs::read_to_string(p).map_err(|e| io_failure(p, e))
+                read_lossy(p)
             }
         })
         .transpose()?;
 
-    let baseline_spec_text = baseline_spec
-        .as_deref()
-        .map(|p| std::fs::read_to_string(p).map_err(|e| io_failure(p, e)))
-        .transpose()?;
+    let baseline_spec_text = baseline_spec.as_deref().map(read_lossy).transpose()?;
 
     let spec_input = spec.as_deref().zip(spec_text.as_deref());
     let findings = PlanAuditor::new(
@@ -91,6 +94,15 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
     } else {
         ExitCode::SUCCESS
     })
+}
+
+/// Lossy on purpose: one invalid byte in a staged artifact must degrade to a
+/// replacement character the parser still reads, never to a runtime failure
+/// the fail-open hook turns into a skipped gate.
+fn read_lossy(path: &Path) -> Result<String> {
+    std::fs::read(path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .map_err(|e| io_failure(path, e))
 }
 
 fn io_failure(path: &Path, source: std::io::Error) -> Error {
