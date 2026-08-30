@@ -19,6 +19,7 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch,
   PermissionRequest, PermissionDenied, Stop, StopFailure, SubagentStart,
   SubagentStop, Notification, MessageDisplay, PreCompact, PostCompact,
+  PreModelSwitch, PostModelSwitch,
   InstructionsLoaded, ConfigChange, CwdChanged, DirectoryAdded, FileChanged,
   WorktreeCreate, WorktreeRemove, TaskCreated, TaskCompleted, TeammateIdle,
   Elicitation, ElicitationResult.
