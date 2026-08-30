@@ -165,8 +165,9 @@ it because their content comes from the project rather than from a template:
   no grant — an undeclared runner is the same guess as the wrong formatter.
 
 Git hooks and Claude Code hooks coexist in `hooks/`: git runs only files named
-after git events (`pre-commit`), Claude Code runs the `_runner.sh`-dispatched
-scripts.
+after git events (`pre-commit`, `commit-msg` — plus the arms `pre-commit`
+dispatches from `hooks/pre-commit.d/`), Claude Code runs the
+`_runner.sh`-dispatched scripts.
 
 Content the manifest cannot supply, because it comes from Step 1's analysis:
 
