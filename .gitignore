@@ -1,5 +1,10 @@
 target/
-.harness/
+# Machine-local measurement stays local; the promotion loop's ledgers are
+# repository memory and are tracked (observations feed candidates, decisions
+# are the audit trail governance reads).
+.harness/*
+!.harness/observations/
+!.harness/decisions/
 *.swp
 .DS_Store
 .claude/scheduled_tasks.lock
