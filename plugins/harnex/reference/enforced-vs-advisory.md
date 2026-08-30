@@ -41,7 +41,10 @@ thing that survives a confused, careless, or adversarial agent turn.
    rule. The measured failure shape: a review gate whose "stop when the
    count does not fall" lived in prose while no round count was recorded —
    it ran eleven rounds, and clearing findings was indistinguishable from
-   narrating them away.
+   narrating them away. The spec-workflow's own controls name theirs:
+   `harnex plan audit` computes the counts comparison, the disposition
+   floor, and the append-only row contract, and the shipped pre-commit arm
+   holds them at the commit.
 
 ## What this means for a generated harness
 

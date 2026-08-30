@@ -187,6 +187,10 @@ harnex guard hook-run <prog> [args...]                # standard hook wrapper
 harnex guard hook-stop <prog> [args...]               # Stop hook (always exit 0)
 harnex guard stop-audit [--session ID]                # fresh-context Stop audit
 
+harnex plan audit --plan P [--spec S] [--baseline B]  # spec-workflow review floor:
+                                                      # open C/B rows, vanished rows,
+                                                      # decision-log convergence
+
 harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
 
 harnex export schema {config|envelope|finding|event|permissions|error-codes|

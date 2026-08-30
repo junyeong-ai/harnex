@@ -35,9 +35,10 @@ A review-class firing (`design_review`, `review`) writes its counts into the
 line — `<n>C/<n>B/<n>M/<n>m` — because the next firing reads them: a re-fire
 whose Critical + Blocker total did not fall below the previous firing's
 escalates to the operator instead of firing, and firing on anyway takes the
-operator's own recorded acknowledgement in the line, naming why another round
-is justified. The rule is computed from the log's own lines, never recalled —
-a convergence floor nothing reads is prose, and the measured failure of that
+operator's own recorded acknowledgement in the line — a rationale beginning
+`acknowledged:`, naming why another round is justified. The rule is computed
+from the log's own lines by `harnex plan audit`, never recalled — a
+convergence floor nothing computes is prose, and the measured failure of that
 shape is a gate that recorded eleven firings while its rule said stop at the
 second.
 
@@ -76,11 +77,14 @@ Zero Critical and zero Blocker passes the gate. Write what remains to
 blockers — and record `approved`. Otherwise record `needs_revision` with the
 count, and the work goes back.
 
-A finding written to `## Outstanding issues` is never deleted. Cleared, its row
-gains a terminal disposition — `fixed` (what pinned it), `refuted` (the ground
-truth), `accepted` (who accepted it and why). The gate passes on zero
-Critical/Blocker rows *without* a terminal disposition — a condition a check
-can read — never on the rows' absence, which narration can fake.
+A finding written to `## Outstanding issues` is one
+`- [Critical|Blocker|Major|Minor] <finding>` row, and a row is never deleted.
+Cleared, it ends with its terminal disposition — `[fixed: what pinned it]`,
+`[refuted: the ground truth]`, `[accepted: who accepted it and why]`. The gate
+passes on zero Critical/Blocker rows *without* a terminal disposition — a
+condition `harnex plan audit` computes, never on the rows' absence, which
+narration can fake: the pre-commit arm at `hooks/pre-commit.d/check-plan.sh`
+blocks the commit that leaves one standing, deletes a row, or rewords one.
 
 ## resume — inline, on a dirty worktree
 

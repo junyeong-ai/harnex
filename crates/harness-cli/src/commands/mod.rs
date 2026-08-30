@@ -7,6 +7,7 @@ pub mod export;
 pub mod graph;
 pub mod guard;
 pub mod lifecycle;
+pub mod plan;
 pub mod policy;
 pub mod session;
 pub mod telemetry;

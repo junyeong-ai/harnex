@@ -45,7 +45,11 @@ an observation is the blank-page problem in disguise.
   that pattern is installed, otherwise this project's own review command).
   Resolve every marker the pattern ships, not a count stated here. The `<...>`
   placeholders inside the template files are filled per spec by whoever
-  starts one and are not install-time fill markers.
+  starts one and are not install-time fill markers. `check-plan.sh` lands in
+  `hooks/pre-commit.d/`, is made executable, and its `PLAN_GLOB` follows the
+  layout the analysis observed — the scaffold's pre-commit dispatches every
+  arm there, which is how the review floor gets a commit-time computer
+  without editing a byte-identical hook.
 - `observability` — detect logging/tracing framework (structlog, winston,
   tracing, OpenTelemetry SDK). Pre-fill namespace prefix from the project
   name. Adapt span naming examples to the detected framework.

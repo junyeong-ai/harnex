@@ -22,6 +22,8 @@
 //!   managed-region integrity).
 //! - [`lifecycle`] — observation aggregation + retirement classification.
 //! - [`guard`] — Claude Code runtime adapter (hook events / runners / Stop audit).
+//! - [`plan`] — the spec-workflow review grammar (finding rows, dispositions,
+//!   decision-log convergence), held by `plan audit`.
 //! - [`check`] — unified validation gate.
 //! - [`export`] — JSON Schema emission.
 //! - [`graph`] — read-only nodex CLI bridge.
@@ -48,6 +50,7 @@ pub mod graph;
 pub mod guard;
 pub mod lifecycle;
 pub mod path_guard;
+pub mod plan;
 pub mod policy;
 pub mod scaffold;
 pub mod sentinel;

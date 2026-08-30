@@ -97,9 +97,11 @@ fn reference_patterns_doc_mirrors_the_manifest() {
     );
 }
 
-/// The disposition vocabulary is stated in three template files across two
-/// patterns, and no test-free duplication is allowed to drift: every file
-/// carries all three tokens or the set was renamed in one place only.
+/// The review grammar's owner is `harness_core::plan` — the computer — and
+/// the template prose that teaches it is a projection. Every file that states
+/// the disposition vocabulary spells each token in the form the parser reads,
+/// `[<disposition>: …]`, so renaming a token in one place only, or teaching a
+/// spelling the computer rejects, fails here.
 #[test]
 fn disposition_vocabulary_is_stated_identically() {
     for rel in [
@@ -110,12 +112,52 @@ fn disposition_vocabulary_is_stated_identically() {
         let path = patterns_dir().join(rel);
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        for token in ["`fixed`", "`refuted`", "`accepted`"] {
+        for token in harness_core::plan::Disposition::ALL {
             assert!(
-                text.contains(token),
-                "{rel} lost the disposition token {token} — the three files state one vocabulary"
+                text.contains(&format!("`[{}:", token.as_str())),
+                "{rel} does not spell `[{}: …]` — the prose teaches the grammar the computer \
+                 reads, in the computer's own form",
+                token.as_str()
             );
         }
+    }
+}
+
+/// The example decision line gates.md ships parses under the shipped parser,
+/// with the counts and gate the prose beside it describes. A doc whose own
+/// example the computer rejects is teaching a grammar that does not exist.
+#[test]
+fn the_gates_example_line_parses_under_the_shipped_grammar() {
+    let text = std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
+        .expect("read gates.md");
+    let example = text
+        .lines()
+        .find_map(|l| l.strip_prefix("- ").filter(|rest| rest.contains(" · ")))
+        .expect("gates.md carries an example decision bullet");
+    let line = harness_core::plan::parse_decision(example)
+        .unwrap_or_else(|| panic!("the gates.md example does not parse: {example}"));
+    assert!(
+        harness_core::plan::REVIEW_CLASS_GATES.contains(&line.gate.as_str()),
+        "the example fires a review-class gate"
+    );
+    assert!(
+        line.counts.is_some(),
+        "the example carries the counts the prose demands of a review-class firing"
+    );
+}
+
+/// Both review-class gates the parser binds the counts contract to are the
+/// gates gates.md documents — the constant and the doc name one set.
+#[test]
+fn the_review_class_gates_are_the_ones_the_doc_documents() {
+    let text = std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
+        .expect("read gates.md");
+    for gate in harness_core::plan::REVIEW_CLASS_GATES {
+        assert!(
+            text.contains(&format!("## {gate} ")),
+            "gates.md documents no `## {gate}` event, yet the parser holds it to the counts \
+             contract"
+        );
     }
 }
 
@@ -259,7 +301,8 @@ enum Surface {
     /// A spec artifact template — the project's own document, not a Claude
     /// Code surface.
     SpecTemplate,
-    /// A GitHub template or a hook script: neither is a Claude Code surface.
+    /// A GitHub template, a hook script, or a git pre-commit arm: none is a
+    /// Claude Code surface.
     OutsideClaudeCode,
 }
 
@@ -306,6 +349,7 @@ impl Surface {
             ["specs", "_template", f] if f.ends_with(".md") => Self::SpecTemplate,
             [".github", "pull_request_template.md"] => Self::OutsideClaudeCode,
             ["hooks", f] if f.ends_with(".sh") => Self::OutsideClaudeCode,
+            ["hooks", "pre-commit.d", f] if f.ends_with(".sh") => Self::OutsideClaudeCode,
             _ => return None,
         })
     }

@@ -27,7 +27,7 @@ files = [
 
 [[pattern]]
 slug = "spec-workflow"
-analyze = ["existing specs/ or docs/adr/ layout", "blast-radius signals that should fire design_review", "where the project keeps learnings a retired spec retargets onto"]
+analyze = ["existing specs/ or docs/adr/ layout — check-plan.sh's PLAN_GLOB follows it", "blast-radius signals that should fire design_review", "where the project keeps learnings a retired spec retargets onto"]
 files = [
   { template = "spec-workflow.md", destination = ".claude/rules/spec-workflow.md" },
   { template = "skill/SKILL.md", destination = ".claude/skills/spec/SKILL.md" },
@@ -36,6 +36,7 @@ files = [
   { template = "specs/spec.md", destination = "specs/_template/spec.md" },
   { template = "specs/plan.md", destination = "specs/_template/plan.md" },
   { template = "specs/wrapup.md", destination = "specs/_template/wrapup.md" },
+  { template = "check-plan.sh", destination = "hooks/pre-commit.d/check-plan.sh" },
 ]
 
 [[pattern]]
