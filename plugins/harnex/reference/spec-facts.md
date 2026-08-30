@@ -36,15 +36,19 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   <!-- harnex-managed:end spec-facts-session-start-sources -->
 - **Exit codes.** 0 = success, stdout JSON parsed for control fields (stdout
   reaches Claude as context only for UserPromptSubmit, UserPromptExpansion,
-  SessionStart). 1 = non-blocking error, action proceeds. 2 = blocking; stderr
-  feeds back to Claude, stdout/JSON ignored. Other = non-blocking.
+  SessionStart, PostModelSwitch). 1 = non-blocking error, action proceeds.
+  2 = blocking; stderr feeds back to Claude, stdout/JSON ignored. Other =
+  non-blocking.
 - **Stop / SubagentStop exit 2 FORCES continuation** (prevents stopping → a
   re-stop loop). A Stop-class wrapper that only wants to surface findings must
   exit 0 and use JSON `decision`/`systemMessage`, never a non-zero exit as a
   generic "found something" signal. Events where exit 2 is genuinely ignored:
   StopFailure, PostToolUse, PostToolUseFailure, PermissionDenied.
 - **`timeout` is in SECONDS.** Defaults: 600 (command/http/mcp_tool), 30
-  (prompt), 60 (agent); UserPromptSubmit lowers command default to 30. The
+  (prompt), 60 (agent); UserPromptSubmit, PreModelSwitch and PostModelSwitch
+  lower the command default to 30 — and a PreModelSwitch hook cancelled at its
+  timeout BLOCKS the model switch (fail-closed), so a slow hook there breaks
+  switching rather than degrading quietly. The
   Bash *tool's* `tool_input.timeout` in PreToolUse stdin is milliseconds — a
   different field, opposite unit. Never emit a 4-digit "ms" timeout.
 - **Matcher syntax is content-dependent.** `*` / `""` / omitted = match all.
