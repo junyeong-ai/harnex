@@ -1,0 +1,63 @@
+# Per-pattern analysis instructions (`extend pattern <name>`)
+
+Read the entry for the pattern being installed, after the manifest entry and
+skeleton (`SKILL.md § extend pattern` owns the flow; this file owns only what
+each pattern's Step-2 analysis must observe). Every instruction here is about
+reading the target project — a fill resolved from the model's priors instead of
+an observation is the blank-page problem in disguise.
+
+- `naming-decisions` — every section is read out of the repository, never
+  chosen for it: count file-name casing per kind, read the construction verbs
+  off the functions that build things, read the suffixes off the option/config
+  types, and take the domain vocabulary from type and table names rather than
+  from prose. Name the file that settles each answer. Where the code is
+  inconsistent, say which concept has two names — that is the decision the
+  team still owes, and it is the most valuable line in the file. A convention
+  imported from another project contradicts the code a reader is looking at,
+  and the code wins.
+- `copy-conventions` — detect locale from string literals. Detect error
+  message format from existing error handling code. Detect i18n framework
+  from dependencies (next-intl, react-i18n, gettext, fluent). Pre-fill
+  register and terminology with observations.
+- `review-lenses` — auto-link lens `anchors:` to the project's existing
+  `.claude/rules/` files. Customize each lens's `applies_to:` based on what
+  file types the project has. Name this project's **re-runnable authorities**
+  in the rule: a finding may only be auto-fixed when something other than the
+  loop confirms it, so the list of lint codes, named gates and structural
+  tests is what decides the fix/report split. Take it from the enforcer sweep
+  (exploration Phase 2) — it is the same list. Name where the loop's
+  convergence record lands when review is not spec-bound (convergence.md
+  § The record outlives the context needs a destination this project owns).
+- `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
+  If found, adapt to the existing layout instead of overwriting. Drop any
+  phase whose artifact nobody on this project would review and no later
+  session would read — the pipeline is checkpoints and state, and a phase
+  that is neither is ceremony paid on every spec. `specs/_template/` holds
+  one file per artifact-producing phase, so a phase dropped loses its
+  template file in the same install; the orchestrator derives the phase from
+  which of them exist, so the two cannot disagree. Its fills each need a
+  judgment rather than a lookup — the **blast-radius signals** that fire the
+  design_review gate (take them from the enforcer sweep: a migration surface,
+  a wire contract with a parity gate, an auth or tenancy path, a
+  generated-file guard), **where a retired spec's learning lands** (an ADR
+  directory, a learnings folder, or the commit body when the project keeps
+  neither), and **what the review gate delegates to** (the review skill when
+  that pattern is installed, otherwise this project's own review command).
+  Resolve every marker the pattern ships, not a count stated here. The `<...>`
+  placeholders inside the template files are filled per spec by whoever
+  starts one and are not install-time fill markers.
+- `observability` — detect logging/tracing framework (structlog, winston,
+  tracing, OpenTelemetry SDK). Pre-fill namespace prefix from the project
+  name. Adapt span naming examples to the detected framework.
+- `deprecation` — detect existing deprecation markers (`@deprecated`
+  decorators, JSDoc tags, `#[deprecated]` attributes). Adapt the
+  allow-marker format to complement, not conflict with, the language's
+  native deprecation mechanism.
+- `pr-conventions` — check for existing `.github/pull_request_template.md`.
+  If found, merge harnex defaults into the existing template's structure
+  rather than replacing it.
+- `write-guard` — detect files with lifecycle governance (docs/, specs/
+  with status frontmatter). Detect existing convention checking tools
+  (linter config, type checker). Pre-fill the verifier's case arms with
+  observed protection patterns. Add a PreToolUse(Edit|Write) hook entry
+  to `.claude/settings.json` dispatching through `_runner.sh`.
