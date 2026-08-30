@@ -487,6 +487,31 @@ fn atx_heading(line: &str) -> Option<(usize, &str)> {
 /// is its own outcome, never conflated with empty: the difference between
 /// "no open findings" and "findings this reader cannot see" is the
 /// difference the append-only contract exists to protect.
+/// The renderer's line splitter. CommonMark ends a line at a newline, a
+/// carriage return not followed by one, or the pair — `str::lines` reads only
+/// the first and last, so a classic-Mac document reaches every check as one
+/// line the renderer shows as many. A leading U+FEFF is the encoding's
+/// byte-order mark, consumed at decode by every reference reader; kept, it
+/// would un-head a heading on the first line.
+fn doc_lines(text: &str) -> Vec<&str> {
+    let mut rest = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut lines = Vec::new();
+    while !rest.is_empty() {
+        match rest.find(['\n', '\r']) {
+            Some(at) => {
+                lines.push(&rest[..at]);
+                let after = &rest[at..];
+                rest = after.strip_prefix("\r\n").unwrap_or(&after[1..]);
+            }
+            None => {
+                lines.push(rest);
+                break;
+            }
+        }
+    }
+    lines
+}
+
 fn section_of(text: &str, heading: &str) -> Section {
     let wanted = format!("## {heading}");
     let mut fence: Option<(u8, usize, u32)> = None;
@@ -497,9 +522,8 @@ fn section_of(text: &str, heading: &str) -> Section {
     let mut loose: Vec<(u32, String)> = Vec::new();
     let mut open_item: Option<Item> = None;
 
-    for (idx, raw) in text.lines().enumerate() {
+    for (idx, raw_line) in doc_lines(text).into_iter().enumerate() {
         let line_no = u32::try_from(idx + 1).unwrap_or(u32::MAX);
-        let raw_line = raw.strip_suffix('\r').unwrap_or(raw);
 
         // Fences first — inside one, a comment marker is content.
         if fence.is_none() && comment.is_none() {
@@ -1309,6 +1333,24 @@ mod tests {
     fn crlf_input_reads_the_same() {
         let text = plan("- [Critical] finding [fixed: the pin]").replace('\n', "\r\n");
         assert!(audit(&text).is_empty());
+    }
+
+    #[test]
+    fn carriage_return_only_input_reads_the_same() {
+        // CommonMark ends a line at a carriage return not followed by a
+        // newline; `str::lines` does not, which read a classic-Mac plan as
+        // one line and reported its open rows as a missing section.
+        let text = plan("- [Critical] open row").replace('\n', "\r");
+        assert_eq!(slugs(&audit(&text)), ["plan-open-blocker"]);
+    }
+
+    #[test]
+    fn a_leading_bom_is_encoding_not_content() {
+        // A renderer consumes the byte-order mark at decode, so a heading on
+        // the first line is a heading to every reader of the rendered plan —
+        // flagging the section missing would refuse a valid document.
+        let text = "\u{feff}## Outstanding issues\n\n- [Critical] open row\n";
+        assert_eq!(slugs(&audit(text)), ["plan-open-blocker"]);
     }
 
     #[test]
