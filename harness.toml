@@ -14,6 +14,20 @@
 [meta]
 harnex_version = ">=0.1, <0.2"
 
+# What the retirement sweep walks. Without a declared kind the sweep runs
+# over nothing and answers success — an enabled loop that processes nothing
+# is the uncomputed-control shape wearing a config file. The rules corpus is
+# the artifact class this repo actually accumulates.
+[[kinds]]
+name = "rule"
+glob = ".claude/rules/*.md"
+foundation = false
+
+[[kinds]]
+name = "constitution"
+glob = ".claude/rules/constitution.md"
+foundation = true
+
 # The rules here name the module that owns each fact, which is the whole of
 # Article IX, and a name is only worth more than prose while it still resolves.
 # `harness check` reads `CLAUDE.md` and `.claude/rules/**/*.md` and holds every
@@ -53,6 +67,18 @@ roots = ["~/.claude/projects"]
 # (repository memory); telemetry and session baselines stay machine-local
 # (.gitignore holds the split).
 [lifecycle]
+
+[[lifecycle.consumer_detectors]]
+kind = "rule"
+strategy = "grep"
+pattern = "{slug}"
+exclude_globs = [".claude/rules/{slug}.md"]
+
+# The always-loaded pair is load-bearing by construction; retiring either is
+# a governance decision, not a sweep verdict.
+[retirement.exempt]
+kinds = ["constitution"]
+slugs = ["making-changes"]
 
 # Empty kinds on purpose: an event schema is declared when there is something
 # to count (template rationale). The section exists so `lifecycle retire` can
