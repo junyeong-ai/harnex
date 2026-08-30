@@ -149,12 +149,12 @@ project grows.
 harnex check [--since <ref>] [--fix]                  # unified validation gate
 harnex audit [--plugin-root <path>]                   # generated harness vs. its composition
 
-harness evidence verify <files...>
+harnex evidence verify <files...>
 harnex telemetry append --kind K --payload <json>
 harnex telemetry count --kind K [--since <rfc3339>]
 harnex telemetry report [--kind K] [--window 1,7,30,90]
 
-harness codegen sync | check
+harnex codegen sync | check
 
 harnex policy permissions generate | audit [--path <p>]
 harnex policy versions show | check --tool T --installed V
@@ -187,8 +187,8 @@ harnex guard hook-run <prog> [args...]                # standard hook wrapper
 harnex guard hook-stop <prog> [args...]               # Stop hook (always exit 0)
 harnex guard stop-audit [--session ID]                # fresh-context Stop audit
 
-harnex plan audit --plan P [--spec S] [--baseline B]  # spec-workflow review floor:
-                                                      # open C/B rows, vanished rows,
+harnex plan audit --plan P [--spec S]                 # spec-workflow review floor:
+                  [--baseline B] [--baseline-spec BS] # open C/B rows, vanished rows,
                                                       # decision-log convergence
 
 harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
