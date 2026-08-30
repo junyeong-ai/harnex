@@ -49,9 +49,9 @@ roots = ["~/.claude/projects"]
 
 # The loop this repo ships, run on this repo. Thresholds keep their defaults
 # until the ledger is large enough to have an opinion (same reasoning as the
-# scaffold template). Ledgers land under `.harness/` (gitignored — one
-# operator, one machine today; committing the decision ledger is the follow-up
-# the day a second contributor arrives).
+# scaffold template). The observation and decision ledgers are tracked in git
+# (repository memory); telemetry and session baselines stay machine-local
+# (.gitignore holds the split).
 [lifecycle]
 
 # Empty kinds on purpose: an event schema is declared when there is something
