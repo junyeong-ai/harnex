@@ -85,14 +85,14 @@ jobs:
           diff -u schemas/harness.schema.json /tmp/generated.schema.json
 
   audit:
-    name: harness audit
+    name: harnex audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [test]
     steps:
       - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
-      - name: run harness audit
+      - name: run harnex audit
         run: |
           cargo run -p harness-cli --quiet --locked -- \
             audit --plugin-root plugins/harnex
@@ -101,5 +101,5 @@ jobs:
       # rules and settings that its own validators have never read, and a
       # rule shipped without `paths:` costs every session its whole body
       # with nothing to say so.
-      - name: run harness check
+      - name: run harnex check
         run: cargo run -p harness-cli --quiet --locked -- check

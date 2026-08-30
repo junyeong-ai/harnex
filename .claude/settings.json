@@ -50,7 +50,7 @@
     "allow": [
       "Bash(cargo *)",
       "Bash(rustfmt *)",
-      "Bash(harness *)",
+      "Bash(harnex *)",
       "Bash(git add *)",
       "Bash(git branch *)",
       "Bash(git checkout -b *)",

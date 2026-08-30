@@ -4,7 +4,7 @@
 use std::process::Command;
 
 fn harness() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_harness"))
+    Command::new(env!("CARGO_BIN_EXE_harnex"))
 }
 
 #[test]
@@ -37,7 +37,7 @@ fn help_is_clap_native_and_exits_0() {
     assert_eq!(out.status.code(), Some(0), "--help must exit 0");
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(
-        stdout.contains("Usage") || stdout.contains("harness"),
+        stdout.contains("Usage") || stdout.contains("harnex"),
         "help text expected, got: {stdout:?}"
     );
 }

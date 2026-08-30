@@ -284,7 +284,7 @@ fn run_scaffold_validation(lang: &str) {
         .iter()
         .filter_map(|v| v.as_str())
         .collect();
-    for rule in ["Edit", "Write", "Bash(harness *)"] {
+    for rule in ["Edit", "Write", "Bash(harnex *)"] {
         assert!(
             allow.contains(&rule),
             "[{lang}] merging the language allow fragment dropped '{rule}': {allow:?}"
@@ -308,7 +308,7 @@ fn run_scaffold_validation(lang: &str) {
 
     // --- Audit (spec drift + managed-region drift): on a fresh scaffold the
     //     auditor must produce zero findings. This exercises the same flow a
-    //     CI consumer hits through `harness audit --plugin-root <p>`. ---
+    //     CI consumer hits through `harnex audit --plugin-root <p>`. ---
     let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex");
     let working_dir = proj_root.to_path_buf();
     let audit_outcome = ProjectAuditor::new(&working_dir)
@@ -483,8 +483,8 @@ fn glob_under(dir: &Path, pattern: &str) -> Vec<PathBuf> {
 ///
 /// Zero findings says the harness is spec-correct; it says nothing about
 /// whether the operator can use it. The generated `governance.md` sends its
-/// reader to `harness lifecycle observe|candidates|retire` and
-/// `harness telemetry report`, and every one of those answered CONFIG_NOT_FOUND
+/// reader to `harnex lifecycle observe|candidates|retire` and
+/// `harnex telemetry report`, and every one of those answered CONFIG_NOT_FOUND
 /// on a fresh scaffold — the manifest declared no `harness.toml` at all, so the
 /// loop those rules describe was documented and inoperable. Auditing the
 /// artifacts could never catch that, because the missing artifact was the one
@@ -838,7 +838,7 @@ fn a_two_stack_repo_gets_both_language_tiers() {
         .iter()
         .filter_map(|v| v.as_str())
         .collect();
-    for rule in ["Bash(uv *)", "Bash(pnpm *)", "Bash(harness *)"] {
+    for rule in ["Bash(uv *)", "Bash(pnpm *)", "Bash(harnex *)"] {
         assert!(allow.contains(&rule), "{rule} missing from {allow:?}");
     }
 

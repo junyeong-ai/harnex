@@ -1,7 +1,7 @@
 # harness oracle configuration.
 #
-# Without this file the oracle answers CONFIG_NOT_FOUND, and `harness check`,
-# `harness validate`, `harness lifecycle` and `harness telemetry` are all
+# Without this file the oracle answers CONFIG_NOT_FOUND, and `harnex check`,
+# `harnex validate`, `harnex lifecycle` and `harnex telemetry` are all
 # unreachable — including the retirement sweep `governance.md` sends you to.
 # The scaffold ships it so the loop those rules describe is runnable from the
 # first commit rather than after someone notices.
@@ -27,7 +27,7 @@ always_loaded_slugs = ["constitution", "agent-conduct"]
 # lags the upstream spec, and a stale list turns valid frontmatter into a
 # finding. A harnex harness opts in anyway: Claude Code silently ignores an
 # unknown key, so a typo costs the field it was meant to set with no signal at
-# all, and `harness spec` reports when a surface's measurement is old enough to
+# all, and `harnex spec` reports when a surface's measurement is old enough to
 # distrust. Turn one off if a spec addition outpaces a regenerate.
 [validate.skills]
 reject_unknown_keys = true
@@ -46,7 +46,7 @@ reject_unknown_keys = true
 
 # A rule is worth its context only while what it describes is still there, and
 # the drift that makes one actively misleading is the artifact it cites moving
-# or disappearing. `harness check` reads `CLAUDE.md` and `.claude/rules/**/*.md`
+# or disappearing. `harnex check` reads `CLAUDE.md` and `.claude/rules/**/*.md`
 # and resolves every marked claim against the tree:
 #
 #   [file: path/to/thing.py:42]   the file must exist and hold that line
@@ -69,7 +69,7 @@ strategy = "file-path-line"
 # describe. Every threshold has a default, so the section is declared empty on
 # purpose: the loop is runnable from the first commit, and the numbers are
 # tuned once the corpus is large enough to have an opinion. Without the
-# section, `harness lifecycle observe|candidates|retire` — the commands those
+# section, `harnex lifecycle observe|candidates|retire` — the commands those
 # rules send you to — answer CONFIG_INVALID.
 [lifecycle]
 

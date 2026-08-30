@@ -72,7 +72,7 @@ pub(crate) fn normalize(body: &str) -> String {
 }
 
 wire_enum! {
-    /// Closed set of audit checks the `harness audit` command dispatches, and the
+    /// Closed set of audit checks the `harnex audit` command dispatches, and the
     /// only statement of what an audit covers — the module doc points here rather
     /// than repeating it, because a restated list is what drifts.
     ///

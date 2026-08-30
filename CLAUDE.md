@@ -2,7 +2,7 @@
 
 Harness engineering for Claude Code projects. Two surfaces: the **harnex
 plugin** (a skill that generates project-native harness tooling) and the
-**`harness` binary** (the Pure-Rust, deterministic, no-network oracle the
+**`harnex` binary** (the Pure-Rust, deterministic, no-network oracle the
 plugin's templates are verified against).
 
 ## The plugin (primary surface)
@@ -65,9 +65,9 @@ skill composes templates — it never free-generates safety-critical code.
 - `crates/<crate>/CLAUDE.md` — crate-scoped guidance; loaded when you
   work inside that crate.
 - `schemas/harness.schema.json` — JSON Schema for `harness.toml` (regen
-  via `harness export schema config --raw`).
+  via `harnex export schema config --raw`).
 
-For the full command surface, run `harness --help` or read `README.md`.
+For the full command surface, run `harnex --help` or read `README.md`.
 
 ## What this project refuses to do
 

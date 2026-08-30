@@ -5,7 +5,7 @@
   "Bash(git commit *)",
   "Bash(git stash *)",
   "Bash(git switch *)",
-  "Bash(harness *)",
+  "Bash(harnex *)",
   "Bash(mkdir -p *)",
   "Edit",
   "Write"

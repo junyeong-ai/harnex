@@ -20,7 +20,7 @@ established practice yet, say so and pick one — that is a decision, and it
 belongs in a commit body as well as here.
 
 Name the file that settles each answer. A table with no owner drifts the first
-time someone renames a directory; a pointer can be checked, and `harness check`
+time someone renames a directory; a pointer can be checked, and `harnex check`
 resolves a marked claim against the tree — the `file:` marker in square
 brackets, holding a project-relative path and optionally a `:line`. Write it
 around each owner named below; the marker is a reserved token, so an example of

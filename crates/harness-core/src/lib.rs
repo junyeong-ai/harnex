@@ -1,6 +1,6 @@
 //! # harness-core
 //!
-//! Embeddable library powering the `harness` CLI. All deterministic logic
+//! Embeddable library powering the `harnex` CLI. All deterministic logic
 //! for harness engineering on Claude Code projects lives here. The CLI is
 //! a thin clap wrapper that emits the JSON envelope.
 //!

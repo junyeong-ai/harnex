@@ -133,7 +133,7 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   reads as a floor and enforces nothing, and Claude Code warns at startup
   (`… is not matched by file permission checks`). Canonical SSoT is
   `crates/harness-core/src/policy/rule.rs`; the mirrors below are held in sync
-  by the `spec_facts_*` integration tests, and both `harness validate settings`
+  by the `spec_facts_*` integration tests, and both `harnex validate settings`
   and `harness.toml` load reject such a rule where it is written.
   Path rules `Edit(...)` owns:
   <!-- harnex-managed:start spec-facts-covered-by-edit-rules -->

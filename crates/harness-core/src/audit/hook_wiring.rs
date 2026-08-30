@@ -313,7 +313,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         for command in [
             "${CLAUDE_PROJECT_DIR}/node_modules/.bin/prettier --write",
-            "${CLAUDE_PROJECT_DIR}/target/release/harness check",
+            "${CLAUDE_PROJECT_DIR}/target/release/harnex check",
             "${CLAUDE_PROJECT_DIR}/.venv/bin/python tools/fmt.py",
             "bash \"${CLAUDE_PROJECT_DIR}/dist/hooks/post-format.js\"",
         ] {

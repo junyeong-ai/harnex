@@ -2,7 +2,7 @@
 description: Read your own Claude Code transcripts and report what you delegated and how it went, what you leak every session, and whether your harness is an asset — with one thing to change
 argument-hint: "[--since <rfc3339>] [--project <dir>] [--sample <n>]"
 disable-model-invocation: true
-allowed-tools: ["Bash(harness:*)", "Read", "Grep", "Task", "AskUserQuestion"]
+allowed-tools: ["Bash(harnex:*)", "Read", "Grep", "Task", "AskUserQuestion"]
 ---
 
 Report how the operator works with Claude Code, from the transcripts Claude
@@ -27,7 +27,7 @@ as how it is installed. Enabling this plugin does not install it.
 
 ## 1 — Fix the window
 
-`harness session baseline diff` names the last measured window. Start where it
+`harnex session baseline diff` names the last measured window. Start where it
 ended, so this measurement and the last one do not overlap; with no baseline
 yet, take the corpus whole. `--since` overrides.
 
@@ -38,8 +38,8 @@ survived. Without it the window spans every project on the machine.
 ## 2 — Take the facts
 
 ```
-harness session facts --since <t> [--project <dir>] --with-text
-harness session submissions --since <t> [--project <dir>] --with-text --sample <n>
+harnex session facts --since <t> [--project <dir>] --with-text
+harnex session submissions --since <t> [--project <dir>] --with-text --sample <n>
 ```
 
 `submissions` returns `coverage` beside its `submissions`, the same coverage
@@ -377,7 +377,7 @@ Write the report in the language the operator instructs in.
 
 ## 7 — Close the loop
 
-Offer, do not run: `harness session baseline save --label <name>`. The next
+Offer, do not run: `harnex session baseline save --label <name>`. The next
 measurement starts where this one ended, and §0's delta is the answer to
 whether any of this worked.
 

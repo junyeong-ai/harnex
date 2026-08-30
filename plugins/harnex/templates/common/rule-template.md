@@ -14,11 +14,11 @@ paths:
      enforces, each naming the file that enforces it as a marked claim:
      `[file: path/to/file.ext:42]`, or `[file: path/to/file.ext]` where the whole
      file is the owner.
-     The pointer is the point: it is what a reader checks, what `harness check`
+     The pointer is the point: it is what a reader checks, what `harnex check`
      resolves, and what makes this a rule rather than an opinion.
 
      Derive, never invent. An invariant with no enforcer in the tree is not a
-     rule yet — it is an observation, and `harness lifecycle observe` is where
+     rule yet — it is an observation, and `harnex lifecycle observe` is where
      it goes until it has recurred in two independent contexts (see
      `.claude/rules/governance.md`). Writing it here instead is how a harness
      accumulates confident prose nobody can check. -->

@@ -6,7 +6,7 @@
 # commit rather than whenever someone remembers to widen this file.
 #
 # policy and codegen stay absent: this repo runs neither loop on itself, and
-# `harness check` reporting them skipped with a reason is the honest answer.
+# `harnex check` reporting them skipped with a reason is the honest answer.
 # lifecycle and telemetry are ON (below): the promotion/retirement loop this
 # repo ships was field-tested only by its consumers until 2026-08 — the loop's
 # own friction has to be findable here, on the corpus that builds it.
@@ -30,7 +30,7 @@ foundation = true
 
 # The rules here name the module that owns each fact, which is the whole of
 # Article IX, and a name is only worth more than prose while it still resolves.
-# `harness check` reads `CLAUDE.md` and `.claude/rules/**/*.md` and holds every
+# `harnex check` reads `CLAUDE.md` and `.claude/rules/**/*.md` and holds every
 # marked claim — `[file: path/to/thing.rs:42]`, the line optional — to the tree.
 #
 # The subject is real: this is the check a generated harness now ships, and a

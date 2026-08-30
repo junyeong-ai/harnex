@@ -35,7 +35,7 @@ they match the project's actual practice.
      brackets, a project-relative path, optionally a `:line`. A convention with
      no named owner is prose that drifts the day someone changes the tool, and
      nothing catches it; a marked claim is checked by a reader and resolved
-     against the tree by `harness check`. Both harnesses this template is
+     against the tree by `harnex check`. Both harnesses this template is
      modelled on name an owner in every rule they carry.
 
      A section with no signal yet takes an explicit "none observed yet" plus

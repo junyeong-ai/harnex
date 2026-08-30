@@ -36,7 +36,7 @@ plugin's committed permission templates are a projection of it:
 `templates/<lang>/permissions.allow.json` mirrors `<lang>-dev.allow`. The
 `policy_template_sync` integration test fails on any drift, and holds the
 foundation and language allow sets disjoint. After editing a profile,
-regenerate the matching template (`harness policy permissions generate` with
+regenerate the matching template (`harnex policy permissions generate` with
 that profile selected) and copy the array across — never hand-edit one side.
 A new `<lang>-dev` profile MUST ship its template.
 

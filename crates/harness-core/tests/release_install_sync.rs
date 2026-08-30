@@ -235,7 +235,7 @@ fn the_upload_step_keeps_the_defaults_the_installer_reads_asset_names_from() {
 fn the_readme_names_every_schema_the_binary_will_emit() {
     let readme = repo_file("README.md");
     let listed: BTreeSet<&str> = readme
-        .split("harness export schema {")
+        .split("harnex export schema {")
         .nth(1)
         .expect("README prints the export surface")
         .split('}')

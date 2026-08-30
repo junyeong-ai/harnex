@@ -54,7 +54,7 @@ pub fn reject_traversal(path: &Path) -> Result<()> {
 /// soundly requires a trusted-root anchor (canonicalize-and-compare, or
 /// no-follow component opens) threaded from each caller.
 ///
-/// That is out of this tool's threat model: `harness` is a local,
+/// That is out of this tool's threat model: `harnex` is a local,
 /// single-user, no-network CLI operating on the user's own repository. An
 /// attacker who can plant a symlink inside the working tree already has write
 /// access to it — at which point the repository is compromised regardless of

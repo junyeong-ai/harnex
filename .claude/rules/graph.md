@@ -32,6 +32,6 @@ references via `client.backlinks` instead of walking the filesystem.
 When adding a new query:
 1. Add a method on `NodexClient` that calls `runner.run(&[...])`.
 2. Add a mock-runner test asserting the args passed and the parsed result.
-3. Wire into `harness graph` subcommand.
+3. Wire into `harnex graph` subcommand.
 4. If the new query feeds another module (like backlinks feeds lifecycle),
    add an integration point + integration test.

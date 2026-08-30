@@ -149,7 +149,7 @@ wire_enum! {
     /// Lives in the envelope because it is the value of a [`Finding`] field:
     /// making the field `Option<FixCommand>` is what keeps an emit site from
     /// inventing a command, which prose asking for `FixCommand::X.as_str()`
-    /// did not — one finding shipped `harness policy permissions generate
+    /// did not — one finding shipped `harnex policy permissions generate
     /// --profile baseline`, a string no dispatcher recognises and no CLI
     /// accepts. [`crate::check::ProjectChecker`]'s `try_fix` dispatches via
     /// exhaustive `match`, so adding a variant still forces the dispatcher to
@@ -287,7 +287,7 @@ pub fn write_success<T: Serialize, W: Write>(
 }
 
 /// Owned, schema-derivable representation of the envelope shape.
-/// Used by `harness export schema envelope` to describe the contract.
+/// Used by `harnex export schema envelope` to describe the contract.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EnvelopeShape {
     /// `true` for success, `false` for error.

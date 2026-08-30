@@ -24,7 +24,7 @@ use crate::telemetry::Event;
 use crate::wire_enum::wire_enum;
 
 wire_enum! {
-    /// Closed enum of schema targets `harness export schema <target>` understands.
+    /// Closed enum of schema targets `harnex export schema <target>` understands.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum SchemaTarget {
         Config => "config",

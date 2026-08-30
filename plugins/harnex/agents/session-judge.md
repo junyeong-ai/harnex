@@ -19,7 +19,7 @@ has not used them.
 
 ## What you receive
 
-Instructions from `harness session submissions --with-text`, each carrying its
+Instructions from `harnex session submissions --with-text`, each carrying its
 text and what followed it:
 
 | field | means |

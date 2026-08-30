@@ -20,7 +20,7 @@ and slugs) flip `exempt: true` but signals still surface for visibility.
 AI never invents decision text. All four decision methods
 (`promote` / `reject` / `defer` / `demote`) reject empty `decision_text`
 with `LIFECYCLE_DECISION_TEXT_EMPTY`. The CLI mirrors the methods one-to-one
-as verb-named subcommands (`harness lifecycle promote|reject|defer|demote`).
+as verb-named subcommands (`harnex lifecycle promote|reject|defer|demote`).
 
 Decision-to-surfacing mapping (via `PromotionDecision::suppresses_resurfacing`):
 - `Approved` → suppresses
@@ -42,13 +42,13 @@ the matching `[[lifecycle.consumer_detectors]]`, globs the kind's path
 pattern, and classifies each match. The `Silent` signal is derived
 automatically by scanning telemetry payloads for the slug as an exact
 string match within the configured `silence_window_days`. Operators
-`harness lifecycle retire` covers the entire surface in one call.
+`harnex lifecycle retire` covers the entire surface in one call.
 
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`
 with the reason "foundation kind (excluded from retirement)" — the
 exclusion is explicit, never silent.
 
-`harness lifecycle decisions [--tag T] [--decision D]` lists every
+`harnex lifecycle decisions [--tag T] [--decision D]` lists every
 record in the decision ledger sorted by timestamp descending. Operators
 audit the promote / reject / defer / demote history without reading
 raw jsonl.

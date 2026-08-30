@@ -5,10 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Thin clap wrapper exposing harness-core as the `harness` CLI."
+description = "Thin clap wrapper exposing harness-core as the `harnex` CLI."
 
 [[bin]]
-name = "harness"
+name = "harnex"
 path = "src/main.rs"
 
 [dependencies]
