@@ -127,10 +127,14 @@ repo is never penalised for the tool it does not install.
   probes the interpreter it invokes, and a `.sh` verifier probes whatever it
   shells out to. A wrapper that gated on the language's build tool skipped
   working hooks whenever an unrelated tool was missing.
-- One git hook: `hooks/pre-commit` runs gitleaks on staged changes (the
-  enforced half of "secrets never reach git"; permission deny covers only
-  Claude). Fail-open if gitleaks is absent; escape hatch via
-  `HARNEX_SKIP_GITLEAKS=1`. Activated by `git config core.hooksPath hooks`.
+- Two git hooks, activated by `git config core.hooksPath hooks`:
+  `hooks/pre-commit` runs gitleaks on staged changes (the enforced half of
+  "secrets never reach git"; permission deny covers only Claude — fail-open if
+  gitleaks is absent, escape hatch `HARNEX_SKIP_GITLEAKS=1`), then dispatches
+  every executable in `hooks/pre-commit.d/` in name order — the seam patterns
+  add commit gates through, since the hook's own copy is held byte-identical.
+  `hooks/commit-msg` validates the trailers `[validate.commit_msg]` declares,
+  fail-open until configured.
 - Two permission floors, both foundation-tier and neither language-dependent:
   `templates/common/permissions.deny.json` (the oracle's `baseline` profile)
   and `templates/common/permissions.allow.json` (its `workspace` profile —
