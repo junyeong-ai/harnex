@@ -20,6 +20,49 @@ try is done, and spending the remaining iterations on it only delays the report.
 Two passes producing the same finding while files DID change is not stalled: the
 fix moved something the finding did not cover. Let it run.
 
+## A count that will not fall
+
+Stalled catches the loop with nothing left to try. The slower failure keeps
+editing: files change every pass while the Critical + Blocker count stays level
+or rises — each fix opening what the last one closed. Two consecutive passes
+without that count falling is that shape; escalate there rather than riding to
+the cap. The comparison reads the recorded pass lines (below), never memory —
+a convergence floor nothing computes is prose, and the measured failure of that
+shape is a gate that recorded eleven firings while its own rule said stop at
+the second.
+
+## The record outlives the context
+
+Convergence state that lives only in conversation is erased by exactly what a
+long review meets — a compaction, a session end, a re-invocation. So the loop
+keeps its record on disk: spec-bound, in the spec's decision log and
+`plan.md ## Outstanding issues`; standalone, in one scratch file the report
+names. Two things go there, both append-only:
+
+- one line per pass — pass number, findings by severity, files touched;
+- every finding's terminal disposition — `fixed` (with what pinned it),
+  `refuted` (with the ground truth), or `accepted` (with who accepted it).
+
+A cleared finding keeps its row and gains its disposition. Prose that narrates
+findings away — "these became inexpressible after the redesign" — leaves a gate
+unable to tell a fix from a shrug, which is the shape this record exists to
+prevent. A re-invocation over the same scope reads the record first: an
+already-adjudicated finding re-enters as its disposition, not as new work for
+a fresh pass to re-litigate.
+
+## A fix is pinned or it is surfaced
+
+The next fresh reviewer's opinion is not a regression gate; a check is. An
+auto-fix for a behavioural finding lands together with what pins it — a test,
+an extended assertion, a lint the project already runs — or the finding is
+surfaced instead of fixed. Measured without this, one mirror file took six
+consecutive fix-commits, one arm per round, because nothing pinned "the two
+sides agree over all inputs" and every fresh pass found the next case.
+
+A fix the project's own gate then rejects is reverted — and recorded as
+attempted, with what failed. The loop never re-attempts a recorded failed fix;
+it surfaces the finding with the attempt beside it.
+
 ## The cap
 
 Default 5 iterations. It is a circuit breaker for the case the stall rule

@@ -24,12 +24,21 @@ Append one bullet per firing to `## Decision log` in `specs/<slug>/spec.md` —
 the section `specs/_template/spec.md` ships for exactly this:
 
 ```
-- 2026-01-15 · review · needs_revision · two Blockers in the migration path; see plan.md ## Outstanding issues
+- 2026-01-15 · review · needs_revision · 0C/2B/3M/1m · two Blockers in the migration path; see plan.md ## Outstanding issues
 ```
 
 Append-only. A gate that fires three times leaves three bullets in order — the
 history of a decision is the interesting part, and overwriting keeps only the
 last one. `git log specs/<slug>/` is the timeline this rides on.
+
+A review-class firing (`design_review`, `review`) writes its counts into the
+line — `<n>C/<n>B/<n>M/<n>m` — because the next firing reads them: a re-fire
+whose Critical + Blocker total did not fall below the previous firing's names
+both totals in its rationale, and a second non-falling re-fire escalates to the
+operator instead of firing again. The rule is computed from the log's own
+lines, never recalled — a convergence floor nothing reads is prose, and the
+measured failure of that shape is a gate that recorded eleven firings while
+its rule said stop at the second.
 
 ## clarify — inline, during specify
 
@@ -65,6 +74,12 @@ Zero Critical and zero Blocker passes the gate. Write what remains to
 `plan.md ## Outstanding issues` — Major and Minor are follow-up signal, not
 blockers — and record `approved`. Otherwise record `needs_revision` with the
 count, and the work goes back.
+
+A finding written to `## Outstanding issues` is never deleted. Cleared, its row
+gains a terminal disposition — `fixed` (what pinned it), `refuted` (the ground
+truth), `accepted` (who accepted it and why). The gate passes on zero
+Critical/Blocker rows *without* a terminal disposition — a condition a check
+can read — never on the rows' absence, which narration can fake.
 
 ## resume — inline, on a dirty worktree
 
