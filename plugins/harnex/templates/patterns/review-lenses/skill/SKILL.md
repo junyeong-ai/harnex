@@ -1,5 +1,5 @@
 ---
-description: "Convergent review loop. Walks every lens in .claude/lenses/ over a scope, fixes what a cited authority confirms, re-walks the scope the fixes grew, and stops when no Critical or Blocker remains and one fresh-context reviewer that did not watch the loop form its opinion agrees. Modifies files — findings-only audits live in the critique skill."
+description: "Convergent review loop. Walks every lens in .claude/lenses/ over a scope, fixes what a cited authority confirms, re-walks the scope the fixes grew, and stops when no fixable Critical or Blocker remains and one fresh-context reviewer that did not watch the loop form its opinion agrees. Modifies files — findings-only audits live in the critique skill."
 when_to_use: "Invoke on fix-and-converge intent over a change set — \"review and fix\", \"converge the review\", \"리뷰 수렴해줘\", \"walk the lenses over <path>\" — or as the engine a spec review gate delegates to. Takes a path, a revision range (main..HEAD), or a glob. Read-only asks — findings without edits — route to the critique skill instead of entering the loop."
 argument-hint: "<path> | <commit-range> | <glob>  [--max-iter N]"
 allowed-tools: Read Edit Grep Glob Agent Bash(git diff *) Bash(git log *) Bash(git rev-parse *) Bash(git status *)
