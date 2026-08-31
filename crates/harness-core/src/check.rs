@@ -217,6 +217,13 @@ impl<'a> ProjectChecker<'a> {
             &mut skipped,
             &mut files_scanned,
         )?;
+        self.run_governs(
+            &changed,
+            &mut findings,
+            &mut run,
+            &mut skipped,
+            &mut files_scanned,
+        )?;
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
         self.run_permissions_audit(&changed, &mut findings, &mut run, &mut skipped)?;
 
@@ -398,6 +405,46 @@ impl<'a> ProjectChecker<'a> {
             findings.extend(verifier.verify_file(path, self.working_dir)?);
         }
         run.push("evidence".into());
+        Ok(())
+    }
+
+    /// Every declared `governs.live_truth` still exists in the tree. Shape
+    /// findings stay with the rule validator (one defect, one reporter);
+    /// this arm asks only the question that needs the tree.
+    fn run_governs(
+        &self,
+        changed: &Option<HashSet<PathBuf>>,
+        findings: &mut Vec<Finding>,
+        run: &mut Vec<String>,
+        skipped: &mut Vec<SkippedRule>,
+        files_scanned: &mut usize,
+    ) -> Result<()> {
+        if self
+            .config
+            .validate
+            .as_ref()
+            .and_then(|v| v.rules.as_ref())
+            .is_none()
+        {
+            skipped.push(SkippedRule {
+                slug: "governs".into(),
+                reason: "no [validate.rules] section".into(),
+            });
+            return Ok(());
+        }
+        let auditor = crate::governs::GovernsAuditor::new(self.working_dir);
+        for path in &self.discover_glob(<RuleValidator as SurfaceValidator>::GLOB)? {
+            if !self.passes_filter(path, changed) {
+                continue;
+            }
+            let content = std::fs::read_to_string(path).map_err(|e| Error::IoFailure {
+                path: path.clone(),
+                source: e,
+            })?;
+            *files_scanned += 1;
+            findings.extend(auditor.audit_rule(&content, path));
+        }
+        run.push("governs".into());
         Ok(())
     }
 

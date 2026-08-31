@@ -80,6 +80,7 @@ fn check_runs_every_enabled_validator() {
         "validate.output_styles",
         "validate.settings",
         "evidence",
+        "governs",
         "policy.permissions",
     ] {
         assert!(outcome.run.contains(&v.to_string()), "missing {v}");
@@ -109,6 +110,7 @@ harnex_version = ">=0.1, <0.2"
     for expected in [
         "codegen",
         "evidence",
+        "governs",
         "policy.permissions",
         "validate.agents",
         "validate.output_styles",
@@ -379,4 +381,23 @@ fn fix_command_serialises_round_trips_and_matches_its_schema() {
         serde_json::from_value::<FixCommand>(outside).is_err(),
         "a command outside the registry must not deserialize — that is the class this type exists to reject"
     );
+}
+
+#[test]
+fn check_reports_a_governs_truth_that_no_longer_exists() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+    write(
+        &tmp.path().join(".claude/rules/naming.md"),
+        "---\npaths: [\"src/**\"]\ngoverns:\n  concept: naming\n  live_truth:\n    - src\n    - vanished/registry.rs\n---\n# Naming\n",
+    );
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    let truth_missing: Vec<_> = outcome
+        .findings
+        .iter()
+        .filter(|f| f.slug == "governs-truth-missing")
+        .collect();
+    assert_eq!(truth_missing.len(), 1, "{:?}", outcome.findings);
+    assert!(truth_missing[0].message.contains("vanished/registry.rs"));
 }

@@ -31,8 +31,13 @@ Validator slugs (current):
 - `validate.output_styles`
 - `validate.settings`
 - `evidence`
+- `governs`
 - `codegen`
 - `policy.permissions`
+
+The `governs` arm shares the rule validator's gate (`[validate.rules]`) and
+glob: shape findings are the validator's, and this arm asks only the
+existence question that needs the tree (`governs-truth-missing`).
 
 Each validator that has no config section is added to `skipped` with the
 reason "no [section] section" — never silently absent.
