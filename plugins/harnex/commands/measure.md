@@ -27,9 +27,14 @@ as how it is installed. Enabling this plugin does not install it.
 
 ## 1 — Fix the window
 
-`harnex session baseline diff` names the last measured window. Start where it
-ended, so this measurement and the last one do not overlap; with no baseline
-yet, take the corpus whole. `--since` overrides.
+`harnex session baseline trend` — scoped with the same `--project` as this
+run, because trend matches scope exactly — names the windows already
+measured; the last one's `observed_to` is where the previous window ended.
+Start at the instant after it, never at it: a window keeps the record on its
+boundary, so that timestamp taken verbatim counts one record twice. Trend
+answers from the first baseline on, where a two-window `diff` cannot yet;
+with no baseline recorded for this scope, take the corpus whole. `--since`
+overrides.
 
 `--project <dir>` scopes everything to sessions run in that directory or below
 it, which is the only scope where the repository can be consulted about what
@@ -259,6 +264,9 @@ which; `unknown` means a window did not record what it ran under. A delta
 reported without both is an association presented as an effect.
 
 Then the delta from `baseline diff`, or "first measurement" — never zeros.
+Where the ledger holds windows of more than one scope, name the pair —
+`--from` and `--to`, by the labels trend returned — because a bare diff takes
+the ledger's last two windows whatever scope they belong to.
 Where `change` is null on every metric the window is too thin to compare: say
 so with `support_floor` and the denominators beside it, because the operator's
 next act is to keep working rather than to change anything. Where the ledger
