@@ -46,6 +46,7 @@ pub mod error;
 pub mod evidence;
 pub mod export;
 pub mod glob_root;
+pub mod governs;
 pub mod graph;
 pub mod guard;
 pub mod lifecycle;
