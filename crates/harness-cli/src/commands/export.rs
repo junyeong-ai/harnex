@@ -12,7 +12,8 @@ use super::write_envelope_success;
 pub enum ExportCommand {
     /// Emit a JSON Schema for the named target (or "all" for the full bundle)
     Schema {
-        /// One of: config | envelope | finding | event | permissions | error-codes | all
+        /// A schema target; "all" is the full bundle
+        #[arg(value_parser = schema_target_values())]
         target: String,
         /// Emit the bare schema (pretty-printed) — no envelope wrapper.
         /// Use this when committing a schema file to disk for IDE
@@ -23,13 +24,17 @@ pub enum ExportCommand {
     },
 }
 
+/// Source of truth for the `target` value_parser — derives from
+/// [`SchemaTarget::ALL`] so adding a target auto-updates the CLI.
+fn schema_target_values() -> Vec<&'static str> {
+    SchemaTarget::ALL.iter().map(|t| t.as_str()).collect()
+}
+
 pub fn run<W: Write>(cmd: ExportCommand, out: &mut W) -> Result<ExitCode> {
     match cmd {
         ExportCommand::Schema { target, raw } => {
             let parsed = SchemaTarget::from_str(&target).ok_or_else(|| Error::ConfigInvalid {
-                message: format!(
-                    "unknown schema target '{target}' (known: config|envelope|finding|event|permissions|error-codes|all)"
-                ),
+                message: format!("unknown schema target '{target}'"),
                 location: None,
             })?;
             let schema = schema_for(parsed);
