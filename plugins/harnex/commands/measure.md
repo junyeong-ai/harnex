@@ -448,8 +448,11 @@ same order, and the text above remains the deliverable of record.
 
 The ledger already holds what this window found recurring (§5); the baseline
 is the loop's other half. Offer, do not run: `harnex session baseline save
---label <name>`. The next measurement starts where this one ended, and the
-next run's §0 delta is the answer to whether any of this worked.
+--label <name>`. The next measurement starts where this one ended. What this
+run prescribes is tested by the window that runs under it, and that window is
+only saved at its own close — so the answer to whether any of this worked
+arrives at the §0 two runs out, and the next run's §0 answers the previous
+prescription.
 
 **Save before applying anything.** A baseline records the harness the window
 ran under, and it reads the tree at save time — so a save deferred until the
