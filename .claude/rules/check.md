@@ -41,7 +41,11 @@ Validator slugs (current):
 
 The `governs` arm shares the rule validator's gate (`[validate.rules]`) and
 glob: shape findings are the validator's, and this arm asks only the
-existence question that needs the tree (`governs-truth-missing`).
+existence question that needs the tree (`governs-truth-missing`). Like
+codegen it ignores `--since` — the defect is created by a change to a
+declared truth, not to the rule declaring it, so a diff-windowed rule filter
+reads a deleted truth as nothing-to-check — and it counts nothing into
+`files_scanned`.
 
 Each validator that has no config section is added to `skipped` with the
 reason "no [section] section" — never silently absent.

@@ -4,7 +4,9 @@ paths:
 governs:
   concept: the chosen time primitives
   live_truth:
-    - crates
+    - Cargo.toml
+    - crates/harness-core/Cargo.toml
+    - crates/harness-cli/Cargo.toml
 ---
 
 # Time handling: jiff only

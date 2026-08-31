@@ -401,3 +401,49 @@ fn check_reports_a_governs_truth_that_no_longer_exists() {
     assert_eq!(truth_missing.len(), 1, "{:?}", outcome.findings);
     assert!(truth_missing[0].message.contains("vanished/registry.rs"));
 }
+
+/// The governs arm ignores `--since`: the defect is created by a change to a
+/// declared truth, not to the rule that declares it, so a diff-windowed rule
+/// filter would read a deleted truth as nothing-to-check.
+#[test]
+fn governs_truth_missing_survives_a_since_window_that_excludes_the_rule() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    std::fs::create_dir_all(tmp.path().join("src")).unwrap();
+    write(&tmp.path().join("src/registry.rs"), "// truth\n");
+    write(
+        &tmp.path().join(".claude/rules/naming.md"),
+        "---\npaths: [\"src/**\"]\ngoverns:\n  concept: naming\n  live_truth: src/registry.rs\n---\n",
+    );
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(tmp.path())
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}: {out:?}");
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "base"]);
+    std::fs::remove_file(tmp.path().join("src/registry.rs")).unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "delete the declared truth, rule untouched"]);
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path())
+        .with_since("HEAD~1")
+        .run()
+        .unwrap();
+    assert!(
+        outcome
+            .findings
+            .iter()
+            .any(|f| f.slug == "governs-truth-missing"),
+        "windowed check missed the vanished truth: {:?}",
+        outcome.findings
+    );
+}

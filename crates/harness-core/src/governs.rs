@@ -55,24 +55,26 @@ struct GovernsFrontmatter {
 #[serde(deny_unknown_fields)]
 struct RawDecl {
     concept: String,
-    live_truth: OneOrMany,
+    live_truth: yaml_serde::Value,
     #[serde(default)]
     decision_record: Option<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum OneOrMany {
-    One(String),
-    Many(Vec<String>),
-}
-
-impl OneOrMany {
-    fn into_vec(self) -> Vec<String> {
-        match self {
-            Self::One(s) => vec![s],
-            Self::Many(v) => v,
-        }
+/// `live_truth` as entries, with the shape stated in the diagnostic — a
+/// derive over an untagged enum names its own variants instead of the
+/// grammar the author must fix.
+fn truth_entries(value: yaml_serde::Value) -> std::result::Result<Vec<String>, ShapeError> {
+    const SHAPE: &str = "`live_truth` must be a string or a list of strings";
+    match value {
+        yaml_serde::Value::String(s) => Ok(vec![s]),
+        yaml_serde::Value::Sequence(seq) => seq
+            .into_iter()
+            .map(|v| match v {
+                yaml_serde::Value::String(s) => Ok(s),
+                _ => Err(ShapeError::Malformed(SHAPE.into())),
+            })
+            .collect(),
+        _ => Err(ShapeError::Malformed(SHAPE.into())),
     }
 }
 
@@ -106,13 +108,36 @@ impl std::fmt::Display for ShapeError {
     }
 }
 
+/// Why a rule's declaration could not be read at all — split from
+/// [`ShapeError`] because the two halves have different owners inside
+/// `check` (frontmatter is the rule validator's Blocker) while a standalone
+/// reader reports both.
+#[derive(Debug)]
+pub enum DeclError {
+    /// The file's frontmatter does not parse, so whether it declares is
+    /// unknowable.
+    Frontmatter(String),
+    Shape(ShapeError),
+}
+
+impl std::fmt::Display for DeclError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Frontmatter(msg) => write!(f, "frontmatter does not parse: {msg}"),
+            Self::Shape(e) => e.fmt(f),
+        }
+    }
+}
+
 /// Whether a declared path is a literal project-relative path. Globs are
 /// refused by the module contract; traversal and absolute paths would let a
-/// declaration reach outside the project it describes.
+/// declaration reach outside the project it describes; a backslash is
+/// refused because `/` is the one separator this grammar reads, and a path
+/// that resolves differently per platform is not literal.
 fn literal_relative(path: &str) -> bool {
     !path.is_empty()
         && !path.starts_with('/')
-        && !path.contains(['*', '?', '['])
+        && !path.contains(['*', '?', '[', '\\', '\0'])
         && !path
             .split('/')
             .any(|seg| seg.is_empty() || seg == "." || seg == "..")
@@ -136,9 +161,7 @@ impl GovernsDecl {
         if raw.concept.trim().is_empty() {
             return Err(ShapeError::EmptyConcept);
         }
-        let live_truth: Vec<String> = raw
-            .live_truth
-            .into_vec()
+        let live_truth: Vec<String> = truth_entries(raw.live_truth)?
             .into_iter()
             .map(|p| normalize(&p).to_string())
             .collect();
@@ -163,16 +186,15 @@ impl GovernsDecl {
     }
 
     /// The declaration in a whole rule file's text. A file with no
-    /// frontmatter declares nothing; unterminated or non-YAML frontmatter is
-    /// the rule validator's Blocker, not a shape error here, so it also
-    /// reads as no declaration.
-    pub fn from_rule(
-        content: &str,
-        source: &Path,
-    ) -> std::result::Result<Option<Self>, ShapeError> {
+    /// frontmatter declares nothing; unterminated frontmatter and a
+    /// malformed declaration are each their own error, because a caller with
+    /// no validator beside it (the resolver) must be able to say which rules
+    /// it could not read rather than fold them into silence.
+    pub fn from_rule(content: &str, source: &Path) -> std::result::Result<Option<Self>, DeclError> {
         match frontmatter::parse(content, source) {
-            Ok(Some(fm)) => Self::from_yaml(&fm.yaml_text),
-            Ok(None) | Err(_) => Ok(None),
+            Ok(Some(fm)) => Self::from_yaml(&fm.yaml_text).map_err(DeclError::Shape),
+            Ok(None) => Ok(None),
+            Err(e) => Err(DeclError::Frontmatter(e.to_string())),
         }
     }
 
@@ -190,6 +212,42 @@ impl GovernsDecl {
     }
 }
 
+/// A query path in the form [`resolve`] compares: project-relative and
+/// `./`-free, the same grammar declarations are held to at parse.
+///
+/// An absolute path under `root` is the same question spelled from
+/// elsewhere, so it is stripped; one outside the root, or traversing
+/// upward, is unanswerable and refused — a silent empty answer would read
+/// as "governed by nothing", which is a different fact.
+pub fn normalize_query(root: &Path, query: &str) -> Result<String> {
+    let q = Path::new(query);
+    let rel = if q.is_absolute() {
+        q.strip_prefix(root).map_err(|_| Error::PathTraversal {
+            path: q.to_path_buf(),
+        })?
+    } else {
+        q
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for component in rel.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(seg) => {
+                // `rel` borrows from a `&str`, so every segment is UTF-8.
+                parts.push(seg.to_str().expect("segments of a str-backed path"));
+            }
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(Error::PathTraversal {
+                    path: q.to_path_buf(),
+                });
+            }
+        }
+    }
+    Ok(parts.join("/"))
+}
+
 /// One rule and what it declares, as [`load`] reads it off the tree.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct RuleGoverns {
@@ -198,44 +256,79 @@ pub struct RuleGoverns {
     pub governs: GovernsDecl,
 }
 
-/// Every rule under `root` with a well-shaped `governs:` declaration.
+/// A rule whose declaration could not be read, and why — carried beside the
+/// resolution so a standalone consumer sees the narrowed scope instead of a
+/// clean-looking answer.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct LoadDefect {
+    /// The rule file, project-relative.
+    pub rule: String,
+    pub error: String,
+}
+
+/// What [`load`] read off the tree: the well-shaped declarations, and the
+/// rules it had to exclude.
+#[derive(Debug, Clone)]
+pub struct LoadOutcome {
+    pub rules: Vec<RuleGoverns>,
+    pub defects: Vec<LoadDefect>,
+}
+
+/// Every rule under `root`, read for its `governs:` declaration.
 ///
-/// Rules whose declaration is missing or malformed contribute nothing —
-/// their findings belong to the rule validator, and a resolver that guessed
-/// at a malformed declaration would resolve differently than the gate reads.
-pub fn load(root: &Path) -> Result<Vec<RuleGoverns>> {
+/// A defective declaration never resolves — a resolver that guessed at a
+/// malformed one would resolve differently than the gate reads — but it is
+/// returned as a [`LoadDefect`], never dropped: the resolver runs without
+/// the validator beside it, and an exclusion nothing reports is silent
+/// scope shrinkage. An unreadable file or a failed traversal is an error,
+/// exactly as `check` treats the same class.
+pub fn load(root: &Path) -> Result<LoadOutcome> {
     use crate::validate::{RuleValidator, SurfaceValidator};
     let pattern = crate::glob_root::rooted(root, <RuleValidator as SurfaceValidator>::GLOB)?;
-    let mut out = Vec::new();
-    let mut paths: Vec<_> = glob::glob(&pattern)
-        .map_err(|e| Error::ConfigInvalid {
-            message: format!("rules glob: {e}"),
-            location: None,
-        })?
-        .filter_map(std::result::Result::ok)
-        .collect();
+    let mut paths = Vec::new();
+    for entry in glob::glob(&pattern).map_err(|e| Error::ConfigInvalid {
+        message: format!("rules glob: {e}"),
+        location: None,
+    })? {
+        paths.push(entry.map_err(|e| {
+            let path = e.path().to_path_buf();
+            Error::IoFailure {
+                path,
+                source: e.into(),
+            }
+        })?);
+    }
     paths.sort();
+    let mut outcome = LoadOutcome {
+        rules: Vec::new(),
+        defects: Vec::new(),
+    };
     for path in paths {
         let content = std::fs::read_to_string(&path).map_err(|e| Error::IoFailure {
             path: path.clone(),
             source: e,
         })?;
-        if let Ok(Some(governs)) = GovernsDecl::from_rule(&content, &path) {
-            let rule = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .into_owned();
-            out.push(RuleGoverns { rule, governs });
+        let rule = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .into_owned();
+        match GovernsDecl::from_rule(&content, &path) {
+            Ok(Some(governs)) => outcome.rules.push(RuleGoverns { rule, governs }),
+            Ok(None) => {}
+            Err(e) => outcome.defects.push(LoadDefect {
+                rule,
+                error: e.to_string(),
+            }),
         }
     }
-    Ok(out)
+    Ok(outcome)
 }
 
 /// The rules governing one queried path.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct Resolution {
-    /// The queried path, as given.
+    /// The queried path, as [`normalize_query`] spelled it.
     pub path: String,
     /// Rule files whose `governs.live_truth` covers it, in rule-path order.
     pub rules: Vec<String>,
@@ -351,7 +444,7 @@ mod tests {
             decl("governs:\n  concept: x\n  live_truth: []\n").unwrap_err(),
             ShapeError::EmptyLiveTruth
         );
-        for bad in ["/abs", "a/../b", "src/*", "a//b", "."] {
+        for bad in ["/abs", "a/../b", "src/*", "a//b", ".", "a\\b"] {
             assert_eq!(
                 decl(&format!("governs:\n  concept: x\n  live_truth: '{bad}'\n")).unwrap_err(),
                 ShapeError::BadPath(bad.to_string()),
@@ -386,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn load_reads_declaring_rules_and_skips_the_rest() {
+    fn load_reads_declaring_rules_and_reports_what_it_excludes() {
         let root = tempfile::tempdir().unwrap();
         let rules = root.path().join(".claude/rules");
         std::fs::create_dir_all(rules.join("nested")).unwrap();
@@ -401,9 +494,62 @@ mod tests {
         )
         .unwrap();
         std::fs::write(rules.join("plain.md"), "no frontmatter\n").unwrap();
-        let loaded = load(root.path()).unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].rule, ".claude/rules/naming.md");
+        std::fs::write(
+            rules.join("bad.md"),
+            "---\ngoverns:\n  concept: x\n  live_truth: 'src/*'\n---\n",
+        )
+        .unwrap();
+        std::fs::write(rules.join("unterminated.md"), "---\npaths: [\"a/**\"]\n").unwrap();
+        let outcome = load(root.path()).unwrap();
+        assert_eq!(outcome.rules.len(), 1);
+        assert_eq!(outcome.rules[0].rule, ".claude/rules/naming.md");
+        let mut excluded: Vec<&str> = outcome.defects.iter().map(|d| d.rule.as_str()).collect();
+        excluded.sort();
+        assert_eq!(
+            excluded,
+            vec![".claude/rules/bad.md", ".claude/rules/unterminated.md"],
+            "{:?}",
+            outcome.defects
+        );
+    }
+
+    #[test]
+    fn a_query_is_normalized_to_the_grammar_declarations_are_held_to() {
+        let root = Path::new("/proj");
+        for (given, want) in [
+            ("src/a.rs", "src/a.rs"),
+            ("./src/a.rs", "src/a.rs"),
+            ("src/./a.rs", "src/a.rs"),
+            ("/proj/src/a.rs", "src/a.rs"),
+            ("src/dir/", "src/dir"),
+        ] {
+            assert_eq!(normalize_query(root, given).unwrap(), want, "{given}");
+        }
+        for refused in ["/elsewhere/a.rs", "src/../..", "a/../b"] {
+            assert!(
+                matches!(
+                    normalize_query(root, refused),
+                    Err(Error::PathTraversal { .. })
+                ),
+                "{refused} accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn a_wrong_typed_live_truth_names_the_shape_it_wants() {
+        for bad in [
+            "governs:\n  concept: x\n  live_truth: [1, 2]\n",
+            "governs:\n  concept: x\n  live_truth: {a: b}\n",
+            "governs:\n  concept: x\n  live_truth:\n",
+        ] {
+            let err = decl(bad).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("must be a string or a list of strings"),
+                "{bad}: {err}"
+            );
+        }
     }
 
     #[test]
