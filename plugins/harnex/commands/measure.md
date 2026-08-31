@@ -2,7 +2,7 @@
 description: Read your own Claude Code transcripts and report what you delegated and how it went, what you leak every session, and whether your harness is an asset — with one thing to change
 argument-hint: "[--since <rfc3339>] [--project <dir>] [--sample <n>]"
 disable-model-invocation: true
-allowed-tools: ["Bash(harnex:*)", "Read", "Grep", "Task", "AskUserQuestion"]
+allowed-tools: ["Bash(harnex *)", "Read", "Grep", "Task", "AskUserQuestion"]
 ---
 
 Report how the operator works with Claude Code, from the transcripts Claude
