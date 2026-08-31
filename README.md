@@ -153,6 +153,8 @@ harnex check [--since <ref>] [--fix]                  # unified validation gate
 harnex audit [--plugin-root <path>]                   # generated harness vs. its composition
 
 harnex evidence verify <files...>
+harnex evidence record --id <id> [--payload <json>]   # advisory baseline:
+                                                      # digests inputs + engine now
 harnex telemetry append --kind K --payload <json>
 harnex telemetry count --kind K [--since <rfc3339>]
 harnex telemetry report [--kind K] [--window 1,7,30,90]
