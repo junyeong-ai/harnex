@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/check.rs"
+governs:
+  concept: the unified validation gate
+  live_truth:
+    - crates/harness-core/src/check.rs
 ---
 
 # check — unified validation gate

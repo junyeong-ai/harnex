@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/audit/**"
+governs:
+  concept: the harness-engineering compliance gate
+  live_truth:
+    - crates/harness-core/src/audit
 ---
 
 # audit — harness-engineering compliance gate

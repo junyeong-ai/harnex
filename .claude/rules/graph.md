@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/graph/**"
+governs:
+  concept: the read-only nodex bridge
+  live_truth:
+    - crates/harness-core/src/graph
 ---
 
 # graph — nodex bridge

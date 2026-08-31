@@ -3,6 +3,10 @@ paths:
   - "crates/harness-core/src/plan.rs"
   - "crates/harness-cli/src/commands/plan.rs"
   - "plugins/harnex/templates/patterns/spec-workflow/**"
+governs:
+  concept: the spec-workflow review grammar computer
+  live_truth:
+    - crates/harness-core/src/plan.rs
 ---
 
 # plan — the spec-workflow review grammar's computer

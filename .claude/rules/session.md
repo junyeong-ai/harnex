@@ -2,6 +2,10 @@
 paths:
   - "crates/harness-core/src/session/**"
   - "crates/harness-cli/src/commands/session.rs"
+governs:
+  concept: transcript reading
+  live_truth:
+    - crates/harness-core/src/session
 ---
 
 # session — reading Claude Code's own transcripts

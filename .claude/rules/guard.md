@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/guard/**"
+governs:
+  concept: the Claude Code hook adapter and Stop auditor
+  live_truth:
+    - crates/harness-core/src/guard
 ---
 
 # guard — Claude Code runtime adapter

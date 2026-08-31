@@ -5,6 +5,11 @@ paths:
   - "crates/harness-core/tests/scaffold_manifest.rs"
   - "crates/harness-core/tests/plugin_scaffold_validates.rs"
   - "crates/harness-core/tests/adopted_scaffold_matches_templates.rs"
+governs:
+  concept: the composition manifest and its guards
+  live_truth:
+    - plugins/harnex/templates/scaffold.toml
+    - crates/harness-core/src/scaffold.rs
 ---
 
 # scaffold — the composition manifest

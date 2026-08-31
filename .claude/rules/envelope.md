@@ -2,6 +2,11 @@
 paths:
   - "crates/harness-cli/src/**"
   - "crates/harness-core/src/envelope.rs"
+governs:
+  concept: the JSON envelope contract every command emits
+  live_truth:
+    - crates/harness-core/src/envelope.rs
+    - crates/harness-cli/src
 ---
 
 # JSON envelope

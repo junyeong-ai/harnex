@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/telemetry/**"
+governs:
+  concept: the append-only telemetry ledger
+  live_truth:
+    - crates/harness-core/src/telemetry
 ---
 
 # Telemetry closed schema

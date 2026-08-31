@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/codegen/**"
+governs:
+  concept: sentinel-block source-to-target sync
+  live_truth:
+    - crates/harness-core/src/codegen
 ---
 
 # codegen — sentinel-block sync
