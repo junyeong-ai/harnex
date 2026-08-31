@@ -2,7 +2,7 @@
 id: completeness
 applies_to: [code, prose, spec, plan]
 anchors:
-  - constitution
+  - rule:constitution
 ---
 
 # Completeness

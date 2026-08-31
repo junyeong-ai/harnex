@@ -20,14 +20,18 @@ an observation is the blank-page problem in disguise.
   from dependencies (next-intl, react-i18n, gettext, fluent). Pre-fill
   register and terminology with observations.
 - `review-lenses` — auto-link lens `anchors:` to the project's existing
-  `.claude/rules/` files. Customize each lens's `applies_to:` based on what
-  file types the project has. Name this project's **re-runnable authorities**
-  in the rule: a finding may only be auto-fixed when something other than the
-  loop confirms it, so the list of lint codes, named gates and structural
-  tests is what decides the fix/report split. Take it from the enforcer sweep
-  (exploration Phase 2) — it is the same list. Name where the loop's
-  convergence record lands when review is not spec-bound (convergence.md
-  § The record outlives the context needs a destination this project owns).
+  `.claude/rules/` files, as `rule:<slug>`. Customize each lens's
+  `applies_to:` based on what file types the project has. Name this project's
+  **authorities** in the rule's source column: a finding may only be
+  auto-fixed when something other than the loop confirms it, so the lint
+  codes, named gates and structural tests are what decide the fix/report
+  split. Take them from the enforcer sweep (exploration Phase 2) — it is the
+  same list, and it also supplies the **bookend trigger's project signals**
+  (a migration surface, an auth path, a generated-file guard). Name the
+  **fast gate command** the loop's verify step runs and grant it in the
+  review skill's `allowed-tools`. Name where the loop's convergence record
+  lands when review is not spec-bound (convergence.md § The record outlives
+  the context needs a destination this project owns).
 - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
   If found, adapt to the existing layout instead of overwriting. Drop any
   phase whose artifact nobody on this project would review and no later

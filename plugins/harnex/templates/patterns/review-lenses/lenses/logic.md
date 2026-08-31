@@ -2,7 +2,7 @@
 id: logic
 applies_to: [code]
 anchors:
-  - constitution
+  - rule:constitution
 ---
 
 # Logic
