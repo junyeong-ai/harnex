@@ -113,9 +113,29 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             // Any other parse error is an invalid invocation: emit one error
-            // envelope on stdout and exit 2 (runtime failure).
+            // envelope on stdout and exit 2 (runtime failure). The message is
+            // assembled from the error's typed context rather than its Display,
+            // which renders multi-line usage text unfit for a one-line envelope
+            // field — kind alone names neither the argument nor the value.
+            use clap::error::{ContextKind, ContextValue};
+            let mut message = format!("invalid arguments: {}", e.kind());
+            match e.get(ContextKind::InvalidArg) {
+                Some(ContextValue::String(arg)) => {
+                    message.push_str(&format!(" — {arg}"));
+                }
+                Some(ContextValue::Strings(args)) => {
+                    message.push_str(&format!(" — {}", args.join(", ")));
+                }
+                _ => {}
+            }
+            if let Some(ContextValue::String(value)) = e.get(ContextKind::InvalidValue) {
+                message.push_str(&format!(", got '{value}'"));
+            }
+            if let Some(ContextValue::Strings(valid)) = e.get(ContextKind::ValidValue) {
+                message.push_str(&format!(" (expected one of: {})", valid.join(", ")));
+            }
             let err = Error::ConfigInvalid {
-                message: format!("invalid arguments: {}", e.kind()),
+                message,
                 location: None,
             };
             let _ = envelope::write_error(&mut out, &err);
