@@ -24,6 +24,20 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   WorktreeCreate, WorktreeRemove, TaskCreated, TaskCompleted, TeammateIdle,
   Elicitation, ElicitationResult.
   <!-- harnex-managed:end spec-facts-hook-events -->
+- **Matcher grammar is measured from the binary, not documented.** The docs
+  state neither charsets nor separators. Measured (2.1.220): on the tool and
+  lifecycle events most matchers ride, an exact-string matcher's charset is
+  `[a-zA-Z0-9_|, -]` and it splits on `|` AND `,`, with tokens trimmed and
+  empty alternatives dropped — `startup, resume` fires for both. A matcher
+  outside its event's charset is an UNANCHORED regex over the query. A
+  hyphen is inside the charset, so `mcp__claude-in-chrome` is an exact
+  string that equals no tool — a no-op, not a regex. Matcher tokens pass a
+  static alias substitution: `Task` is replaced by `Agent` before compare,
+  so a `Task` matcher fires for the renamed tool and never for one literally
+  named Task. Which events take the wide charset is a measured closed set —
+  owner `crates/harness-core/src/validate/settings.rs::KNOWN_MATCHER_EVENTS`
+  (deliberately unmirrored here: no page states it, so re-measurement
+  against the installed binary, not a doc re-read, is what moves it).
 - **`SessionStart` matcher selects how the session started**, and three of the
   five sources are context-loss boundaries — after `compact`, `clear` or
   `fork` the model holds none of what the hook injected the first time. A
