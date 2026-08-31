@@ -2,6 +2,14 @@
 paths:
   - ".claude/lenses/**"
   - ".claude/skills/**"
+governs:
+  concept: the review vocabulary and the skills that judge by it
+  live_truth:
+    - .claude/lenses
+    - .claude/skills/review
+    - .claude/skills/critique
+    - .claude/skills/design-review
+    - .claude/agents/reviewer.md
 ---
 
 # Review lens framework

@@ -1,6 +1,10 @@
 ---
 paths:
-  - "<!-- harnex-fill: the glob this rule governs, from the verb's argument -->"
+  - "<!-- harnex-fill: the glob that loads this rule, from the verb's argument -->"
+governs:
+  concept: "<!-- harnex-fill: what this rule is truth about, as a noun phrase -->"
+  live_truth:
+    - "<!-- harnex-fill: the literal paths this rule describes — where its enforcers live. Loading (paths) and describing (live_truth) differ where the mechanism earns its place -->"
 ---
 
 # <!-- harnex-fill: what this rule governs, as a noun phrase -->

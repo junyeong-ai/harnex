@@ -2,6 +2,11 @@
 paths:
   - "./hooks/check-pre-write.*"
   - ".claude/settings.json"
+governs:
+  concept: write-time convention enforcement
+  live_truth:
+    - hooks/check-pre-write.sh
+    - .claude/settings.json
 ---
 
 # Write guard — PreToolUse enforcement

@@ -2,6 +2,12 @@
 paths:
   - ".claude/rules/**"
   - ".claude/skills/**"
+governs:
+  concept: when a harness artifact is added, promoted, or retired
+  live_truth:
+    - harness.toml
+    - .claude/rules
+    - .claude/skills
 ---
 
 # Governance — when to add, promote, or retire a harness artifact

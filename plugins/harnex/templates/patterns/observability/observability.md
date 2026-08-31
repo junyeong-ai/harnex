@@ -3,6 +3,11 @@ paths:
   - "**/*.py"
   - "**/*.ts"
   - "**/*.tsx"
+governs:
+  concept: span naming and telemetry discipline
+  live_truth:
+    - src
+  # <!-- harnex-fill: re-point live_truth at this project's real source roots -->
 ---
 
 # Observability discipline

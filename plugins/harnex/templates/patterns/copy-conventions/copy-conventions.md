@@ -4,6 +4,11 @@ paths:
   - "**/*.json"
   - "**/*.ts"
   - "**/*.tsx"
+governs:
+  concept: user-facing copy register and terminology
+  live_truth:
+    - src
+  # <!-- harnex-fill: re-point live_truth at this project's real source roots -->
 ---
 
 # Copy and communication conventions

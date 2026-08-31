@@ -1,6 +1,10 @@
 ---
 paths:
   - ".github/**"
+governs:
+  concept: pull request metadata
+  live_truth:
+    - .github/pull_request_template.md
 ---
 
 # Pull request conventions

@@ -1,6 +1,11 @@
 ---
 paths:
   - "**/*.rs"
+governs:
+  concept: rust source conventions
+  live_truth:
+    - src
+  # <!-- harnex-fill: re-point live_truth at this project's real source roots -->
 ---
 
 # Rust conventions

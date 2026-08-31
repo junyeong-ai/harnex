@@ -4,6 +4,11 @@ paths:
   - "**/*.ts"
   - "**/*.tsx"
   - "**/*.rs"
+governs:
+  concept: deprecation markers and their sunsets
+  live_truth:
+    - src
+  # <!-- harnex-fill: re-point live_truth at this project's real source roots -->
 ---
 
 # Deprecation discipline

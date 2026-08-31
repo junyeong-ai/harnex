@@ -4,6 +4,11 @@ paths:
   - "**/*.ts"
   - "**/*.tsx"
   - "**/*.rs"
+governs:
+  concept: the team naming vocabulary
+  live_truth:
+    - src
+  # <!-- harnex-fill: re-point live_truth at this project's real source roots -->
 ---
 
 # Naming decisions
