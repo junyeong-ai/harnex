@@ -263,10 +263,11 @@ change is not why; `changed` means one moved and the operator can ask git
 which; `unknown` means a window did not record what it ran under. A delta
 reported without both is an association presented as an effect.
 
-Then the delta from `baseline diff`, or "first measurement" — never zeros.
-The pair is the ledger's two most recent windows of this scope: the window
-being measured is not saved yet, so its own delta is the next run's §0, as
-§7 says. Where the ledger holds windows of more than one scope, name the
+Then the delta from `baseline diff` — never zeros, and with fewer than two
+saved windows of this scope there is no pair yet: say "first measurement" on
+the first run and "no comparable pair yet" on the second. The pair is the
+ledger's two most recent windows of this scope: the window being measured is
+not saved yet, so its own delta is the next run's §0, as §7 says. Where the ledger holds windows of more than one scope, name the
 pair — `--from` and `--to`, by the labels trend returned — because a bare
 diff takes the ledger's last two windows whatever scope they belong to.
 Where `change` is null on every metric the window is too thin to compare: say
@@ -457,8 +458,8 @@ of its sessions ran under, and the next diff answers `harness_change` about
 exactly the change it is testing from a mislabeled window. The order is:
 save, then apply, then commit — the window that tests the change is the next
 one, and it starts after this save. A tree already carrying unrelated
-uncommitted harness changes still records `uncommitted`, and every comparison
-against that window answers `unknown`.
+uncommitted harness changes still records `uncommitted`, and a comparison
+against that window cannot answer `unchanged`.
 
 The observations §5 wrote are project files whatever the prescription's tag —
 commit them this cycle, or the recurrence they exist to prove stays on one
