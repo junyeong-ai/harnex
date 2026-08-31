@@ -12,6 +12,7 @@ use tempfile::TempDir;
 #[test]
 fn rule_validator_flags_missing_paths_frontmatter() {
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 200,
         max_scoped_lines: None,
         always_loaded_slugs: vec!["constitution".into()],
@@ -29,6 +30,7 @@ fn rule_validator_flags_missing_paths_frontmatter() {
 #[test]
 fn rule_validator_accepts_constitution_without_paths() {
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 200,
         max_scoped_lines: None,
         always_loaded_slugs: vec!["constitution".into()],
@@ -49,6 +51,7 @@ fn long_body(lines: usize) -> String {
 #[test]
 fn rule_validator_flags_overlong_always_loaded_rule() {
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 5,
         max_scoped_lines: None,
         always_loaded_slugs: vec!["constitution".into()],
@@ -65,6 +68,7 @@ fn rule_validator_flags_overlong_always_loaded_rule() {
 #[test]
 fn rule_validator_accepts_long_path_scoped_rule_by_default() {
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 5,
         max_scoped_lines: None,
         always_loaded_slugs: vec![],
@@ -81,6 +85,7 @@ fn rule_validator_accepts_long_path_scoped_rule_by_default() {
 #[test]
 fn rule_validator_flags_overlong_path_scoped_rule_when_opted_in() {
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 200,
         max_scoped_lines: Some(5),
         always_loaded_slugs: vec![],
@@ -1440,6 +1445,7 @@ fn rule_validator_treats_a_paths_key_with_no_globs_as_always_loaded() {
     // — reading key presence alone would exempt it from both the declaration
     // requirement and the always-loaded budget.
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 5,
         max_scoped_lines: None,
         always_loaded_slugs: vec![],
@@ -1463,6 +1469,7 @@ fn rule_validator_treats_a_paths_key_with_no_globs_as_always_loaded() {
 #[test]
 fn rule_validator_flags_a_paths_value_that_is_not_globs() {
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 200,
         max_scoped_lines: None,
         always_loaded_slugs: vec![],
@@ -1494,6 +1501,7 @@ fn rule_validator_flags_a_paths_glob_that_does_not_compile() {
     // Unflagged, the rule never loads AND is exempted from the always-loaded
     // budget on the strength of a pattern that scopes nothing.
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 200,
         max_scoped_lines: None,
         always_loaded_slugs: vec![],
@@ -1512,6 +1520,7 @@ fn rule_validator_slug_distinguishes_rules_in_different_directories() {
     // Discovery is recursive, so a bare file stem would let one entry exempt
     // every same-named rule in the tree. These are two different rules.
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 200,
         max_scoped_lines: None,
         always_loaded_slugs: vec!["style".into()],
@@ -1531,6 +1540,7 @@ fn rule_validator_slug_distinguishes_rules_in_different_directories() {
     );
 
     let policy = RulesPolicy {
+        require_governs: false,
         max_lines: 200,
         max_scoped_lines: None,
         always_loaded_slugs: vec!["vendor/style".into()],
@@ -1541,4 +1551,55 @@ fn rule_validator_slug_distinguishes_rules_in_different_directories() {
         declared.is_empty(),
         "the nested rule is declared by its path below the rules dir: {declared:?}"
     );
+}
+
+#[test]
+fn rule_validator_requires_governs_on_path_scoped_rules_only() {
+    let policy = RulesPolicy {
+        require_governs: true,
+        max_lines: 200,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec!["constitution".into()],
+    };
+    let v = RuleValidator::new(&policy);
+
+    let scoped_bare = "---\npaths: [\"src/**\"]\n---\n# Rule\n";
+    let findings = v.validate_text(scoped_bare, Path::new(".claude/rules/naming.md"));
+    assert!(
+        findings.iter().any(|f| f.slug == "rule-missing-governs"),
+        "path-scoped without governs must be flagged: {findings:?}"
+    );
+
+    let scoped_declared =
+        "---\npaths: [\"src/**\"]\ngoverns:\n  concept: naming\n  live_truth: src\n---\n# Rule\n";
+    assert!(
+        v.validate_text(scoped_declared, Path::new(".claude/rules/naming.md"))
+            .is_empty()
+    );
+
+    // Always-loaded: exempt from the requirement, whether declaring or not.
+    assert!(
+        v.validate_text("# Articles\n", Path::new(".claude/rules/constitution.md"))
+            .is_empty()
+    );
+}
+
+#[test]
+fn rule_validator_shape_checks_a_declared_governs_regardless_of_opt_in() {
+    let policy = RulesPolicy {
+        require_governs: false,
+        max_lines: 200,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec![],
+    };
+    let v = RuleValidator::new(&policy);
+    let md = "---\npaths: [\"src/**\"]\ngoverns:\n  concept: naming\n  live_truth: 'src/*'\n---\n";
+    let findings = v.validate_text(md, Path::new(".claude/rules/naming.md"));
+    let finding = findings
+        .iter()
+        .find(|f| f.slug == "rule-governs-invalid")
+        .unwrap_or_else(|| panic!("expected rule-governs-invalid: {findings:?}"));
+    assert_eq!(finding.severity, Severity::Major);
+    // Malformed is still declared — one defect, one finding.
+    assert!(!findings.iter().any(|f| f.slug == "rule-missing-governs"));
 }

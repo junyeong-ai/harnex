@@ -346,6 +346,14 @@ pub struct RulesPolicy {
     /// Rule slugs that may omit `paths:` frontmatter (always-loaded).
     #[serde(default)]
     pub always_loaded_slugs: Vec<String>,
+    /// Opt-in: every path-scoped rule must carry a `governs:` declaration
+    /// (`harness_core::governs`). Always-loaded rules are exempt — the
+    /// declaration's consumers act where a rule crosses a load boundary,
+    /// which a rule in every context never does, and forcing a declaration
+    /// onto a rule whose truth is not in the tree invites a dishonest one.
+    /// A declaration present on any rule is shape-validated regardless.
+    #[serde(default)]
+    pub require_governs: bool,
 }
 
 fn default_rule_max_lines() -> usize {
