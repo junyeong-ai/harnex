@@ -7,9 +7,17 @@
 //! field. Both read as a guardrail and enforce nothing, which is the worst
 //! failure a deny rule has — the operator believes a path is closed.
 //!
+//! A second failure reads: a `Bash` body whose reach differs from what its
+//! spelling reads as to a person. The legacy `:*` suffix reads as a
+//! namespace glob and matches as a word-boundary prefix, and a wildcard
+//! matches across whitespace so literal text after one anchors only the
+//! command's end (spec-facts § Bash matching, measured). Both function —
+//! the operator just holds a different rule than the one they wrote.
+//!
 //! Every surface that writes, generates, or inspects a rule asks
-//! [`PermissionRule::effect`] rather than matching on the string, so the
-//! grammar has one owner and a rule that cannot be honored is refused where
+//! [`PermissionRule::effect`] and [`PermissionRule::misleading`] rather
+//! than matching on the string, so the grammar has one owner and a rule
+//! that cannot be honored — or reads as one it is not — is refused where
 //! it is declared instead of shipping into a settings file.
 //!
 //! ## What this module refuses to do
@@ -110,6 +118,134 @@ impl InertRule {
     }
 }
 
+/// Which permissions array a rule was authored in. A spelling can be a
+/// defect in one direction and the fail-safe idiom in another: an allow
+/// that reaches further than it reads grants silently, while a deny that
+/// reaches further still refuses — which is the direction the baseline
+/// profile writes deliberately.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleDirection {
+    Allow,
+    Ask,
+    Deny,
+}
+
+/// A rule a permission check reads, whose reach differs from what the
+/// spelling reads as to a person. Both shapes are measured behaviour of the
+/// matcher (spec-facts § Bash matching): the rule functions, so
+/// [`RuleEffect`] calls it consulted — this is the second question, asked
+/// beside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MisleadingRule {
+    pub reason: MisleadingReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MisleadingReason {
+    /// The body ends in `:*`, which reads as a namespace glob and matches as
+    /// a word-boundary prefix: `Bash(pnpm gate:*)` grants `pnpm gate` and
+    /// `pnpm gate <args>`, never `pnpm gate:fast`.
+    LegacyColonWildcard { prefix: String },
+    /// Literal text follows a wildcard. The wildcard matches across
+    /// whitespace, so that text anchors the end of the command and nothing
+    /// else — the middle takes any arguments, options included.
+    TailAfterWildcard { tail: String },
+}
+
+impl MisleadingRule {
+    /// How the rule's reach differs from its reading.
+    pub fn reason_text(&self) -> String {
+        match &self.reason {
+            MisleadingReason::LegacyColonWildcard { prefix } => format!(
+                "the legacy `:*` suffix is a word-boundary prefix, not a namespace glob — it \
+                 grants `{prefix}` and `{prefix} <args>`, never `{prefix}:<suffix>`"
+            ),
+            MisleadingReason::TailAfterWildcard { tail } => format!(
+                "the wildcard matches across whitespace, so `{tail}` anchors the end of the \
+                 command and nothing else — the middle takes any arguments, options included"
+            ),
+        }
+    }
+
+    /// What to write in its place.
+    pub fn hint(&self) -> String {
+        match &self.reason {
+            MisleadingReason::LegacyColonWildcard { prefix } => format!(
+                "write `{prefix} *` for the word-boundary prefix it matches as, or `{prefix}*` \
+                 for the namespace glob it reads as"
+            ),
+            MisleadingReason::TailAfterWildcard { .. } => {
+                "state the command exactly, or drop the rule so it prompts".to_string()
+            }
+        }
+    }
+}
+
+/// A run of literal text, or a wildcard operator between runs, in a Bash
+/// rule body. `**/` runs collapse into the `/` that opens them and a lone
+/// `*` stands alone, mirroring the matcher's compiler — a character-wise
+/// reader would count the second star of `**` as text placed after a
+/// wildcard, which is exactly the misreading this tokenizer exists to avoid.
+enum BodyToken {
+    Literal(String),
+    Wildcard,
+}
+
+fn tokenize_bash_body(body: &str) -> Vec<BodyToken> {
+    let collapsed: String = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chars: Vec<char> = collapsed.chars().collect();
+    let mut tokens = Vec::new();
+    let mut literal = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' && matches!(chars.get(i + 1), Some('*') | Some('\\')) {
+            literal.push(chars[i + 1]);
+            i += 2;
+            continue;
+        }
+        if chars[i] == '/' {
+            let mut end = i + 1;
+            while chars[end..].starts_with(&['*', '*', '/']) {
+                end += 3;
+            }
+            if end > i + 1 {
+                if !literal.is_empty() {
+                    tokens.push(BodyToken::Literal(std::mem::take(&mut literal)));
+                }
+                tokens.push(BodyToken::Wildcard);
+                i = end;
+                continue;
+            }
+        }
+        if chars[i] == '*' {
+            if !literal.is_empty() {
+                tokens.push(BodyToken::Literal(std::mem::take(&mut literal)));
+            }
+            tokens.push(BodyToken::Wildcard);
+            i += 1;
+            continue;
+        }
+        literal.push(chars[i]);
+        i += 1;
+    }
+    if !literal.is_empty() {
+        tokens.push(BodyToken::Literal(literal));
+    }
+    tokens
+}
+
+/// The literal text a body places after its first wildcard, if any does.
+fn tail_after_wildcard(body: &str) -> Option<String> {
+    let tokens = tokenize_bash_body(body);
+    let first = tokens
+        .iter()
+        .position(|t| matches!(t, BodyToken::Wildcard))?;
+    tokens[first + 1..].iter().find_map(|t| match t {
+        BodyToken::Literal(text) => Some(text.trim().to_string()),
+        BodyToken::Wildcard => None,
+    })
+}
+
 /// A parsed permission rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PermissionRule<'a> {
@@ -163,6 +299,36 @@ impl<'a> PermissionRule<'a> {
             });
         }
         RuleEffect::Consulted
+    }
+
+    /// Whether the rule's reach differs from what its spelling reads as.
+    ///
+    /// Asked beside [`Self::effect`], never instead of it: a rule no check
+    /// reads has nothing to mislead about, so an inert rule answers `None`
+    /// here and the caller surfaces the inertness. Only `Bash` bodies carry
+    /// the two measured shapes. The tail check runs on `Allow` only — a
+    /// deny or an ask that reaches further than it reads still refuses or
+    /// still asks, and the baseline deny writes that shape deliberately.
+    pub fn misleading(&self, direction: RuleDirection) -> Option<MisleadingRule> {
+        if self.tool != "Bash" || self.effect() != RuleEffect::Consulted {
+            return None;
+        }
+        let body = self.specifier?;
+        if let Some(prefix) = body.strip_suffix(":*") {
+            return Some(MisleadingRule {
+                reason: MisleadingReason::LegacyColonWildcard {
+                    prefix: prefix.to_string(),
+                },
+            });
+        }
+        if direction == RuleDirection::Allow
+            && let Some(tail) = tail_after_wildcard(body)
+        {
+            return Some(MisleadingRule {
+                reason: MisleadingReason::TailAfterWildcard { tail },
+            });
+        }
+        None
     }
 
     /// The `Bash` command this rule governs, stripped of the equivalent
@@ -354,6 +520,103 @@ mod tests {
                 .bash_base()
                 .as_deref(),
             Some("curl https://api")
+        );
+    }
+
+    fn misleads(rule: &str, direction: RuleDirection) -> Option<MisleadingReason> {
+        PermissionRule::parse(rule)
+            .misleading(direction)
+            .map(|m| m.reason)
+    }
+
+    #[test]
+    fn the_legacy_colon_wildcard_misleads_in_every_direction() {
+        // Measured: `X:*` is a word-boundary prefix — `Bash(pnpm gate:*)`
+        // grants `pnpm gate <args>` and never reaches `pnpm gate:fast`. The
+        // spelling misreads whichever array carries it: an allow grants other
+        // than it says, a deny leaves open what it reads as closing.
+        for direction in [
+            RuleDirection::Allow,
+            RuleDirection::Ask,
+            RuleDirection::Deny,
+        ] {
+            assert_eq!(
+                misleads("Bash(pnpm gate:*)", direction),
+                Some(MisleadingReason::LegacyColonWildcard {
+                    prefix: "pnpm gate".into()
+                }),
+                "{direction:?}"
+            );
+        }
+        let m = PermissionRule::parse("Bash(pnpm gate:*)")
+            .misleading(RuleDirection::Allow)
+            .unwrap();
+        assert!(m.reason_text().contains("never `pnpm gate:<suffix>`"));
+        assert!(m.hint().contains("`pnpm gate *`") && m.hint().contains("`pnpm gate*`"));
+    }
+
+    #[test]
+    fn a_tail_after_a_wildcard_misleads_only_where_it_grants() {
+        // Measured: a wildcard matches across whitespace, so the literal
+        // after one anchors only the end — `Bash(pnpm --filter * dev)` reads
+        // as one package name and grants `pnpm --filter x exec … dev`. A deny
+        // spelled that way reaches further and still refuses, which is the
+        // fail-safe direction the baseline writes deliberately.
+        assert_eq!(
+            misleads("Bash(pnpm --filter * dev)", RuleDirection::Allow),
+            Some(MisleadingReason::TailAfterWildcard { tail: "dev".into() })
+        );
+        assert_eq!(
+            misleads("Bash(pnpm --filter * dev)", RuleDirection::Deny),
+            None
+        );
+        assert_eq!(
+            misleads("Bash(pnpm --filter * dev)", RuleDirection::Ask),
+            None
+        );
+        assert_eq!(
+            misleads("Bash(gcloud * projects delete *)", RuleDirection::Deny),
+            None
+        );
+    }
+
+    #[test]
+    fn the_sanctioned_spellings_mislead_nowhere() {
+        // Trailing star (the prefix-plus-arguments idiom), an exact command,
+        // a leading wildcard whose tail is its whole point of reference on
+        // the deny side, and an escaped star that is literal text.
+        for rule in [
+            "Bash(git commit -m *)",
+            "Bash(npm run build)",
+            "Bash(curl https://api *)",
+            "Bash(echo \\* rest)",
+        ] {
+            assert_eq!(misleads(rule, RuleDirection::Allow), None, "{rule}");
+        }
+        assert_eq!(misleads("Read(.env)", RuleDirection::Allow), None);
+        assert_eq!(misleads("Bash", RuleDirection::Allow), None);
+    }
+
+    #[test]
+    fn an_inert_rule_is_inert_before_it_is_misleading() {
+        // `Bash(command:*)` ends in `:*` AND names the primary content
+        // field; the check no reader consults is the finding, and reporting
+        // both would prescribe two rewrites for one rule.
+        assert!(matches!(effect("Bash(command:*)"), RuleEffect::Inert(_)));
+        assert_eq!(misleads("Bash(command:*)", RuleDirection::Allow), None);
+    }
+
+    #[test]
+    fn a_globstar_run_reads_as_one_wildcard() {
+        // The second star of `**` and the slashes of a `/**/` run are the
+        // operator's own spelling, not text placed after a wildcard — while
+        // a literal beyond the run still anchors only the end.
+        assert_eq!(misleads("Bash(cat /logs/**)", RuleDirection::Allow), None);
+        assert_eq!(
+            misleads("Bash(cat /logs/**/latest)", RuleDirection::Allow),
+            Some(MisleadingReason::TailAfterWildcard {
+                tail: "latest".into()
+            })
         );
     }
 

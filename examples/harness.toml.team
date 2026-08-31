@@ -106,7 +106,7 @@ name = "ALLOWED_KINDS"
 
 [policy.permissions]
 profiles = ["baseline", "git-strict", "gcp-strict"]
-extra_allow = ["Bash(pnpm gate:*)", "Bash(harness *)"]
+extra_allow = ["Bash(pnpm gate *)", "Bash(harness *)"]
 extra_deny = []
 
 [[policy.versions]]

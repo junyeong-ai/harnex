@@ -27,5 +27,8 @@ pub use permissions::{
     PermissionsBlock,
 };
 pub use profiles::PermissionProfile;
-pub use rule::{InertReason, InertRule, PermissionRule, RuleEffect};
+pub use rule::{
+    InertReason, InertRule, MisleadingReason, MisleadingRule, PermissionRule, RuleDirection,
+    RuleEffect,
+};
 pub use versions::{VersionCheckOutcome, VersionChecker};

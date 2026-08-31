@@ -541,6 +541,32 @@ mod tests {
         }
     }
 
+    /// And none may reach other than it reads: a shipped rule is copied as an
+    /// idiom, so a trap spelling in a profile propagates into every harness
+    /// that adopts it.
+    #[test]
+    fn no_profile_rule_is_misleading() {
+        use crate::policy::RuleDirection;
+        for name in PermissionProfile::ALL {
+            let p = PermissionProfile::from_str(name).unwrap();
+            for (rules, direction) in [
+                (&p.allow, RuleDirection::Allow),
+                (&p.ask, RuleDirection::Ask),
+                (&p.deny, RuleDirection::Deny),
+            ] {
+                for rule in rules {
+                    if let Some(m) = PermissionRule::parse(rule).misleading(direction) {
+                        panic!(
+                            "profile '{name}' rule '{rule}' reaches other than it reads — {}; {}",
+                            m.reason_text(),
+                            m.hint()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn baseline_includes_code_execution_denies() {
         let p = baseline();

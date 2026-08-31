@@ -834,20 +834,43 @@ impl Config {
             // A rule Claude Code accepts and never consults is a guardrail the
             // runtime cannot honor: it merges into the generated settings,
             // reads as a floor, and enforces nothing.
-            for (field, rules) in [
-                ("[policy.permissions].extra_allow", &perms.extra_allow),
-                ("[policy.permissions].extra_ask", &perms.extra_ask),
-                ("[policy.permissions].extra_deny", &perms.extra_deny),
+            for (field, rules, direction) in [
+                (
+                    "[policy.permissions].extra_allow",
+                    &perms.extra_allow,
+                    crate::policy::RuleDirection::Allow,
+                ),
+                (
+                    "[policy.permissions].extra_ask",
+                    &perms.extra_ask,
+                    crate::policy::RuleDirection::Ask,
+                ),
+                (
+                    "[policy.permissions].extra_deny",
+                    &perms.extra_deny,
+                    crate::policy::RuleDirection::Deny,
+                ),
             ] {
                 for rule in rules {
-                    if let crate::policy::RuleEffect::Inert(inert) =
-                        crate::policy::PermissionRule::parse(rule).effect()
-                    {
+                    let parsed = crate::policy::PermissionRule::parse(rule);
+                    if let crate::policy::RuleEffect::Inert(inert) = parsed.effect() {
                         return Err(Error::PolicyRuleInert {
                             field,
                             rule: rule.clone(),
                             reason: inert.reason_text(),
                             hint: inert.hint(),
+                        });
+                    }
+                    // Refused where a settings file only advises: an extra is
+                    // intent declared for generation, and generating a rule
+                    // the operator will misread is a config the runtime
+                    // cannot honor as written.
+                    if let Some(misleading) = parsed.misleading(direction) {
+                        return Err(Error::PolicyRuleMisleading {
+                            field,
+                            rule: rule.clone(),
+                            reason: misleading.reason_text(),
+                            hint: misleading.hint(),
                         });
                     }
                 }
@@ -1630,15 +1653,43 @@ mod tests {
 
     #[test]
     fn accepts_extra_rules_a_permission_check_reads() {
+        // `Bash(find * -delete)` places text after a wildcard, which on the
+        // deny side is the sanctioned over-reach, not a trap.
         let src = r#"
             [meta]
             harnex_version = ">=0.1, <0.2"
             [policy.permissions]
             profiles = ["baseline"]
-            extra_deny = ["Edit(/vault/**)", "Bash(terraform apply *)", "Agent(model:opus)"]
-            extra_allow = ["Bash(pnpm gate:*)", "Write"]
+            extra_deny = ["Edit(/vault/**)", "Bash(terraform apply *)", "Agent(model:opus)", "Bash(find * -delete)"]
+            extra_allow = ["Bash(pnpm gate *)", "Write"]
         "#;
         parse(src).unwrap();
+    }
+
+    #[test]
+    fn rejects_extra_rules_that_reach_other_than_they_read() {
+        for (field, rule) in [
+            ("extra_allow", "Bash(pnpm gate:*)"),
+            ("extra_deny", "Bash(git push:*)"),
+            ("extra_allow", "Bash(pnpm --filter * dev)"),
+        ] {
+            let src = format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+                [policy.permissions]
+                profiles = ["baseline"]
+                {field} = ["{rule}"]
+            "#
+            );
+            let err = parse(&src).unwrap_err();
+            assert_eq!(
+                err.code(),
+                ErrorCode::PolicyRuleMisleading,
+                "{field} = {rule} must fail at load"
+            );
+            assert!(err.hint().is_some(), "{rule} must say what to write");
+        }
     }
 
     #[test]
