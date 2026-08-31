@@ -76,9 +76,11 @@ convention fix whose authority already re-runs is its own pin and needs no
 new one.
 
 A fix the project's own gate then rejects is undone, and the finding keeps
-its row unchanged — the vanish audit keys on the row's own text, so the
-attempt is recorded beneath it as an indented line of its own,
-`attempted: <what was tried> — broke <gate>`, never by editing the row. The
+its row unchanged — the vanish audit keys on the row's joined text, and an
+indented plain line beneath a bullet continues that text, so the attempt is
+recorded as its own bullet on the line beneath the row,
+`- attempted: <what was tried> — broke <gate>`, never by editing the row or
+hanging prose under it. The
 loop never re-attempts a recorded fix: without the record, the next pass
 re-derives the same fix from the same finding, breaks the same gate, and the
 pair rides to the cap. It surfaces the finding with the attempt beside it.

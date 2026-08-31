@@ -63,8 +63,10 @@ this addition surfaces, and one no lens can reach if the file is not open.
    restore can tell a fix from the operator's own uncommitted work in the
    same file, so nothing here touches git state. The finding keeps its row,
    with the attempt recorded beneath it (convergence.md § A fix is pinned or
-   it is surfaced); the other fixes stand. A transient flake retries once; a
-   second flake escalates that fix as judgment.
+   it is surfaced); the other fixes stand. An inverse that no longer applies
+   — a later fix overlapped it — escalates that fix as judgment rather than
+   improvising a wider undo. A transient flake retries once; a second flake
+   escalates that fix as judgment.
 6. **Grow the scope by what the fixes touched**, never shrink it.
 
 <!-- harnex-fill: the fast gate command step 5 runs — name it here and grant
@@ -72,11 +74,12 @@ this addition surfaces, and one no lens can reach if the file is not open.
 
 ## Termination
 
-Stop when a full pass leaves no Critical and no Blocker citing an authority.
-A judgment-cited Critical or Blocker is the one class the loop resolves by
-escalation rather than edit: surface it with the convergence report for the
-operator's disposition — re-walking cannot close what the loop is forbidden
-to fix, and counting it as failure makes convergence unreachable by
+Stop when a full pass leaves no Critical and no Blocker the loop may fix. A
+Critical or Blocker the loop may not fix — judgment-cited, or citing an
+authority the rule's column does not know — is resolved by escalation rather
+than edit: surface it with the convergence report for the operator's
+disposition, because re-walking cannot close what the loop is forbidden to
+fix, and counting it as failure makes convergence unreachable by
 construction. Major and Minor remain as signal and do not block.
 
 Also stop when the pass makes no progress, or at the iteration cap
