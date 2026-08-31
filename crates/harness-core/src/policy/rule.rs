@@ -320,10 +320,12 @@ impl<'a> PermissionRule<'a> {
         }
         let body = self.specifier?;
         if let Some(prefix) = body.strip_suffix(":*") {
-            // A bare `:*` has no prefix to be legacy for — the matcher reads
-            // it as an exact command, misleading nobody. The suffix still
-            // shadows the wildcard reading either way.
-            if prefix.is_empty() {
+            // A bare `:*` has no prefix to be legacy for, and a prefix
+            // spanning a line terminator is one the matcher's own legacy
+            // pattern cannot reach — both read as an exact command,
+            // misleading nobody. The suffix still shadows the wildcard
+            // reading either way.
+            if prefix.is_empty() || prefix.contains(['\n', '\r']) {
                 return None;
             }
             return Some(MisleadingRule {
@@ -624,6 +626,7 @@ mod tests {
         // nothing. A tail that trims to whitespace anchors nothing a reader
         // can see; the next visible literal, if any, is the tail.
         assert_eq!(misleads("Bash(:*)", RuleDirection::Allow), None);
+        assert_eq!(misleads("Bash(foo\nbar:*)", RuleDirection::Allow), None);
         assert_eq!(misleads("Bash(a * *)", RuleDirection::Allow), None);
         assert_eq!(
             misleads("Bash(a * * b)", RuleDirection::Allow),
