@@ -43,7 +43,10 @@ at `.claude-plugin/marketplace.json`. Install, then drive it by mode:
 
 `measure` is a command rather than a skill mode, and `session-judge` is the
 sub-agent it dispatches to read instruction text. Both need the oracle; without
-it they say so and stop rather than estimating from the logs.
+it they say so and stop rather than estimating from the logs. What a window
+finds recurring is written to the lifecycle observation ledger, so the
+promotion loop counts it across windows and `/harnex extend` is one decision
+away once it crosses the thresholds.
 
 It also comes last. `measure` answers whether a harness earns its place and
 what the operator repeats every session, so it has something to say once there
@@ -212,7 +215,9 @@ a git work tree — the commit the project's harness stood at and whether it had
 uncommitted changes. `baseline diff` answers `harness_change` from those, so a
 delta across an unchanged harness is not read as the effect of one. What counts
 as the harness is `[session] harness_paths`, defaulting to what Claude Code
-reads.
+reads. `baseline trend` lays every window of one scope side by side, one
+series per metric, and subtracts nothing — pairwise comparison, with its
+overlap and support guards, stays with `diff`.
 
 By default every command emits one JSON envelope on stdout; the explicit raw
 modes (`export schema --raw`, `completions --raw`) emit the bare artifact for
