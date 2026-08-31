@@ -33,10 +33,12 @@ pass lines (below), never memory — a convergence floor nothing computes is
 prose, and the measured failure of that shape is a gate that recorded eleven
 firings while its own rule said stop at the second.
 
-The comparison holds within the files both passes walked. A file the scope
-just grew carries its findings into the next pass's comparison, not this one:
-growth is how the loop finds work, and a guard that reads found work as
-regression teaches the loop not to look.
+Scope growth can raise the count with no fix failing — a grown file brings
+findings the previous pass never walked. The guard escalates anyway: the
+recorded counts carry no file attribution, a floor that guesses at
+attribution is not a floor, and escalation is a fail-safe rather than a
+verdict. Where the growth explains the rise, that is exactly what the
+acknowledgement records.
 
 ## The record outlives the context
 
@@ -73,11 +75,13 @@ sides agree over all inputs" and every fresh pass found the next case. A
 convention fix whose authority already re-runs is its own pin and needs no
 new one.
 
-A fix the project's own gate then rejects is reverted — and the finding keeps
-its row, marked `attempted: <what was tried> — broke <gate>`. The loop never
-re-attempts a marked fix: without the mark, the next pass re-derives the same
-fix from the same finding, breaks the same gate, and the pair rides to the
-cap. It surfaces the finding with the attempt beside it.
+A fix the project's own gate then rejects is undone, and the finding keeps
+its row unchanged — the vanish audit keys on the row's own text, so the
+attempt is recorded beneath it as an indented line of its own,
+`attempted: <what was tried> — broke <gate>`, never by editing the row. The
+loop never re-attempts a recorded fix: without the record, the next pass
+re-derives the same fix from the same finding, breaks the same gate, and the
+pair rides to the cap. It surfaces the finding with the attempt beside it.
 
 ## The cap
 
@@ -98,7 +102,9 @@ too big to review as one unit.
   skipped generated tree — say which, in the report. A bound nobody states
   reads as coverage.
 - **Never grade its own convergence.** The terminal pass is a fresh context,
-  and its absence is a loop that stopped, not a loop that converged.
+  and its absence is a loop that stopped, not a loop that converged — a
+  recorded `Terminal verify: skipped — <reason>` on a trivial diff is a
+  state, not an absence.
 
 ## Scaling the terminal pass
 

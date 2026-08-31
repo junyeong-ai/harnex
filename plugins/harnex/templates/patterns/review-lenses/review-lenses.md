@@ -88,8 +88,11 @@ What differs by subject is which direction of error costs more:
   authority carries `judgment` and is surfaced for the operator — the valve
   that stops a reviewer from coercing a design toward its own preferences.
 
-Side by side the two read as contradictory; they are one rule about asymmetric
-error cost, applied to two subjects.
+The subject is the question asked, not the file extension: a change set under
+review takes the first regime even for the spec and prose files inside it,
+because an auto-fixer acts on the result; a design not yet built takes the
+second. Side by side the two read as contradictory; they are one rule about
+asymmetric error cost, applied to two subjects.
 
 ## The bookend trigger
 
@@ -106,9 +109,13 @@ reach the same answer:
 <!-- harnex-fill: this project's own signals, from the enforcer sweep — a
      migration surface, an auth or tenancy path, a generated-file guard -->
 
-No signal firing means the forked pass is skipped and says so — an always-on
-forked pass over every change is scaffolding a self-correcting loop does not
-need. A design document that cannot be read fails closed: the pass fires.
+The signals read the surface the document itself declares — the files,
+modules, and contracts it names as what the work will touch. No signal firing
+means the forked pass is skipped and says so — an always-on forked pass over
+every change is scaffolding a self-correcting loop does not need. A document
+that cannot be read, or that declares no surface at all, fails closed: the
+pass fires, because a design that does not say what it touches cannot show
+that its blast radius is small.
 
 The mutating loop's own terminal pass is NOT gated on this trigger: an
 applied edit is its own blast radius, so verifying one is always warranted —
@@ -134,8 +141,11 @@ second one.
 ## Finding format
 
 ```
-- **[<severity>]** path:line — <what is wrong> [<rule-slug>|<lint-code>|<test>|judgment]
+- **[<severity>]** path:line — <what is wrong> [<authority-id>|judgment]
 ```
+
+The citation is a bare id from the authorities column — any source, its
+prefix left to lens anchors — or `judgment`.
 
 ## Default lenses
 
@@ -188,6 +198,6 @@ loop will walk it somewhere it has nothing to say.
 
 Body: a high-signal question, optionally with a few clarifying facets —
 never a linter-style exhaustive checklist. Findings reference an anchor's
-`<id>` (rule slug, not a file path) as the authority — no finding without a
-citation. On install, re-point or add anchors to the project's actual rules
-where they exist.
+bare `<id>` (an authority id per the column above, never a file path) — no
+finding without a citation. On install, re-point or add anchors to the
+project's actual rules where they exist.

@@ -4,6 +4,7 @@ when_to_use: "Invoke on findings-only asks — \"audit the diff\", \"critique th
 argument-hint: "<path> | <commit-range> | <glob>"
 context: fork
 agent: reviewer
+background: false
 ---
 
 # Critique
