@@ -162,6 +162,39 @@ pub struct EvidenceConfig {
     pub block_on_memory_only: bool,
     #[serde(default)]
     pub verifiers: Vec<VerifierDecl>,
+    /// Directory the recorded advisory baselines live in, project-relative.
+    #[serde(default = "default_advisory_dir")]
+    pub advisory_dir: String,
+    #[serde(default)]
+    pub advisories: Vec<AdvisoryDecl>,
+}
+
+fn default_advisory_dir() -> String {
+    "evidence".to_string()
+}
+
+/// One declared advisory: a measurement this toolkit never runs, whose
+/// recorded evidence it holds fresh. The advisory's own findings never gate;
+/// the freshness of its basis does.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AdvisoryDecl {
+    /// Kebab-case identity; the baseline lands at `<advisory_dir>/<id>.json`.
+    pub id: String,
+    /// Paths whose change invalidates the evidence — what the measurement
+    /// was ABOUT. Literal project-relative paths; a directory covers its
+    /// subtree.
+    pub inputs: Vec<String>,
+    /// Paths of the measuring instrument itself, digested apart from the
+    /// inputs so a stale finding can say which of the two moved. Identity,
+    /// never an alias: content is what is hashed.
+    #[serde(default)]
+    pub engine: Vec<String>,
+    /// Whether an unattended context (a push gate, `--unattended`) may block
+    /// on this entry's staleness. Only where the person being blocked can
+    /// re-measure in the same sitting; elsewhere staleness reports without
+    /// gating there.
+    #[serde(default)]
+    pub unattended_remeasure: bool,
 }
 
 fn default_provenance() -> String {
@@ -630,6 +663,61 @@ impl Config {
                 ),
                 location: None,
             });
+        }
+        if !crate::path_guard::literal_relative(&ev.advisory_dir) {
+            return Err(Error::ConfigInvalid {
+                message: format!(
+                    "[evidence] advisory_dir '{}' is not a literal project-relative path",
+                    ev.advisory_dir
+                ),
+                location: None,
+            });
+        }
+        let mut advisory_ids = HashSet::new();
+        for advisory in &ev.advisories {
+            if advisory.id.is_empty()
+                || !advisory
+                    .id
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "[[evidence.advisories]] id '{}' is not kebab-case — it names the \
+                         baseline file",
+                        advisory.id
+                    ),
+                    location: None,
+                });
+            }
+            if !advisory_ids.insert(&advisory.id) {
+                return Err(Error::ConfigInvalid {
+                    message: format!("duplicate [[evidence.advisories]] id: {}", advisory.id),
+                    location: None,
+                });
+            }
+            if advisory.inputs.is_empty() {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "[[evidence.advisories]] '{}' declares no inputs — evidence with no \
+                         inputs can never go stale, which is a claim, not a measurement",
+                        advisory.id
+                    ),
+                    location: None,
+                });
+            }
+            for path in advisory.inputs.iter().chain(&advisory.engine) {
+                if !crate::path_guard::literal_relative(path) {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "[[evidence.advisories]] '{}' path '{path}' is not a literal \
+                             project-relative path",
+                            advisory.id
+                        ),
+                        location: None,
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -1618,6 +1706,61 @@ mod tests {
         let err = parse(src).unwrap_err();
         assert_eq!(err.code(), ErrorCode::ConfigInvalid);
         assert!(err.to_string().contains("empty source_key"));
+    }
+
+    #[test]
+    fn rejects_advisory_declarations_the_auditor_cannot_honor() {
+        let base = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+
+            [evidence]
+            default_provenance = "internal"
+            [[evidence.verifiers]]
+            provenance = "internal"
+            strategy = "file-path-line"
+        "#;
+        for (fragment, expect) in [
+            (
+                "[[evidence.advisories]]\nid = \"Bad_Id\"\ninputs = [\"src\"]\n",
+                "not kebab-case",
+            ),
+            (
+                "[[evidence.advisories]]\nid = \"a\"\ninputs = [\"src\"]\n[[evidence.advisories]]\nid = \"a\"\ninputs = [\"src\"]\n",
+                "duplicate",
+            ),
+            (
+                "[[evidence.advisories]]\nid = \"a\"\ninputs = []\n",
+                "declares no inputs",
+            ),
+            (
+                "[[evidence.advisories]]\nid = \"a\"\ninputs = [\"../out\"]\n",
+                "literal project-relative",
+            ),
+            (
+                "[[evidence.advisories]]\nid = \"a\"\ninputs = [\"src\"]\nengine = [\"src/*\"]\n",
+                "literal project-relative",
+            ),
+        ] {
+            let err = parse(&format!("{base}\n{fragment}")).unwrap_err();
+            assert_eq!(err.code(), ErrorCode::ConfigInvalid, "{fragment}");
+            assert!(err.to_string().contains(expect), "{fragment}: {err}");
+        }
+        let err = parse(
+            r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+
+            [evidence]
+            default_provenance = "internal"
+            advisory_dir = "/abs"
+            [[evidence.verifiers]]
+            provenance = "internal"
+            strategy = "file-path-line"
+        "#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("advisory_dir"));
     }
 
     #[test]

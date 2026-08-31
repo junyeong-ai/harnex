@@ -18,6 +18,11 @@ pub struct CheckArgs {
     /// then re-run check. Exit code reflects the post-fix findings.
     #[arg(long, default_value_t = false)]
     pub fix: bool,
+    /// Declare an unattended context (a push gate, CI): advisory staleness
+    /// gates only where the entry declares re-measurement clearable in the
+    /// same sitting.
+    #[arg(long, default_value_t = false)]
+    pub unattended: bool,
 }
 
 pub fn run<W: Write>(args: CheckArgs, out: &mut W) -> Result<ExitCode> {
@@ -25,6 +30,9 @@ pub fn run<W: Write>(args: CheckArgs, out: &mut W) -> Result<ExitCode> {
     let mut check = ProjectChecker::new(&config, &working_dir);
     if let Some(since) = args.since.as_deref() {
         check = check.with_since(since);
+    }
+    if args.unattended {
+        check = check.with_unattended();
     }
     let gating_in = |findings: &[harness_core::envelope::Finding]| {
         findings.iter().any(|f| f.severity.fails_gate())

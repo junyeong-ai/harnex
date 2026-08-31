@@ -9,6 +9,8 @@ use tempfile::TempDir;
 
 fn block_strict_config() -> EvidenceConfig {
     EvidenceConfig {
+        advisory_dir: "evidence".into(),
+        advisories: Vec::new(),
         default_provenance: "memory-only".to_string(),
         block_on_memory_only: true,
         verifiers: vec![

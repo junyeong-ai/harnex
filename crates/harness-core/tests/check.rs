@@ -80,6 +80,7 @@ fn check_runs_every_enabled_validator() {
         "validate.output_styles",
         "validate.settings",
         "evidence",
+        "advisory",
         "governs",
         "policy.permissions",
     ] {
@@ -108,6 +109,7 @@ harnex_version = ">=0.1, <0.2"
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     assert!(outcome.run.is_empty());
     for expected in [
+        "advisory",
         "codegen",
         "evidence",
         "governs",
@@ -445,5 +447,65 @@ fn governs_truth_missing_survives_a_since_window_that_excludes_the_rule() {
             .any(|f| f.slug == "governs-truth-missing"),
         "windowed check missed the vanished truth: {:?}",
         outcome.findings
+    );
+}
+
+/// The advisory arm holds a declared measurement's basis fresh: undeclared
+/// evidence never passes as clean, and an unattended run downgrades exactly
+/// the entries whose re-measurement is not clearable in one sitting.
+#[test]
+fn check_gates_advisory_staleness_by_context() {
+    let tmp = TempDir::new().unwrap();
+    let toml = format!(
+        "{}\n[[evidence.advisories]]\nid = \"contrast\"\ninputs = [\"styles\"]\n",
+        minimal_config_toml()
+    );
+    let cfg = load_cfg(&tmp, &toml);
+    std::fs::create_dir_all(tmp.path().join("styles")).unwrap();
+    write(&tmp.path().join("styles/a.css"), "a { color: red }\n");
+
+    let unmeasured = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert!(
+        unmeasured
+            .findings
+            .iter()
+            .any(|f| f.slug == "advisory-unmeasured"),
+        "{:?}",
+        unmeasured.findings
+    );
+
+    harness_core::evidence::advisory::record(
+        tmp.path(),
+        cfg.evidence.as_ref().unwrap(),
+        "contrast",
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    assert!(
+        ProjectChecker::new(&cfg, tmp.path())
+            .run()
+            .unwrap()
+            .findings
+            .is_empty()
+    );
+
+    write(&tmp.path().join("styles/a.css"), "a { color: blue }\n");
+    let severity_of = |checker: ProjectChecker| {
+        checker
+            .run()
+            .unwrap()
+            .findings
+            .iter()
+            .find(|f| f.slug == "advisory-stale-input")
+            .map(|f| f.severity)
+            .unwrap()
+    };
+    assert_eq!(
+        severity_of(ProjectChecker::new(&cfg, tmp.path())),
+        harness_core::envelope::Severity::Major
+    );
+    assert_eq!(
+        severity_of(ProjectChecker::new(&cfg, tmp.path()).with_unattended()),
+        harness_core::envelope::Severity::Minor
     );
 }

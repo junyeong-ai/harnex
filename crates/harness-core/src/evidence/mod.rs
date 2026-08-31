@@ -16,6 +16,7 @@
 //! - Never silently downgrade severity. The block / warn distinction
 //!   derives from the configured `block_on_memory_only` flag.
 
+pub mod advisory;
 mod claim;
 pub mod context7;
 pub mod fetched;

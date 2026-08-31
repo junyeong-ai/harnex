@@ -79,6 +79,7 @@ pub struct ProjectChecker<'a> {
     config: &'a Config,
     working_dir: &'a Path,
     since: Option<&'a str>,
+    unattended: bool,
 }
 
 impl<'a> ProjectChecker<'a> {
@@ -87,11 +88,20 @@ impl<'a> ProjectChecker<'a> {
             config,
             working_dir,
             since: None,
+            unattended: false,
         }
     }
 
     pub fn with_since(mut self, since: &'a str) -> Self {
         self.since = Some(since);
+        self
+    }
+
+    /// Declare an unattended context — a push gate, CI. Advisory staleness
+    /// then gates only where the entry declares the re-measurement clearable
+    /// in the same sitting.
+    pub fn with_unattended(mut self) -> Self {
+        self.unattended = true;
         self
     }
 
@@ -219,6 +229,7 @@ impl<'a> ProjectChecker<'a> {
             &mut files_scanned,
         )?;
         self.run_governs(&mut findings, &mut run, &mut skipped)?;
+        self.run_advisories(&mut findings, &mut run, &mut skipped)?;
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
         self.run_permissions_audit(&changed, &mut findings, &mut run, &mut skipped)?;
 
@@ -441,6 +452,31 @@ impl<'a> ProjectChecker<'a> {
             findings.extend(auditor.audit_rule(&content, path));
         }
         run.push("governs".into());
+        Ok(())
+    }
+
+    /// Every declared advisory's recorded evidence still describes its
+    /// inputs. Ignores `--since` for the same reason the governs arm does:
+    /// staleness is created by a change to a declared input, not to the
+    /// baseline file, and the digests already answer the windowed question
+    /// exactly. Counts nothing into `files_scanned`.
+    fn run_advisories(
+        &self,
+        findings: &mut Vec<Finding>,
+        run: &mut Vec<String>,
+        skipped: &mut Vec<SkippedRule>,
+    ) -> Result<()> {
+        let Some(cfg) = self.config.evidence.as_ref() else {
+            skipped.push(SkippedRule {
+                slug: "advisory".into(),
+                reason: "no [evidence] section".into(),
+            });
+            return Ok(());
+        };
+        let auditor =
+            crate::evidence::advisory::AdvisoryAuditor::new(self.working_dir, cfg, self.unattended);
+        findings.extend(auditor.audit()?);
+        run.push("advisory".into());
         Ok(())
     }
 
