@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/**"
+governs:
+  concept: the single safe write module
+  live_truth:
+    - crates/harness-core/src/path_guard.rs
 ---
 
 # File mutation

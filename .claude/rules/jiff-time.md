@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/**"
+governs:
+  concept: the chosen time primitives
+  live_truth:
+    - crates
 ---
 
 # Time handling: jiff only

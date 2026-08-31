@@ -3,6 +3,11 @@ paths:
   - "crates/harness-core/src/export.rs"
   - "crates/harness-core/src/envelope.rs"
   - "crates/harness-core/src/config/**"
+governs:
+  concept: JSON Schema emission from the toolkit types
+  live_truth:
+    - crates/harness-core/src/export.rs
+    - schemas/harness.schema.json
 ---
 
 # export — JSON Schema emission

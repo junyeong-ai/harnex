@@ -4,6 +4,10 @@ paths:
   - "crates/harness-core/src/validate/**"
   - "crates/harness-core/tests/spec_facts_sync.rs"
   - "plugins/harnex/reference/spec-facts.md"
+governs:
+  concept: measurement stamps for the Claude Code vocabularies
+  live_truth:
+    - crates/harness-core/src/spec.rs
 ---
 
 # spec — measurement stamps for the Claude Code vocabularies

@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/lifecycle/**"
+governs:
+  concept: the observation and decision ledgers
+  live_truth:
+    - crates/harness-core/src/lifecycle
 ---
 
 # lifecycle — promotion / retirement / consumer detection

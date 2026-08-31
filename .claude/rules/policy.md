@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/policy/**"
+governs:
+  concept: permission rule grammar and profiles
+  live_truth:
+    - crates/harness-core/src/policy
 ---
 
 # policy — permission rules, profiles + versions

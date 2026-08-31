@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/**/mod.rs"
+governs:
+  concept: the module doc contract
+  live_truth:
+    - crates/harness-core/src
 ---
 
 # Module documentation

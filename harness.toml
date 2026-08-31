@@ -51,6 +51,7 @@ strategy = "file-path-line"
 # `max_scoped_lines` stays unset — a cohesive long rule is not a defect.
 max_lines = 200
 always_loaded_slugs = ["constitution", "making-changes"]
+require_governs = true
 
 [validate.skills]
 
