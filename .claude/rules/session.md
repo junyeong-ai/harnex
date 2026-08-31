@@ -19,8 +19,9 @@ paths:
 | `harness` | what the project's harness did, and what it cost |
 | `rework` | edits to a file after the commit that shipped it |
 | `repository` | what became of a commit, through git, project scope only |
-| `baseline` | frozen rates, the refusal to compare overlapping windows, and
-  which rates a comparison will withhold |
+| `baseline` | frozen rates, the refusal to compare overlapping windows,
+  which rates a comparison will withhold, and the trend that lays one
+  scope's windows side by side without subtracting |
 | `discovery` | the roots, absolute and deduplicated |
 
 Each module doc argues its own refusals. Read the doc before changing the
