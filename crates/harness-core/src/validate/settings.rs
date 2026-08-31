@@ -177,6 +177,69 @@ pub const HOOK_SPEC_SETS: &[(&str, &[&str])] = &[
     ("session-start-sources", KNOWN_SESSION_START_SOURCES),
 ];
 
+/// The events whose matchers take the wide exact-string charset
+/// (`[a-zA-Z0-9_|, -]`) and split on `|` and `,` alike. Every other event
+/// takes `[a-zA-Z0-9_|]` split on `|` only.
+///
+/// Measured from the hook dispatcher of the Claude Code binary (2.1.220),
+/// not read from a page — the docs state neither the charsets nor the
+/// separators, and this set is distinct from the dispatcher's query-field
+/// switch. Re-measure against the installed binary rather than the docs:
+/// search it for the wide charset regex and for the known-event set
+/// literal; a divergence updates this constant and the measured test rows.
+/// Deliberately outside `HOOK_SPEC_SETS`: the stamp digest vouches for what
+/// a page said on a date, and no page says this.
+pub const KNOWN_MATCHER_EVENTS: &[&str] = &[
+    "ConfigChange",
+    "DirectoryAdded",
+    "Elicitation",
+    "ElicitationResult",
+    "InstructionsLoaded",
+    "Notification",
+    "PermissionDenied",
+    "PermissionRequest",
+    "PostCompact",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PreCompact",
+    "PreToolUse",
+    "SessionEnd",
+    "SessionStart",
+    "Setup",
+    "SubagentStart",
+    "SubagentStop",
+    "UserPromptExpansion",
+];
+
+/// The alternatives an exact-string matcher compares by membership, or
+/// `None` where the dispatcher reads the matcher another way: absent, empty
+/// and `*` match everything, and a matcher outside its event's charset is an
+/// unanchored regex over the query. Tokens are trimmed and empty
+/// alternatives dropped, as the dispatcher drops them — an empty token
+/// narrows nothing and widens nothing. The dispatcher's session-level tool
+/// alias substitution is deliberately unmodelled: it is additive and
+/// unknowable from a settings file, and omitting it only under-reports what
+/// a matcher covers — it can never call a dead matcher live.
+pub(crate) fn exact_matcher_tokens<'a>(event: &str, matcher: &'a str) -> Option<Vec<&'a str>> {
+    if matcher.is_empty() || matcher == "*" {
+        return None;
+    }
+    let wide = KNOWN_MATCHER_EVENTS.contains(&event);
+    let in_charset = |c: char| {
+        c.is_ascii_alphanumeric() || c == '_' || c == '|' || (wide && matches!(c, ',' | ' ' | '-'))
+    };
+    if !matcher.chars().all(in_charset) {
+        return None;
+    }
+    Some(
+        matcher
+            .split(|c| c == '|' || (wide && c == ','))
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+            .collect(),
+    )
+}
+
 /// Every closed set this validator reads from the settings page, labelled.
 /// The measurement stamp digests exactly this list, so a value moved from one
 /// set to another changes the digest rather than hiding in a concatenation.
@@ -471,29 +534,19 @@ impl SettingsValidator {
     /// Hold a `SessionStart` matcher's alternatives to the documented source
     /// set.
     ///
-    /// A matcher carrying no regex metacharacter is judged; one that does is
-    /// left alone. `.*` or `st.*` matches sources this set cannot enumerate,
-    /// and testing membership on it would flag a working configuration.
-    ///
-    /// Everything else is a literal, whatever characters it holds. A space, a
-    /// hyphen, a comma and an underscore have no regex meaning, so
-    /// `startup resume` and `startup-resume` are literal strings that equal no
-    /// session source under any matching semantics — they fire for nothing,
-    /// which is precisely the defect this check exists to name. Trimming the
-    /// alternatives, or bailing out on any non-alphanumeric character, erased
-    /// exactly those cases while claiming to catch them.
+    /// [`exact_matcher_tokens`] decides what an alternative is: a matcher
+    /// outside the event's charset is a regex (`.*` matches sources this set
+    /// cannot enumerate, so membership is not asked of it), and within it the
+    /// dispatcher splits on `|` and `,`, trims, and drops empty tokens — so
+    /// `startup, resume` fires for both and is not flagged, while
+    /// `startup resume` and `startup-resume` survive splitting as single
+    /// tokens that equal no source and fire for nothing, which is precisely
+    /// the defect this check exists to name.
     ///
     /// A dead alternative is otherwise silent: it matches no session and the
     /// hook simply never fires for it, which reads as the hook working because
     /// the other alternatives still do.
     fn session_start_sources(&self, entries: &Value, path: &Path) -> Vec<Finding> {
-        /// Characters that give a matcher regex power. `|` is absent: it is the
-        /// alternation this check reads, and the spec's own exact-string form
-        /// is a `|`-separated list.
-        const REGEX_METACHARACTERS: &[char] = &[
-            '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '\\',
-        ];
-
         let mut findings = Vec::new();
         let Some(entries) = entries.as_array() else {
             return findings;
@@ -502,16 +555,11 @@ impl SettingsValidator {
             let Some(matcher) = entry.get("matcher").and_then(Value::as_str) else {
                 continue;
             };
-            // `*`, `""` and an absent matcher all mean every source, so an
-            // empty alternative widens the matcher rather than dying. Reading
-            // one as a dead source inverted the truth: the entry it flagged
-            // fires for everything, and the equivalent spelling — omitting the
-            // key — was already skipped two lines up.
-            if matcher.contains(REGEX_METACHARACTERS) || matcher.split('|').any(str::is_empty) {
+            let Some(tokens) = exact_matcher_tokens("SessionStart", matcher) else {
                 continue;
-            }
-            for unknown in matcher
-                .split('|')
+            };
+            for unknown in tokens
+                .into_iter()
                 .filter(|a| !KNOWN_SESSION_START_SOURCES.contains(a))
             {
                 findings.push(Finding {

@@ -323,16 +323,16 @@ fn settings_validator_flags_a_session_start_source_that_starts_no_session() {
 
 #[test]
 fn settings_validator_flags_a_dead_literal_session_start_matcher() {
-    // A space, a hyphen and an underscore carry no regex meaning, so each of
-    // these is a literal string equalling no session source — the hook fires
-    // for nothing. Trimming the alternatives, or refusing to judge anything
-    // non-alphanumeric, erased exactly these while claiming to catch them.
+    // The dispatcher splits on `|` and `,` and trims each token, so a dead
+    // alternative is one that survives that as a whole token equalling no
+    // source: an interior space or hyphen glues two sources into one dead
+    // literal, and a typo is a dead literal outright.
     let v = SettingsValidator::new();
     for (matcher, dead) in [
-        ("startup | resume", "startup "),
+        ("startup resume", "startup resume"),
         ("startup-resume", "startup-resume"),
         ("sesion_start", "sesion_start"),
-        ("startup,resume", "startup,resume"),
+        ("startup, resumed", "resumed"),
     ] {
         let json = format!(r#"{{"hooks": {{"SessionStart": [{{"matcher": "{matcher}"}}]}}}}"#);
         let findings = v.validate_text(
@@ -347,6 +347,33 @@ fn settings_validator_flags_a_dead_literal_session_start_matcher() {
         assert!(
             unknowns.iter().any(|f| f.message.contains(dead)),
             "matcher '{matcher}' fires for no session and went unreported: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn settings_validator_accepts_the_separator_spellings_the_dispatcher_splits() {
+    // Measured: on known events the matcher splits on `|` AND `,`, tokens are
+    // trimmed, and empty alternatives are dropped — so every spelling here
+    // fires for real sources and a finding against one is a false positive.
+    let v = SettingsValidator::new();
+    for matcher in [
+        "startup,resume",
+        "startup, resume",
+        "startup | resume",
+        "|startup",
+    ] {
+        let json = format!(r#"{{"hooks": {{"SessionStart": [{{"matcher": "{matcher}"}}]}}}}"#);
+        let findings = v.validate_text(
+            &json,
+            Path::new(".claude/settings.json"),
+            SettingsScope::Project,
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "settings-unknown-session-start-source"),
+            "matcher '{matcher}' fires for real sources and was flagged: {findings:?}"
         );
     }
 }

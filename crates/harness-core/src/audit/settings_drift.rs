@@ -32,6 +32,7 @@ use serde_json::Value;
 use crate::audit::AuditFindingSlug;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
+use crate::validate::settings::exact_matcher_tokens;
 
 /// Above this value, a hook `timeout` is almost certainly milliseconds by
 /// mistake. The Claude Code spec uses seconds with documented defaults
@@ -89,22 +90,27 @@ impl SettingsDriftAuditor {
         let Some(matcher) = entry.get("matcher").and_then(|v| v.as_str()) else {
             return;
         };
-        // Only a BARE `mcp__<server>` matches nothing — an exact-string
-        // matcher (per the spec, `[A-Za-z0-9_|]` only) with no `__<tool>`
-        // segment. A matcher carrying a regex metacharacter (`mcp__.*`,
-        // `mcp__.*__write.*`) is a JS regex that DOES match — never flag it.
-        if let Some(after) = matcher.strip_prefix("mcp__") {
-            let is_regex = after
-                .chars()
-                .any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '|'));
-            // An exact-string matcher is well-formed only as
-            // `mcp__<server>__<tool>` with BOTH segments non-empty.
-            // `mcp__server__` (empty tool) and `mcp____tool` (empty server)
-            // are exact strings matching no real tool.
+        // Only a BARE `mcp__<server>` alternative matches nothing — an
+        // exact-string token with no `__<tool>` segment. What counts as an
+        // exact string is the dispatcher's charset for this event
+        // (`exact_matcher_tokens`): a matcher outside it (`mcp__.*`,
+        // `mcp__.*__write.*`) is a regex that DOES match, and one inside it
+        // splits into tokens judged one by one — a server name with a hyphen
+        // is exact, not regex, so `mcp__claude-in-chrome` is a no-op too.
+        let Some(tokens) = exact_matcher_tokens(event_name, matcher) else {
+            return;
+        };
+        for token in tokens {
+            let Some(after) = token.strip_prefix("mcp__") else {
+                continue;
+            };
+            // Well-formed only as `mcp__<server>__<tool>` with BOTH segments
+            // non-empty: `mcp__server__` (empty tool) and `mcp____tool`
+            // (empty server) are exact strings matching no real tool.
             let well_formed = after
                 .split_once("__")
                 .is_some_and(|(server, tool)| !server.is_empty() && !tool.is_empty());
-            if !is_regex && !well_formed {
+            if !well_formed {
                 findings.push(Finding {
                     slug: AuditFindingSlug::McpMatcherIncomplete.as_str().into(),
                     severity: Severity::Major,
@@ -221,6 +227,32 @@ mod tests {
                 .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
             "expected audit-mcp-matcher-incomplete: {findings:?}"
         );
+    }
+
+    #[test]
+    fn flags_a_hyphenated_bare_server_as_exact_not_regex() {
+        // Measured: on tool events the exact-string charset includes `-`, `,`
+        // and space, so a hyphenated server name is membership-compared, not
+        // a regex — `mcp__claude-in-chrome` equals no `mcp__<server>__<tool>`
+        // and fires for nothing. A comma list splits into tokens judged one
+        // by one, so a bare server hides in a list beside a well-formed tool.
+        for matcher in [
+            "mcp__claude-in-chrome",
+            "mcp__a__x, mcp__claude-in-chrome",
+            "mcp__a__x|mcp__b",
+        ] {
+            let json = format!(
+                r#"{{ "hooks": {{ "PreToolUse": [{{ "matcher": "{matcher}",
+                     "hooks": [{{"type":"command","command":"x"}}] }}] }} }}"#
+            );
+            let findings = run_on(&json);
+            assert!(
+                findings
+                    .iter()
+                    .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+                "'{matcher}' carries a bare-server no-op token: {findings:?}"
+            );
+        }
     }
 
     #[test]
