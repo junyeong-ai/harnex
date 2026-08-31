@@ -207,8 +207,11 @@ rule file in translation, in force the whole time.
 A judged finding is a reading and never enters a baseline — but a constraint
 recurs across windows only if something holds it between them, and the
 lifecycle ledger is that thing. Requires `[lifecycle]` in `harness.toml`,
-which a scaffolded harness ships. One observation per distinct constraint the
-window surfaced:
+which a scaffolded harness ships, and the window scoped with `--project`: the
+ledger lives in this project's tree and holds the constraint's text verbatim,
+so a machine-wide window would write other projects' instructions into it.
+Unscoped, record nothing and say so. One observation per distinct constraint
+the window surfaced:
 
 ```
 harnex lifecycle observe --tag measure-repeat --text "<the paragraph>" --source "<one citation>"
@@ -260,7 +263,9 @@ Where `change` is null on every metric the window is too thin to compare: say
 so with `support_floor` and the denominators beside it, because the operator's
 next act is to keep working rather than to change anything. Where the ledger
 holds more than two windows of this scope, `harnex session baseline trend`
-lays them side by side; report the trajectory of any metric an earlier
+— with the same `--project` the window was scoped to, because trend matches
+scope exactly and a bare invocation returns the machine-wide windows — lays
+them side by side; report the trajectory of any metric an earlier
 prescription named, because "did it work" is a direction before it is a delta.
 
 **Then what it cost and what it produced, on one line each.** Elapsed, `tokens`
@@ -287,11 +292,7 @@ clock time, and what changed under them. The citation belongs in a footnote for
 whoever wants to reopen the file, not in the sentence doing the work.
 
 **2. What leaks every session.** §5, plus `interventions` by kind and
-`post_commit_reedits`. Open the largest recurring paragraph and quote it the
-way section 1 quotes its cases — the count names a leak and the paragraph is
-what leaks. Close with what §5 wrote to the ledger and what `candidates`
-returned: a constraint past its thresholds is this section's finding with a
-next act attached. Say over how many distinct `commit` values it is spread
+`post_commit_reedits`. Say over how many distinct `commit` values it is spread
 before saying it per commit: re-edits concentrated in one interval are one
 commit called done early, and the same count spread across many is a habit of
 declaring early — measured, 244 of 246 fell in a single interval, where
@@ -315,6 +316,12 @@ said. Do not report a with-instruction against without-instruction comparison:
 absent means the runtime hit its own limit, so the two groups differ by who
 decided as well as by what was said, and the smaller one is 11 of 317 over the
 local corpus — under `min_support` before the confound is even reached.
+
+Open the largest recurring paragraph and quote it the way section 1 quotes
+its cases — the count names a leak and the paragraph is what leaks. Then
+close the section with what §5 wrote to the ledger and what `candidates`
+returned: a constraint past its thresholds is this section's finding with a
+next act attached.
 
 **3. What survived.** Present only under `--project`, and only where that
 project is a git work tree. `repository.by_fate` counts what the branch still
