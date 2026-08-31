@@ -42,6 +42,10 @@ fn invalid_value_envelope_names_the_value_and_the_valid_set() {
     let stdout = String::from_utf8(out.stdout).unwrap();
     let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("one JSON envelope");
     let message = json["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("<TARGET>"),
+        "names the argument: {message}"
+    );
     assert!(message.contains("'bogus'"), "names the value: {message}");
     assert!(
         message.contains("session-trend"),
