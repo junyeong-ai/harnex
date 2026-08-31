@@ -47,6 +47,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
 | `harness-core::session` | reads Claude Code's own transcripts — instructions, interventions, repetition, tool and token use, and what the repository says survived |
 | `harness-core::guard` | Claude Code hook adapter + Stop auditor |
+| `harness-core::governs` | rule `governs:` declarations — what a rule is truth about, resolved and audited |
 | `harness-core::export` | JSON Schema emission |
 | `harness-core::graph` | read-only `nodex` CLI bridge |
 | `harness-core::check` | unified validation gate |

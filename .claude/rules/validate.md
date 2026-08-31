@@ -1,6 +1,10 @@
 ---
 paths:
   - "crates/harness-core/src/validate/**"
+governs:
+  concept: the Claude Code surface validators
+  live_truth:
+    - crates/harness-core/src/validate
 ---
 
 # validate — Claude Code surface checks
@@ -23,6 +27,12 @@ below while it costs every turn:
   their own paths, so a cohesive long rule is not a defect.
 - Unparseable frontmatter returns the Blocker alone; load scope is then
   unknown and no budget is asserted.
+- `governs:` shape is checked wherever declared (`harness_core::governs` owns
+  the grammar); `require_governs` (opt-in) demands one on path-scoped rules
+  only — always-loaded rules cross no load boundary and may have no truth in
+  the tree, and a malformed declaration counts as declared so one defect
+  yields one finding. Existence of the declared truths belongs to `check`'s
+  `governs` arm, which has the tree.
 
 Skill validator (per <https://code.claude.com/docs/en/skills>):
 - `name` ∈ `[a-z0-9-]{1,64}` and equals directory name when declared.

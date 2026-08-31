@@ -169,6 +169,9 @@ harnex validate output-styles <files...>
 harnex validate settings [<path>]
 harnex validate commit-msg <path>                     # closed-enum trailer
 
+harnex governs resolve <paths...>                     # the rules that are truth
+                                                      # about each path
+
 harnex session index  [--since <t>] [--project <dir>] [--session <id>]
 harnex session facts  [--since <t>] [--with-text]      # counts + citations, no judgement
 harnex session submissions [--with-text] [--sample N]  # one entry per instruction, and what followed it
