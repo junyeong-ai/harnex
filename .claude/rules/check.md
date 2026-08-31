@@ -35,6 +35,7 @@ Validator slugs (current):
 - `validate.output_styles`
 - `validate.settings`
 - `evidence`
+- `advisory`
 - `governs`
 - `codegen`
 - `policy.permissions`
@@ -46,6 +47,14 @@ codegen it ignores `--since` — the defect is created by a change to a
 declared truth, not to the rule declaring it, so a diff-windowed rule filter
 reads a deleted truth as nothing-to-check — and it counts nothing into
 `files_scanned`.
+
+The `advisory` arm (gated on `[evidence]`) holds each declared advisory's
+recorded baseline fresh: digests of the declared inputs and engine against
+what recording stamped, absence as `advisory-unmeasured`, an undeclared
+baseline as orphaned. Same `--since` exemption and `files_scanned` silence
+as governs, for the same cross-file reason. `--unattended` (wired through
+`with_unattended`) downgrades staleness to Minor exactly where the entry
+does not declare `unattended_remeasure`.
 
 Each validator that has no config section is added to `skipped` with the
 reason "no [section] section" — never silently absent.

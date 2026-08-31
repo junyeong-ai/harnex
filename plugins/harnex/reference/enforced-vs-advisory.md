@@ -46,6 +46,32 @@ thing that survives a confused, careless, or adversarial agent turn.
    floor, and the append-only row contract, and the shipped pre-commit arm
    holds them at the commit.
 
+## The advisory class — freshness gates, findings never do
+
+Between the two tiers sits the measurement neither can hold: expensive,
+stochastic, or judgment-shaped (a contrast audit, a behaviour eval, a
+performance snapshot). Gating on its findings absorbs its flakiness into the
+gate; leaving it advisory prose lets it silently rot. The resolution inverts
+what gates: **the advisory never blocks — the freshness of its basis does.**
+
+- The project's own instrument measures; `harnex evidence record --id <id>`
+  writes the baseline with content digests of the declared inputs and of the
+  instrument itself (identity, never an alias).
+- `harnex check` asks only "does the evidence still describe its inputs" —
+  a moved digest, a moved instrument, a moved declaration, or no recording
+  at all (`advisory-unmeasured` — never a fabricated zero) is the finding.
+  It never asks "did it get worse"; the payload is the project's to judge.
+- `--unattended` (a push gate, CI) gates staleness only where the entry
+  declares `unattended_remeasure` — a push gate may only block on drift the
+  pusher can clear in the same sitting.
+- An advisory's own findings enter reports with a disposition, not a
+  severity: `mention` (say it where the operator reads) or `route` (hand it
+  to its named reader). A disposition is not a soft severity — it names the
+  reader instead of ranking the alarm.
+
+Declared under `[[evidence.advisories]]`; the baseline is a committed
+`evidence/<id>.json` the schema of which is closed.
+
 ## What this means for a generated harness
 
 - The enforced tier is the part that genuinely equalizes quality across a

@@ -73,6 +73,19 @@ default_provenance = "internal"
 provenance = "internal"
 strategy = "file-path-line"
 
+# An expensive or stochastic measurement (a contrast audit, a behaviour
+# eval) never gates on its findings — the freshness of its basis does.
+# Declare one, record it with `harnex evidence record --id <id>`, and
+# `harnex check` flags evidence whose declared inputs or instrument moved.
+# `unattended_remeasure = true` only where the person a push gate blocks
+# can re-measure in the same sitting.
+#
+# [[evidence.advisories]]
+# id = "content-contrast"
+# inputs = ["src/styles"]
+# engine = ["tools/contrast-audit"]
+# unattended_remeasure = false
+
 # The promotion-and-retirement loop `governance.md` and `artifact-lifecycle.md`
 # describe. Every threshold has a default, so the section is declared empty on
 # purpose: the loop is runnable from the first commit, and the numbers are
