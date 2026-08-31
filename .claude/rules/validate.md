@@ -87,19 +87,23 @@ Settings validator:
   (sourced from /en/hooks). The set is a permissive superset for typo
   detection — it errs toward accepting, never asserts an exact count.
 - A `SessionStart` matcher's alternatives must be in
-  `KNOWN_SESSION_START_SOURCES` (Major), judged only when the matcher carries
-  no regex metacharacter and no empty alternative. A metacharacter matches
-  sources the set cannot enumerate; an empty alternative — like `*` and an
-  absent matcher — means every source. Everything else is a literal, and a
-  literal that is not a source fires for nothing, which is otherwise silent
-  because the surviving alternatives keep working.
+  `KNOWN_SESSION_START_SOURCES` (Major). What an alternative IS has one
+  owner: `exact_matcher_tokens`, the measured dispatcher grammar — on the
+  `KNOWN_MATCHER_EVENTS` the charset is `[a-zA-Z0-9_|, -]` split on `|` and
+  `,`, tokens trimmed and empty alternatives dropped, so `startup, resume`
+  fires for both and is never flagged, while `startup resume` survives as one
+  dead token. A matcher outside its event's charset is an unanchored regex
+  matching sources no closed set can enumerate, so membership is not asked of
+  it; `*`, the empty string and an absent matcher mean every source. A dead
+  alternative is otherwise silent because the surviving alternatives keep the
+  hook firing.
 
-  This is a different question from the MCP-matcher audit's, which asks whether
-  a matcher is the spec's exact-string form (`[A-Za-z0-9_|]`) so that a bare
-  `mcp__server` can be called a no-op. A space is a regex character to that
-  question and a literal to this one; both verdicts are sound because a literal
-  containing a space equals no source either way. The sets are deliberately not
-  shared.
+  The MCP-matcher audit consumes the same owner, additionally gated to
+  `TOOL_QUERY_EVENTS`: on a no-query event the dispatcher consults no matcher
+  and every hook fires, so a bare `mcp__server` there is ignored, not a
+  no-op — the finding exists only where a tool name is what the matcher
+  compares. A hyphen is inside the wide charset, so a hyphenated server name
+  is an exact string, never a regex.
 - `permissions.deny` empty raises a Minor advisory.
 - `permissions.defaultMode` must be in `KNOWN_DEFAULT_MODE_VALUES`
   (`default|acceptEdits|plan|auto|dontAsk|bypassPermissions`) if present (Major).
@@ -110,7 +114,7 @@ Settings validator:
 - `skillOverrides` values must be `on|name-only|user-invocable-only|off` (Major).
 - Allow rules whose command base is in `DANGEROUS_ALLOW_BASES`
   (`rm`, `rm -rf`, `curl`, `sudo`) without a deny of the same base raise a
-  Minor advisory. Match on the normalized base via `bash_command_base`, which
+  Minor advisory. Match on the normalized base via `bash_base`, which
   collapses the equivalent `cmd:*` / `cmd *` / bare wildcard forms, so both
   spellings are caught and a scoped rule (`rm:./tmp/*`) is not.
 

@@ -211,15 +211,35 @@ pub const KNOWN_MATCHER_EVENTS: &[&str] = &[
     "UserPromptExpansion",
 ];
 
+/// The events whose matcher query is a tool name — the only events where a
+/// token like `mcp__server__tool` is what the dispatcher compares. On an
+/// event outside the dispatcher's query switch it consults no matcher at
+/// all and every hook fires, so a matcher there is ignored, not dead.
+/// Same provenance and same mover as [`KNOWN_MATCHER_EVENTS`].
+pub const TOOL_QUERY_EVENTS: &[&str] = &[
+    "PermissionDenied",
+    "PermissionRequest",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PreToolUse",
+];
+
 /// The alternatives an exact-string matcher compares by membership, or
 /// `None` where the dispatcher reads the matcher another way: absent, empty
 /// and `*` match everything, and a matcher outside its event's charset is an
 /// unanchored regex over the query. Tokens are trimmed and empty
 /// alternatives dropped, as the dispatcher drops them — an empty token
-/// narrows nothing and widens nothing. The dispatcher's session-level tool
-/// alias substitution is deliberately unmodelled: it is additive and
-/// unknowable from a settings file, and omitting it only under-reports what
-/// a matcher covers — it can never call a dead matcher live.
+/// narrows nothing and widens nothing.
+///
+/// Two alias layers are deliberately unmodelled. The session-level
+/// expansion is additive and unknowable from a settings file, so omitting
+/// it only under-reports what a matcher covers. The static substitution
+/// (`Task` → `Agent` and eleven siblings) CAN invert a verdict in general —
+/// a `Task` matcher never fires for a tool literally named Task — but no
+/// key or value of that map is a session source or begins with `mcp__`, so
+/// neither consumer of this function can reach a token it rewrites. A
+/// consumer comparing tool names outside the `mcp__` namespace must model
+/// it before trusting membership.
 pub(crate) fn exact_matcher_tokens<'a>(event: &str, matcher: &'a str) -> Option<Vec<&'a str>> {
     if matcher.is_empty() || matcher == "*" {
         return None;
@@ -586,6 +606,25 @@ impl SettingsValidator {
 #[cfg(test)]
 mod tests {
     use super::SettingsScope;
+
+    /// A misspelled entry in either measured set would silently take the
+    /// wrong arm — the narrow charset, or no MCP judgment at all — so both
+    /// are held inside the event vocabulary the validator already owns.
+    #[test]
+    fn the_measured_matcher_sets_name_known_events_only() {
+        for event in super::KNOWN_MATCHER_EVENTS {
+            assert!(
+                super::KNOWN_HOOK_EVENTS.contains(event),
+                "'{event}' is not a known hook event"
+            );
+        }
+        for event in super::TOOL_QUERY_EVENTS {
+            assert!(
+                super::KNOWN_MATCHER_EVENTS.contains(event),
+                "'{event}' takes the wide charset it is judged under"
+            );
+        }
+    }
 
     #[test]
     fn scope_from_str_round_trips_every_variant() {

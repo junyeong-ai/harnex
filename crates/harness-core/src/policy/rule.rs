@@ -234,14 +234,19 @@ fn tokenize_bash_body(body: &str) -> Vec<BodyToken> {
     tokens
 }
 
-/// The literal text a body places after its first wildcard, if any does.
+/// The visible text a body places after its first wildcard, if any does.
+/// A literal that trims to nothing anchors nothing a reader can see, so it
+/// does not count as a tail.
 fn tail_after_wildcard(body: &str) -> Option<String> {
     let tokens = tokenize_bash_body(body);
     let first = tokens
         .iter()
         .position(|t| matches!(t, BodyToken::Wildcard))?;
     tokens[first + 1..].iter().find_map(|t| match t {
-        BodyToken::Literal(text) => Some(text.trim().to_string()),
+        BodyToken::Literal(text) => {
+            let trimmed = text.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
         BodyToken::Wildcard => None,
     })
 }
@@ -315,6 +320,12 @@ impl<'a> PermissionRule<'a> {
         }
         let body = self.specifier?;
         if let Some(prefix) = body.strip_suffix(":*") {
+            // A bare `:*` has no prefix to be legacy for — the matcher reads
+            // it as an exact command, misleading nobody. The suffix still
+            // shadows the wildcard reading either way.
+            if prefix.is_empty() {
+                return None;
+            }
             return Some(MisleadingRule {
                 reason: MisleadingReason::LegacyColonWildcard {
                     prefix: prefix.to_string(),
@@ -604,6 +615,20 @@ mod tests {
         // both would prescribe two rewrites for one rule.
         assert!(matches!(effect("Bash(command:*)"), RuleEffect::Inert(_)));
         assert_eq!(misleads("Bash(command:*)", RuleDirection::Allow), None);
+    }
+
+    #[test]
+    fn a_bare_colon_star_is_exact_and_an_invisible_tail_is_no_tail() {
+        // `:*` strips to an empty prefix — the matcher reads it as an exact
+        // command, and a finding about it would prescribe rewrites of
+        // nothing. A tail that trims to whitespace anchors nothing a reader
+        // can see; the next visible literal, if any, is the tail.
+        assert_eq!(misleads("Bash(:*)", RuleDirection::Allow), None);
+        assert_eq!(misleads("Bash(a * *)", RuleDirection::Allow), None);
+        assert_eq!(
+            misleads("Bash(a * * b)", RuleDirection::Allow),
+            Some(MisleadingReason::TailAfterWildcard { tail: "b".into() })
+        );
     }
 
     #[test]

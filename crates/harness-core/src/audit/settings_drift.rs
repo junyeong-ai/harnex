@@ -9,7 +9,8 @@
 //! - Hook `timeout` ≥ 1000 → almost certainly milliseconds by mistake
 //!   (the spec uses seconds; 1000s exceeds every documented default
 //!   ceiling of 600s and an upper bound of 60 minutes is generous).
-//! - `mcp__<server>` matcher without `__.*` → matches nothing per spec.
+//! - a bare `mcp__<server>` exact-string token on a tool-query event →
+//!   matches no tool (measured matcher grammar, per event).
 //!
 //! ## What this module refuses to do
 //!
@@ -32,7 +33,7 @@ use serde_json::Value;
 use crate::audit::AuditFindingSlug;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
-use crate::validate::settings::exact_matcher_tokens;
+use crate::validate::settings::{TOOL_QUERY_EVENTS, exact_matcher_tokens};
 
 /// Above this value, a hook `timeout` is almost certainly milliseconds by
 /// mistake. The Claude Code spec uses seconds with documented defaults
@@ -90,6 +91,14 @@ impl SettingsDriftAuditor {
         let Some(matcher) = entry.get("matcher").and_then(|v| v.as_str()) else {
             return;
         };
+        // An MCP tool name is only what the dispatcher compares on the
+        // tool-query events. Elsewhere the matcher is ignored outright (a
+        // no-query event fires every hook) or compared against a different
+        // vocabulary — either way "add the __<tool> segment" would prescribe
+        // a fix for a finding that is not there.
+        if !TOOL_QUERY_EVENTS.contains(&event_name) {
+            return;
+        }
         // Only a BARE `mcp__<server>` alternative matches nothing — an
         // exact-string token with no `__<tool>` segment. What counts as an
         // exact string is the dispatcher's charset for this event
@@ -226,6 +235,28 @@ mod tests {
                 .iter()
                 .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
             "expected audit-mcp-matcher-incomplete: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn leaves_a_matcher_on_a_no_query_event_alone() {
+        // The dispatcher consults no matcher on `Stop`: every hook fires,
+        // matcher text and all. Calling `mcp__foo` there a no-op inverts the
+        // truth — the finding's own fix would change nothing.
+        let json = r#"{
+            "hooks": {
+                "Stop": [{
+                    "matcher": "mcp__foo",
+                    "hooks": [{"type": "command", "command": "x"}]
+                }]
+            }
+        }"#;
+        let findings = run_on(json);
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
+            "a Stop matcher is ignored, not dead: {findings:?}"
         );
     }
 
