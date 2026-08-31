@@ -367,6 +367,22 @@ fn run_scaffold_validation(lang: &str) {
         );
     }
 
+    // --- Governs audit: every declared truth exists in the tree the scaffold
+    // lands in. The language rule's default `live_truth` is the common source
+    // root, so a real project supplies it; the fixture stands one up rather
+    // than leaving the shipped default without a stance.
+    std::fs::create_dir_all(proj_root.join("src")).unwrap();
+    let governs_auditor = harness_core::governs::GovernsAuditor::new(proj_root);
+    for rule_path in glob_under(&proj_root.join(".claude/rules"), "*.md") {
+        let content = std::fs::read_to_string(&rule_path).unwrap();
+        let findings = governs_auditor.audit_rule(&content, &rule_path);
+        assert_no_findings(
+            lang,
+            &format!("governs({})", rule_path.display()),
+            &findings,
+        );
+    }
+
     // --- Skill validation: every skill the manifest emitted ---
     // Discovered from the tree rather than named here, so a skill added to
     // `scaffold.toml` is validated without an edit, and one dropped fails the

@@ -217,13 +217,7 @@ impl<'a> ProjectChecker<'a> {
             &mut skipped,
             &mut files_scanned,
         )?;
-        self.run_governs(
-            &changed,
-            &mut findings,
-            &mut run,
-            &mut skipped,
-            &mut files_scanned,
-        )?;
+        self.run_governs(&mut findings, &mut run, &mut skipped)?;
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
         self.run_permissions_audit(&changed, &mut findings, &mut run, &mut skipped)?;
 
@@ -411,13 +405,18 @@ impl<'a> ProjectChecker<'a> {
     /// Every declared `governs.live_truth` still exists in the tree. Shape
     /// findings stay with the rule validator (one defect, one reporter);
     /// this arm asks only the question that needs the tree.
+    ///
+    /// Deliberately ignores `--since`, for the codegen arm's reason: the
+    /// defect is created by a change to a declared TRUTH, not to the rule
+    /// that declares it, so filtering rules by the diff window lets a
+    /// deleted truth slip through as a false negative. The full sweep reads
+    /// only the rules directory and is cheap; it also counts nothing into
+    /// `files_scanned`, which tallies the windowed scan.
     fn run_governs(
         &self,
-        changed: &Option<HashSet<PathBuf>>,
         findings: &mut Vec<Finding>,
         run: &mut Vec<String>,
         skipped: &mut Vec<SkippedRule>,
-        files_scanned: &mut usize,
     ) -> Result<()> {
         if self
             .config
@@ -434,14 +433,10 @@ impl<'a> ProjectChecker<'a> {
         }
         let auditor = crate::governs::GovernsAuditor::new(self.working_dir);
         for path in &self.discover_glob(<RuleValidator as SurfaceValidator>::GLOB)? {
-            if !self.passes_filter(path, changed) {
-                continue;
-            }
             let content = std::fs::read_to_string(path).map_err(|e| Error::IoFailure {
                 path: path.clone(),
                 source: e,
             })?;
-            *files_scanned += 1;
             findings.extend(auditor.audit_rule(&content, path));
         }
         run.push("governs".into());

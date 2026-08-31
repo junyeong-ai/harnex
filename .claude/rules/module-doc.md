@@ -4,7 +4,17 @@ paths:
 governs:
   concept: the module doc contract
   live_truth:
-    - crates/harness-core/src
+    - crates/harness-core/src/audit
+    - crates/harness-core/src/codegen
+    - crates/harness-core/src/config
+    - crates/harness-core/src/evidence
+    - crates/harness-core/src/graph
+    - crates/harness-core/src/guard
+    - crates/harness-core/src/lifecycle
+    - crates/harness-core/src/policy
+    - crates/harness-core/src/session
+    - crates/harness-core/src/telemetry
+    - crates/harness-core/src/validate
 ---
 
 # Module documentation
