@@ -60,8 +60,8 @@ use crate::config::SessionConfig;
 use crate::error::{Error, Result};
 
 pub use baseline::{
-    Baseline, BaselineDiff, BaselineLedger, HarnessChange, Measured, Measurement, MetricDelta,
-    SessionMetric,
+    Baseline, BaselineDiff, BaselineLedger, BaselineTrend, HarnessChange, Measured, Measurement,
+    MetricDelta, MetricPoint, MetricSeries, SessionMetric,
 };
 pub use harness::{
     AssetInvocation, BlockedCall, DenialGroup, HarnessFacts, HookCost, RuleLoadGroup,

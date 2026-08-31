@@ -594,6 +594,69 @@ pub fn diff(from: &Baseline, to: &Baseline, support_floor: u64) -> Result<Baseli
     })
 }
 
+/// One window's reading of a metric, in a series.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct MetricPoint {
+    /// The window, by the label the ledger recorded it under.
+    pub label: String,
+    pub measurement: Measurement,
+}
+
+/// One metric across every window of a scope.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct MetricSeries {
+    pub metric: String,
+    /// One point per window that measured this metric, in ledger order. A
+    /// window that could not measure it is absent rather than zero, for the
+    /// reason [`Baseline::measurements`] gives.
+    pub points: Vec<MetricPoint>,
+}
+
+/// Every window of one scope, laid side by side.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct BaselineTrend {
+    /// The windows the series draw from, in ledger order — each carrying the
+    /// build, paragraph floor and harness it was measured under, which is
+    /// where a reader sees a method break in the middle of a series.
+    pub windows: Vec<BaselineWindow>,
+    pub series: Vec<MetricSeries>,
+}
+
+/// Lay every window of one scope side by side, in the order the ledger
+/// recorded them.
+///
+/// A trend places rates next to each other and subtracts none of them:
+/// subtraction stays with [`diff`], where overlap, method and support are
+/// checked pair by pair, so a trend of thin or overlapping windows shows
+/// each window as it is rather than a delta it cannot carry. Scope is
+/// matched exactly, as [`latest_observed_to`] matches it — two scopes are
+/// two populations, and a series mixing them would trend the scope.
+pub fn trend(ledger: &[Baseline], project: Option<&Path>) -> BaselineTrend {
+    let windows: Vec<&Baseline> = ledger
+        .iter()
+        .filter(|b| b.project.as_deref() == project)
+        .collect();
+    let keys: BTreeSet<&String> = windows.iter().flat_map(|b| b.measurements.keys()).collect();
+    BaselineTrend {
+        series: keys
+            .into_iter()
+            .map(|key| MetricSeries {
+                metric: key.clone(),
+                points: windows
+                    .iter()
+                    .filter_map(|b| {
+                        b.measurements.get(key).map(|m| MetricPoint {
+                            label: b.label.clone(),
+                            measurement: *m,
+                        })
+                    })
+                    .collect(),
+            })
+            .collect(),
+        windows: windows.into_iter().map(BaselineWindow::of).collect(),
+    }
+}
+
 /// Resolve the pair a comparison runs over: the later window, and whatever
 /// the ledger recorded immediately before it unless another label is named.
 pub fn select<'a>(

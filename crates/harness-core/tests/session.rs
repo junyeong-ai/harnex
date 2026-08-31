@@ -1024,6 +1024,68 @@ fn a_record_on_the_boundary_belongs_to_one_of_the_two_windows() {
     );
 }
 
+#[test]
+fn trend_lays_only_one_scope_side_by_side_in_ledger_order() {
+    let (_dir, config) = every_metric_corpus();
+    let first = baseline_of(&config, None, "first");
+    let second = baseline_of(&config, None, "second");
+    let mut scoped = baseline_of(&config, None, "scoped");
+    scoped.project = Some(PathBuf::from("/p"));
+    let ledger = vec![first, second, scoped];
+
+    let labels = |trend: &session::BaselineTrend| -> Vec<String> {
+        trend.windows.iter().map(|w| w.label.clone()).collect()
+    };
+
+    let unscoped = session::baseline::trend(&ledger, None);
+    assert_eq!(labels(&unscoped), ["first", "second"]);
+    let steering = unscoped
+        .series
+        .iter()
+        .find(|s| s.metric == "steering_per_submission")
+        .expect("a series per recorded metric");
+    assert_eq!(
+        steering
+            .points
+            .iter()
+            .map(|p| p.label.as_str())
+            .collect::<Vec<_>>(),
+        ["first", "second"],
+        "every window of the scope contributes its point, in ledger order"
+    );
+
+    let scoped = session::baseline::trend(&ledger, Some(std::path::Path::new("/p")));
+    assert_eq!(
+        labels(&scoped),
+        ["scoped"],
+        "a series mixing scopes would trend the scope"
+    );
+}
+
+#[test]
+fn trend_omits_a_metric_a_window_could_not_measure() {
+    let (_dir, config) = every_metric_corpus();
+    let first = baseline_of(&config, None, "first");
+    let mut second = baseline_of(&config, None, "second");
+    second.measurements.remove("reedits_per_commit");
+    let trend = session::baseline::trend(&[first, second], None);
+
+    let reedits = trend
+        .series
+        .iter()
+        .find(|s| s.metric == "reedits_per_commit")
+        .expect("the metric one window carries still has a series");
+    assert_eq!(
+        reedits
+            .points
+            .iter()
+            .map(|p| p.label.as_str())
+            .collect::<Vec<_>>(),
+        ["first"],
+        "a window that could not measure a metric is absent from it, never zero"
+    );
+}
+
 fn baseline_under(
     config: &SessionConfig,
     label: &str,
