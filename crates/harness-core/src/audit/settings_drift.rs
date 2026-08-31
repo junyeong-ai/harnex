@@ -267,13 +267,17 @@ mod tests {
         // a regex — `mcp__claude-in-chrome` equals no `mcp__<server>__<tool>`
         // and fires for nothing. A comma list splits into tokens judged one
         // by one, so a bare server hides in a list beside a well-formed tool.
-        for matcher in [
-            "mcp__claude-in-chrome",
-            "mcp__a__x, mcp__claude-in-chrome",
-            "mcp__a__x|mcp__b",
+        for (event, matcher) in [
+            ("PreToolUse", "mcp__claude-in-chrome"),
+            ("PreToolUse", "mcp__a__x, mcp__claude-in-chrome"),
+            ("PreToolUse", "mcp__a__x|mcp__b"),
+            ("PostToolUse", "mcp__claude-in-chrome"),
+            ("PostToolUseFailure", "mcp__claude-in-chrome"),
+            ("PermissionRequest", "mcp__claude-in-chrome"),
+            ("PermissionDenied", "mcp__claude-in-chrome"),
         ] {
             let json = format!(
-                r#"{{ "hooks": {{ "PreToolUse": [{{ "matcher": "{matcher}",
+                r#"{{ "hooks": {{ "{event}": [{{ "matcher": "{matcher}",
                      "hooks": [{{"type":"command","command":"x"}}] }}] }} }}"#
             );
             let findings = run_on(&json);
@@ -281,7 +285,7 @@ mod tests {
                 findings
                     .iter()
                     .any(|f| f.slug == "audit-mcp-matcher-incomplete"),
-                "'{matcher}' carries a bare-server no-op token: {findings:?}"
+                "'{event}' matcher '{matcher}' carries a bare-server no-op token: {findings:?}"
             );
         }
     }

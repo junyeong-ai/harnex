@@ -325,7 +325,7 @@ impl<'a> PermissionRule<'a> {
             // pattern cannot reach — both read as an exact command,
             // misleading nobody. The suffix still shadows the wildcard
             // reading either way.
-            if prefix.is_empty() || prefix.contains(['\n', '\r']) {
+            if prefix.is_empty() || prefix.contains(['\n', '\r', '\u{2028}', '\u{2029}']) {
                 return None;
             }
             return Some(MisleadingRule {
@@ -627,6 +627,10 @@ mod tests {
         // can see; the next visible literal, if any, is the tail.
         assert_eq!(misleads("Bash(:*)", RuleDirection::Allow), None);
         assert_eq!(misleads("Bash(foo\nbar:*)", RuleDirection::Allow), None);
+        assert_eq!(
+            misleads("Bash(foo\u{2028}bar:*)", RuleDirection::Allow),
+            None
+        );
         assert_eq!(misleads("Bash(a * *)", RuleDirection::Allow), None);
         assert_eq!(
             misleads("Bash(a * * b)", RuleDirection::Allow),
