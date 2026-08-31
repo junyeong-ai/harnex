@@ -43,8 +43,8 @@ survived. Without it the window spans every project on the machine.
 ## 2 — Take the facts
 
 ```
-harnex session facts --since <t> [--project <dir>] --with-text
-harnex session submissions --since <t> [--project <dir>] --with-text --sample <n>
+harnex session facts [--since <t>] [--project <dir>] --with-text
+harnex session submissions [--since <t>] [--project <dir>] --with-text [--sample <n>]
 ```
 
 `submissions` returns `coverage` beside its `submissions`, the same coverage
@@ -242,7 +242,7 @@ carries.
 
 ## 6 — Report
 
-Three questions, in this order. A section with nothing in it says so and says
+Five sections, in this order. A section with nothing in it says so and says
 why — an empty section with its reason is worth more than a filled one that
 guessed.
 
@@ -264,9 +264,11 @@ which; `unknown` means a window did not record what it ran under. A delta
 reported without both is an association presented as an effect.
 
 Then the delta from `baseline diff`, or "first measurement" — never zeros.
-Where the ledger holds windows of more than one scope, name the pair —
-`--from` and `--to`, by the labels trend returned — because a bare diff takes
-the ledger's last two windows whatever scope they belong to.
+The pair is the ledger's two most recent windows of this scope: the window
+being measured is not saved yet, so its own delta is the next run's §0, as
+§7 says. Where the ledger holds windows of more than one scope, name the
+pair — `--from` and `--to`, by the labels trend returned — because a bare
+diff takes the ledger's last two windows whatever scope they belong to.
 Where `change` is null on every metric the window is too thin to compare: say
 so with `support_floor` and the denominators beside it, because the operator's
 next act is to keep working rather than to change anything. Where the ledger
@@ -445,11 +447,19 @@ same order, and the text above remains the deliverable of record.
 
 The ledger already holds what this window found recurring (§5); the baseline
 is the loop's other half. Offer, do not run: `harnex session baseline save
---label <name>`. The next measurement starts where this one ended, and §0's
-delta is the answer to whether any of this worked.
+--label <name>`. The next measurement starts where this one ended, and the
+next run's §0 delta is the answer to whether any of this worked.
 
-**Say what the baseline will record the harness as.** A window measured over a
-tree with uncommitted harness changes records `uncommitted`, and every
-comparison against it answers `unknown` — so the change being tested has to be
-committed before the window that tests it, not after. If the prescription above
-was tagged `apply`, that is the order: apply it, commit it, then save.
+**Save before applying anything.** A baseline records the harness the window
+ran under, and it reads the tree at save time — so a save deferred until the
+prescription is applied and committed stamps this window with a commit none
+of its sessions ran under, and the next diff answers `harness_change` about
+exactly the change it is testing from a mislabeled window. The order is:
+save, then apply, then commit — the window that tests the change is the next
+one, and it starts after this save. A tree already carrying unrelated
+uncommitted harness changes still records `uncommitted`, and every comparison
+against that window answers `unknown`.
+
+The observations §5 wrote are project files whatever the prescription's tag —
+commit them this cycle, or the recurrence they exist to prove stays on one
+machine.
