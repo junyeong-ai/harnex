@@ -67,8 +67,10 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
     ),
     (
         "commands/measure.md",
-        57,
+        60,
         &[
+            "Config.lifecycle",
+            "Submission.citation",
             "PromptFacts.across_sessions",
             "PromptFacts.within_sessions",
             "Repetition.chars",

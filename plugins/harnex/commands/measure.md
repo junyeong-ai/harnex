@@ -67,6 +67,12 @@ it for the same window, check its own wiring first, and add:
 | money, split by model and by main / subagent | pricing is not in the record and is not this plugin's to know |
 | active time per session | the transcript has timestamps, not attention |
 
+A collector often carries more than price: domain kinds the project itself
+emits — gates, deploys, rule blocks — keyed by the same session. Take the
+window's kinds beside its cost and report them as the collector's rows, never
+folded into the oracle's: the join is exact at the session, and at the session
+only.
+
 This step is optional in both directions. With no collector the report is
 complete without these rows and says so once; with one, no other section
 changes its meaning. Never put money in a baseline — a price list moves on its
@@ -197,6 +203,35 @@ project's own rule files before naming a paragraph uninstalled — measured over
 one window, the largest of these paragraphs were that project's always-loaded
 rule file in translation, in force the whole time.
 
+**Then write what survived into the ledger, so the next window can count it.**
+A judged finding is a reading and never enters a baseline — but a constraint
+recurs across windows only if something holds it between them, and the
+lifecycle ledger is that thing. Requires `[lifecycle]` in `harness.toml`,
+which a scaffolded harness ships. One observation per distinct constraint the
+window surfaced:
+
+```
+harnex lifecycle observe --tag measure-repeat --text "<the paragraph>" --source "<one citation>"
+harnex lifecycle observe --tag measure-gap    --text "<the addition>"  --source "<one citation>"
+```
+
+`measure-repeat` is an `across_sessions` paragraph the reading above found to
+be a constraint, in the oracle's own grouping of it; `measure-gap` is a judged
+gap, in the words of its `addition`. Record nothing from `within_sessions`
+alone — installation does not touch it — and nothing the rule files already
+carry. **Before writing, read what the tag's ledger file already holds.** The
+promoter groups by exact text after case and whitespace, so a constraint the
+ledger knows, rephrased, is a new constraint to it, and the recurrence this
+entry exists to prove never accrues — reuse the standing words verbatim. One
+observation per constraint per window: the within-window count is already in
+the report, and counting windows is the ledger's job.
+
+Then `harnex lifecycle candidates`. A pair that crossed the configured
+thresholds has waited through enough windows to stop being a sighting: report
+it as ready for `/harnex extend`, and leave the decision where the decision
+ledger keeps it — with the operator, through the curate pass their harness
+carries.
+
 ## 6 — Report
 
 Three questions, in this order. A section with nothing in it says so and says
@@ -223,7 +258,10 @@ reported without both is an association presented as an effect.
 Then the delta from `baseline diff`, or "first measurement" — never zeros.
 Where `change` is null on every metric the window is too thin to compare: say
 so with `support_floor` and the denominators beside it, because the operator's
-next act is to keep working rather than to change anything.
+next act is to keep working rather than to change anything. Where the ledger
+holds more than two windows of this scope, `harnex session baseline trend`
+lays them side by side; report the trajectory of any metric an earlier
+prescription named, because "did it work" is a direction before it is a delta.
 
 **Then what it cost and what it produced, on one line each.** Elapsed, `tokens`
 by its four counts, instructions, agent turns; against commits, files touched,
@@ -249,7 +287,11 @@ clock time, and what changed under them. The citation belongs in a footnote for
 whoever wants to reopen the file, not in the sentence doing the work.
 
 **2. What leaks every session.** §5, plus `interventions` by kind and
-`post_commit_reedits`. Say over how many distinct `commit` values it is spread
+`post_commit_reedits`. Open the largest recurring paragraph and quote it the
+way section 1 quotes its cases — the count names a leak and the paragraph is
+what leaks. Close with what §5 wrote to the ledger and what `candidates`
+returned: a constraint past its thresholds is this section's finding with a
+next act attached. Say over how many distinct `commit` values it is spread
 before saying it per commit: re-edits concentrated in one interval are one
 commit called done early, and the same count spread across many is a habit of
 declaring early — measured, 244 of 246 fell in a single interval, where
@@ -306,7 +348,9 @@ ran 27 times your median" names an outlier without a population.
 **Then one thing to change.** Not a list. Pick the prescription with the
 largest measured cost, tag it `apply` (harnex can write it) or `report`
 (outside `${CLAUDE_PROJECT_DIR}`, so the operator writes it), and name the
-metric that will show whether it worked. Everything else goes in an appendix.
+metric that will show whether it worked. An `apply` names the exact
+invocation — a `/harnex extend` verb where one composes it — rather than
+describing the change. Everything else goes in an appendix.
 
 **Limits**, with their numbers, every run:
 
@@ -371,15 +415,23 @@ metric that will show whether it worked. Everything else goes in an appendix.
 - a path containing a control character is reported as git spells it, escaped
 - `unreachable` is not undone, and a hand-undone change is not `reverted_by`
 - §3's judged findings are readings by the model in `session-judge`, over the
-  sample size, and they never enter a baseline
+  sample size, and they never enter a baseline; what §5 writes to the
+  lifecycle ledger is such a reading, held as an observation for the promoter
+  to count, never as a fact
+- a collector prices a session and a kind names an instruction, so money per
+  kind would need an apportionment rule this command does not have; the cost
+  join stops at the session it is exact at
 
-Write the report in the language the operator instructs in.
+Write the report in the language the operator instructs in. Where the session
+can publish a page, the same report may be delivered as one — same sections,
+same order, and the text above remains the deliverable of record.
 
 ## 7 — Close the loop
 
-Offer, do not run: `harnex session baseline save --label <name>`. The next
-measurement starts where this one ended, and §0's delta is the answer to
-whether any of this worked.
+The ledger already holds what this window found recurring (§5); the baseline
+is the loop's other half. Offer, do not run: `harnex session baseline save
+--label <name>`. The next measurement starts where this one ended, and §0's
+delta is the answer to whether any of this worked.
 
 **Say what the baseline will record the harness as.** A window measured over a
 tree with uncommitted harness changes records `uncommitted`, and every

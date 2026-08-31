@@ -30,8 +30,9 @@ pieces in `common/`, and one directory per supported language
 written to `${CLAUDE_PROJECT_DIR}` (the target repo).
 
 Measuring how the operator instructs Claude Code is `/harnex:measure`, a
-command outside this skill. Section 4 of its report is what turns a constraint
-supplied by hand every session into an `extend` verb.
+command outside this skill. What it finds recurring it records in the
+lifecycle ledger, where `candidates` turns a constraint supplied by hand
+every session into an `extend` verb.
 
 ## Invariants (every mode)
 
@@ -254,7 +255,8 @@ operator to re-phrase using a verb from this list.
 
   Then one hard rule: **an invariant with no enforcer in the tree does not
   become a rule.** It becomes `harnex lifecycle observe --tag <slug> --text
-  "<observation>"`, which is where a candidate waits until it has recurred.
+  "<observation>" --source "<where it was seen>"`, which is where a candidate
+  waits until it has recurred.
   This is what keeps derivation from becoming invention, and it is not a
   matter of judgment — no enforcer, no bullet.
 
