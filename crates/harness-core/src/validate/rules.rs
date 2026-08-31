@@ -148,10 +148,33 @@ impl<'a> RuleValidator<'a> {
             }
         };
 
-        let (declares_paths, frontmatter_line) = match &fm {
-            None => (false, 1),
+        let (declares_paths, declares_governs, frontmatter_line) = match &fm {
+            None => (false, false, 1),
             Some(fm) => match yaml_serde::from_str::<RuleFrontmatter>(&fm.yaml_text) {
                 Ok(parsed) => {
+                    let declares_governs =
+                        match crate::governs::GovernsDecl::from_yaml(&fm.yaml_text) {
+                            Ok(decl) => decl.is_some(),
+                            Err(shape) => {
+                                findings.push(Finding {
+                                    slug: "rule-governs-invalid".into(),
+                                    severity: Severity::Major,
+                                    location: Location::line(path.to_path_buf(), fm.begin_line),
+                                    message: shape.to_string(),
+                                    hint: Some(
+                                        "a declaration is `concept:` plus `live_truth:` (literal \
+                                     project-relative paths, no globs) plus an optional \
+                                     `decision_record:` — a malformed one governs nothing"
+                                            .into(),
+                                    ),
+                                    auto_fixable: false,
+                                    fix_command: None,
+                                });
+                                // Declared, however badly — the missing-declaration
+                                // finding on top would be two findings for one defect.
+                                true
+                            }
+                        };
                     if let Some(value) = &parsed.paths {
                         if is_glob_shaped(value) {
                             // A pattern the matcher rejects matches nothing, so
@@ -193,7 +216,11 @@ impl<'a> RuleValidator<'a> {
                             });
                         }
                     }
-                    (declares_scope(parsed.paths.as_ref()), fm.begin_line)
+                    (
+                        declares_scope(parsed.paths.as_ref()),
+                        declares_governs,
+                        fm.begin_line,
+                    )
                 }
                 Err(e) => {
                     findings.push(Finding {
@@ -213,6 +240,22 @@ impl<'a> RuleValidator<'a> {
                 }
             },
         };
+
+        if self.policy.require_governs && declares_paths && !declares_governs {
+            findings.push(Finding {
+                slug: "rule-missing-governs".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), frontmatter_line),
+                message: "path-scoped rule declares no `governs:`".into(),
+                hint: Some(
+                    "declare `concept:` and `live_truth:` — what this rule is truth about — \
+                     or turn off [validate.rules].require_governs"
+                        .into(),
+                ),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
 
         if !declares_paths && !self.policy.always_loaded_slugs.iter().any(|s| s == &slug) {
             findings.push(Finding {

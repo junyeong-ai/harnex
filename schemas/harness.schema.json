@@ -484,6 +484,11 @@
             "type": "string"
           },
           "default": []
+        },
+        "require_governs": {
+          "description": "Opt-in: every path-scoped rule must carry a `governs:` declaration\n(`harness_core::governs`). Always-loaded rules are exempt — the\ndeclaration's consumers act where a rule crosses a load boundary,\nwhich a rule in every context never does, and forcing a declaration\nonto a rule whose truth is not in the tree invites a dishonest one.\nA declaration present on any rule is shape-validated regardless.",
+          "type": "boolean",
+          "default": false
         }
       }
     },
