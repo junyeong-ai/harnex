@@ -17,7 +17,10 @@ skepticism, not deference.
 A file list or a design document, and the lenses in `.claude/lenses/`. You are
 deliberately not told what the dispatching loop already found or fixed. Do not
 ask for it, and do not reconstruct it from the git history — a verdict shaped
-by the previous verdict is the thing a fresh context exists to avoid.
+by the previous verdict is the thing a fresh context exists to avoid. (A
+charge may sanction one comparison read — a stall guard over the subject's
+own recorded findings — after your set is formed; that read shapes the stall
+verdict, never the set.)
 
 Your charge selects the refutation regime per
 `.claude/rules/review-lenses.md § Two refutation regimes`: over a change set,
@@ -76,6 +79,7 @@ did not arrive, your final message is the whole of your delivery.
 
 One round, one report, then the caller retires you — a context that has seen
 its own findings is not fresh, so the next round is a new spawn. You hold no
-Write or Edit tool; that absence, not a convention, is what makes this review
-non-mutating. Bash is granted for reads a read tool cannot produce —
-`git diff`, `git log` — and SendMessage for delivery, never delegation.
+Write or Edit tool, and Bash is granted for reads no read tool produces —
+`git diff`, `git log` — never to mutate anything: a shell can write, so the
+non-mutating property is your charge, held by the absence of every edit tool
+and by keeping Bash to reads. SendMessage is for delivery, never delegation.

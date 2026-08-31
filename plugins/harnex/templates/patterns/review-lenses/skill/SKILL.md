@@ -2,7 +2,7 @@
 description: "Convergent review loop. Walks every lens in .claude/lenses/ over a scope, fixes what a cited authority confirms, re-walks the scope the fixes grew, and stops when no Critical or Blocker remains and one fresh-context reviewer that did not watch the loop form its opinion agrees. Modifies files — findings-only audits live in the critique skill."
 when_to_use: "Invoke on fix-and-converge intent over a change set — \"review and fix\", \"converge the review\", \"리뷰 수렴해줘\", \"walk the lenses over <path>\" — or as the engine a spec review gate delegates to. Takes a path, a revision range (main..HEAD), or a glob. Read-only asks — findings without edits — route to the critique skill instead of entering the loop."
 argument-hint: "<path> | <commit-range> | <glob>  [--max-iter N]"
-allowed-tools: Read Edit Grep Glob Agent Bash(git diff *) Bash(git log *) Bash(git rev-parse *) Bash(git status *) Bash(git checkout -- *)
+allowed-tools: Read Edit Grep Glob Agent Bash(git diff *) Bash(git log *) Bash(git rev-parse *) Bash(git status *)
 ---
 
 # Convergent review
@@ -58,10 +58,13 @@ this addition surfaces, and one no lens can reach if the file is not open.
    authority the project declared. A finding citing judgment is reported,
    never edited: that citation is the author's own opt-out.
 5. **Run the project's fast gate over the pass's fixes.** A failure is triaged
-   to the offending fix, which is reverted alone (`git checkout -- <file>`)
-   and recorded on its row (convergence.md § A fix is pinned or it is
-   surfaced); the other fixes stand. A transient flake retries once; a second
-   flake escalates that fix as judgment.
+   to the offending fix, which is undone by applying the inverse of the edit
+   that produced it — the loop knows exactly what it changed, and no git
+   restore can tell a fix from the operator's own uncommitted work in the
+   same file, so nothing here touches git state. The finding keeps its row,
+   with the attempt recorded beneath it (convergence.md § A fix is pinned or
+   it is surfaced); the other fixes stand. A transient flake retries once; a
+   second flake escalates that fix as judgment.
 6. **Grow the scope by what the fixes touched**, never shrink it.
 
 <!-- harnex-fill: the fast gate command step 5 runs — name it here and grant
@@ -69,8 +72,12 @@ this addition surfaces, and one no lens can reach if the file is not open.
 
 ## Termination
 
-Stop when a full pass produces no Critical and no Blocker. Major and Minor
-remain as signal and do not block.
+Stop when a full pass leaves no Critical and no Blocker citing an authority.
+A judgment-cited Critical or Blocker is the one class the loop resolves by
+escalation rather than edit: surface it with the convergence report for the
+operator's disposition — re-walking cannot close what the loop is forbidden
+to fix, and counting it as failure makes convergence unreachable by
+construction. Major and Minor remain as signal and do not block.
 
 Also stop when the pass makes no progress, or at the iteration cap
 (default 5 — a circuit breaker, not the control). On either, report the reason,
@@ -102,11 +109,14 @@ errors, or is unavailable, escalate with the degradation named
 and never a quietly substituted reviewer.
 
 **What comes back branches on its citation.** Critical or Blocker findings
-that cite an authority enter the fix path as a new iteration — not a blind
-re-walk, which already missed them once. At most two such verify rounds; a
-blocker still standing after the second escalates. A returned judgment
-finding escalates its whole batch to the operator immediately: it cannot be
-auto-fixed, and a re-walk would drop it.
+citing an authority the rule's column knows enter the fix path as a new
+iteration — not a blind re-walk, which already missed them once. At most two
+such verify rounds; a blocker still standing after the second escalates. A
+citation naming an authority the column does not know degrades to surfaced,
+per the rule's conservative boundary. A judgment-cited Critical or Blocker
+escalates its whole batch to the operator immediately — it cannot be
+auto-fixed, and a re-walk would drop it; judgment findings at Major and
+below ride the report as signal.
 
 ## Report
 

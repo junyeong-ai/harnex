@@ -29,9 +29,7 @@ an observation is the blank-page problem in disguise.
   same list, and it also supplies the **bookend trigger's project signals**
   (a migration surface, an auth path, a generated-file guard). Name the
   **fast gate command** the loop's verify step runs and grant it in the
-  review skill's `allowed-tools`. Name where the loop's convergence record
-  lands when review is not spec-bound (convergence.md § The record outlives
-  the context needs a destination this project owns).
+  review skill's `allowed-tools`.
 - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
   If found, adapt to the existing layout instead of overwriting. Drop any
   phase whose artifact nobody on this project would review and no later
