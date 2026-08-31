@@ -1,0 +1,3 @@
+{"tag":"measure-gap","text":"@../nodex, @../hatel, @../symora도 참고해서 효과적으로 연동활용하고 있는지, 어설픈 휴리스틱이나 폴백, 패턴 매칭이 오탐이나 부작용을 유발하지 않는지, 네이밍과 컨벤션이 일관적인지, spec 기반 flywheel이 stale·중복·충돌로부터 안전한지도 함께 봐줘.","source":"session:677abce6/uuid:39b337eb-67eb-4552-aef2-1712ab906596","timestamp":"2026-08-31T10:17:35.592391Z"}
+{"tag":"measure-gap","text":"codex 가 오래 걸리면 진행상황을 주기적으로 확인해서 알려줘","source":"session:b833bf60/uuid:ec707d5e-7f7d-4095-b12c-c267e2299b96","timestamp":"2026-08-31T10:17:35.635994Z"}
+{"tag":"measure-gap","text":"최신 사실과 일치하는지뿐 아니라 불필요한 중복이나 장황함이 없는지, 분량이 최소로 압축됐는지도 함께 확인해.","source":"session:e448097f/uuid:09c583dc-e59d-4752-a005-20c748b114f9","timestamp":"2026-08-31T10:17:35.657878Z"}
