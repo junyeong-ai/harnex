@@ -55,6 +55,7 @@ wire_enum! {
         GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
         GraphSpawnFailure => "GRAPH_SPAWN_FAILURE",
         CheckGitFailure => "CHECK_GIT_FAILURE",
+        GovernsQueryUnresolvable => "GOVERNS_QUERY_UNRESOLVABLE",
         SessionRootUnreadable => "SESSION_ROOT_UNREADABLE",
         SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
         SessionWindowUnattributed => "SESSION_WINDOW_UNATTRIBUTED",
@@ -184,6 +185,9 @@ pub enum Error {
     #[error("git command failed: {message}")]
     CheckGitFailure { message: String },
 
+    #[error("governs query cannot resolve inside the project: '{query}'")]
+    GovernsQueryUnresolvable { query: String },
+
     #[error("session root {path} unreadable: {message}")]
     SessionRootUnreadable { path: PathBuf, message: String },
 
@@ -248,6 +252,7 @@ impl Error {
             Self::GraphResponseInvalid { .. } => ErrorCode::GraphResponseInvalid,
             Self::GraphSpawnFailure { .. } => ErrorCode::GraphSpawnFailure,
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
+            Self::GovernsQueryUnresolvable { .. } => ErrorCode::GovernsQueryUnresolvable,
             Self::SessionRootUnreadable { .. } => ErrorCode::SessionRootUnreadable,
             Self::SessionCoverageBelowFloor { .. } => ErrorCode::SessionCoverageBelowFloor,
             Self::SessionWindowUnattributed { .. } => ErrorCode::SessionWindowUnattributed,
@@ -266,6 +271,9 @@ impl Error {
                 Some("update harness.toml [meta] harnex_version or upgrade the binary")
             }
             Self::PathTraversal { .. } => Some("paths must not contain '..' segments"),
+            Self::GovernsQueryUnresolvable { .. } => {
+                Some("pass a project-relative path, or an absolute path under the project root")
+            }
             Self::PathSymlinkRefused { .. } => {
                 Some("delete the symlink or write to a non-symlink path")
             }
