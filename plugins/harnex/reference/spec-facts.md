@@ -110,7 +110,10 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   space then `*` (`Bash(ls *)` matches `ls -la` but NOT `lsof` — word boundary);
   `Bash(ls*)` (no space) also matches `lsof`. The `:*` suffix is an *equivalent*
   trailing wildcard (`Bash(ls:*)` ≡ `Bash(ls *)`) recognized ONLY at the end —
-  mid-pattern `:` is literal. Wildcards may appear at any position
+  mid-pattern `:` is literal. It reads as a namespace glob and is not one:
+  `Bash(pnpm gate:*)` never reaches `pnpm gate:fast`. The oracle flags the
+  spelling (`harnex validate settings`) and refuses it in
+  `[policy.permissions]` extras. Wildcards may appear at any position
   (`Bash(* --version)`). Wrappers `timeout/time/nice/nohup/stdbuf` (and bare
   `xargs`) are stripped before matching; env-runners (`npx`, `docker exec`,
   `devbox run`) are NOT — write `Bash(npx <tool> *)`, never bare `Bash(npx *)`.

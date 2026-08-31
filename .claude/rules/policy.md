@@ -41,7 +41,9 @@ that profile selected) and copy the array across — never hand-edit one side.
 A new `<lang>-dev` profile MUST ship its template.
 
 Rule grammar has one owner: `policy/rule.rs`. Ask `PermissionRule::effect`
-whether a permission check reads a rule — never match on the rule string.
+whether a permission check reads a rule, and `PermissionRule::misleading`
+whether its reach differs from its reading (the legacy `:*` suffix; a tail
+after a wildcard on the allow side) — never match on the rule string.
 Bash uses space-then-`*` (`Bash(cmd *)`); never grant built-in read-only
 commands (no-op); a Read deny already covers `cat`/`head`/`tail`/`sed`, so
 emit no `Bash(cat …)` mirror.

@@ -148,12 +148,12 @@ mod tests {
     fn generator_composes_profile_and_extras() {
         let policy = PermissionsPolicy {
             profiles: vec!["baseline".into()],
-            extra_allow: vec!["Bash(pnpm gate:*)".into()],
+            extra_allow: vec!["Bash(pnpm gate *)".into()],
             extra_ask: vec![],
             extra_deny: vec!["Bash(custom-danger *)".into()],
         };
         let block = PermissionGenerator::new(&policy).unwrap().generate();
-        assert!(block.allow.contains(&"Bash(pnpm gate:*)".to_string()));
+        assert!(block.allow.contains(&"Bash(pnpm gate *)".to_string()));
         assert!(block.deny.contains(&"Bash(custom-danger *)".to_string()));
         assert!(block.deny.contains(&"Bash(sudo *)".to_string()));
     }

@@ -42,6 +42,7 @@ wire_enum! {
         CodegenCycle => "CODEGEN_CYCLE",
         PolicyProfileUnknown => "POLICY_PROFILE_UNKNOWN",
         PolicyRuleInert => "POLICY_RULE_INERT",
+        PolicyRuleMisleading => "POLICY_RULE_MISLEADING",
         PolicyVersionFailure => "POLICY_VERSION_FAILURE",
         ValidateFrontmatterMalformed => "VALIDATE_FRONTMATTER_MALFORMED",
         ValidateFrontmatterInvalid => "VALIDATE_FRONTMATTER_INVALID",
@@ -136,6 +137,14 @@ pub enum Error {
         hint: String,
     },
 
+    #[error("permission rule {rule:?} in {field} reaches other than it reads: {reason}")]
+    PolicyRuleMisleading {
+        field: &'static str,
+        rule: String,
+        reason: String,
+        hint: String,
+    },
+
     #[error("policy version check failed: {message}")]
     PolicyVersionFailure { message: String },
 
@@ -222,6 +231,7 @@ impl Error {
             Self::CodegenCycle { .. } => ErrorCode::CodegenCycle,
             Self::PolicyProfileUnknown { .. } => ErrorCode::PolicyProfileUnknown,
             Self::PolicyRuleInert { .. } => ErrorCode::PolicyRuleInert,
+            Self::PolicyRuleMisleading { .. } => ErrorCode::PolicyRuleMisleading,
             Self::PolicyVersionFailure { .. } => ErrorCode::PolicyVersionFailure,
             Self::ValidateFrontmatterMalformed { .. } => ErrorCode::ValidateFrontmatterMalformed,
             Self::ValidateFrontmatterInvalid { .. } => ErrorCode::ValidateFrontmatterInvalid,
@@ -286,6 +296,7 @@ impl Error {
                 "use one of the built-in profiles or register a custom profile in harness.toml",
             ),
             Self::PolicyRuleInert { hint, .. } => Some(hint),
+            Self::PolicyRuleMisleading { hint, .. } => Some(hint),
             Self::ValidateFrontmatterMalformed { .. } => {
                 Some("frontmatter must be `---`-delimited YAML at the top of the file")
             }

@@ -25,7 +25,7 @@ use serde_json::Value;
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
-use crate::policy::{PermissionRule, RuleEffect};
+use crate::policy::{PermissionRule, RuleDirection, RuleEffect};
 use crate::wire_enum::wire_enum;
 
 /// Valid values for `skillOverrides` per Claude Code spec.
@@ -285,27 +285,46 @@ impl SettingsValidator {
             let ask_strs = rule_array(perms, "ask");
             let deny_strs = rule_array(perms, "deny");
 
-            for (array, rules) in [
-                ("allow", &allow_strs),
-                ("ask", &ask_strs),
-                ("deny", &deny_strs),
+            for (array, rules, direction) in [
+                ("allow", &allow_strs, RuleDirection::Allow),
+                ("ask", &ask_strs, RuleDirection::Ask),
+                ("deny", &deny_strs, RuleDirection::Deny),
             ] {
                 for rule in rules {
-                    let RuleEffect::Inert(inert) = PermissionRule::parse(rule).effect() else {
+                    let parsed = PermissionRule::parse(rule);
+                    if let RuleEffect::Inert(inert) = parsed.effect() {
+                        findings.push(Finding {
+                            slug: "settings-inert-permission-rule".into(),
+                            severity: Severity::Major,
+                            location: Location::file(path.to_path_buf()),
+                            message: format!(
+                                "'{rule}' in permissions.{array} is never consulted — {}",
+                                inert.reason_text()
+                            ),
+                            hint: Some(inert.hint()),
+                            auto_fixable: false,
+                            fix_command: None,
+                        });
                         continue;
-                    };
-                    findings.push(Finding {
-                        slug: "settings-inert-permission-rule".into(),
-                        severity: Severity::Major,
-                        location: Location::file(path.to_path_buf()),
-                        message: format!(
-                            "'{rule}' in permissions.{array} is never consulted — {}",
-                            inert.reason_text()
-                        ),
-                        hint: Some(inert.hint()),
-                        auto_fixable: false,
-                        fix_command: None,
-                    });
+                    }
+                    // Advisory, never gating: the rule functions, so an
+                    // incumbent settings file keeps passing — the finding
+                    // says the operator holds a different rule than the one
+                    // they wrote.
+                    if let Some(misleading) = parsed.misleading(direction) {
+                        findings.push(Finding {
+                            slug: "settings-misleading-permission-rule".into(),
+                            severity: Severity::Minor,
+                            location: Location::file(path.to_path_buf()),
+                            message: format!(
+                                "'{rule}' in permissions.{array} reaches other than it reads — {}",
+                                misleading.reason_text()
+                            ),
+                            hint: Some(misleading.hint()),
+                            auto_fixable: false,
+                            fix_command: None,
+                        });
+                    }
                 }
             }
             for allow in &allow_strs {

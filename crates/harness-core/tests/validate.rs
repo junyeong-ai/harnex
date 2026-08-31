@@ -993,6 +993,50 @@ fn settings_validator_flags_a_rule_no_permission_check_consults() {
 }
 
 #[test]
+fn settings_validator_flags_a_rule_that_reaches_other_than_it_reads() {
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "permissions": {
+            "allow": ["Bash(pnpm gate:*)", "Bash(pnpm --filter * dev)"],
+            "deny": ["Bash(git push:*)", "Bash(find * -delete)"]
+        }
+    }"#;
+    let findings = v.validate_text(
+        json,
+        Path::new(".claude/settings.json"),
+        SettingsScope::Project,
+    );
+    let misleading: Vec<_> = findings
+        .iter()
+        .filter(|f| f.slug == "settings-misleading-permission-rule")
+        .collect();
+    let legacy = misleading
+        .iter()
+        .find(|f| f.message.contains("Bash(pnpm gate:*)"))
+        .expect("the legacy colon wildcard is flagged");
+    assert_eq!(legacy.severity, Severity::Minor);
+    assert!(legacy.message.contains("never `pnpm gate:<suffix>`"));
+    let tail = misleading
+        .iter()
+        .find(|f| f.message.contains("Bash(pnpm --filter * dev)"))
+        .expect("the allow with a tail after its wildcard is flagged");
+    assert!(tail.message.contains("`dev` anchors the end"));
+    // The deny direction: a legacy colon still misreads, a tail past a
+    // wildcard is the fail-safe over-reach the baseline writes deliberately.
+    assert!(
+        misleading
+            .iter()
+            .any(|f| f.message.contains("Bash(git push:*)"))
+    );
+    assert!(
+        !misleading
+            .iter()
+            .any(|f| f.message.contains("Bash(find * -delete)")),
+        "a deny reaching further than it reads still refuses: {findings:?}"
+    );
+}
+
+#[test]
 fn settings_validator_accepts_the_rules_permission_checks_read() {
     let v = SettingsValidator::new();
     let json = r#"{
