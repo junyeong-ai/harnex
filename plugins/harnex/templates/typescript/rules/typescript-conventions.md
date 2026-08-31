@@ -2,6 +2,11 @@
 paths:
   - "**/*.ts"
   - "**/*.tsx"
+governs:
+  concept: typescript source conventions
+  live_truth:
+    - src
+  # <!-- harnex-fill: re-point live_truth at this project's real source roots -->
 ---
 
 # TypeScript conventions

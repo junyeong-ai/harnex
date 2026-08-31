@@ -26,11 +26,15 @@ Parse the argument into a concrete file list:
 
 An empty list converges in zero passes. Say so and stop; do not invent a scope.
 
-**Pull each file's prose sibling in with it.** A rule whose `paths:` frontmatter
-matches a file in scope enters the scope too, as does the nearest `CLAUDE.md`
-above it. Reviewing code without the prose that describes it is how a renamed
-symbol keeps a paragraph that names the old one — the single most common finding
-this addition surfaces, and one no lens can reach if the file is not open.
+**Pull each file's prose sibling in with it.** `harnex governs resolve
+<files>` answers which rules are truth about the files in scope, from their
+own `governs:` declarations — a rule can describe code it does not load
+beside, which is what the declaration exists to say. Without the binary, the
+approximation is the rules whose `paths:` frontmatter match. Either way the
+nearest `CLAUDE.md` above each file enters too. Reviewing code without the
+prose that describes it is how a renamed symbol keeps a paragraph that names
+the old one — the single most common finding this addition surfaces, and one
+no lens can reach if the file is not open.
 
 <!-- harnex-fill: any other prose surface this project pairs with code — a
      package doc, an OpenAPI file, a schema kept beside its migration -->

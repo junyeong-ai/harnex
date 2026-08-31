@@ -3,6 +3,11 @@ paths:
   - "**/*.java"
   - "**/*.kt"
   - "**/*.kts"
+governs:
+  concept: jvm source conventions
+  live_truth:
+    - src
+  # <!-- harnex-fill: re-point live_truth at this project's real source roots -->
 ---
 
 # JVM conventions

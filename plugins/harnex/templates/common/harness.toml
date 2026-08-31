@@ -22,6 +22,14 @@ harnex_version = ">=0.1, <0.2"
 # meant to load unconditionally.
 max_lines = 200
 always_loaded_slugs = ["constitution", "agent-conduct"]
+# Every path-scoped rule declares what it is truth ABOUT (`governs:` —
+# concept + live_truth), which is a different question from when it loads
+# (`paths:`). `harnex governs resolve` inverts the declarations into review
+# scope, and `harnex check` flags a declared truth that no longer exists —
+# the drift that makes a rule actively misleading. Always-loaded rules are
+# exempt: they are in every context already, and some have no truth in the
+# tree to declare.
+require_governs = true
 
 # `reject_unknown_keys` is opt-in in the oracle because a hardcoded key list
 # lags the upstream spec, and a stale list turns valid frontmatter into a

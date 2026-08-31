@@ -1,6 +1,11 @@
 ---
 paths:
   - "specs/**"
+governs:
+  concept: the spec lifecycle and its gates
+  live_truth:
+    - specs
+    - .claude/skills/spec
 ---
 
 # Spec-driven workflow

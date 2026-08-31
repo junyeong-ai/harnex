@@ -43,14 +43,14 @@ files = [
 
 [[pattern]]
 slug = "observability"
-analyze = ["logging/tracing framework", "project name → namespace"]
+analyze = ["logging/tracing framework", "project name → namespace", "source roots for governs.live_truth"]
 files = [
   { template = "observability.md", destination = ".claude/rules/observability.md" },
 ]
 
 [[pattern]]
 slug = "deprecation"
-analyze = ["native deprecation markers in the language"]
+analyze = ["native deprecation markers in the language", "source roots for governs.live_truth"]
 files = [
   { template = "deprecation.md", destination = ".claude/rules/deprecation.md" },
 ]
@@ -65,14 +65,14 @@ files = [
 
 [[pattern]]
 slug = "naming-decisions"
-analyze = ["file-name casing", "import/factory verbs", "type suffixes", "tool-script suffixes"]
+analyze = ["file-name casing", "import/factory verbs", "type suffixes", "tool-script suffixes", "source roots for governs.live_truth"]
 files = [
   { template = "naming-decisions.md", destination = ".claude/rules/naming-decisions.md" },
 ]
 
 [[pattern]]
 slug = "copy-conventions"
-analyze = ["locale from string literals", "error message format", "i18n framework in deps"]
+analyze = ["locale from string literals", "error message format", "i18n framework in deps", "source roots for governs.live_truth"]
 files = [
   { template = "copy-conventions.md", destination = ".claude/rules/copy-conventions.md" },
 ]

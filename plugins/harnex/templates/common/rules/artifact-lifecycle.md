@@ -3,6 +3,11 @@ paths:
   - ".claude/rules/**"
   - ".claude/skills/**"
   - ".claude/lenses/**"
+governs:
+  concept: the lifecycle every harness artifact moves through
+  live_truth:
+    - .claude/rules
+    - .claude/skills
 ---
 
 # Artifact lifecycle — promotion, retirement, hygiene
