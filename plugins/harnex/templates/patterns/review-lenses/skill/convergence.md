@@ -80,8 +80,8 @@ its row unchanged — the vanish audit keys on the row's joined text, and an
 indented plain line beneath a bullet continues that text, so the attempt is
 recorded as its own bullet on the line beneath the row,
 `- attempted: <what was tried> — broke <gate>`, never by editing the row or
-hanging prose under it. The
-loop never re-attempts a recorded fix: without the record, the next pass
+hanging prose under it. The loop never re-attempts a recorded fix: without
+the record, the next pass
 re-derives the same fix from the same finding, breaks the same gate, and the
 pair rides to the cap. It surfaces the finding with the attempt beside it.
 
