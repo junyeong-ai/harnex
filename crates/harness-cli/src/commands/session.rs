@@ -126,6 +126,13 @@ pub enum BaselineCommand {
         #[arg(long)]
         to: Option<String>,
     },
+    /// Every recorded window of one scope, laid side by side
+    Trend {
+        /// Only windows measured under this scope. Without it, the windows
+        /// that were not scoped to a project.
+        #[arg(long)]
+        project: Option<PathBuf>,
+    },
 }
 
 /// The code a consumer matches on when a baseline records cleanly and cannot
@@ -287,6 +294,17 @@ pub fn run<W: Write>(cmd: SessionCommand, out: &mut W) -> Result<ExitCode> {
                         session::baseline::select(&recorded, from.as_deref(), to.as_deref())?;
                     let diff = session::baseline::diff(from, to, session_config.min_support)?;
                     write_envelope_success(out, diff)?;
+                }
+                BaselineCommand::Trend { project } => {
+                    let (_, project) = WindowArgs {
+                        since: None,
+                        project,
+                        session: None,
+                    }
+                    .resolve()?;
+                    let recorded = ledger.load_all()?;
+                    let trend = session::baseline::trend(&recorded, project.as_deref());
+                    write_envelope_success(out, trend)?;
                 }
             }
         }

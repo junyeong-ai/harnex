@@ -19,7 +19,7 @@ use crate::config::Config;
 use crate::envelope::{EnvelopeShape, Finding, ListResponse};
 use crate::error::ErrorCode;
 use crate::policy::PermissionsBlock;
-use crate::session::{BaselineDiff, SessionFacts, SubmissionWindow};
+use crate::session::{BaselineDiff, BaselineTrend, SessionFacts, SubmissionWindow};
 use crate::telemetry::Event;
 use crate::wire_enum::wire_enum;
 
@@ -36,6 +36,7 @@ wire_enum! {
         Session => "session",
         SessionSubmissions => "session-submissions",
         SessionBaseline => "session-baseline",
+        SessionTrend => "session-trend",
         All => "all",
     }
 }
@@ -53,6 +54,7 @@ pub fn schema_for(target: SchemaTarget) -> Value {
         SchemaTarget::Session => to_value(schemars::schema_for!(SessionFacts)),
         SchemaTarget::SessionSubmissions => to_value(schemars::schema_for!(SubmissionWindow)),
         SchemaTarget::SessionBaseline => to_value(schemars::schema_for!(BaselineDiff)),
+        SchemaTarget::SessionTrend => to_value(schemars::schema_for!(BaselineTrend)),
         SchemaTarget::All => all_schemas(),
     }
 }

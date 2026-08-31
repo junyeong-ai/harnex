@@ -171,6 +171,7 @@ harnex session facts  [--since <t>] [--with-text]      # counts + citations, no 
 harnex session submissions [--with-text] [--sample N]  # one entry per instruction, and what followed it
 harnex session baseline save --label <name>            # freeze the window; resumes where the last one ended
 harnex session baseline diff [--from <a>] [--to <b>]   # rates across two windows, with each window's span
+harnex session baseline trend [--project <dir>]        # every window of one scope, side by side
 
 harnex lifecycle observe --tag T --text X --source S
 harnex lifecycle candidates
@@ -194,7 +195,8 @@ harnex plan audit --plan P [--spec S]                 # spec-workflow review flo
 harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
 
 harnex export schema {config|envelope|finding|event|permissions|error-codes|
-                       session|session-submissions|session-baseline|all}
+                       session|session-submissions|session-baseline|
+                       session-trend|all}
 
 harnex completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```
