@@ -84,6 +84,11 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::session::SessionCommand,
     },
+    /// What each rule is truth about — resolve paths to their governing rules
+    Governs {
+        #[command(subcommand)]
+        cmd: commands::governs::GovernsCommand,
+    },
     /// Read-only queries over a nodex document graph
     Graph {
         #[command(subcommand)]
@@ -155,6 +160,7 @@ fn main() -> ExitCode {
         Command::Plan { cmd } => commands::plan::run(cmd, &mut out),
         Command::Export { cmd } => commands::export::run(cmd, &mut out),
         Command::Session { cmd } => commands::session::run(cmd, &mut out),
+        Command::Governs { cmd } => commands::governs::run(cmd, &mut out),
         Command::Graph { cmd } => commands::graph::run(cmd, &mut out),
         Command::Completions(args) => commands::completions::run(args, &mut out),
         Command::Check(args) => commands::check::run(args, &mut out),

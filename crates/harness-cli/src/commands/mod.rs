@@ -4,6 +4,7 @@ pub mod codegen;
 pub mod completions;
 pub mod evidence;
 pub mod export;
+pub mod governs;
 pub mod graph;
 pub mod guard;
 pub mod lifecycle;
