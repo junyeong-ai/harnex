@@ -30,6 +30,26 @@ fn unknown_subcommand_emits_error_envelope_and_exit_2() {
 }
 
 #[test]
+fn invalid_value_envelope_names_the_value_and_the_valid_set() {
+    // The envelope is the programmatic surface, so a rejected value must be
+    // diagnosable from it alone: which argument, which value, which values
+    // exist. clap's kind alone says none of the three.
+    let out = harness()
+        .args(["export", "schema", "bogus"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("one JSON envelope");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("'bogus'"), "names the value: {message}");
+    assert!(
+        message.contains("session-trend"),
+        "names the valid set: {message}"
+    );
+}
+
+#[test]
 fn help_is_clap_native_and_exits_0() {
     // `--help` is a display request, not a command execution — clap-native,
     // exit 0, NOT enveloped.
