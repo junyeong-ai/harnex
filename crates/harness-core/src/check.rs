@@ -43,7 +43,8 @@ pub struct CheckOutcome {
     pub run: Vec<String>,
     /// Validators that were not run, with the reason.
     pub skipped: Vec<SkippedRule>,
-    /// Count of unique files scanned across all validators.
+    /// Count of scans across the windowed validators — a file more than one
+    /// validator reads counts once per reader.
     pub files_scanned: usize,
 }
 

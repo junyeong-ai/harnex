@@ -220,11 +220,17 @@ impl GovernsDecl {
 /// upward, is unanswerable and refused — a silent empty answer would read
 /// as "governed by nothing", which is a different fact.
 pub fn normalize_query(root: &Path, query: &str) -> Result<String> {
+    let refuse = || Error::GovernsQueryUnresolvable {
+        query: query.to_string(),
+    };
+    if query.is_empty() {
+        // Not a path at all — most plausibly an unset shell variable, and
+        // answering it as "governed by nothing" would hide that.
+        return Err(refuse());
+    }
     let q = Path::new(query);
     let rel = if q.is_absolute() {
-        q.strip_prefix(root).map_err(|_| Error::PathTraversal {
-            path: q.to_path_buf(),
-        })?
+        q.strip_prefix(root).map_err(|_| refuse())?
     } else {
         q
     };
@@ -239,12 +245,12 @@ pub fn normalize_query(root: &Path, query: &str) -> Result<String> {
             std::path::Component::ParentDir
             | std::path::Component::RootDir
             | std::path::Component::Prefix(_) => {
-                return Err(Error::PathTraversal {
-                    path: q.to_path_buf(),
-                });
+                return Err(refuse());
             }
         }
     }
+    // "." and the root itself normalize to "": a real subject whose true
+    // answer is empty — no declaration covers its own project's root.
     Ok(parts.join("/"))
 }
 
@@ -525,15 +531,17 @@ mod tests {
         ] {
             assert_eq!(normalize_query(root, given).unwrap(), want, "{given}");
         }
-        for refused in ["/elsewhere/a.rs", "src/../..", "a/../b"] {
+        for refused in ["/elsewhere/a.rs", "src/../..", "a/../b", ""] {
             assert!(
                 matches!(
                     normalize_query(root, refused),
-                    Err(Error::PathTraversal { .. })
+                    Err(Error::GovernsQueryUnresolvable { .. })
                 ),
                 "{refused} accepted"
             );
         }
+        assert_eq!(normalize_query(root, ".").unwrap(), "");
+        assert_eq!(normalize_query(root, "/proj").unwrap(), "");
     }
 
     #[test]
