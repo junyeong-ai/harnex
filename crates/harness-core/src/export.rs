@@ -195,7 +195,7 @@ mod tests {
             SchemaTarget::ALL.iter().map(|t| t.as_str()).collect();
         assert_eq!(SchemaTarget::ALL.len(), unique.len(), "ALL has a duplicate");
         assert!(
-            SchemaTarget::ALL.len() >= 9,
+            SchemaTarget::ALL.len() >= 11,
             "ALL shrank unexpectedly — target dropped?"
         );
     }
