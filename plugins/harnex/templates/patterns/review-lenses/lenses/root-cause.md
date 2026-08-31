@@ -2,7 +2,7 @@
 id: root-cause
 applies_to: [code, spec, plan]
 anchors:
-  - constitution
+  - rule:constitution
 ---
 
 # Root cause

@@ -11,11 +11,13 @@
 
 [[pattern]]
 slug = "review-lenses"
-analyze = ["existing .claude/rules/ for anchors", "file types present for applies_to", "re-runnable authorities a finding may cite — lint codes, named CI gates, schema checks"]
+analyze = ["existing .claude/rules/ for anchors", "file types present for applies_to", "authorities a finding may cite — lint codes, named CI gates, schema checks", "blast-radius signals for the bookend trigger", "the fast gate command the loop's verify step runs"]
 files = [
   { template = "review-lenses.md", destination = ".claude/rules/review-lenses.md" },
   { template = "skill/SKILL.md", destination = ".claude/skills/review/SKILL.md" },
   { template = "skill/convergence.md", destination = ".claude/skills/review/convergence.md" },
+  { template = "critique/SKILL.md", destination = ".claude/skills/critique/SKILL.md" },
+  { template = "design-review/SKILL.md", destination = ".claude/skills/design-review/SKILL.md" },
   { template = "agent/reviewer.md", destination = ".claude/agents/reviewer.md" },
   { template = "lenses/completeness.md", destination = ".claude/lenses/completeness.md" },
   { template = "lenses/best-practice.md", destination = ".claude/lenses/best-practice.md" },

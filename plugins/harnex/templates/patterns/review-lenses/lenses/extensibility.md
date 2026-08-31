@@ -2,7 +2,7 @@
 id: extensibility
 applies_to: [code]
 anchors:
-  - constitution
+  - rule:constitution
 ---
 
 # Extensibility

@@ -2,7 +2,7 @@
 id: best-practice
 applies_to: [code]
 anchors:
-  - constitution
+  - rule:constitution
 ---
 
 # Best practice

@@ -33,6 +33,11 @@ pass lines (below), never memory — a convergence floor nothing computes is
 prose, and the measured failure of that shape is a gate that recorded eleven
 firings while its own rule said stop at the second.
 
+The comparison holds within the files both passes walked. A file the scope
+just grew carries its findings into the next pass's comparison, not this one:
+growth is how the loop finds work, and a guard that reads found work as
+regression teaches the loop not to look.
+
 ## The record outlives the context
 
 Convergence state that lives only in conversation is erased by exactly what a
@@ -64,11 +69,15 @@ auto-fix for a behavioural finding lands together with what pins it — a test,
 an extended assertion, a lint the project already runs — or the finding is
 surfaced instead of fixed. Measured without this, one mirror file took six
 consecutive fix-commits, one arm per round, because nothing pinned "the two
-sides agree over all inputs" and every fresh pass found the next case.
+sides agree over all inputs" and every fresh pass found the next case. A
+convention fix whose authority already re-runs is its own pin and needs no
+new one.
 
-A fix the project's own gate then rejects is reverted — and recorded as
-attempted, with what failed. The loop never re-attempts a recorded failed fix;
-it surfaces the finding with the attempt beside it.
+A fix the project's own gate then rejects is reverted — and the finding keeps
+its row, marked `attempted: <what was tried> — broke <gate>`. The loop never
+re-attempts a marked fix: without the mark, the next pass re-derives the same
+fix from the same finding, breaks the same gate, and the pair rides to the
+cap. It surfaces the finding with the attempt beside it.
 
 ## The cap
 
@@ -93,14 +102,28 @@ too big to review as one unit.
 
 ## Scaling the terminal pass
 
-One fresh reviewer is the floor and the default. Where a change deserves more,
-the axis is independence, not volume:
+One fresh reviewer is the floor and the default: the load-bearing property is
+context independence, not model tier, and a same-model second pass adds
+redundancy, not signal. Where a change's failure would be expensive, scale
+along the independence axis — each step opt-in, never the default path, and
+an engine's unavailability never gates the default:
 
 - **Partition by area** — one reviewer per subsystem when the scope spans
-  several and no single context holds it well.
-- **Vary the lens, not the count** — where a finding could be wrong in more than
-  one way, give each reviewer a different question rather than the same one
-  twice. Redundancy catches noise; diversity catches classes.
+  several. Each partition still receives the whole diff and is charged with
+  one area of it, because the defect a partitioned pass most likely misses is
+  the one between two partitions — a caller not updated with its callee, a
+  contract broken across a package edge.
+- **Vary the lens, not the count** — where a finding could be wrong in more
+  than one way, give each reviewer a different question rather than the same
+  one twice. Redundancy catches noise; diversity catches classes.
+- **Cross a provider boundary** — a different provider's engine over the same
+  diff catches the blind spots a model family structurally shares with
+  itself; a same-provider second model does not. A Critical or Blocker either
+  engine raises and the other cannot refute enters the fix path.
+
+Under more than one reviewer the compared total is the union after
+cross-refutation — one number per round, never one per engine, or two engines
+disagreeing reads as progress in whichever order their reports land.
 
 Each reviewer is spawned once, reports, and is done. A reviewer asked to judge a
 second round is no longer the fresh context that was its whole value.

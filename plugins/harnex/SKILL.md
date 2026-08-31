@@ -321,9 +321,10 @@ operator to re-phrase using a verb from this list.
   blank-page problem in disguise.
 
   Available patterns:
-  - `review-lenses` — the convergent review loop as a **skill**, a
-    fresh-context reviewer **agent** for its terminal pass, the severity ×
-    citation rule that decides what may be fixed unattended, and 6 lens files.
+  - `review-lenses` — the convergent review loop plus two forked read-only
+    bookends (critique, design-review) as **skills**, the fresh-context
+    reviewer **agent** they all run through, the severity × citation rule
+    that decides what may be fixed unattended, and 6 lens files.
   - `spec-workflow` — the spec orchestrator as a **skill** (four gate events, a
     closed decision-token enum, resume from disk), the threshold-and-lifecycle
     rule, and `specs/_template/`.

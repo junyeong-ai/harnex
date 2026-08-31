@@ -2,8 +2,8 @@
 id: naming
 applies_to: [code, prose, spec, plan]
 anchors:
-  - constitution
-  # On install, if the `naming-decisions` rule is present, add it here.
+  - rule:constitution
+  # On install, if the `naming-decisions` rule is present, add rule:naming-decisions.
 ---
 
 # Naming
