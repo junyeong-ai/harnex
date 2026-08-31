@@ -165,6 +165,18 @@
             "$ref": "#/$defs/VerifierDecl"
           },
           "default": []
+        },
+        "advisory_dir": {
+          "description": "Directory the recorded advisory baselines live in, project-relative.",
+          "type": "string",
+          "default": "evidence"
+        },
+        "advisories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AdvisoryDecl"
+          },
+          "default": []
         }
       }
     },
@@ -197,6 +209,40 @@
       "required": [
         "provenance",
         "strategy"
+      ]
+    },
+    "AdvisoryDecl": {
+      "description": "One declared advisory: a measurement this toolkit never runs, whose\nrecorded evidence it holds fresh. The advisory's own findings never gate;\nthe freshness of its basis does.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Kebab-case identity; the baseline lands at `<advisory_dir>/<id>.json`.",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Paths whose change invalidates the evidence — what the measurement\nwas ABOUT. Literal project-relative paths; a directory covers its\nsubtree.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "engine": {
+          "description": "Paths of the measuring instrument itself, digested apart from the\ninputs so a stale finding can say which of the two moved. Identity,\nnever an alias: content is what is hashed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "unattended_remeasure": {
+          "description": "Whether an unattended context (a push gate, `--unattended`) may block\non this entry's staleness. Only where the person being blocked can\nre-measure in the same sitting; elsewhere staleness reports without\ngating there.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "id",
+        "inputs"
       ]
     },
     "TelemetryConfig": {

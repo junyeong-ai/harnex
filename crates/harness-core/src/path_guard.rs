@@ -78,6 +78,20 @@ pub fn reject_symlink_write(path: &Path) -> Result<()> {
 /// Writes through a same-directory temp file followed by `rename`, so a
 /// crash mid-write cannot leave a partial file at `path`. Parent
 /// directories are created as needed. Symlink targets are refused.
+/// Whether a declared path is a literal project-relative path: non-empty,
+/// relative, forward-slash separated, no traversal, no glob metacharacters,
+/// no NUL. The shape both `governs.live_truth` and `[[evidence.advisories]]`
+/// inputs are held to — a declaration that could reach outside the project,
+/// or that two evaluators could read differently, is refused at the boundary.
+pub(crate) fn literal_relative(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with('/')
+        && !path.contains(['*', '?', '[', '\\', '\0'])
+        && !path
+            .split('/')
+            .any(|seg| seg.is_empty() || seg == "." || seg == "..")
+}
+
 pub fn write_atomic(path: &Path, contents: &[u8]) -> Result<()> {
     reject_traversal(path)?;
     reject_symlink_write(path)?;

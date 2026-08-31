@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
+use crate::path_guard::literal_relative;
 use crate::validate::frontmatter;
 
 /// A rule's parsed `governs:` declaration.
@@ -127,20 +128,6 @@ impl std::fmt::Display for DeclError {
             Self::Shape(e) => e.fmt(f),
         }
     }
-}
-
-/// Whether a declared path is a literal project-relative path. Globs are
-/// refused by the module contract; traversal and absolute paths would let a
-/// declaration reach outside the project it describes; a backslash is
-/// refused because `/` is the one separator this grammar reads, and a path
-/// that resolves differently per platform is not literal.
-fn literal_relative(path: &str) -> bool {
-    !path.is_empty()
-        && !path.starts_with('/')
-        && !path.contains(['*', '?', '[', '\\', '\0'])
-        && !path
-            .split('/')
-            .any(|seg| seg.is_empty() || seg == "." || seg == "..")
 }
 
 fn normalize(path: &str) -> &str {
