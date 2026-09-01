@@ -27,7 +27,6 @@ fn default_lifecycle(observation_dir: PathBuf) -> LifecycleConfig {
         grace_period_days: 0,
         observation_dir,
         decision_dir: parent.join("decisions"),
-        invocation_kind: Some("skill-invoked".into()),
         consumer_detectors: vec![ConsumerDetectorDecl {
             kind: "rule".into(),
             strategy: "grep".into(),
@@ -619,6 +618,7 @@ fn sweep_walks_every_kind_with_consumer_detector() {
             name: "rule".into(),
             glob: ".claude/rules/*.md".into(),
             foundation: false,
+            invocation_kind: Some("skill-invoked".into()),
         }],
     );
     let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
@@ -647,11 +647,13 @@ fn sweep_skips_foundation_kinds() {
                 name: "constitution".into(),
                 glob: ".claude/rules/constitution.md".into(),
                 foundation: true,
+                invocation_kind: None,
             },
             KindDecl {
                 name: "rule".into(),
                 glob: ".claude/rules/*.md".into(),
                 foundation: false,
+                invocation_kind: None,
             },
         ],
     );
@@ -681,11 +683,13 @@ fn sweep_skips_kind_without_consumer_detector() {
                 name: "rule".into(),
                 glob: ".claude/rules/*.md".into(),
                 foundation: false,
+                invocation_kind: None,
             },
             KindDecl {
                 name: "skill".into(),
                 glob: ".claude/skills/*/SKILL.md".into(),
                 foundation: false,
+                invocation_kind: None,
             },
         ],
     );
@@ -713,6 +717,7 @@ fn sweep_derives_silent_from_telemetry_payload() {
             name: "rule".into(),
             glob: ".claude/rules/*.md".into(),
             foundation: false,
+            invocation_kind: Some("skill-invoked".into()),
         }],
     );
 
@@ -774,6 +779,7 @@ fn sweep_reads_only_the_declared_invocation_kind() {
             name: "rule".into(),
             glob: ".claude/rules/*.md".into(),
             foundation: false,
+            invocation_kind: Some("skill-invoked".into()),
         }],
     );
     {
@@ -800,6 +806,81 @@ fn sweep_reads_only_the_declared_invocation_kind() {
 }
 
 #[test]
+fn a_live_record_convicts_only_the_kinds_that_declared_it() {
+    // An invocation record names one class of artifact. A rule is loaded, not
+    // invoked, so it is never in one — reading its absence there would retire
+    // every rule in the project the moment one skill runs. The rule kind
+    // declares no record and stays unmeasured while the skill kind measures.
+    let tmp = TempDir::new().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".claude/rules")).unwrap();
+    std::fs::create_dir_all(tmp.path().join(".claude/skills")).unwrap();
+    std::fs::write(tmp.path().join(".claude/rules/jiff-time.md"), "body").unwrap();
+    std::fs::create_dir_all(tmp.path().join(".claude/skills/review-lenses")).unwrap();
+    std::fs::create_dir_all(tmp.path().join(".claude/skills/unused-skill")).unwrap();
+
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![
+            KindDecl {
+                name: "rule".into(),
+                glob: ".claude/rules/*.md".into(),
+                foundation: false,
+                invocation_kind: None,
+            },
+            KindDecl {
+                name: "skill".into(),
+                glob: ".claude/skills/*".into(),
+                foundation: false,
+                invocation_kind: Some("skill-invoked".into()),
+            },
+        ],
+    );
+    cfg.lifecycle
+        .as_mut()
+        .unwrap()
+        .consumer_detectors
+        .push(ConsumerDetectorDecl {
+            kind: "skill".into(),
+            strategy: "grep".into(),
+            pattern: "{slug}".into(),
+            exclude_globs: vec![],
+        });
+    cfg.validate().unwrap();
+
+    {
+        let mut appender = TelemetryAppender::new(
+            cfg.telemetry.as_ref().unwrap(),
+            JsonlStorage::new(tmp.path().join("tele"), 10),
+        )
+        .unwrap();
+        appender
+            .append(
+                "skill-invoked",
+                serde_json::json!({"skill": "review-lenses", "outcome": "ok"}),
+            )
+            .unwrap();
+    }
+    let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+    let query = TelemetryQuery::new(storage);
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+
+    let find = |slug: &str| {
+        outcome
+            .verdicts
+            .iter()
+            .find(|v| v.slug == slug)
+            .unwrap_or_else(|| panic!("no verdict for {slug}"))
+            .silence
+    };
+    assert_eq!(find("jiff-time"), SilenceState::Unmeasured);
+    assert_eq!(find("review-lenses"), SilenceState::Active);
+    assert_eq!(find("unused-skill"), SilenceState::Silent);
+}
+
+#[test]
 fn sweep_leaves_every_slug_unmeasured_without_a_declared_invocation_kind() {
     // Nothing declares where invocations are recorded, so silence has no
     // oracle to be read from — never a Silent inferred from the ledger at large.
@@ -807,16 +888,15 @@ fn sweep_leaves_every_slug_unmeasured_without_a_declared_invocation_kind() {
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     std::fs::write(rule_dir.join("orphan-rule.md"), "body").unwrap();
-    let mut cfg = build_sweep_config(
+    let cfg = build_sweep_config(
         tmp.path(),
         vec![KindDecl {
             name: "rule".into(),
             glob: ".claude/rules/*.md".into(),
             foundation: false,
+            invocation_kind: None,
         }],
     );
-    cfg.lifecycle.as_mut().unwrap().invocation_kind = None;
-    cfg.validate().unwrap();
     {
         let mut appender = TelemetryAppender::new(
             cfg.telemetry.as_ref().unwrap(),
@@ -848,9 +928,10 @@ fn config_rejects_an_invocation_kind_no_telemetry_kind_declares() {
             name: "rule".into(),
             glob: ".claude/rules/*.md".into(),
             foundation: false,
+            invocation_kind: None,
         }],
     );
-    cfg.lifecycle.as_mut().unwrap().invocation_kind = Some("never-declared".into());
+    cfg.kinds[0].invocation_kind = Some("never-declared".into());
     let err = cfg.validate().unwrap_err();
     assert_eq!(err.code(), harness_core::error::ErrorCode::ConfigInvalid);
 }
@@ -867,6 +948,7 @@ fn sweep_window_override_changes_silent_horizon() {
             name: "rule".into(),
             glob: ".claude/rules/*.md".into(),
             foundation: false,
+            invocation_kind: Some("skill-invoked".into()),
         }],
     );
     // One event five days old naming the slug. The window decides whether it

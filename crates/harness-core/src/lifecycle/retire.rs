@@ -1,14 +1,15 @@
 //! Retirement sweep — walk every kind × consumer detector × glob,
 //! classify each file under the three retirement signals.
 //!
-//! The silence state is derived from one scan of the invocation record a
-//! project declares (`[lifecycle] invocation_kind`) over the configured
+//! The silence state is derived from one scan of the invocation records the
+//! kinds declare (`[[kinds]] invocation_kind`) over the configured
 //! `silence_window_days` — the deterministic alternative to operators
-//! asserting `--silence` by hand. A window holding no invocation, or a
-//! project declaring no Kind that records one, yields `Unmeasured`: silence
-//! is never fabricated from a ledger with nothing to be absent from.
+//! asserting `--silence` by hand. A kind declaring no record, or one whose
+//! record holds nothing in the window, yields `Unmeasured` for its every
+//! slug: silence is never fabricated from a ledger that could not have
+//! named the artifact in the first place.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use jiff::{SignedDuration, Timestamp};
@@ -41,7 +42,6 @@ pub struct RetirementSweeper<'a> {
     working_dir: &'a Path,
     telemetry: &'a TelemetryQuery,
     silence_window_days: u32,
-    invocation_kind: Option<&'a str>,
 }
 
 impl<'a> RetirementSweeper<'a> {
@@ -62,7 +62,6 @@ impl<'a> RetirementSweeper<'a> {
             working_dir,
             telemetry,
             silence_window_days: lc.silence_window_days,
-            invocation_kind: lc.invocation_kind.as_deref(),
         })
     }
 
@@ -83,8 +82,14 @@ impl<'a> RetirementSweeper<'a> {
         // Pass 1: resolve every classifiable artifact and its per-kind consumer
         // detector. The silence state needs the whole slug set before any single
         // verdict (see the scan below), so classification waits for pass 2.
-        type Unit = (String, Box<dyn ConsumerDetector>, Vec<(PathBuf, String)>);
-        let mut units: Vec<Unit> = Vec::new();
+        struct Unit<'u> {
+            kind: &'u str,
+            /// The telemetry Kind recording this kind's invocations, if any.
+            record: Option<&'u str>,
+            detector: Box<dyn ConsumerDetector>,
+            entries: Vec<(PathBuf, String)>,
+        }
+        let mut units: Vec<Unit<'_>> = Vec::new();
         for kind_decl in &self.config.kinds {
             if kind_decl.foundation {
                 skipped.push(SkippedRule {
@@ -152,27 +157,36 @@ impl<'a> RetirementSweeper<'a> {
                     }),
                 }
             }
-            units.push((kind_decl.name.clone(), detector, entries));
+            units.push(Unit {
+                kind: &kind_decl.name,
+                record: kind_decl.invocation_kind.as_deref(),
+                detector,
+                entries,
+            });
             processed.push(kind_decl.name.clone());
         }
 
         // One ledger scan for the whole sweep, over every slug it will classify.
         let all_slugs: Vec<&str> = units
             .iter()
-            .flat_map(|(_, _, entries)| entries.iter().map(|(_, slug)| slug.as_str()))
+            .flat_map(|u| u.entries.iter().map(|(_, slug)| slug.as_str()))
             .collect();
-        let invoked = self.invocations_in_window(&all_slugs)?;
+        let records = self.invocations_in_window(&all_slugs)?;
 
         // Pass 2: classify each artifact against its derived silence state.
         let mut verdicts = Vec::new();
         let mut files_classified = 0;
-        for (kind, detector, entries) in &units {
-            for (path, slug) in entries {
+        for unit in &units {
+            // The record for this kind, present only when it declared one and
+            // that Kind recorded something in the window. Absent, silence is
+            // unknowable for every slug of the kind — never presumed.
+            let named = unit.record.and_then(|record| records.get(record));
+            for (path, slug) in &unit.entries {
                 // An empty slug (a file with no stem) names nothing an
-                // invocation could record, so its silence is unknowable.
-                let silence = match &invoked {
-                    Some(invoked) if !slug.is_empty() => {
-                        if invoked.contains(slug.as_str()) {
+                // invocation could record, so its silence is unknowable too.
+                let silence = match named {
+                    Some(named) if !slug.is_empty() => {
+                        if named.contains(slug.as_str()) {
                             SilenceState::Active
                         } else {
                             SilenceState::Silent
@@ -180,7 +194,8 @@ impl<'a> RetirementSweeper<'a> {
                     }
                     _ => SilenceState::Unmeasured,
                 };
-                let verdict = classifier.classify(kind, path, detector.as_ref(), silence)?;
+                let verdict =
+                    classifier.classify(unit.kind, path, unit.detector.as_ref(), silence)?;
                 verdicts.push(verdict);
                 files_classified += 1;
             }
@@ -209,45 +224,51 @@ impl<'a> RetirementSweeper<'a> {
         })
     }
 
-    /// Read the invocation record for the window: `None` when there is none to
-    /// read, otherwise the slugs it names.
+    /// Read every declared invocation record over the window, as a map from
+    /// the telemetry Kind to the slugs its events name. A Kind absent from the
+    /// map recorded nothing in the window.
     ///
-    /// Silence is a claim about invocations, so it is measured against the one
-    /// Kind a project declares as its invocation record
-    /// (`[lifecycle] invocation_kind`) — never inferred from ledger traffic at
-    /// large. A payload of an unrelated Kind may carry any string, so reading
-    /// one as an invocation would make a slug's fate turn on a coincidence:
-    /// `{"area": "policy"}` would both revive the rule named `policy` and
-    /// convict every other rule of silence. Narrowing to the declared Kind
-    /// makes the measurement exact rather than probable, and leaves the field
-    /// naming to the project, which a brownfield ledger needs.
-    ///
-    /// `None` — no declared Kind, or no event of it within the window — means
-    /// the window records no invocation at all, so nothing can be absent from
-    /// it and every slug is [`SilenceState::Unmeasured`].
-    fn invocations_in_window(&self, slugs: &[&str]) -> Result<Option<HashSet<String>>> {
-        let Some(kind) = &self.invocation_kind else {
-            return Ok(None);
-        };
+    /// Silence is a claim about invocations, so it is measured only against
+    /// the Kind a project declares as the record of that artifact class
+    /// (`[[kinds]] invocation_kind`) — never inferred from ledger traffic at
+    /// large. Two things would otherwise be guessed. Any payload may carry any
+    /// string, so reading an unrelated Kind as an invocation would make a
+    /// slug's fate turn on a coincidence: `{"area": "policy"}` would both
+    /// revive the rule named `policy` and convict every other rule. And a
+    /// record names one class of artifact, so reading it for another convicts
+    /// that whole class: an invocation record naming skills can never name a
+    /// rule, which is loaded rather than invoked, so one skill call would
+    /// retire every rule in the project. Declaring the record per kind decides
+    /// both, and leaves payload shape to the project, which a brownfield
+    /// ledger needs.
+    fn invocations_in_window(&self, slugs: &[&str]) -> Result<HashMap<String, HashSet<String>>> {
+        let declared: HashSet<&str> = self
+            .config
+            .kinds
+            .iter()
+            .filter_map(|k| k.invocation_kind.as_deref())
+            .collect();
+        if declared.is_empty() {
+            return Ok(HashMap::new());
+        }
         let cutoff =
             Timestamp::now() - SignedDuration::from_hours((self.silence_window_days as i64) * 24);
-        let mut measured = false;
-        let mut invoked = HashSet::new();
+        let mut records: HashMap<String, HashSet<String>> = HashMap::new();
         self.telemetry.scan_events(&mut |event| {
-            if &event.kind != kind || event.timestamp < cutoff {
+            if event.timestamp < cutoff || !declared.contains(event.kind.as_str()) {
                 return;
             }
-            measured = true;
+            let named = records.entry(event.kind.clone()).or_default();
             for slug in slugs {
                 if !slug.is_empty()
-                    && !invoked.contains(*slug)
+                    && !named.contains(*slug)
                     && json_contains_string_exact(&event.payload, slug)
                 {
-                    invoked.insert((*slug).to_string());
+                    named.insert((*slug).to_string());
                 }
             }
         })?;
-        Ok(measured.then_some(invoked))
+        Ok(records)
     }
 }
 

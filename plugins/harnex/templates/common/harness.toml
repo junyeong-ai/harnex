@@ -104,20 +104,19 @@ strategy = "file-path-line"
 protected_paths = ["hooks/", ".gitleaks.toml"]
 
 # The promotion-and-retirement loop `governance.md` and `artifact-lifecycle.md`
-# describe. Every threshold has a default, so only the one value with no
-# default is set: the loop is runnable from the first commit, and the numbers
-# are tuned once the corpus is large enough to have an opinion. Without the
+# describe. Every threshold has a default, so the section is declared empty on
+# purpose: the loop is runnable from the first commit, and the numbers are
+# tuned once the corpus is large enough to have an opinion. Without the
 # section, `harnex lifecycle observe|candidates|retire` — the commands those
 # rules send you to — answer CONFIG_INVALID.
 #
-# `invocation_kind` names where element invocations are recorded, which is what
-# the retirement sweep reads a slug's silence from. It stays undeclared until
-# something records them: silence is a claim about invocations, so with no such
-# Kind every slug is honestly `unmeasured` rather than presumed silent. The
-# telemetry-kinds pattern's auto-emit fills the Kind below — point this at it
-# when that pattern is installed, or at whichever Kind carries invocations here.
+# The sweep's subjects are `[[kinds]]`, which this scaffold declares none of:
+# what a project retires is its own vocabulary. Give a kind
+# `invocation_kind = "<a telemetry Kind>"` only where that Kind's events can
+# name the kind's slugs — the Silent signal then means something for it, and
+# every other kind stays honestly `unmeasured` rather than convicted by a
+# record that could never have named it.
 [lifecycle]
-invocation_kind = "harness_invocation"
 
 # Where Claude Code writes the transcripts `/harnex:measure` reads. The oracle
 # ships no default for this — a machine-global path compiled into a binary is
@@ -144,8 +143,10 @@ storage_dir = ".harness/telemetry"
 # the VALUE, emitting only the element's own slug (its name, not operator
 # content) resolved through the one tool→element authority. `outcome` comes
 # from which hook event fired, so a failure cannot be recorded as a success.
-# `[lifecycle] invocation_kind` points the retirement sweep here: within a
-# window this Kind recorded, a slug it never names is a Silent candidate.
+# A skill or sub-agent kind sets `invocation_kind = "harness_invocation"` to
+# read its silence from here: within a window this Kind recorded, a slug it
+# never names is a Silent candidate. Only those kinds — `surface` is an
+# element's name, so this record can never name a rule.
 [[telemetry.kinds]]
 name = "harness_invocation"
 payload_schema = { type = "object", required = ["surface", "outcome"], properties = { surface = { type = "string" }, outcome = { type = "string", enum = ["ok", "failed"] } } }

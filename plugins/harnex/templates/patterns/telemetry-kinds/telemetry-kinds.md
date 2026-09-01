@@ -23,8 +23,12 @@ outside the schema at write time.
   `Skill|Task|Agent`, best `async`. It is a no-op without the oracle and never
   blocks a tool call.
 - Add a Kind with a config edit, never a code edit.
-- Point `[lifecycle] invocation_kind` at this Kind so retirement reads it;
-  undeclared, every slug stays `unmeasured` and the Silent signal never fires.
+- Set `invocation_kind = "harness_invocation"` on the `[[kinds]]` this record
+  can name — the skill and sub-agent kinds, whose slugs are what `surface`
+  carries. Never on a rule kind or any artifact that is loaded rather than
+  invoked: it can never appear here, so reading its absence would retire every
+  one of them the moment a single skill runs. A kind left undeclared stays
+  `unmeasured`, which is the honest answer for it.
 - Read the ledger for retirement with `harnex lifecycle retire`: within a
   window this Kind recorded, a surface it never names is Silent — the slug is
   why the Kind carries it. A window it did not record is Unmeasured, never a

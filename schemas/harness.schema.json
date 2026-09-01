@@ -141,6 +141,14 @@
         "foundation": {
           "type": "boolean",
           "default": false
+        },
+        "invocation_kind": {
+          "description": "The telemetry Kind recording invocations of THIS kind's artifacts —\nthe oracle the retirement sweep reads their silence from, matching a\nslug against the payload. Declare it only where the record can name\nthem: an artifact that is loaded rather than invoked (a rule) is never\nin an invocation record, so reading its absence there would convict\nevery one of them the moment anything else runs. Undeclared, this\nkind's slugs are `unmeasured` and the Silent signal never fires for\nthem. The glob must yield the name the record uses as each file's\nstem.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
         }
       },
       "required": [
@@ -684,14 +692,6 @@
         "decision_dir": {
           "type": "string",
           "default": ".harness/decisions"
-        },
-        "invocation_kind": {
-          "description": "The telemetry Kind whose events record element invocations — the\noracle the retirement sweep reads a slug's silence from. Undeclared,\nevery slug is `unmeasured`: silence is a claim about invocations, and\nwithout a Kind that records them there is nothing to read it from.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
         },
         "consumer_detectors": {
           "type": "array",

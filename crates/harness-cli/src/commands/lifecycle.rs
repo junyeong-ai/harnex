@@ -45,14 +45,14 @@ pub enum LifecycleCommand {
         kind: String,
         #[arg(long)]
         path: PathBuf,
-        /// The telemetry silence state for this slug: `silent` (ledger live,
-        /// slug absent), `active` (slug present), or `unmeasured` (no events
-        /// in the window). Asserted here; `retire` derives it from the ledger.
+        /// The silence state for this slug: `silent` (the invocation record
+        /// held the window and never named it), `active` (it did), or
+        /// `unmeasured` (no record to read). Asserted here; `retire` derives it.
         #[arg(long, value_parser = silence_state_values())]
         silence: String,
     },
-    /// Sweep every kind × consumer detector, deriving Silent automatically
-    /// from the telemetry ledger. Returns aggregate retirement verdicts.
+    /// Sweep every kind × consumer detector, deriving each kind's silence from
+    /// the invocation record it declares. Returns aggregate retirement verdicts.
     Retire {
         /// Override `[lifecycle].silence_window_days` for this run.
         #[arg(long)]

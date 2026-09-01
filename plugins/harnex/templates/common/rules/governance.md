@@ -66,9 +66,11 @@ The commands are deterministic and never invent text:
 
 - `harnex lifecycle candidates` — observations that crossed the configured
   instance + age thresholds.
-- `harnex telemetry report` — hit counts; a rule with zero activity is a
-  retirement candidate.
-- `harnex lifecycle retire` — Stale / NoConsumers / Silent verdicts.
+- `harnex telemetry report` — per-Kind counts, for reading the ledger itself.
+  Never a retirement verdict: it counts Kinds, not artifacts.
+- `harnex lifecycle retire` — Stale / NoConsumers / Silent verdicts. Silence
+  is reported only for a kind that declares the record naming its artifacts;
+  every other kind reads `unmeasured`, which is not a candidate.
 
 Record each decision in a commit body, or with the oracle:
 `harnex lifecycle {promote|reject|defer|demote} --tag <t> --text <text>
