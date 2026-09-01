@@ -1,14 +1,19 @@
 # <title> — Wrapup
 
-Written at the wrapup phase, after the review and acceptance gates pass. Set
-the `spec.md` frontmatter `status` to `completed` in the same commit.
+Written at the wrapup phase, once `review` and `acceptance` have both recorded
+`approved`. Set the `spec.md` frontmatter `status` to `completed` in the same
+commit.
+
+`completed` means the spec's promise was kept and observed, so an `acceptance`
+that ended `deferred` does not reach here: the spec stays in flight until the
+gate re-fires `approved`, or it is abandoned or superseded with the record
+saying which criteria went unanswered.
 
 ## Result
 
 <What now holds that did not before. The `acceptance` gate already walked the
 criteria and its verdict is in the decision log; this records the durable half
-for a reader who will not open the log — what each criterion got, and for any
-criterion the gate deferred, what would answer it.>
+for a reader who will not open the log — what each criterion got.>
 
 ## What the work revealed
 
