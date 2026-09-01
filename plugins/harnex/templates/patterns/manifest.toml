@@ -43,7 +43,7 @@ files = [
 
 [[pattern]]
 slug = "telemetry-kinds"
-analyze = ["the [telemetry] storage_dir and any domain [[telemetry.kinds]] already declared", "PostToolUse + PostToolUseFailure hook entries wiring telemetry-emit.sh with matcher Skill|Task|Agent", "whether the retirement sweep should read the harness_invocation ledger"]
+analyze = ["the [telemetry] storage_dir and any domain [[telemetry.kinds]] already declared", "PostToolUse + PostToolUseFailure hook entries dispatching telemetry-emit.sh through _runner.sh with matcher `Skill|Task|Agent`", "whether the retirement sweep should read the harness_invocation ledger"]
 files = [
   { template = "telemetry-kinds.md", destination = ".claude/rules/telemetry-kinds.md" },
   { template = "telemetry-emit.sh", destination = "hooks/telemetry-emit.sh" },

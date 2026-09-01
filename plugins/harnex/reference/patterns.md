@@ -61,15 +61,16 @@ an observation is the blank-page problem in disguise.
   matcher `Skill|Task|Agent` (the tools that invoke a harness element; its slug
   is what the retirement sweep reads — MCP tools are not harness elements and
   are deliberately not recorded), with `async: true` and a short `timeout` so
-  the append never sits on the tool's critical path. Wire the wrapper
-  **directly**, not through `_runner.sh`, the same as the floor hook:
-  `harnex guard telemetry-emit` does its own `harness.toml` discovery, so the
-  runner's git-worktree gate would only add a skip path the emit does not want.
-  The wrapper exists only to make an absent oracle a silent exit 0; it delegates
-  to `harnex guard telemetry-emit`, which owns the tool→element mapping, the
-  outcome derivation, and every silent skip. It is install-to-enable and silent
-  without the oracle. State whether the retirement sweep should read this
-  ledger; only the element's slug and the outcome ever cross.
+  the append never sits on the tool's critical path. Dispatch it through
+  `_runner.sh`, the same as the other session hooks: the runner execs the
+  wrapper via `bash`, so the template ships without an executable bit and a
+  directly-wired `0644` script cannot fail with a permission error. The wrapper
+  delegates to `harnex guard telemetry-emit`, which does its own `harness.toml`
+  discovery and owns the tool→element mapping, the outcome derivation, and every
+  silent skip; the wrapper adds only that an absent oracle is a silent exit 0.
+  It is install-to-enable and silent without the oracle. State whether the
+  retirement sweep should read this ledger; only the element's slug and the
+  outcome ever cross.
 - `deprecation` — detect existing deprecation markers (`@deprecated`
   decorators, JSDoc tags, `#[deprecated]` attributes). Adapt the
   allow-marker format to complement, not conflict with, the language's

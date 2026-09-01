@@ -3,10 +3,10 @@
 # records one harness_invocation event — the invoked element's slug and whether
 # the call succeeded. Everything the seam decides (the tool → element mapping,
 # outcome from the event, what may cross) lives in `harnex guard telemetry-emit`
-# so nothing is duplicated in shell. Wire this wrapper directly (not through
-# `_runner.sh` — the command does its own harness.toml discovery), to BOTH
-# events with matcher `Skill|Task|Agent`, best `async` so the append never sits
-# on the tool's critical path.
+# so nothing is duplicated in shell. Wire it through `_runner.sh` (which execs
+# it via bash, so the template ships without an executable bit), to BOTH events
+# with matcher `Skill|Task|Agent`, best `async` so the append never sits on the
+# tool's critical path.
 #
 # Install-to-enable and unconditionally silent: a no-op when harnex is absent,
 # and any delegated failure — an older harnex without the subcommand included —
