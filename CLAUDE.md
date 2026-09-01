@@ -35,6 +35,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::error` | typed `Error` + stable `ErrorCode` wire codes |
 | `harness-core::path_guard` | safe write paths: `write_atomic` + `append_line` |
 | `harness-core::sentinel` | the two reserved marker grammars harnex writes — managed regions + fill markers |
+| `harness-core::markdown` | the one reader for what a rendered document shows — line splitting, fences, comments, ATX headings |
 | `harness-core::evidence` | provenance verifier (strategy enum per claim shape) |
 | `harness-core::telemetry` | append-only JSONL ledger with closed payload schema |
 | `harness-core::codegen` | sentinel-block source → target sync |

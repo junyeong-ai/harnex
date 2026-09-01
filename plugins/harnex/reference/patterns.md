@@ -1,7 +1,8 @@
 # Per-pattern analysis instructions (`extend pattern <name>`)
 
 Read the entry for the pattern being installed, after the manifest entry and
-skeleton (`SKILL.md § extend pattern` owns the flow; this file owns only what
+skeleton ([file: SKILL.md § Mode: extend (brownfield, additive — closed verb menu)]
+owns the flow; this file owns only what
 each pattern's Step-2 analysis must observe). Every instruction here is about
 reading the target project — a fill resolved from the model's priors instead of
 an observation is the blank-page problem in disguise.

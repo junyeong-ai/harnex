@@ -26,7 +26,7 @@ pub mod memory;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub use claim::{Claim, ClaimKind, parse_claims};
+pub use claim::{Anchor, Claim, ClaimKind, ClaimScan, Unclosed, parse_claims};
 
 use crate::config::EvidenceConfig;
 use crate::envelope::{Finding, Location, Severity};
@@ -99,7 +99,7 @@ impl EvidenceVerifier {
                 })?;
             let verifier: Box<dyn Verifier> = match strategy {
                 VerifierStrategy::FilePathLine => {
-                    Box::new(internal::FilePathLineVerifier::new(provenance.clone()))
+                    Box::new(internal::InternalFileVerifier::new(provenance.clone()))
                 }
                 VerifierStrategy::Context7 => Box::new(context7::Context7Verifier::new(
                     provenance.clone(),
@@ -126,7 +126,30 @@ impl EvidenceVerifier {
     /// the location of any finding produced.
     pub fn verify_text(&self, markdown: &str, source: &Path, working_dir: &Path) -> Vec<Finding> {
         let mut findings = Vec::new();
-        for claim in parse_claims(markdown) {
+        let scan = parse_claims(markdown);
+
+        // Claims below an unterminated fence or comment are hidden from the
+        // parser exactly as they are from a reader. Reporting the ones above
+        // it and stopping would be a clean pass over the rest of the file.
+        if let Some(unclosed) = scan.unread {
+            let (line, what) = match unclosed {
+                Unclosed::Fence { line } => (line, "a code fence"),
+                Unclosed::Comment { line } => (line, "an HTML comment"),
+            };
+            findings.push(Finding {
+                slug: "evidence-unread".to_string(),
+                severity: Severity::Blocker,
+                location: Location::line(source.to_path_buf(), line),
+                message: format!(
+                    "{what} opened here never closes, so every claim below it went unchecked"
+                ),
+                hint: Some("close the delimiter, or the rest of this file is unverified".into()),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
+
+        for claim in scan.claims {
             let provenance = claim
                 .provenance
                 .as_deref()

@@ -260,11 +260,13 @@ operator to re-phrase using a verb from this list.
   This is what keeps derivation from becoming invention, and it is not a
   matter of judgment — no enforcer, no bullet.
 
-  Every bullet names its enforcer as a marked claim — `[file: path/to/x.py:42]`,
-  the line optional — so the evidence
-  check resolves it and a rename fails the gate instead of leaving a rule that
-  points nowhere. Report what you moved to the ledger as well as what you
-  wrote; the observations are usually the more interesting half.
+  Every bullet names its enforcer as a marked claim — a `file:` marker holding
+  the path, and an anchor inside it where the owner is narrower than the file:
+  a line, or a heading where the owner is a document. `rule-template.md`
+  carries the grammar; write it from there rather than from memory, so the
+  evidence check resolves it and a rename fails the gate instead of leaving a
+  rule that points nowhere. Report what you moved to the ledger as well as what
+  you wrote; the observations are usually the more interesting half.
 - **`extend skill <name>`** — scaffold a spec-correct domain skill at
   `.claude/skills/<name>/SKILL.md` from `common/skill-template.md`. Frontmatter
   is composed correct-by-spec (description+when_to_use ≤ 1536 chars, body

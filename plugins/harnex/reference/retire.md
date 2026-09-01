@@ -37,7 +37,8 @@ it.
    that never observed this project is not evidence of absence. Each verb
    states how it establishes the window saw the project.
 3. **harnex removes only what harnex owns.** An entry outside the managed
-   partition (SKILL.md § Invariants) is reported with its location and left
+   partition ([file: SKILL.md § Invariants (every mode)]) is reported with its
+   location and left
    alone. A hook in `~/.claude/settings.json` is outside `${CLAUDE_PROJECT_DIR}`
    and therefore always a report — which is where the largest cost in the
    measured corpus lives.

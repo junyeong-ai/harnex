@@ -62,8 +62,15 @@ reject_unknown_keys = true
 # or disappearing. `harnex check` reads `CLAUDE.md` and `.claude/rules/**/*.md`
 # and resolves every marked claim against the tree:
 #
-#   [file: path/to/thing.py:42]   the file must exist and hold that line
-#   [file: pyproject.toml]        the file must exist
+#   [file: pyproject.toml]              the file exists
+#   [file: path/to/thing.py:42]         and is at least that long
+#   [file: docs/design.md § Storage]    and spells that heading, exactly once
+#
+# Pick the anchor for what it proves. A line survives the edit that moves its
+# subject — the check only ever asked how long the file is — so a heading is
+# the stronger anchor wherever the target has one: it fails on the rename that
+# invalidated the claim, and a heading two sections answer to fails as well,
+# because a pointer resolving to both names neither.
 #
 # Marked rather than inferred, which is what keeps the check out of prose. A
 # bare backtick path is documentation and stays documentation; `api/gateway.io:8443`

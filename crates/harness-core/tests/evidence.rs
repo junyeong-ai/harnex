@@ -202,3 +202,63 @@ fn verify_file_reads_and_reports() {
     assert_eq!(findings[0].location.path, md_path);
     assert_eq!(findings[0].location.line, Some(1));
 }
+
+#[test]
+fn a_section_anchor_resolves_against_the_heading_the_file_spells() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join(".claude/rules/plan.md");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "# Plan\n\n## Escape hatch\n\nbody\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(
+        "Stated in [file: .claude/rules/plan.md § Escape hatch].",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert!(findings.is_empty(), "unexpected findings: {findings:?}");
+
+    let findings = verifier.verify_text(
+        "Stated in [file: .claude/rules/plan.md § Escape hatches].",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert_eq!(findings.len(), 1, "a renamed heading must fail the gate");
+    assert_eq!(findings[0].severity, Severity::Blocker);
+    assert_eq!(findings[0].slug, "evidence-internal");
+}
+
+#[test]
+fn a_document_that_stops_being_readable_is_a_finding_not_a_pass() {
+    // Every claim below an unterminated fence is invisible to the parser
+    // exactly as it is to a reader. Reporting the claims above it and nothing
+    // else is a clean pass over the rest of the file.
+    let tmp = TempDir::new().unwrap();
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+
+    let findings = verifier.verify_text(
+        "intro\n\n```\n[file: src/missing.rs:1]\n",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert_eq!(findings.len(), 1, "got: {findings:?}");
+    assert_eq!(findings[0].slug, "evidence-unread");
+    assert_eq!(findings[0].severity, Severity::Blocker);
+    assert_eq!(findings[0].location.line, Some(3));
+
+    let findings = verifier.verify_text(
+        "<!--\n[file: src/missing.rs:1]\n",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert_eq!(findings.len(), 1, "got: {findings:?}");
+    assert_eq!(findings[0].slug, "evidence-unread");
+
+    // A document that closes what it opens is answered normally.
+    let findings = verifier.verify_text(
+        "```\n[file: src/sample.rs:1]\n```\n",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert!(findings.is_empty(), "got: {findings:?}");
+}
