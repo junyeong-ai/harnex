@@ -12,10 +12,11 @@
 
 use std::path::PathBuf;
 
-use harness_core::config::Config;
+use harness_core::config::{Config, ConsumerDetectorDecl, KindDecl};
 use harness_core::guard::{HARNESS_INVOCATION_KIND, OUTCOME_FIELD, SURFACE_FIELD};
+use harness_core::lifecycle::{RetirementSweeper, SilenceState};
 use harness_core::session::ASSET_TOOL_KEYS;
-use harness_core::telemetry::KindSchema;
+use harness_core::telemetry::{JsonlStorage, KindSchema, TelemetryAppender, TelemetryQuery};
 
 fn repo_path(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -53,14 +54,81 @@ fn scaffold_kind_schema() -> KindSchema {
 }
 
 #[test]
-fn the_shipped_prose_wires_retirement_to_the_emitted_kind_by_name() {
-    // The auto-emit writes `HARNESS_INVOCATION_KIND`; retirement reads
-    // whichever Kind a `[[kinds]]` entry names in `invocation_kind`. The
-    // scaffold declares no kinds — what a project retires is its own
-    // vocabulary — so the wiring is an instruction, and it is the instruction
-    // that must not drift: were it to name another Kind or drop the key, the
-    // emit would fill a ledger nothing measures and the Silent signal would
-    // be silently lost.
+fn the_instruction_the_pattern_ships_actually_measures_a_surface() {
+    // Executes the wiring the docs instruct, against the real scaffold rather
+    // than a fixture — so what is pinned is that the instruction WORKS, not
+    // that a file mentions it. Four owners meet here: the config key exists
+    // under this path (a rename stops this compiling), the scaffold's Kind
+    // name matches the emit's constant (validate fails on a template rename),
+    // the scaffold schema accepts the emit's payload shape (the append fails
+    // on a renamed field or a tightened schema), and the sweep still reads a
+    // record per kind (the verdicts fail if it stops).
+    let mut config = Config::load_from(&repo_path("plugins/harnex/templates/common/harness.toml"))
+        .expect("scaffold harness.toml loads");
+    config.kinds.push(KindDecl {
+        name: "skill".into(),
+        glob: ".claude/skills/*".into(),
+        foundation: false,
+        invocation_kind: Some(HARNESS_INVOCATION_KIND.into()),
+    });
+    let lifecycle = config
+        .lifecycle
+        .as_mut()
+        .expect("scaffold declares [lifecycle]");
+    lifecycle.consumer_detectors.push(ConsumerDetectorDecl {
+        kind: "skill".into(),
+        strategy: "grep".into(),
+        pattern: "{slug}".into(),
+        exclude_globs: vec![],
+    });
+    config
+        .validate()
+        .expect("the scaffold must accept the wiring the pattern instructs");
+
+    let tmp = tempfile::tempdir().unwrap();
+    for slug in ["review-lenses", "unused-skill"] {
+        std::fs::create_dir_all(tmp.path().join(".claude/skills").join(slug)).unwrap();
+    }
+    let ledger = tmp.path().join("tele");
+    {
+        let mut appender = TelemetryAppender::new(
+            config.telemetry.as_ref().unwrap(),
+            JsonlStorage::new(ledger.clone(), 10),
+        )
+        .unwrap();
+        // Shaped exactly as `guard::telemetry::emit` writes it.
+        let mut payload = serde_json::Map::new();
+        payload.insert(SURFACE_FIELD.into(), "review-lenses".into());
+        payload.insert(OUTCOME_FIELD.into(), "ok".into());
+        appender
+            .append(HARNESS_INVOCATION_KIND, serde_json::Value::Object(payload))
+            .expect("the scaffold schema must accept the payload the emit writes");
+    }
+
+    let query = TelemetryQuery::new(JsonlStorage::new(ledger, 10));
+    let outcome = RetirementSweeper::new(&config, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    let silence = |slug: &str| {
+        outcome
+            .verdicts
+            .iter()
+            .find(|v| v.slug == slug)
+            .unwrap_or_else(|| panic!("the sweep classified no `{slug}`"))
+            .silence
+    };
+    assert_eq!(silence("review-lenses"), SilenceState::Active);
+    assert_eq!(silence("unused-skill"), SilenceState::Silent);
+}
+
+#[test]
+fn the_shipped_prose_spells_the_key_and_the_kind_it_instructs() {
+    // The one residue the executable guard above cannot pin: how the config
+    // key is SPELLED in prose, since the test writes the Rust field rather
+    // than the doc string. A rename that updated the code and not the docs
+    // would leave the instruction inert, so the spelling is checked here and
+    // nothing else is claimed for a token search.
     for rel in [
         "plugins/harnex/reference/patterns.md",
         "plugins/harnex/templates/patterns/telemetry-kinds/telemetry-kinds.md",

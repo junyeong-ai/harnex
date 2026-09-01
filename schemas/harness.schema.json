@@ -130,6 +130,7 @@
       ]
     },
     "KindDecl": {
+      "description": "A class of artifact the retirement sweep walks. Closed (Article V): a\nmisspelled key here would load clean and drop what it was meant to set —\nand `invocation_kind` misspelled drops a kind's whole silence measurement\nwith no error, which is the failure the measurement exists to prevent.",
       "type": "object",
       "properties": {
         "name": {
@@ -151,6 +152,7 @@
           "default": null
         }
       },
+      "additionalProperties": false,
       "required": [
         "name",
         "glob"

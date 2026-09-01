@@ -920,6 +920,58 @@ fn sweep_leaves_every_slug_unmeasured_without_a_declared_invocation_kind() {
 }
 
 #[test]
+fn config_rejects_a_measured_kind_whose_glob_collapses_every_slug() {
+    // `*/SKILL.md` gives every match the stem `SKILL`, so N artifacts share
+    // one identity the record names individually — including the one whose
+    // invocation is in the ledger. Rejected at load, per Article IV.
+    let tmp = TempDir::new().unwrap();
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![KindDecl {
+            name: "rule".into(),
+            glob: ".claude/rules/*.md".into(),
+            foundation: false,
+            invocation_kind: None,
+        }],
+    );
+    cfg.kinds.push(KindDecl {
+        name: "skill".into(),
+        glob: ".claude/skills/*/SKILL.md".into(),
+        foundation: false,
+        invocation_kind: Some("skill-invoked".into()),
+    });
+    let err = cfg.validate().unwrap_err();
+    assert_eq!(err.code(), harness_core::error::ErrorCode::ConfigInvalid);
+
+    // No false positive: a varying final component, and a wholly literal glob
+    // (which matches at most one file), both stand.
+    for glob in [".claude/skills/*", ".claude/rules/constitution.md"] {
+        cfg.kinds.last_mut().unwrap().glob = glob.into();
+        cfg.validate()
+            .unwrap_or_else(|e| panic!("glob '{glob}' must validate: {e}"));
+    }
+}
+
+#[test]
+fn config_rejects_an_unknown_key_on_a_kind() {
+    // A misspelled `invocation_kind` would otherwise load clean and drop the
+    // kind's whole silence measurement with no error (Article V).
+    let toml = r#"
+        [meta]
+        harnex_version = ">=0.1, <0.2"
+        [[kinds]]
+        name = "skill"
+        glob = ".claude/skills/*"
+        invokation_kind = "harness_invocation"
+    "#;
+    let err = toml::from_str::<Config>(toml).unwrap_err();
+    assert!(
+        err.to_string().contains("invokation_kind"),
+        "the unknown key must be named: {err}"
+    );
+}
+
+#[test]
 fn config_rejects_an_invocation_kind_no_telemetry_kind_declares() {
     let tmp = TempDir::new().unwrap();
     let mut cfg = build_sweep_config(

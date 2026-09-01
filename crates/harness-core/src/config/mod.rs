@@ -146,7 +146,12 @@ pub struct MetaConfig {
     pub harnex_version: String,
 }
 
+/// A class of artifact the retirement sweep walks. Closed (Article V): a
+/// misspelled key here would load clean and drop what it was meant to set —
+/// and `invocation_kind` misspelled drops a kind's whole silence measurement
+/// with no error, which is the failure the measurement exists to prevent.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct KindDecl {
     pub name: String,
     pub glob: String,
@@ -652,19 +657,43 @@ impl Config {
                 message: format!("[[kinds]] '{}' has invalid glob '{}': {e}", k.name, k.glob),
                 location: None,
             })?;
-            if let Some(invocation) = &k.invocation_kind
-                && !self
+            if let Some(invocation) = &k.invocation_kind {
+                if !self
                     .telemetry
                     .as_ref()
                     .is_some_and(|t| t.kinds.iter().any(|d| &d.name == invocation))
-            {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "[[kinds]] '{}' invocation_kind '{invocation}' is not declared in [[telemetry.kinds]]",
-                        k.name
-                    ),
-                    location: None,
-                });
+                {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "[[kinds]] '{}' invocation_kind '{invocation}' is not declared in [[telemetry.kinds]]",
+                            k.name
+                        ),
+                        location: None,
+                    });
+                }
+                // A slug is a match's file stem, so a glob whose final
+                // component is a literal while an earlier one is not gives
+                // every match the same slug by construction — the record names
+                // artifacts individually and this kind cannot tell them apart.
+                // Pure glob algebra: a wildcard final component varies the
+                // stem, and a wholly literal glob matches at most one file.
+                if let Some((last, earlier)) = k.glob.split('/').collect::<Vec<_>>().split_last()
+                    && !has_glob_meta(last)
+                    && earlier.iter().any(|c| has_glob_meta(c))
+                {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "[[kinds]] '{}' declares invocation_kind but its glob '{}' gives every match the slug '{}' — match the artifact whose name the record uses (e.g. the directory), not a fixed filename inside it",
+                            k.name,
+                            k.glob,
+                            std::path::Path::new(last)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or(last)
+                        ),
+                        location: None,
+                    });
+                }
             }
         }
         Ok(())
@@ -1294,6 +1323,11 @@ impl Config {
 /// collapsed (no `..` resolution — that needs the real tree); this only
 /// removes `CurDir` segments, which is the spelling difference that evades
 /// the codegen cycle guard.
+/// Whether one glob path component can match more than one literal name.
+fn has_glob_meta(component: &str) -> bool {
+    component.contains(['*', '?', '['])
+}
+
 fn normalize_lexical(path: &Path) -> PathBuf {
     use std::path::Component;
     let mut out = PathBuf::new();
