@@ -161,7 +161,16 @@ fn instructed_emit(fill: &dyn Fn(&str) -> String) -> Vec<String> {
 /// survey's `candidates` field, so reading its words as citations would report
 /// a field consumption the document never wrote. A field is named on its own.
 fn cited_identifiers(doc: &str, body: &str) -> BTreeSet<String> {
-    let unfenced: String = body.split("```").step_by(2).collect::<Vec<_>>().join("\n");
+    let fences: Vec<&str> = body.split("```").collect();
+    // Both delimiters balance, or the split silently drops the tail of the
+    // document and every citation in it goes unread — a guard that stops
+    // looking is a guard that reports whatever it saw first.
+    assert!(
+        fences.len() % 2 == 1,
+        "{doc} leaves a ``` fence unclosed, so this guard would read only the \
+         part of it before that fence"
+    );
+    let unfenced: String = fences.into_iter().step_by(2).collect::<Vec<_>>().join("\n");
     let spans: Vec<&str> = unfenced.split('`').collect();
     assert!(
         spans.len() % 2 == 1,
@@ -294,14 +303,24 @@ fn the_drain_prose_is_written_against_fields_the_survey_carries() {
         .cloned(),
     );
 
-    let cited = cited_identifiers(CURATE, &template(CURATE));
-    let read: BTreeSet<String> = cited.intersection(&carried).cloned().collect();
     let watched: BTreeSet<String> = DRAIN_READS.iter().map(|f| (*f).to_string()).collect();
+    for field in &watched {
+        assert!(
+            carried.contains(field),
+            "this guard watches `{field}` and the survey carries {carried:?} — \
+             the envelope dropped a field the drain is written against"
+        );
+    }
 
+    // Compared whole, never intersected with what the envelope carries: an
+    // intersection cannot see a citation of a field that does NOT exist, and
+    // a document still naming the retired `total` is the regression this
+    // series exists to prevent.
+    let cited = cited_identifiers(CURATE, &template(CURATE));
     assert_eq!(
-        read, watched,
-        "the curate skill reads {read:?} out of the survey and this guard watches \
-         {watched:?}. Register the new citation in DRAIN_READS, or restore the field \
-         the prose still names"
+        cited, watched,
+        "the curate skill names {cited:?} on their own and this guard watches \
+         {watched:?}. Register a new citation in DRAIN_READS, restore the field \
+         the prose still names, or stop naming one the envelope never carried"
     );
 }
