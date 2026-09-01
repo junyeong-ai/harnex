@@ -229,36 +229,37 @@ fn a_section_anchor_resolves_against_the_heading_the_file_spells() {
 }
 
 #[test]
-fn a_document_that_stops_being_readable_is_a_finding_not_a_pass() {
-    // Every claim below an unterminated fence is invisible to the parser
-    // exactly as it is to a reader. Reporting the claims above it and nothing
-    // else is a clean pass over the rest of the file.
+fn a_sample_is_a_sample_wherever_its_container_indents_it() {
+    // Each of these was a Blocker against a path the author wrote as an
+    // example: the fence opens at a column a line-at-a-time reader reads as
+    // too deep, or CommonMark closes it at the end of the document and a
+    // state machine called that unterminated.
     let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("src/lib.rs");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "a\nb\nc\n").unwrap();
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
 
-    let findings = verifier.verify_text(
-        "intro\n\n```\n[file: src/missing.rs:1]\n",
-        Path::new("test.md"),
-        tmp.path(),
-    );
-    assert_eq!(findings.len(), 1, "got: {findings:?}");
-    assert_eq!(findings[0].slug, "evidence-unread");
-    assert_eq!(findings[0].severity, Severity::Blocker);
-    assert_eq!(findings[0].location.line, Some(3));
-
-    let findings = verifier.verify_text(
-        "<!--\n[file: src/missing.rs:1]\n",
-        Path::new("test.md"),
-        tmp.path(),
-    );
-    assert_eq!(findings.len(), 1, "got: {findings:?}");
-    assert_eq!(findings[0].slug, "evidence-unread");
-
-    // A document that closes what it opens is answered normally.
-    let findings = verifier.verify_text(
-        "```\n[file: src/sample.rs:1]\n```\n",
-        Path::new("test.md"),
-        tmp.path(),
-    );
-    assert!(findings.is_empty(), "got: {findings:?}");
+    for (label, markdown) in [
+        (
+            "inside a list item",
+            "- Like this:\n\n    ```markdown\n    [file: no/such.rs:1]\n    ```\n\n\
+             Real: [file: src/lib.rs:2].\n",
+        ),
+        (
+            "inside a block quote",
+            "> ```\n> [file: no/such.rs:1]\n> ```\n\nReal: [file: src/lib.rs:2].\n",
+        ),
+        (
+            "indented code",
+            "Prose.\n\n    [file: no/such.rs:1]\n\nReal: [file: src/lib.rs:2].\n",
+        ),
+        (
+            "terminated by the document",
+            "Real: [file: src/lib.rs:2].\n\n```\n[file: no/such.rs:1]\n",
+        ),
+    ] {
+        let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
+        assert!(findings.is_empty(), "with {label}: {findings:#?}");
+    }
 }

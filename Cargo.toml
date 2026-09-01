@@ -22,6 +22,11 @@ clap_complete = "4"
 jiff = { version = "0.2", features = ["serde"] }
 url = "2"
 glob = "0.3"
+# The CommonMark reader. Hand-rolling the subset harnex needs cost four
+# false Blockers in a gate that is on by default — a fenced sample inside a
+# list item, a fence CommonMark terminates at EOF, and a heading spelled
+# setext or carrying emphasis — each of which this resolves by construction.
+pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1"
 semver = "1"
 tempfile = "3"

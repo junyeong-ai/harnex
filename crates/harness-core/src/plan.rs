@@ -43,7 +43,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::markdown::{Unclosed, Visibility, atx_heading, doc_lines, strip_code_spans};
+use crate::markdown::{Document, Unterminated, strip_code_spans};
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::wire_enum::wire_enum;
@@ -486,26 +486,20 @@ struct Item {
 /// contract exists to protect.
 fn section_of(text: &str, heading: &str) -> Section {
     let wanted = format!("## {heading}");
-    let mut doc = Visibility::new();
+    let doc = Document::of(text);
     let mut found_at: Option<u32> = None;
     let mut ended = false;
     let mut items: Vec<Item> = Vec::new();
     let mut loose: Vec<(u32, String)> = Vec::new();
     let mut open_item: Option<Item> = None;
 
-    for (idx, raw_line) in doc_lines(text).into_iter().enumerate() {
-        let line_no = u32::try_from(idx + 1).unwrap_or(u32::MAX);
-
-        // A fenced or commented line is neither a row nor a loose one, and a
-        // heading inside one anchors nothing.
-        let Some(line) = doc.read(raw_line, line_no) else {
-            continue;
-        };
-        let line = line.as_str();
+    for source in doc.lines() {
+        let (line_no, line) = (source.no, source.text.as_str());
         let unindented = line.trim_start_matches(' ');
         let indent = line.len() - unindented.len();
 
-        let is_wanted = atx_heading(line) == Some((2, heading));
+        let at_heading = doc.heading_at(line_no);
+        let is_wanted = at_heading.is_some_and(|h| h.level == 2 && h.text == heading);
         match found_at {
             None => {
                 if is_wanted {
@@ -522,9 +516,7 @@ fn section_of(text: &str, heading: &str) -> Section {
                         ),
                     };
                 }
-                if let Some((level, _)) = atx_heading(line)
-                    && level <= 2
-                {
+                if at_heading.is_some_and(|h| h.level <= 2) {
                     ended = true;
                     continue;
                 }
@@ -552,22 +544,22 @@ fn section_of(text: &str, heading: &str) -> Section {
         }
     }
 
-    if let Some(unclosed) = doc.unclosed()
+    if let Some(unterminated) = doc.unterminated()
         && !ended
         && found_at.is_some()
     {
-        let (line, reason) = match unclosed {
-            Unclosed::Fence { line } => (
+        let (line, reason) = match unterminated {
+            Unterminated::Fence { line } => (
                 line,
                 format!(
-                    "a code fence opened at line {line} never closes, so where the section ends \
-                     cannot be read"
+                    "a code fence opened at line {line} is never closed, so everything written \
+                     after it is inside it and no gate reads a row there"
                 ),
             ),
-            Unclosed::Comment { line } => (
+            Unterminated::Comment { line } => (
                 line,
                 format!(
-                    "an HTML comment opened at line {line} never closes, so what the section \
+                    "an HTML comment opened at line {line} is never closed, so what the section \
                      shows a reader cannot be told from what it hides"
                 ),
             ),

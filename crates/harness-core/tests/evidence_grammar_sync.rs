@@ -12,9 +12,10 @@
 //! without arriving here.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use harness_core::evidence::{Anchor, ClaimKind, parse_claims};
+use harness_core::config::{EvidenceConfig, VerifierDecl};
+use harness_core::evidence::{Anchor, ClaimKind, EvidenceVerifier, parse_claims};
 
 const WHOLE: &str = "the whole file";
 const LINE: &str = "a line";
@@ -59,13 +60,16 @@ fn repo_file(relative: &str) -> String {
 
 /// The anchors a document demonstrates, read the way the gate reads one.
 ///
-/// Line by line, because these examples sit inside fences, HTML comments and
-/// TOML comments — where the parser is right to ignore them, and where this
-/// guard still has to know whether the form on the page is a form it accepts.
+/// A marker at a time, because these examples sit inside fences, HTML
+/// comments and TOML comments — where the parser is right to ignore them,
+/// and where this guard still has to know whether the form on the page is a
+/// form it accepts. The leading whitespace goes with the container: kept, an
+/// example indented under a bullet is an indented code block on its own, and
+/// the guard would be measuring the layout rather than the grammar.
 fn anchors_taught(text: &str) -> Vec<(String, Anchor)> {
     text.lines()
         .filter(|line| line.contains("[file:"))
-        .flat_map(|line| parse_claims(line).claims)
+        .flat_map(|line| parse_claims(line.trim_start()))
         .filter_map(|claim| match claim.kind {
             ClaimKind::File { path, anchor } => Some((path, anchor)),
             _ => None,
@@ -81,7 +85,7 @@ fn every_documented_form_is_one_the_parser_reads() {
         for line in text.lines().filter(|l| l.contains("[file:")) {
             shown += 1;
             assert!(
-                !anchors_taught(line).is_empty(),
+                !anchors_taught(line.trim_start()).is_empty(),
                 "{document} shows a marker the parser resolves to nothing, so the form on \
                  the page is one the gate would drop in a rule: {line}"
             );
@@ -133,36 +137,46 @@ fn every_anchor_the_parser_reads_is_taught_somewhere() {
 }
 
 #[test]
-fn a_section_anchor_the_documentation_shows_resolves_in_this_repository() {
-    // The examples name paths that exist here, so the grammar is not only
-    // parsed but demonstrated against a real tree — a heading spelled in an
-    // example and nowhere in the repository teaches a form the reader cannot
-    // reproduce.
+fn readmes_examples_resolve_through_the_gate_they_describe() {
+    // README's examples name paths in this repository, so the grammar is not
+    // only parsed but demonstrated — and the demonstration is run through
+    // `EvidenceVerifier` rather than re-decided here. A second resolver in
+    // the guard is how a documented anchor stops resolving in the gate while
+    // the guard stays green (constitution IX).
+    //
+    // The other two documents ship to projects that do not exist yet, so
+    // their examples are illustrative and only their parse is checked above.
+    let verifier = EvidenceVerifier::new(&EvidenceConfig {
+        default_provenance: "internal".into(),
+        block_on_memory_only: false,
+        verifiers: vec![VerifierDecl {
+            provenance: "internal".into(),
+            strategy: "file-path-line".into(),
+            library_allowlist: Vec::new(),
+            max_age_days: None,
+        }],
+        advisory_dir: "evidence".into(),
+        advisories: Vec::new(),
+    })
+    .expect("the internal verifier is a declared strategy");
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let readme = repo_file("README.md");
-    let cited: Vec<(String, Anchor)> = anchors_taught(&readme)
-        .into_iter()
-        .filter(|(_, anchor)| matches!(anchor, Anchor::Section(_)))
+    let shown: Vec<&str> = readme
+        .lines()
+        .filter(|line| line.contains("[file:"))
         .collect();
-    assert!(!cited.is_empty(), "README shows no section anchor");
-    for (path, anchor) in cited {
-        let Anchor::Section(heading) = anchor else {
-            unreachable!()
-        };
-        let target = repo_file(&path);
-        let headings = target
-            .lines()
-            .filter(|line| {
-                line.trim_start_matches(' ')
-                    .trim_start_matches('#')
-                    .trim()
-                    .trim_end_matches('#')
-                    .trim()
-                    == heading
-            })
-            .count();
-        assert_eq!(
-            headings, 1,
-            "README cites `{path} § {heading}`, which the file spells {headings} times"
+    assert_eq!(
+        shown.len(),
+        3,
+        "README shows {} examples and this guard resolves each",
+        shown.len()
+    );
+    for line in shown {
+        let findings = verifier.verify_text(line.trim_start(), Path::new("README.md"), &root);
+        assert!(
+            findings.is_empty(),
+            "README teaches an example the gate rejects: {line}\n{findings:#?}"
         );
     }
 }

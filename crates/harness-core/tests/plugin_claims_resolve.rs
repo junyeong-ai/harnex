@@ -97,7 +97,6 @@ fn a_pointer_into_a_renamed_section_is_what_this_guard_catches() {
         .flat_map(|path| {
             let text = std::fs::read_to_string(path).expect("readable");
             harness_core::evidence::parse_claims(&text)
-                .claims
                 .into_iter()
                 .filter_map(|claim| match claim.kind {
                     harness_core::evidence::ClaimKind::File {

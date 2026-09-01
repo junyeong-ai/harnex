@@ -16,8 +16,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-pub use crate::markdown::Unclosed;
-use crate::markdown::{Visibility, doc_lines};
+use crate::markdown::Document;
 
 #[derive(Debug, Clone)]
 pub struct Claim {
@@ -55,15 +54,6 @@ pub enum Anchor {
     Whole,
     Line(u32),
     Section(String),
-}
-
-/// Every claim in a document, and whether the document could be read whole.
-pub struct ClaimScan {
-    pub claims: Vec<Claim>,
-    /// A fence or comment left open, after which a reader — and so this
-    /// parser — sees nothing. The claims below it are not absent, they are
-    /// unread, which is the one thing a gate may not report as clean.
-    pub unread: Option<Unclosed>,
 }
 
 static FETCHED_URL: LazyLock<Regex> = LazyLock::new(|| {
@@ -161,20 +151,20 @@ fn split_file_claim(body: &str) -> Option<(&str, Anchor)> {
 /// Parse every recognised claim out of `markdown`. Order within a line is
 /// the order discovered by the per-pattern pass.
 ///
-/// Two exemptions and no others: a fenced code block, which is a deliberate
-/// sample of the syntax, and an HTML comment, which is an instruction. Prose,
-/// tables, blockquotes and every depth of list item carry live claims — a
-/// nested bullet is where a rule names its owners.
-pub fn parse_claims(markdown: &str) -> ClaimScan {
+/// A claim is live wherever a reader sees it: prose, tables, blockquotes and
+/// every depth of list item, a nested bullet being where a rule names its
+/// owners. What a reader does not see carries none — a code block, whatever
+/// its container indents it to, and an HTML comment, which is an instruction.
+/// [`Document`] draws that line.
+pub fn parse_claims(markdown: &str) -> Vec<Claim> {
     let mut claims = Vec::new();
-    let mut doc = Visibility::new();
 
-    for (idx, raw_line) in doc_lines(markdown).into_iter().enumerate() {
-        let line_no = (idx as u32) + 1;
-        let Some(line) = doc.read(raw_line, line_no) else {
-            continue;
-        };
-        let line = line.as_str();
+    for source in Document::of(markdown)
+        .lines()
+        .iter()
+        .filter(|line| !line.indented_code)
+    {
+        let (line_no, line) = (source.no, source.text.as_str());
 
         for cap in FETCHED_URL.captures_iter(line) {
             claims.push(Claim {
@@ -224,10 +214,7 @@ pub fn parse_claims(markdown: &str) -> ClaimScan {
         }
     }
 
-    ClaimScan {
-        claims,
-        unread: doc.unclosed(),
-    }
+    claims
 }
 
 #[cfg(test)]
@@ -236,7 +223,6 @@ mod tests {
 
     fn file_claims(md: &str) -> Vec<(String, Anchor)> {
         parse_claims(md)
-            .claims
             .into_iter()
             .filter_map(|c| match c.kind {
                 ClaimKind::File { path, anchor } => Some((path, anchor)),
@@ -268,7 +254,7 @@ mod tests {
             "The spec's § 4 covers it, and `guide.md § Limits` is prose too.",
         ] {
             assert!(
-                parse_claims(md).claims.is_empty(),
+                parse_claims(md).is_empty(),
                 "prose parsed as a file claim: {md}"
             );
         }
@@ -357,10 +343,7 @@ mod tests {
             "An unterminated [file: src/lib.rs:1 never closes.",
             "A link [file](https://example.com) is not a marker.",
         ] {
-            assert!(
-                parse_claims(md).claims.is_empty(),
-                "parsed a claim from: {md}"
-            );
+            assert!(parse_claims(md).is_empty(), "parsed a claim from: {md}");
         }
     }
 
@@ -383,7 +366,7 @@ Text
     #[test]
     fn extracts_fetched_url() {
         let md = "Per [fetched: 2026-05-20] https://example.com/x the rule is …";
-        let claims = parse_claims(md).claims;
+        let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].provenance.as_deref(), Some("fetched-url"));
     }
@@ -391,7 +374,7 @@ Text
     #[test]
     fn extracts_context7() {
         let md = "Per [context7: vercel/next.js] middleware fires before …";
-        let claims = parse_claims(md).claims;
+        let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].provenance.as_deref(), Some("context7"));
     }
@@ -399,7 +382,7 @@ Text
     #[test]
     fn extracts_memory_marker() {
         let md = "The runtime [memory] does not re-read skills mid-turn.";
-        let claims = parse_claims(md).claims;
+        let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].provenance.as_deref(), Some("memory-only"));
     }
@@ -407,13 +390,13 @@ Text
     #[test]
     fn ignores_prose_colons() {
         let md = "TODO: handle this case. Also remember: be precise.";
-        assert!(parse_claims(md).claims.is_empty());
+        assert!(parse_claims(md).is_empty());
     }
 
     #[test]
     fn line_numbers_are_one_indexed() {
         let md = "intro line\n\n[file: src/lib.rs:10] is on line 3.";
-        let claims = parse_claims(md).claims;
+        let claims = parse_claims(md);
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].line, 3);
     }
@@ -467,25 +450,42 @@ Back outside: [file: src/after.rs:7].
     }
 
     #[test]
-    fn a_delimiter_left_open_is_reported_rather_than_read_as_no_claims() {
-        let scan = parse_claims("[file: src/before.rs:1]\n\n```\n[file: src/after.rs:1]\n");
-        assert_eq!(paths_of(&scan), vec!["src/before.rs"]);
-        assert_eq!(scan.unread, Some(Unclosed::Fence { line: 3 }));
-
-        let scan = parse_claims("<!--\n[file: src/after.rs:1]\n");
-        assert_eq!(scan.unread, Some(Unclosed::Comment { line: 1 }));
-
-        assert_eq!(parse_claims("[file: src/x.rs:1]\n").unread, None);
+    fn a_sample_is_a_sample_wherever_its_container_indents_it() {
+        // Each of these was a Blocker against a path the author wrote as an
+        // example: the fence opens at a column a line-at-a-time reader reads
+        // as too deep, or CommonMark closes it at the end of the document
+        // and a state machine calls that unterminated.
+        for (label, md) in [
+            (
+                "inside a list item",
+                "- Like this:\n\n    ```markdown\n    [file: src/sample.rs:1]\n    ```\n\n\
+                 Real: [file: src/real.rs:1].\n",
+            ),
+            (
+                "inside a block quote",
+                "> ```\n> [file: src/sample.rs:1]\n> ```\n\nReal: [file: src/real.rs:1].\n",
+            ),
+            (
+                "indented code",
+                "Prose.\n\n    [file: src/sample.rs:1]\n\nReal: [file: src/real.rs:1].\n",
+            ),
+            (
+                "terminated by the document",
+                "Real: [file: src/real.rs:1].\n\n```\n[file: src/sample.rs:1]\n",
+            ),
+        ] {
+            assert_eq!(paths(md), vec!["src/real.rs"], "with {label}");
+        }
     }
 
-    fn paths_of(scan: &ClaimScan) -> Vec<String> {
-        scan.claims
-            .iter()
-            .filter_map(|c| match &c.kind {
-                ClaimKind::File { path, .. } => Some(path.clone()),
-                _ => None,
-            })
-            .collect()
+    #[test]
+    fn an_incomplete_comment_marker_leaves_the_claims_after_it_live() {
+        // A renderer shows `<!--` with no `-->` as text, so the claim below
+        // it is one a reader makes.
+        assert_eq!(
+            paths("Note <!-- unterminated\n\nReal: [file: src/real.rs:1].\n"),
+            vec!["src/real.rs"]
+        );
     }
 
     #[test]
