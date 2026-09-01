@@ -1,7 +1,7 @@
 //! Fresh-context Stop auditor.
 //!
 //! Flow:
-//! 1. Check `has_changes_check` — if exit 0 (no changes), allow stop.
+//! 1. Run the configured changes probe — if exit 0 (no changes), allow stop.
 //! 2. Bump per-session retry counter; if > max_retries, escalate via Block.
 //! 3. Spawn the critique skill via `claude --print <critique_skill>` from
 //!    the working directory.
@@ -128,10 +128,7 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
     }
 
     fn has_changes(&self) -> Result<bool> {
-        if self.config.has_changes_check.is_empty() {
-            return Ok(true);
-        }
-        let (program, args) = self.config.has_changes_check.split_first().unwrap();
+        let (program, args) = self.config.changes_probe()?;
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
         let output = self.runner.run(program, &args, self.working_dir)?;
         // Convention: exit 0 == no changes; non-zero == changes present.

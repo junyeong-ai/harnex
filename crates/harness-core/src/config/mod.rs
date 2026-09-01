@@ -561,6 +561,29 @@ pub struct StopAuditConfig {
     pub retry_ledger_dir: PathBuf,
 }
 
+impl StopAuditConfig {
+    /// The command that answers whether this session left work behind, and so
+    /// whether stopping costs a model call.
+    ///
+    /// Required, because the alternative is answering it without looking:
+    /// declaring the section already commits to spawning a critique, and an
+    /// unstated gate would spawn one at every Stop of every session. What that
+    /// probe should be is a project fact — which trees, which staging state,
+    /// which submodules — so it is asked for rather than guessed.
+    pub fn changes_probe(&self) -> Result<(&str, &[String])> {
+        self.has_changes_check
+            .split_first()
+            .map(|(program, args)| (program.as_str(), args))
+            .ok_or_else(|| Error::ConfigInvalid {
+                message: "[guard.stop_audit] has_changes_check is empty — the section \
+                          spawns a critique per Stop, so the command that decides when \
+                          must be stated (e.g. [\"git\", \"diff\", \"--quiet\"])"
+                    .into(),
+                location: None,
+            })
+    }
+}
+
 fn default_runtime() -> String {
     "claude-code".to_string()
 }
@@ -1262,6 +1285,7 @@ impl Config {
                     location: None,
                 });
             }
+            sa.changes_probe()?;
             // Bound the retry ceiling: 0 would escalate before the critique
             // ever runs, and a value at the integer ceiling would make the
             // `attempt > max_retries` escalation (and the corrupt-ledger
@@ -1513,8 +1537,24 @@ mod tests {
             [guard.stop_audit]
             critique_skill = "/critique"
             max_retries = 3
+            has_changes_check = ["git", "diff", "--quiet"]
         "#;
         assert!(parse(src).is_ok());
+    }
+
+    #[test]
+    fn rejects_a_stop_audit_that_never_says_when_it_fires() {
+        // Declaring the section commits to spawning a critique. Without the
+        // probe the auditor answers "there is work" without looking, and every
+        // Stop of every session costs a model call — the one field the section
+        // needs and the only one that had no floor.
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [guard.stop_audit]
+            critique_skill = "/critique"
+        "#;
+        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
     }
 
     #[test]
