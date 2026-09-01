@@ -163,6 +163,8 @@ pub struct EvidenceConfig {
     #[serde(default)]
     pub verifiers: Vec<VerifierDecl>,
     /// Directory the recorded advisory baselines live in, project-relative.
+    /// Changing it strands baselines at the old path — move them with it, or
+    /// they sit unscanned where not even the orphan finding looks.
     #[serde(default = "default_advisory_dir")]
     pub advisory_dir: String,
     #[serde(default)]
@@ -186,8 +188,9 @@ pub struct AdvisoryDecl {
     /// subtree.
     pub inputs: Vec<String>,
     /// Paths of the measuring instrument itself, digested apart from the
-    /// inputs so a stale finding can say which of the two moved. Identity,
-    /// never an alias: content is what is hashed.
+    /// inputs so a stale finding can say which of the two moved. Only
+    /// in-tree content is identity — a wrapper that shells out re-points
+    /// with no tree diff, so declare its lockfile or version pin beside it.
     #[serde(default)]
     pub engine: Vec<String>,
     /// Whether an unattended context (a push gate, `--unattended`) may block
@@ -718,17 +721,19 @@ impl Config {
                         location: None,
                     });
                 }
+                let own_baseline = format!("{}/{}.json", ev.advisory_dir, advisory.id);
                 let covers_dir = ev.advisory_dir == *path
                     || ev
                         .advisory_dir
                         .strip_prefix(path.as_str())
-                        .is_some_and(|rest| rest.starts_with('/'));
+                        .is_some_and(|rest| rest.starts_with('/'))
+                    || *path == own_baseline;
                 if covers_dir {
                     return Err(Error::ConfigInvalid {
                         message: format!(
                             "[[evidence.advisories]] '{}' declares '{path}', which contains \
-                             advisory_dir '{}' — recording would change its own basis and the \
-                             evidence could never be fresh",
+                             its own basis — recording would change what it measured and the \
+                             evidence could never be fresh (advisory_dir '{}')",
                             advisory.id, ev.advisory_dir
                         ),
                         location: None,
@@ -1807,7 +1812,11 @@ mod tests {
 
     #[test]
     fn rejects_an_advisory_whose_input_contains_its_own_baseline() {
-        for (dir, input) in [("evidence", "evidence"), ("app/evidence", "app")] {
+        for (dir, input) in [
+            ("evidence", "evidence"),
+            ("app/evidence", "app"),
+            ("evidence", "evidence/a.json"),
+        ] {
             let err = parse(&format!(
                 r#"
                 [meta]

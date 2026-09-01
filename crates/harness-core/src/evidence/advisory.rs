@@ -70,20 +70,45 @@ fn digest_path(root: &Path, declared: &str) -> Result<String> {
             hash = hash.wrapping_mul(PRIME);
         }
     };
+    // The walk classifies every entry it meets, but the declared path's own
+    // interior components are resolved by the OS — a symlinked ancestor
+    // would smuggle out-of-tree content in as in-tree. Refuse it instead.
+    let mut probe = root.to_path_buf();
+    let full = root.join(declared);
+    for segment in declared.split('/') {
+        probe.push(segment);
+        let meta = std::fs::symlink_metadata(&probe).map_err(|e| Error::IoFailure {
+            path: probe.clone(),
+            source: e,
+        })?;
+        if meta.file_type().is_symlink() && probe != full {
+            return Err(Error::ConfigInvalid {
+                message: format!(
+                    "declared path '{declared}' passes through the symlink '{}' — declare the real path",
+                    probe.display()
+                ),
+                location: None,
+            });
+        }
+    }
     let mut entries = Vec::new();
-    collect_entries(&root.join(declared), declared.to_string(), &mut entries)?;
+    collect_entries(&full, declared.to_string(), &mut entries)?;
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     for (rel, kind) in entries {
         feed(rel.as_bytes());
         match kind {
             EntryKind::File(path) => {
+                feed(b"f");
                 let bytes = std::fs::read(&path).map_err(|e| Error::IoFailure {
                     path: path.clone(),
                     source: e,
                 })?;
                 feed(&bytes);
             }
-            EntryKind::Link(target) => feed(target.as_bytes()),
+            EntryKind::Link(target) => {
+                feed(b"l");
+                feed(target.as_bytes());
+            }
         }
     }
     Ok(format!("fnv1a:{hash:016x}"))
@@ -177,18 +202,43 @@ pub fn record(
             location: None,
         });
     };
+    for path in decl.inputs.iter().chain(&decl.engine) {
+        if !crate::path_guard::literal_relative(path) {
+            return Err(Error::ConfigInvalid {
+                message: format!(
+                    "advisory '{id}' declares '{path}', which is not a literal project-relative path"
+                ),
+                location: None,
+            });
+        }
+    }
     let path = evidence_path(root, cfg, id);
-    if payload.is_null()
-        && let Ok(raw) = std::fs::read_to_string(&path)
-        && let Ok(existing) = serde_json::from_str::<AdvisoryEvidence>(&raw)
-        && !existing.payload.is_null()
-    {
-        return Err(Error::ConfigInvalid {
-            message: format!(
-                "recording without a payload would discard the measurement '{id}' holds — pass                  --payload with the new measurement, or delete the baseline first"
-            ),
-            location: None,
-        });
+    if payload.is_null() {
+        match std::fs::read_to_string(&path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(Error::IoFailure {
+                    path: path.clone(),
+                    source: e,
+                });
+            }
+            Ok(raw) => {
+                // A baseline that parses with a null payload re-stamps
+                // freely; anything else — a measurement, or a file this
+                // schema cannot read — is refused rather than overwritten.
+                let keeps_nothing = serde_json::from_str::<AdvisoryEvidence>(&raw)
+                    .is_ok_and(|existing| existing.payload.is_null());
+                if !keeps_nothing {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "recording without a payload would discard what '{id}' holds — pass \
+                             --payload with the new measurement, or delete the baseline first"
+                        ),
+                        location: None,
+                    });
+                }
+            }
+        }
     }
     let evidence = AdvisoryEvidence {
         id: id.to_string(),
@@ -282,7 +332,8 @@ impl<'a> AdvisoryAuditor<'a> {
                     severity: Severity::Major,
                     location: Location::file(path),
                     message: format!(
-                        "evidence carries id '{}' where '{}' was declared — a copied baseline is                          not a recording",
+                        "evidence carries id '{}' where '{}' was declared — a copied baseline \
+                         is not a recording",
                         evidence.id, decl.id
                     ),
                     hint: Some("re-record it under its own declaration".into()),
@@ -336,9 +387,9 @@ impl<'a> AdvisoryAuditor<'a> {
                 Some(recorded_digest) => match digest_path(self.root, entry) {
                     Ok(now) if &now == recorded_digest => {}
                     Ok(_) => stale.push(entry.clone()),
-                    Err(_) => stale.push(format!(
-                        "{entry} (no longer readable — restore or re-declare it first; record \
-                         refuses a missing input)"
+                    Err(e) => stale.push(format!(
+                        "{entry} (unreadable declared path: {e} — restore or re-declare it \
+                         before re-recording)"
                     )),
                 },
             }
@@ -421,6 +472,10 @@ impl<'a> AdvisoryAuditor<'a> {
 mod tests {
     use super::*;
     use crate::config::AdvisoryDecl;
+
+    fn cfg_with(advisories: Vec<AdvisoryDecl>) -> EvidenceConfig {
+        cfg(advisories)
+    }
 
     fn cfg(advisories: Vec<AdvisoryDecl>) -> EvidenceConfig {
         EvidenceConfig {
@@ -596,6 +651,51 @@ mod tests {
             slugs(&auditor.audit().unwrap()),
             vec!["advisory-stale-input"]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_wearing_a_links_bytes_is_not_the_link() {
+        let root = tempfile::tempdir().unwrap();
+        let src = root.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::os::unix::fs::symlink("../real.css", src.join("x")).unwrap();
+        let cfg = cfg(vec![decl("contrast", &["src"], &[], false)]);
+        record(root.path(), &cfg, "contrast", serde_json::Value::Null).unwrap();
+        std::fs::remove_file(src.join("x")).unwrap();
+        std::fs::write(src.join("x"), "../real.css").unwrap();
+        let findings = AdvisoryAuditor::new(root.path(), &cfg, false)
+            .audit()
+            .unwrap();
+        assert_eq!(slugs(&findings), vec!["advisory-stale-input"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_declared_path_through_a_symlinked_ancestor_is_refused() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("real")).unwrap();
+        std::fs::write(root.path().join("real/a.css"), "x").unwrap();
+        std::os::unix::fs::symlink("real", root.path().join("linked")).unwrap();
+        let cfg = cfg(vec![decl("contrast", &["linked/a.css"], &[], false)]);
+        let err = record(root.path(), &cfg, "contrast", serde_json::Value::Null).unwrap_err();
+        assert!(
+            err.to_string().contains("passes through the symlink"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_null_baseline_restamps_and_a_library_basis_is_validated() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/a"), "1").unwrap();
+        let cfg = cfg(vec![decl("contrast", &["src"], &[], false)]);
+        record(root.path(), &cfg, "contrast", serde_json::Value::Null).unwrap();
+        record(root.path(), &cfg, "contrast", serde_json::Value::Null).unwrap();
+
+        let escaping = cfg_with(vec![decl("esc", &["../outside"], &[], false)]);
+        assert!(record(root.path(), &escaping, "esc", serde_json::Value::Null).is_err());
     }
 
     #[test]
