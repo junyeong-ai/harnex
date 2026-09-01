@@ -5,15 +5,19 @@
 # Fails open on environment drift — a broken toolchain must never block an
 # edit, and the gates remain the structural failure surface.
 #
-# Two anchors, neither of them the working directory. Claude Code fires hooks
-# from wherever the session is, so asking git where the root is answers about
-# that directory rather than about this harness: inside a submodule or any
-# nested checkout it names the inner repository, and every verifier silently
-# stops being found. The runtime states the project itself in
-# CLAUDE_PROJECT_DIR, and this file's own location states where its verifiers
-# are — the two cannot drift, because the runtime resolves the same path to
-# launch this script. Neither needs git, so a project that keeps none still
-# runs its hooks.
+# Three anchors, none of them the working directory. Claude Code fires hooks
+# from wherever the session is, so asking git where the root is FROM THERE
+# answers about that directory rather than about this harness: inside a
+# submodule or any nested checkout it names the inner repository, and every
+# verifier silently stops being found.
+#
+# In order: the runtime states the project in CLAUDE_PROJECT_DIR, which is how
+# the shipped wiring launches this file and so cannot disagree with it; failing
+# that, git is asked about the directory THIS FILE sits in, which is stable
+# wherever the session wandered and is right for a harness kept below the root;
+# failing that, the parent, which is the scaffolded layout. Only the last two
+# are reached by a hand-run hook, and a project that keeps no git still gets
+# one, so its hooks run.
 #
 # One wrapper serves every language. What differs per ecosystem is which
 # interpreter a verifier needs, so each non-shell arm probes its own and
@@ -29,8 +33,8 @@
 # wrapper exists to prevent. `harnex audit` reports the absence as coverage.
 set -euo pipefail
 
-HOOKS="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)" || { echo "[harnex-skipped: cannot locate the hooks directory]" >&2; exit 0; }
-ROOT="${CLAUDE_PROJECT_DIR:-${HOOKS%/*}}"
+HOOKS="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)" || { echo "[harnex-skipped: cannot locate the hooks directory]" >&2; exit 0; }
+ROOT="${CLAUDE_PROJECT_DIR:-$(git -C "${HOOKS}" rev-parse --show-toplevel 2>/dev/null || echo "${HOOKS%/*}")}"
 # A root is an absolute path. Relative, it would resolve against the directory
 # the hook happened to fire in — the anchor this wrapper exists to stop reading.
 case "$ROOT" in
