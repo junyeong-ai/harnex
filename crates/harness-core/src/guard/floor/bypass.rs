@@ -32,8 +32,8 @@ const HOOKED_SUBCOMMANDS: [&str; 4] = ["commit", "push", "merge", "pull"];
 /// quoted string it re-parses (`eval "git commit --no-verify"`, the `sh -c`
 /// class), is out of scope — the option or the re-parse breaks the skip, and
 /// modelling every wrapper's grammar is the arms race this avoids.
-const COMMAND_PREFIX_WORDS: [&str; 8] = [
-    "env", "command", "nice", "nohup", "time", "setsid", "exec", "eval",
+const COMMAND_PREFIX_WORDS: [&str; 10] = [
+    "env", "command", "nice", "nohup", "time", "setsid", "exec", "eval", "sudo", "doas",
 ];
 
 /// Shell reserved words that stand where a command does and are followed by
@@ -536,10 +536,14 @@ mod tests {
             detect_hook_bypass(&words(&["env", "nice", "git", "commit", "--no-verify"])).is_some()
         );
         assert!(detect_hook_bypass(&words(&["/usr/bin/git", "commit", "-n"])).is_some());
-        // exec / eval / command run the git that follows.
+        // exec / eval / command run the git that follows; bare sudo / doas do
+        // too. A wrapper carrying its own options (`sudo -u x git`) breaks the
+        // skip and is out of scope, the same as `nice -n10 git`.
         assert!(detect_hook_bypass(&words(&["exec", "git", "commit", "--no-verify"])).is_some());
         assert!(detect_hook_bypass(&words(&["eval", "git", "commit", "--no-verify"])).is_some());
         assert!(detect_hook_bypass(&words(&["command", "git", "commit", "-n"])).is_some());
+        assert!(detect_hook_bypass(&words(&["sudo", "git", "commit", "--no-verify"])).is_some());
+        assert!(detect_hook_bypass(&words(&["doas", "git", "commit", "-n"])).is_some());
     }
 
     #[test]
