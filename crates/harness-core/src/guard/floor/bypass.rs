@@ -269,23 +269,17 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
     // positional, or the second when a subcommand leads. Named anywhere else
     // (a `--default core.hooksPath` fallback, or the value written to another
     // key like `--add user.label core.hooksPath`) it is not the subject, and
-    // the command reroutes nothing.
-    const SUBCOMMANDS: [&str; 15] = [
+    // the command reroutes nothing. The subcommands are git 2.55's exactly
+    // (the verb forms `get`/`set`/…); `--get-all` and its kin are flags, not
+    // subcommands, and a bare `get-all` is read by git as a section-less key.
+    const SUBCOMMANDS: [&str; 7] = [
         "get",
-        "get-all",
-        "get-regexp",
-        "get-urlmatch",
-        "get-color",
-        "get-colorbool",
         "set",
         "unset",
-        "unset-all",
-        "replace-all",
-        "add",
         "list",
+        "edit",
         "rename-section",
         "remove-section",
-        "edit",
     ];
     let key = match positionals.first() {
         Some(&first) if SUBCOMMANDS.contains(&first) => positionals.get(1).copied(),
