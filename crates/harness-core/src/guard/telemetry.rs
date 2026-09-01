@@ -44,16 +44,23 @@ pub enum EmitOutcome {
     Skipped,
 }
 
-/// The generous upper bound on a slug's length. A skill or agent name is a
-/// short identifier; anything past this is not one, and recording it would let
-/// the field carry content instead.
+/// The upper bound on a name's length, ledger hygiene rather than a grammar: a
+/// skill or agent name is a short identifier, so a value past this is not one
+/// and would only bloat the ledger. Real names sit far under it, so it never
+/// declines a genuine invocation (no false Silent).
 const MAX_SLUG_LEN: usize = 128;
 
-/// Whether a resolved name has an element slug's shape: non-empty, single line,
-/// and bounded. Not a charset grammar — element names are not constrained to
-/// one here — but enough to keep the field from carrying multi-line content.
+/// Whether a resolved name is shaped like an element's — a single token,
+/// bounded. Not a charset grammar (element names are not constrained to one
+/// here, and a strict charset would false-decline a real name and mark it
+/// Silent), but a name is one whitespace-free line, so this rejects the
+/// multi-line, control-laden, or spaced values a field would carry content in.
+/// What passes is a strict subset of what `session::asset_of` records, never a
+/// superset, so it stays consistent with the transcript reader.
 fn is_slug_shaped(name: &str) -> bool {
-    !name.is_empty() && name.len() <= MAX_SLUG_LEN && !name.chars().any(|c| c.is_control())
+    !name.is_empty()
+        && name.len() <= MAX_SLUG_LEN
+        && !name.chars().any(|c| c.is_control() || c.is_whitespace())
 }
 
 /// Resolve the outcome an event name carries, or `None` when the event is not
