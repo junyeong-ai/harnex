@@ -37,9 +37,9 @@ wire_enum! {
     pub enum RoutineState {
         /// The declared record exists.
         Produced => "produced",
-        /// Due date ahead, record not yet produced.
+        /// Not yet due, record not yet produced.
         Scheduled => "scheduled",
-        /// Due date passed with no record.
+        /// Due — today or earlier — with no record.
         Overdue => "overdue",
         /// `when` or `produces` is undeclared — installed but never given
         /// its first tick, which the session surface reports loudly.
@@ -55,7 +55,6 @@ wire_enum! {
 pub struct RoutineDecl {
     /// Next due date. Absent = never scheduled. Parsed at the boundary so
     /// an invalid date is unrepresentable rather than silently unschedulable.
-    #[schemars(with = "Option<String>")]
     pub when: Option<jiff::civil::Date>,
     /// The human rhythm, in prose (`quarterly`, `each release`).
     pub cadence: String,

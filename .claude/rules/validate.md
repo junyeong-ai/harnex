@@ -128,10 +128,11 @@ Settings validator:
   collapses the equivalent `cmd:*` / `cmd *` / bare wildcard forms, so both
   spellings are caught and a scoped rule (`rm:./tmp/*`) is not.
 
-Routine validator: shape only, one finding slug (`routine-invalid`) mapping
-`harness_core::routines::ShapeError` — the grammar's owner. Schedule state
-is deliberately not validated: the calendar belongs to `harnex lifecycle
-routines`, never to a gate.
+Routine validator: shape only, one finding slug (`routine-invalid`) —
+`harness_core::routines::ShapeError` for the field grammar, plus the
+half-schedule arm (`when` xor `produces` is a lost half-tick, and field
+presence is tree shape). Schedule state is deliberately not validated: the
+calendar belongs to `harnex lifecycle routines`, never to a gate.
 
 Glob-driven validators (rules / skills / agents / output styles / routines)
 implement
