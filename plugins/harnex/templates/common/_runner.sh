@@ -29,8 +29,14 @@
 # wrapper exists to prevent. `harnex audit` reports the absence as coverage.
 set -euo pipefail
 
-HOOKS="$(cd "$(dirname "$0")" && pwd)" || { echo "[harnex-skipped: cannot locate the hooks directory]" >&2; exit 0; }
+HOOKS="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)" || { echo "[harnex-skipped: cannot locate the hooks directory]" >&2; exit 0; }
 ROOT="${CLAUDE_PROJECT_DIR:-${HOOKS%/*}}"
+# A root is an absolute path. Relative, it would resolve against the directory
+# the hook happened to fire in — the anchor this wrapper exists to stop reading.
+case "$ROOT" in
+  /*) ;;
+  *) echo "[harnex-skipped: project root is not an absolute path: ${ROOT}]" >&2; exit 0 ;;
+esac
 # Explicit, because the two shells disagree on the default: under `set -e` an
 # unguarded failure ends the hook non-zero, which is the blocked edit this
 # wrapper exists to prevent.
