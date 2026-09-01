@@ -46,12 +46,19 @@ pub struct PromotionCandidate {
 /// already resolved or was measured against the thresholds — so
 /// `groups_considered + groups_resolved` is the whole ledger's distinct
 /// groups, and `candidates` is the part of `groups_considered` that crossed.
+///
+/// The survey reads two ledgers and reports both, because `groups_resolved`
+/// alone cannot say whether no pass has ever closed anything or the decision
+/// ledger was not found: a relocated `decision_dir` silently resurfaces every
+/// candidate the operator already rejected.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct CandidateSurvey {
     /// Groups past both thresholds, most instances first.
     pub candidates: Vec<PromotionCandidate>,
     /// Observations the ledger held.
     pub observations_read: usize,
+    /// Decisions the ledger held, of every kind.
+    pub decisions_read: usize,
     /// Distinct `(tag, normalized_text)` groups the thresholds ran against.
     pub groups_considered: usize,
     /// Groups a suppressing decision had already closed, excluded before the
@@ -88,6 +95,7 @@ impl<'a> PromotionCandidateFinder<'a> {
     pub fn survey(&self) -> Result<CandidateSurvey> {
         let observations = self.observations.load_all()?;
         let prior_decisions = self.decisions.load_all()?;
+        let decisions_read = prior_decisions.len();
         let resolved: HashSet<(String, String)> = prior_decisions
             .into_iter()
             .filter(|d| d.decision.suppresses_resurfacing())
@@ -157,6 +165,7 @@ impl<'a> PromotionCandidateFinder<'a> {
         Ok(CandidateSurvey {
             candidates,
             observations_read,
+            decisions_read,
             groups_considered,
             groups_resolved,
         })

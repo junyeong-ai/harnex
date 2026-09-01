@@ -40,7 +40,7 @@ impl ObservationLedger {
         };
         let path = self
             .dir
-            .join(format!("{}.jsonl", super::tag_filename_stem(tag)));
+            .join(format!("{}.jsonl", super::tag_filename_stem(tag)?));
         let line = serde_json::to_string(&obs).map_err(|e| Error::IoFailure {
             path: path.clone(),
             source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),
