@@ -1,9 +1,11 @@
 //! # Claim parser
 //!
-//! Extracts provenance-marked claims from arbitrary markdown text.
-//! Recognised syntaxes (all whitespace-tolerant):
+//! Extracts provenance-marked claims from markdown. Recognised syntaxes
+//! (all whitespace-tolerant):
 //!
-//! - `[file: path/to/file.ext:42]` → internal file claim; the `:line` optional
+//! - `[file: path/to/file.ext]` → the whole file is the owner
+//! - `[file: path/to/file.ext:42]` → that line
+//! - `[file: path/to/file.md § Heading]` → that section
 //! - `[fetched: YYYY-MM-DD] https://...` → fetched-url claim
 //! - `[context7: <library-id>]` → context7 claim
 //! - `[memory]` → unverified memory claim
@@ -13,6 +15,9 @@
 use std::sync::LazyLock;
 
 use regex::Regex;
+
+pub use crate::markdown::Unclosed;
+use crate::markdown::{Visibility, doc_lines};
 
 #[derive(Debug, Clone)]
 pub struct Claim {
@@ -24,9 +29,9 @@ pub struct Claim {
 
 #[derive(Debug, Clone)]
 pub enum ClaimKind {
-    FilePathLine {
+    File {
         path: String,
-        line: Option<u32>,
+        anchor: Anchor,
     },
     Url {
         url: String,
@@ -36,6 +41,29 @@ pub enum ClaimKind {
         library: String,
     },
     Memory,
+}
+
+/// What inside a file an internal claim points at.
+///
+/// The anchor is what decides whether the check still means anything a year
+/// later: a line is verified only for the file being that long, so it holds
+/// through the edit that moves its subject, while a section is matched
+/// against what the file spells and fails on the rename that invalidates the
+/// claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Anchor {
+    Whole,
+    Line(u32),
+    Section(String),
+}
+
+/// Every claim in a document, and whether the document could be read whole.
+pub struct ClaimScan {
+    pub claims: Vec<Claim>,
+    /// A fence or comment left open, after which a reader — and so this
+    /// parser — sees nothing. The claims below it are not absent, they are
+    /// unread, which is the one thing a gate may not report as clean.
+    pub unread: Option<Unclosed>,
 }
 
 static FETCHED_URL: LazyLock<Regex> = LazyLock::new(|| {
@@ -48,9 +76,6 @@ static CONTEXT7: LazyLock<Regex> =
 static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expect("MEMORY regex"));
 
 // `[file: path/to/thing.rs:42]` — an internal claim, marked like every other.
-//
-// The line is optional: `[file: pyproject.toml]` asserts the file, which is
-// what a rule naming a config section as its owner needs.
 //
 // Marked rather than inferred, because inference here has no floor. The shape
 // of a file and a line is also the shape of a host and a port, and no test
@@ -66,6 +91,11 @@ static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expe
 // A marker also tells a reader which references the gate checks, where a bare
 // backtick path says nothing.
 const FILE_MARKER: &str = "[file:";
+
+/// The separator between a path and the heading it points at. Spelled with
+/// spaces so it cannot be read out of an ordinary `§` in prose, and matched
+/// leftmost so a heading may carry one of its own.
+const SECTION_SEPARATOR: &str = " § ";
 
 /// The interior of each `[file: …]` on `line`, brackets balanced.
 ///
@@ -101,44 +131,19 @@ fn file_claim_bodies(line: &str) -> Vec<&str> {
     out
 }
 
-/// The part of `line` outside HTML comments, carrying comment state across
-/// lines.
+/// Split a claim body into its path and the anchor it names.
 ///
-/// A four-space indent used to be treated as a code block, which is only true
-/// at the top level: inside a list it is a nested item, and a bullet list
-/// naming an owner per item is exactly what the rule template asks an author to
-/// write. Those claims were skipped and `check` reported clean — a gate that
-/// verifies nothing while saying it verified. Fenced blocks still cover a
-/// deliberate sample; a comment covers a template's instructions; nothing else
-/// is exempt.
-fn strip_comments(line: &str, in_comment: &mut bool) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut rest = line;
-    loop {
-        if *in_comment {
-            let Some(close) = rest.find("-->") else {
-                return out;
-            };
-            rest = &rest[close + 3..];
-            *in_comment = false;
-            continue;
-        }
-        let Some(open) = rest.find("<!--") else {
-            out.push_str(rest);
-            return out;
-        };
-        out.push_str(&rest[..open]);
-        rest = &rest[open + 4..];
-        *in_comment = true;
+/// A section separator wins over a line: a path does not carry one and a
+/// heading may, so the leftmost splits and the heading is whatever follows.
+/// Otherwise a trailing `:<digits>` is the line, which leaves a path free to
+/// hold a colon of its own — a Windows drive letter reaches the verifier
+/// intact. An empty path is not a claim: `[file: ]` says nothing to check.
+fn split_file_claim(body: &str) -> Option<(&str, Anchor)> {
+    if let Some((path, heading)) = body.split_once(SECTION_SEPARATOR) {
+        let (path, heading) = (path.trim_end(), heading.trim());
+        return (!path.is_empty() && !heading.is_empty())
+            .then(|| (path, Anchor::Section(heading.to_string())));
     }
-}
-
-/// Split a claim body into its path and optional line.
-///
-/// The line is the trailing `:<digits>`, so a path may itself contain a colon
-/// — a Windows drive letter reaches the verifier intact. An empty path is not
-/// a claim: `[file: ]` says nothing to check.
-fn split_file_claim(body: &str) -> Option<(&str, Option<u32>)> {
     if let Some((path, tail)) = body.rsplit_once(':')
         && !tail.is_empty()
         && tail.chars().all(|c| c.is_ascii_digit())
@@ -147,10 +152,10 @@ fn split_file_claim(body: &str) -> Option<(&str, Option<u32>)> {
             // All digits, so the only parse failure is OVERFLOW of u32 — a line
             // far beyond any file. Map it to u32::MAX so the verifier reports
             // it out of range rather than silently as "no line to check".
-            (path, Some(tail.parse().unwrap_or(u32::MAX)))
+            (path, Anchor::Line(tail.parse().unwrap_or(u32::MAX)))
         });
     }
-    (!body.is_empty()).then_some((body, None))
+    (!body.is_empty()).then_some((body, Anchor::Whole))
 }
 
 /// Parse every recognised claim out of `markdown`. Order within a line is
@@ -160,50 +165,19 @@ fn split_file_claim(body: &str) -> Option<(&str, Option<u32>)> {
 /// sample of the syntax, and an HTML comment, which is an instruction. Prose,
 /// tables, blockquotes and every depth of list item carry live claims — a
 /// nested bullet is where a rule names its owners.
-pub fn parse_claims(markdown: &str) -> Vec<Claim> {
-    let mut out = Vec::new();
-    let mut in_fence: Option<(char, usize)> = None;
-    let mut in_comment = false;
-    for (idx, line) in markdown.lines().enumerate() {
-        let line_no = (idx as u32) + 1;
+pub fn parse_claims(markdown: &str) -> ClaimScan {
+    let mut claims = Vec::new();
+    let mut doc = Visibility::new();
 
-        // Fence delimiters, per CommonMark: a closing fence must be at least
-        // as long as the one that opened it. Toggling on any run of three
-        // meant a four-backtick block quoting three-backtick examples — how a
-        // rule about writing rules is spelled — closed itself at the first
-        // inner fence and read the rest of the block as prose.
-        let trimmed = line.trim_start();
-        let run = |c: char| trimmed.chars().take_while(|&x| x == c).count();
-        let fence = [('`', run('`')), ('~', run('~'))]
-            .into_iter()
-            .find(|&(_, len)| len >= 3);
-        if let Some((char, len)) = fence {
-            // A closing fence carries nothing but its own characters, per
-            // CommonMark. Without that, a line like "``` note: still inside"
-            // closes the block a renderer keeps open, and the claim below it
-            // is read as live.
-            let bare = trimmed[len..].trim().is_empty();
-            match in_fence {
-                Some((open_char, open_len)) if bare && char == open_char && len >= open_len => {
-                    in_fence = None;
-                }
-                Some(_) => {}
-                None => in_fence = Some((char, len)),
-            }
+    for (idx, raw_line) in doc_lines(markdown).into_iter().enumerate() {
+        let line_no = (idx as u32) + 1;
+        let Some(line) = doc.read(raw_line, line_no) else {
             continue;
-        }
-        if in_fence.is_some() {
-            continue;
-        }
-        // An HTML comment is instruction rather than assertion. Every template
-        // that teaches this grammar writes an example inside one, and a rule
-        // carrying a `harnex-fill` block would otherwise report the example as
-        // a claim about the project.
-        let live = strip_comments(line, &mut in_comment);
-        let line = live.as_str();
+        };
+        let line = line.as_str();
 
         for cap in FETCHED_URL.captures_iter(line) {
-            out.push(Claim {
+            claims.push(Claim {
                 raw: cap[0].to_string(),
                 provenance: Some("fetched-url".to_string()),
                 kind: ClaimKind::Url {
@@ -215,7 +189,7 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
         }
 
         for cap in CONTEXT7.captures_iter(line) {
-            out.push(Claim {
+            claims.push(Claim {
                 raw: cap[0].to_string(),
                 provenance: Some("context7".to_string()),
                 kind: ClaimKind::Context7Library {
@@ -226,7 +200,7 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
         }
 
         for _ in MEMORY.captures_iter(line) {
-            out.push(Claim {
+            claims.push(Claim {
                 raw: "[memory]".to_string(),
                 provenance: Some("memory-only".to_string()),
                 kind: ClaimKind::Memory,
@@ -235,26 +209,45 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
         }
 
         for body in file_claim_bodies(line) {
-            let Some((path, cited)) = split_file_claim(body) else {
+            let Some((path, anchor)) = split_file_claim(body) else {
                 continue;
             };
-            out.push(Claim {
+            claims.push(Claim {
                 raw: format!("{FILE_MARKER} {body}]"),
                 provenance: Some("internal".to_string()),
-                kind: ClaimKind::FilePathLine {
+                kind: ClaimKind::File {
                     path: path.to_string(),
-                    line: cited,
+                    anchor,
                 },
                 line: line_no,
             });
         }
     }
-    out
+
+    ClaimScan {
+        claims,
+        unread: doc.unclosed(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn file_claims(md: &str) -> Vec<(String, Anchor)> {
+        parse_claims(md)
+            .claims
+            .into_iter()
+            .filter_map(|c| match c.kind {
+                ClaimKind::File { path, anchor } => Some((path, anchor)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn paths(md: &str) -> Vec<String> {
+        file_claims(md).into_iter().map(|(path, _)| path).collect()
+    }
 
     #[test]
     fn a_host_and_port_is_not_a_file_claim() {
@@ -272,9 +265,10 @@ mod tests {
             "Cache at `cache/redis.internal:6379`.",
             "Fetch `https://api.example.com:8080/v1` for the payload.",
             "A plain backtick path `src/lib.rs:42` is prose, not a claim.",
+            "The spec's § 4 covers it, and `guide.md § Limits` is prose too.",
         ] {
             assert!(
-                parse_claims(md).is_empty(),
+                parse_claims(md).claims.is_empty(),
                 "prose parsed as a file claim: {md}"
             );
         }
@@ -286,37 +280,73 @@ mod tests {
         // profile for. A character class that stops at the first `]` read it
         // as `app/[id`: the real claim went unverified and the truncation
         // failed Blocker against a path nobody wrote — both directions at once.
-        for (md, want_path, want_line) in [
+        for (md, want_path, want_anchor) in [
             (
                 "See [file: app/[id]/page.tsx:10] for the handler.",
                 "app/[id]/page.tsx",
-                Some(10),
+                Anchor::Line(10),
             ),
             (
                 "Catch-all [file: app/[[...slug]]/route.ts] is registered.",
                 "app/[[...slug]]/route.ts",
-                None,
+                Anchor::Whole,
             ),
             (
                 "On Windows [file: C:/repo/x.rs:4].",
                 "C:/repo/x.rs",
-                Some(4),
+                Anchor::Line(4),
             ),
             (
                 "Spaces survive [file: My Docs/notes.md:2].",
                 "My Docs/notes.md",
-                Some(2),
+                Anchor::Line(2),
             ),
         ] {
-            let claims = parse_claims(md);
-            assert_eq!(claims.len(), 1, "no claim parsed from: {md}");
-            match &claims[0].kind {
-                ClaimKind::FilePathLine { path, line } => {
-                    assert_eq!(path, want_path, "from: {md}");
-                    assert_eq!(*line, want_line, "from: {md}");
-                }
-                _ => panic!("expected FilePathLine"),
-            }
+            assert_eq!(
+                file_claims(md),
+                vec![(want_path.to_string(), want_anchor)],
+                "from: {md}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_anchor_names_the_whole_file_a_line_or_a_section() {
+        for (md, want_path, want_anchor) in [
+            (
+                "Owned by [file: pyproject.toml].",
+                "pyproject.toml",
+                Anchor::Whole,
+            ),
+            (
+                "See [file: src/lib.rs:42] for context.",
+                "src/lib.rs",
+                Anchor::Line(42),
+            ),
+            (
+                "Stated in [file: .claude/rules/x.md § The bookend trigger].",
+                ".claude/rules/x.md",
+                Anchor::Section("The bookend trigger".into()),
+            ),
+            // A heading may carry the separator; the leftmost one splits.
+            (
+                "See [file: docs/g.md § Limits § scope].",
+                "docs/g.md",
+                Anchor::Section("Limits § scope".into()),
+            ),
+            // A section wins over a trailing line, so a heading ending in
+            // digits is a heading.
+            (
+                "See [file: docs/g.md § Step 1:2].",
+                "docs/g.md",
+                Anchor::Section("Step 1:2".into()),
+            ),
+        ] {
+            assert_eq!(
+                file_claims(md),
+                vec![(want_path.to_string(), want_anchor)],
+                "from: {md}"
+            );
         }
     }
 
@@ -327,7 +357,10 @@ mod tests {
             "An unterminated [file: src/lib.rs:1 never closes.",
             "A link [file](https://example.com) is not a marker.",
         ] {
-            assert!(parse_claims(md).is_empty(), "parsed a claim from: {md}");
+            assert!(
+                parse_claims(md).claims.is_empty(),
+                "parsed a claim from: {md}"
+            );
         }
     }
 
@@ -344,40 +377,13 @@ Text
 
 [file: src/after.rs:1]
 ";
-        let paths: Vec<String> = parse_claims(md)
-            .iter()
-            .filter_map(|c| match &c.kind {
-                ClaimKind::FilePathLine { path, .. } => Some(path.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(paths, vec!["src/after.rs"]);
-    }
-
-    #[test]
-    fn a_file_claim_carries_an_optional_line() {
-        // A rule naming a config section as its owner asserts the file; one
-        // naming an item asserts the line too.
-        match &parse_claims("Owned by [file: pyproject.toml].")[0].kind {
-            ClaimKind::FilePathLine { path, line } => {
-                assert_eq!(path, "pyproject.toml");
-                assert_eq!(*line, None);
-            }
-            _ => panic!("expected FilePathLine"),
-        }
-        match &parse_claims("See [file: src/lib.rs:42] for context.")[0].kind {
-            ClaimKind::FilePathLine { path, line } => {
-                assert_eq!(path, "src/lib.rs");
-                assert_eq!(*line, Some(42));
-            }
-            _ => panic!("expected FilePathLine"),
-        }
+        assert_eq!(paths(md), vec!["src/after.rs"]);
     }
 
     #[test]
     fn extracts_fetched_url() {
         let md = "Per [fetched: 2026-05-20] https://example.com/x the rule is …";
-        let claims = parse_claims(md);
+        let claims = parse_claims(md).claims;
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].provenance.as_deref(), Some("fetched-url"));
     }
@@ -385,7 +391,7 @@ Text
     #[test]
     fn extracts_context7() {
         let md = "Per [context7: vercel/next.js] middleware fires before …";
-        let claims = parse_claims(md);
+        let claims = parse_claims(md).claims;
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].provenance.as_deref(), Some("context7"));
     }
@@ -393,7 +399,7 @@ Text
     #[test]
     fn extracts_memory_marker() {
         let md = "The runtime [memory] does not re-read skills mid-turn.";
-        let claims = parse_claims(md);
+        let claims = parse_claims(md).claims;
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].provenance.as_deref(), Some("memory-only"));
     }
@@ -401,14 +407,13 @@ Text
     #[test]
     fn ignores_prose_colons() {
         let md = "TODO: handle this case. Also remember: be precise.";
-        let claims = parse_claims(md);
-        assert_eq!(claims.len(), 0);
+        assert!(parse_claims(md).claims.is_empty());
     }
 
     #[test]
     fn line_numbers_are_one_indexed() {
         let md = "intro line\n\n[file: src/lib.rs:10] is on line 3.";
-        let claims = parse_claims(md);
+        let claims = parse_claims(md).claims;
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].line, 3);
     }
@@ -433,20 +438,54 @@ let x = [file: src/inside.rs:99];
 
 Back outside: [file: src/after.rs:7].
 ";
-        let claims = parse_claims(md);
-        let paths: Vec<&str> = claims
-            .iter()
-            .filter_map(|c| match &c.kind {
-                ClaimKind::FilePathLine { path, .. } => Some(path.as_str()),
-                _ => None,
-            })
-            .collect();
         assert_eq!(
-            paths,
+            paths(md),
             vec!["src/real.rs", "src/nested.rs", "src/after.rs"],
             "a nested bullet is where a rule names its owners; a comment is an \
              instruction and a fence is a sample"
         );
+    }
+
+    #[test]
+    fn a_document_the_renderer_reads_as_many_lines_is_not_read_as_one() {
+        // CR-delimited and BOM-prefixed documents reach a renderer as many
+        // lines. Read as one, the whole file collapsed into a single
+        // fence-opening line and every claim in it went unparsed — a gate
+        // reporting clean over a document it never opened.
+        for (label, md) in [
+            (
+                "carriage returns",
+                "\r```\r[file: src/sample.rs:1]\r```\r\r[file: src/real.rs:1]\r",
+            ),
+            (
+                "a byte-order mark",
+                "\u{feff}```\n[file: src/sample.rs:1]\n```\n\n[file: src/real.rs:1]\n",
+            ),
+        ] {
+            assert_eq!(paths(md), vec!["src/real.rs"], "with {label}");
+        }
+    }
+
+    #[test]
+    fn a_delimiter_left_open_is_reported_rather_than_read_as_no_claims() {
+        let scan = parse_claims("[file: src/before.rs:1]\n\n```\n[file: src/after.rs:1]\n");
+        assert_eq!(paths_of(&scan), vec!["src/before.rs"]);
+        assert_eq!(scan.unread, Some(Unclosed::Fence { line: 3 }));
+
+        let scan = parse_claims("<!--\n[file: src/after.rs:1]\n");
+        assert_eq!(scan.unread, Some(Unclosed::Comment { line: 1 }));
+
+        assert_eq!(parse_claims("[file: src/x.rs:1]\n").unread, None);
+    }
+
+    fn paths_of(scan: &ClaimScan) -> Vec<String> {
+        scan.claims
+            .iter()
+            .filter_map(|c| match &c.kind {
+                ClaimKind::File { path, .. } => Some(path.clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
@@ -458,11 +497,6 @@ Back outside: [file: src/after.rs:7].
 
 [file: src/outside.md:2]
 ";
-        let claims = parse_claims(md);
-        assert_eq!(claims.len(), 1);
-        match &claims[0].kind {
-            ClaimKind::FilePathLine { path, .. } => assert_eq!(path, "src/outside.md"),
-            _ => panic!("expected FilePathLine"),
-        }
+        assert_eq!(paths(md), vec!["src/outside.md"]);
     }
 }

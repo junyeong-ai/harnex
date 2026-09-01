@@ -194,5 +194,5 @@ sources that must not be merged — `harnex audit`'s findings, which are
 defects the binary can prove (spec drift, a hook naming a script that is not
 on disk, an edited managed region), and the coverage comparison the skill
 makes from `existing_harness`, which is an observation rather than a verdict
-because a guarantee may live outside the repo. SKILL.md § Mode: audit owns
-that split.
+because a guarantee may live outside the repo.
+[file: SKILL.md § Mode: audit (read-only, gap report)] owns that split.

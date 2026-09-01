@@ -251,9 +251,14 @@ patterns covered out of the box:
   leaving a rule that points nowhere:
 
   ```
-  [file: crates/harness-core/src/path_guard.rs:81]   file must exist and hold that line
-  [file: pyproject.toml]                             file must exist
+  [file: pyproject.toml]                             the file exists
+  [file: crates/harness-core/src/path_guard.rs:81]   and is at least that long
+  [file: .claude/rules/making-changes.md § Verification]  and spells that heading, once
   ```
+
+  The anchor is chosen for what it proves: a line survives the edit that moves
+  its subject, so where the target is a document, cite the heading — it fails
+  on the rename that invalidated the claim.
 
 - Append-only telemetry with a closed payload schema
 - Sentinel-block enum codegen across many files

@@ -43,6 +43,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::markdown::{Unclosed, Visibility, atx_heading, doc_lines, strip_code_spans};
+
 use crate::envelope::{Finding, Location, Severity};
 use crate::wire_enum::wire_enum;
 
@@ -443,53 +445,6 @@ fn finding_shaped(text: &str) -> bool {
     false
 }
 
-/// Remove CommonMark code spans: a run of N backticks up to the next run of
-/// exactly N. An unmatched run stays literal, as the spec reads it.
-fn strip_code_spans(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            let start = i;
-            while i < bytes.len() && bytes[i] == b'`' {
-                i += 1;
-            }
-            let run = i - start;
-            if let Some(close) = find_backtick_run(&text[i..], run) {
-                i += close + run;
-                continue;
-            }
-            out.push_str(&text[start..i]);
-            continue;
-        }
-        let ch = text[i..].chars().next().expect("in-bounds char");
-        out.push(ch);
-        i += ch.len_utf8();
-    }
-    out
-}
-
-/// Byte offset just past a run of exactly `len` backticks in `text`.
-fn find_backtick_run(text: &str, len: usize) -> Option<usize> {
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            let start = i;
-            while i < bytes.len() && bytes[i] == b'`' {
-                i += 1;
-            }
-            if i - start == len {
-                return Some(start);
-            }
-            continue;
-        }
-        i += 1;
-    }
-    None
-}
-
 /// A `## <heading>` section read out of a document, fence-aware.
 enum Section {
     Found {
@@ -519,137 +474,19 @@ struct Item {
     text: String,
 }
 
-/// The visible remainder of `line` once HTML comments are stripped; `None`
-/// while the whole line sits inside one. `comment` carries the opening line
-/// of an unterminated `<!--` so an unreadable verdict can name it.
-///
-/// A code span protects its content, `<!--` included — CommonMark's
-/// leftmost-delimiter rule, and the difference between a row that QUOTES the
-/// marker and a comment. Read without it, one backticked `` `<!--` `` opened
-/// a phantom comment that swallowed every row until an incidental `-->`
-/// downstream — an open Critical erased by ordinary prose.
-fn strip_html_comments(line: &str, line_no: u32, comment: &mut Option<u32>) -> Option<String> {
-    let mut out = String::new();
-    let mut rest = line;
-    if comment.is_some() {
-        let end = rest.find("-->")?;
-        *comment = None;
-        rest = &rest[end + 3..];
-    }
-    while let Some(open) = rest.find("<!--") {
-        if let Some(tick) = rest.find('`')
-            && tick < open
-        {
-            let run = rest[tick..].bytes().take_while(|&b| b == b'`').count();
-            if let Some(close) = find_backtick_run(&rest[tick + run..], run) {
-                let span_end = tick + run + close + run;
-                out.push_str(&rest[..span_end]);
-                rest = &rest[span_end..];
-                continue;
-            }
-        }
-        out.push_str(&rest[..open]);
-        let after = &rest[open + 4..];
-        // `<!-->` and `<!--->` are complete, empty comments to a renderer —
-        // read as unterminated openers, they swallowed the visible rows
-        // after them.
-        if let Some(tail) = after.strip_prefix('>') {
-            rest = tail;
-            continue;
-        }
-        if let Some(tail) = after.strip_prefix("->") {
-            rest = tail;
-            continue;
-        }
-        match after.find("-->") {
-            Some(end) => rest = &after[end + 3..],
-            None => {
-                *comment = Some(line_no);
-                return Some(out);
-            }
-        }
-    }
-    out.push_str(rest);
-    Some(out)
-}
-
-/// The ATX heading a line spells, as (level, title) — up to three leading
-/// spaces, one to six `#`s, whitespace (or end of line), and an optional
-/// closing run of `#`s, per CommonMark. A reader that recognizes fewer
-/// heading spellings than a renderer turns a cosmetic trailing `#` into a
-/// missing section, and a missing section disarms every check that reads it.
-fn atx_heading(line: &str) -> Option<(usize, &str)> {
-    let unindented = line.trim_start_matches(' ');
-    if line.len() - unindented.len() > 3 {
-        return None;
-    }
-    let level = unindented.bytes().take_while(|&b| b == b'#').count();
-    if !(1..=6).contains(&level) {
-        return None;
-    }
-    let rest = &unindented[level..];
-    if !rest.is_empty() && !rest.starts_with([' ', '\t']) {
-        return None;
-    }
-    let title = rest.trim_matches([' ', '\t']);
-    let stripped = title.trim_end_matches('#');
-    if stripped.len() == title.len() {
-        return Some((level, title));
-    }
-    // A closing sequence counts only when whitespace separates it from the
-    // title (or it is the whole remainder) — `## a#b` keeps its `#`.
-    if stripped.is_empty() {
-        return Some((level, stripped));
-    }
-    match stripped.ends_with([' ', '\t']) {
-        true => Some((level, stripped.trim_end_matches([' ', '\t']))),
-        false => Some((level, title)),
-    }
-}
-
 /// Extract the items under `## <heading>`.
 ///
 /// One reader for both sections, because two implementations of "which lines
 /// are in the section" is how a fenced decoy heading passes one gate and
-/// fails another. CommonMark-shaped: fences open on 3+ backticks or tildes
-/// (an info string containing a backtick is not a fence), close on a run of
-/// the same character at least as long, and a heading or list marker inside
-/// one is content; HTML comments are invisible to a renderer, so their
-/// content is invisible here too. Setext headings are not boundaries — a
-/// section can only over-collect past one, which fails loud. Unreadable — a
-/// duplicate heading, or a fence or comment left open across the section —
-/// is its own outcome, never conflated with empty: the difference between
-/// "no open findings" and "findings this reader cannot see" is the
-/// difference the append-only contract exists to protect.
-/// The renderer's line splitter. CommonMark ends a line at a newline, a
-/// carriage return not followed by one, or the pair — `str::lines` reads only
-/// the first and last, so a classic-Mac document reaches every check as one
-/// line the renderer shows as many. A leading U+FEFF is the encoding's
-/// byte-order mark, consumed at decode by every reference reader; kept, it
-/// would un-head a heading on the first line.
-fn doc_lines(text: &str) -> Vec<&str> {
-    let mut rest = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let mut lines = Vec::new();
-    while !rest.is_empty() {
-        match rest.find(['\n', '\r']) {
-            Some(at) => {
-                lines.push(&rest[..at]);
-                let after = &rest[at..];
-                rest = after.strip_prefix("\r\n").unwrap_or(&after[1..]);
-            }
-            None => {
-                lines.push(rest);
-                break;
-            }
-        }
-    }
-    lines
-}
-
+/// fails another. Setext headings are not boundaries — a section can only
+/// over-collect past one, which fails loud. Unreadable — a duplicate heading,
+/// or a fence or comment left open across the section — is its own outcome,
+/// never conflated with empty: the difference between "no open findings" and
+/// "findings this reader cannot see" is the difference the append-only
+/// contract exists to protect.
 fn section_of(text: &str, heading: &str) -> Section {
     let wanted = format!("## {heading}");
-    let mut fence: Option<(u8, usize, u32)> = None;
-    let mut comment: Option<u32> = None;
+    let mut doc = Visibility::new();
     let mut found_at: Option<u32> = None;
     let mut ended = false;
     let mut items: Vec<Item> = Vec::new();
@@ -659,40 +496,10 @@ fn section_of(text: &str, heading: &str) -> Section {
     for (idx, raw_line) in doc_lines(text).into_iter().enumerate() {
         let line_no = u32::try_from(idx + 1).unwrap_or(u32::MAX);
 
-        // Fences first — inside one, a comment marker is content.
-        if fence.is_none() && comment.is_none() {
-            let unindented = raw_line.trim_start_matches(' ');
-            if raw_line.len() - unindented.len() <= 3 {
-                let ticks = unindented.bytes().take_while(|&b| b == b'`').count();
-                let tildes = unindented.bytes().take_while(|&b| b == b'~').count();
-                if ticks >= 3 && !unindented[ticks..].contains('`') {
-                    fence = Some((b'`', ticks, line_no));
-                    continue;
-                }
-                if tildes >= 3 {
-                    fence = Some((b'~', tildes, line_no));
-                    continue;
-                }
-            }
-        }
-        if let Some((char_, len, _)) = fence {
-            let unindented = raw_line.trim_start_matches(' ');
-            if raw_line.len() - unindented.len() <= 3
-                && unindented.bytes().take_while(|&b| b == char_).count() >= len
-                && unindented.trim_end().bytes().all(|b| b == char_)
-            {
-                fence = None;
-            }
+        // A fenced or commented line is neither a row nor a loose one, and a
+        // heading inside one anchors nothing.
+        let Some(line) = doc.read(raw_line, line_no) else {
             continue;
-        }
-
-        // HTML comments are what a renderer never shows: their content is
-        // neither a row nor a loose line, and a heading inside one anchors
-        // nothing. Stripped span-wise so prose around an inline comment
-        // still reads.
-        let line = match strip_html_comments(raw_line, line_no, &mut comment) {
-            Some(cleaned) => cleaned,
-            None => continue,
         };
         let line = line.as_str();
         let unindented = line.trim_start_matches(' ');
@@ -745,27 +552,27 @@ fn section_of(text: &str, heading: &str) -> Section {
         }
     }
 
-    if let (Some((_, _, opened)), false) = (fence, ended)
+    if let Some(unclosed) = doc.unclosed()
+        && !ended
         && found_at.is_some()
     {
-        return Section::Unreadable {
-            line: opened,
-            reason: format!(
-                "a code fence opened at line {opened} never closes, so where the section ends \
-                 cannot be read"
+        let (line, reason) = match unclosed {
+            Unclosed::Fence { line } => (
+                line,
+                format!(
+                    "a code fence opened at line {line} never closes, so where the section ends \
+                     cannot be read"
+                ),
+            ),
+            Unclosed::Comment { line } => (
+                line,
+                format!(
+                    "an HTML comment opened at line {line} never closes, so what the section \
+                     shows a reader cannot be told from what it hides"
+                ),
             ),
         };
-    }
-    if let (Some(opened), false) = (comment, ended)
-        && found_at.is_some()
-    {
-        return Section::Unreadable {
-            line: opened,
-            reason: format!(
-                "an HTML comment opened at line {opened} never closes, so what the section \
-                 shows a reader cannot be told from what it hides"
-            ),
-        };
+        return Section::Unreadable { line, reason };
     }
     if let Some(item) = open_item.take() {
         items.push(item);

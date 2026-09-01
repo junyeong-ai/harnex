@@ -10,6 +10,7 @@
 //! - [`envelope`] — JSON envelope contract every command emits.
 //! - [`error`] — typed Error enum with stable ErrorCode strings.
 //! - [`path_guard`] — safe write primitives (`write_atomic` + `append_line`).
+//! - `markdown` — the one reader for what a rendered document shows.
 //! - [`glob_root`] — a glob pattern rooted at a literal directory.
 //! - [`evidence`] — provenance verifier with pluggable strategies.
 //! - [`telemetry`] — append-only closed-schema event ledger.
@@ -50,6 +51,7 @@ pub mod governs;
 pub mod graph;
 pub mod guard;
 pub mod lifecycle;
+mod markdown;
 pub mod path_guard;
 pub mod plan;
 pub mod policy;
