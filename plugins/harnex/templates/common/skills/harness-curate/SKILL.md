@@ -27,7 +27,10 @@ the emit half of this loop never fired and this pass has read nothing, so say
 that and go find where the observations went — a wrapup that recorded them
 somewhere the loop does not reach is the usual answer. `groups_considered` and
 `groups_resolved` split the rest between what the thresholds saw and what an
-earlier pass already closed.
+earlier pass already closed, and `decisions_read` says whether the ledger
+behind that second number was found at all — zero there, on a corpus this loop
+has run on before, means the pass is about to resurface everything the operator
+already settled.
 
 Observations read and no candidates IS a finished pass — the recurrence bar
 held. Say so and stop; a sweep that always finds something is a sweep that has
@@ -40,7 +43,10 @@ candidate, and `.claude/rules/artifact-lifecycle.md` to each retirement
 verdict. Two failure modes to name out loud rather than resolve silently:
 
 - **A candidate that only the model wants.** The rubric's bar is evidence
-  across independent contexts. One vivid session is an observation.
+  across independent contexts, and `sources` is where a candidate says how many
+  it has. `instance_count` counts appends, which one spec raises on its own by
+  recording twice — a candidate whose sources are one entry is one vivid
+  session, which is an observation.
 - **A retirement verdict on a foundation artifact.** Those are exempt. If the
   sweep keeps proposing one, the exemption list is what needs the edit.
 

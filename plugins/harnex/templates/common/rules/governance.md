@@ -29,10 +29,13 @@ the session without spending always-loaded context:
   trail, and a candidate recorded only there is found by a person who goes
   looking, never by `harnex lifecycle candidates`.
 
-Recurrence is counted by exact text after case and whitespace. A constraint
-the ledger already knows, rephrased, starts a second count, and neither entry
-then proves the recurrence both were recording — read the tag's ledger before
-appending and reuse the standing wording.
+Recurrence is counted per `(tag, text)`, the text after case and whitespace
+and the tag exactly as spelled. A constraint the ledger already knows,
+rephrased or filed under a differently-spelled tag, starts a second count, and
+neither entry then proves the recurrence both were recording — read the tag's
+ledger before appending and reuse the standing wording. An empty tag is
+refused: a record is surfaced under its tag, and one with no tag is one no
+pass would ever reach.
 
 Do not record observations in always-loaded memory — that pays context cost
 every session for a candidate that has not earned a rule yet.

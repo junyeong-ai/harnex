@@ -34,6 +34,11 @@ harnex lifecycle observe --tag <topic> --text "<what recurs>" --source <slug>
 ```
 
 Completing the spec removes this directory, so a proposal left only here is
-one the promotion pass never sees. Reuse a standing observation's wording
-verbatim — `.claude/rules/governance.md` has why, and owns the bar each
+one the promotion pass never sees. Reuse a standing observation's tag and
+wording verbatim — `.claude/rules/governance.md` has why, and owns the bar each
 proposal is judged against. Do not write the rule from here.
+
+If that command cannot run — no `harnex` on the path, or no `[lifecycle]` in
+`harness.toml` — this spec is not ready to retire. Name what is missing and
+leave the directory standing: a proposal deleted because its destination was
+never installed is the loss this step exists to prevent.

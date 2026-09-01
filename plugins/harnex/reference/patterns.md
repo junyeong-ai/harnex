@@ -51,7 +51,11 @@ an observation is the blank-page problem in disguise.
   `hooks/pre-commit.d/`, is made executable, and its `PLAN_GLOB` follows the
   layout the analysis observed — the scaffold's pre-commit dispatches every
   arm there, which is how the review floor gets a commit-time computer
-  without editing a byte-identical hook.
+  without editing a byte-identical hook. Verify a brownfield `harness.toml`
+  carries `[lifecycle]`, and add it if not: wrapup records each harness
+  proposal to the observation ledger in the commit that retires the spec
+  directory, so a pattern installed without it reaches the one step whose
+  failure loses the proposals.
 - `telemetry-kinds` — verify the scaffold's `harness.toml` declares the
   `harness_invocation` Kind exactly as `common/harness.toml` ships it, and add
   it if a brownfield `harness.toml` lacks it — the emit no-ops silently on an
