@@ -50,6 +50,7 @@ wire_enum! {
         LifecycleConsumerStrategyUnknown => "LIFECYCLE_CONSUMER_STRATEGY_UNKNOWN",
         LifecycleDemoteWithoutApproval => "LIFECYCLE_DEMOTE_WITHOUT_APPROVAL",
         LifecycleDecisionTextEmpty => "LIFECYCLE_DECISION_TEXT_EMPTY",
+        LifecycleTagEmpty => "LIFECYCLE_TAG_EMPTY",
         GuardHookInputInvalid => "GUARD_HOOK_INPUT_INVALID",
         GuardSpawnFailure => "GUARD_SPAWN_FAILURE",
         GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
@@ -170,6 +171,9 @@ pub enum Error {
     #[error("decision_text is empty — promotion requires human-authored rationale")]
     LifecycleDecisionTextEmpty,
 
+    #[error("tag is empty — a ledger record is grouped by its tag")]
+    LifecycleTagEmpty,
+
     #[error("guard hook input invalid: {message}")]
     GuardHookInputInvalid { message: String },
 
@@ -247,6 +251,7 @@ impl Error {
                 ErrorCode::LifecycleDemoteWithoutApproval
             }
             Self::LifecycleDecisionTextEmpty => ErrorCode::LifecycleDecisionTextEmpty,
+            Self::LifecycleTagEmpty => ErrorCode::LifecycleTagEmpty,
             Self::GuardHookInputInvalid { .. } => ErrorCode::GuardHookInputInvalid,
             Self::GuardSpawnFailure { .. } => ErrorCode::GuardSpawnFailure,
             Self::GraphResponseInvalid { .. } => ErrorCode::GraphResponseInvalid,
@@ -324,6 +329,9 @@ impl Error {
             Self::LifecycleDecisionTextEmpty => Some(
                 "pass a non-empty --decision-text; the toolkit refuses to invent promotion rationale",
             ),
+            Self::LifecycleTagEmpty => {
+                Some("pass a non-empty --tag naming the topic this record groups under")
+            }
             Self::SessionRootUnreadable { .. } => Some(
                 "check [session] roots in harness.toml: every root must name a readable directory",
             ),

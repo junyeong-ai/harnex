@@ -231,6 +231,76 @@ fn a_ledger_that_could_not_be_read_is_not_a_ledger_nobody_wrote_to() {
 }
 
 #[test]
+fn a_record_the_ledger_accepted_is_a_record_it_reads_back() {
+    // Both ledgers file by tag and scan for a `jsonl` extension, so a tag
+    // whose stem leaves the filename extensionless is written, reported
+    // successful, and never seen again. The refusal is at the write, and it
+    // covers both ledgers because both append through the same encoder.
+    let tmp = TempDir::new().unwrap();
+    let ledger = ObservationLedger::new(tmp.path().join("observations"));
+    let decisions = DecisionLedger::new(tmp.path().join("decisions"));
+    let recorder = LifecycleDecisionRecorder::new(&decisions);
+
+    for tag in ["", "   "] {
+        assert!(
+            matches!(
+                ledger.append(tag, "a real constraint", "spec-a"),
+                Err(Error::LifecycleTagEmpty)
+            ),
+            "an observation under tag {tag:?} must be refused, not filed unreadably"
+        );
+        assert!(
+            matches!(
+                recorder.reject(tag, "a real constraint", "no"),
+                Err(Error::LifecycleTagEmpty)
+            ),
+            "a decision under tag {tag:?} must be refused, or the suppression set loses it"
+        );
+    }
+
+    // Nothing was written by a refused append, and every tag the ledgers do
+    // accept survives the round trip.
+    for tag in ["naming", "rust/async", "..", "v1.2", " padded "] {
+        ledger.append(tag, "a real constraint", "spec-a").unwrap();
+        recorder.reject(tag, "a real constraint", "no").unwrap();
+    }
+    assert_eq!(ledger.load_all().unwrap().len(), 5);
+    assert_eq!(decisions.load_all().unwrap().len(), 5);
+}
+
+#[test]
+fn survey_reports_the_decision_ledger_it_read_too() {
+    // `groups_resolved: 0` is the same number for a pass that has closed
+    // nothing and for a decision ledger that was not found — and the second
+    // silently resurfaces every candidate the operator already rejected.
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().to_path_buf());
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    seed_three_observations(&ledger);
+
+    let recorded = decisions_for(&tmp);
+    let promoter = mk_promoter(&cfg, &ledger, &recorded);
+    promoter
+        .recorder
+        .reject("naming", "use snake case", "the linter already enforces it")
+        .unwrap();
+    let honoured = promoter.finder.survey().unwrap();
+    assert_eq!(honoured.groups_resolved, 1);
+    assert_eq!(honoured.decisions_read, 1);
+
+    let elsewhere = DecisionLedger::new(tmp.path().join("relocated"));
+    let lost = mk_promoter(&cfg, &ledger, &elsewhere)
+        .finder
+        .survey()
+        .unwrap();
+    assert_eq!(lost.groups_resolved, 0, "the rejection is out of reach");
+    assert_eq!(
+        lost.decisions_read, 0,
+        "and the survey says so rather than reporting a settled corpus"
+    );
+}
+
+#[test]
 fn survey_accounts_for_every_group_the_ledger_holds() {
     // The counts close over the whole ledger, so a candidate list shorter
     // than expected is explained by the survey itself rather than read as

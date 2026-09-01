@@ -2,7 +2,7 @@
 //!
 //! When the operator (a human, never the model) acts on a promotion
 //! candidate, the toolkit records the decision here. Subsequent
-//! `list_candidates` calls exclude any `(tag, normalized_text)` already
+//! `survey` calls exclude any `(tag, normalized_text)` already
 //! marked `Approved`, `Rejected`, or `Demoted` so the candidate set
 //! converges instead of regenerating noise. `Deferred` decisions are
 //! informational and keep surfacing.
@@ -106,7 +106,7 @@ impl DecisionLedger {
     pub fn append(&self, record: &DecisionRecord) -> Result<()> {
         let path = self
             .dir
-            .join(format!("{}.jsonl", super::tag_filename_stem(&record.tag)));
+            .join(format!("{}.jsonl", super::tag_filename_stem(&record.tag)?));
         let line = serde_json::to_string(record).map_err(|e| Error::IoFailure {
             path: path.clone(),
             source: std::io::Error::new(std::io::ErrorKind::InvalidData, e),
