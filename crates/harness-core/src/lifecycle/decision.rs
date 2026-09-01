@@ -116,7 +116,17 @@ impl DecisionLedger {
     }
 
     pub fn load_all(&self) -> Result<Vec<DecisionRecord>> {
-        if !self.dir.exists() {
+        // Every failure to read surfaces rather than shortening the result: a
+        // ledger read short loses terminal verdicts from the suppression set,
+        // resurfacing already-resolved candidates and corrupting the demote
+        // precondition, and one that could not be read at all is not one
+        // holding no decisions. `try_exists` is what separates absent from
+        // unreadable — `exists` answers false for both.
+        let present = self.dir.try_exists().map_err(|e| Error::IoFailure {
+            path: self.dir.clone(),
+            source: e,
+        })?;
+        if !present {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
@@ -124,10 +134,6 @@ impl DecisionLedger {
             path: self.dir.clone(),
             source: e,
         })?;
-        // A dir-entry read error must surface, not be dropped: silently
-        // skipping a decision file would lose terminal verdicts from the
-        // suppression set, resurfacing already-resolved candidates and
-        // corrupting the demote precondition. Fail loudly, like the body.
         let mut paths: Vec<PathBuf> = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|e| Error::IoFailure {

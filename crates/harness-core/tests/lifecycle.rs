@@ -4,6 +4,7 @@ use harness_core::config::{Config, TelemetryConfig, TelemetryKindDecl};
 use harness_core::config::{
     ConsumerDetectorDecl, KindDecl, LifecycleConfig, RetirementConfig, RetirementExemptDecl,
 };
+use harness_core::error::Error;
 use harness_core::lifecycle::{
     ConsumerDetector, DecisionLedger, GrepConsumerDetector, LifecycleDecisionRecorder,
     ObservationLedger, PromotionCandidateFinder, PromotionDecision, RetirementClassifier,
@@ -193,6 +194,40 @@ fn survey_tells_an_unwritten_ledger_from_a_corpus_that_produced_nothing() {
     // The resolved group left the considered set rather than the ledger: the
     // observations behind it are still read and still counted.
     assert_eq!(survey.groups_considered, 1);
+}
+
+#[test]
+fn a_ledger_that_could_not_be_read_is_not_a_ledger_nobody_wrote_to() {
+    // Both ledgers answer an absent directory with an empty result, and the
+    // two reasons a directory can fail to resolve are opposite answers: never
+    // written is a corpus of zero, unreadable is a corpus this pass did not
+    // read. Reproduced with a regular file where a directory belongs, which
+    // fails to stat for a reason that is not absence.
+    let tmp = TempDir::new().unwrap();
+    let blocker = tmp.path().join("not-a-directory");
+    std::fs::write(&blocker, "").unwrap();
+
+    let ledger = ObservationLedger::new(blocker.join("observations"));
+    assert!(
+        matches!(ledger.load_all(), Err(Error::IoFailure { .. })),
+        "an unresolvable observation ledger must fail, not read as empty"
+    );
+    let decisions = DecisionLedger::new(blocker.join("decisions"));
+    assert!(
+        matches!(decisions.load_all(), Err(Error::IoFailure { .. })),
+        "an unresolvable decision ledger must fail, not read as no decisions"
+    );
+
+    // And the survey carries it up rather than answering with counts it did
+    // not measure.
+    let cfg = default_lifecycle(blocker.join("observations"));
+    assert!(
+        matches!(
+            mk_promoter(&cfg, &ledger, &decisions).finder.survey(),
+            Err(Error::IoFailure { .. })
+        ),
+        "the survey must fail with its ledger, never report a fabricated zero"
+    );
 }
 
 #[test]
