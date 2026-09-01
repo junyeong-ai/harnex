@@ -47,11 +47,16 @@ pub enum EmitOutcome {
 /// Whether a resolved name is an element slug: non-empty and drawn from the
 /// character class the skill and agent name validators enforce — lowercase
 /// ASCII, digits, and `-` (`validate::skills` / `validate::agents`
-/// `NAME_PATTERN`). That is exactly what a real element name is, so every
+/// `NAME_PATTERN`). That is exactly what a project element name is, so every
 /// genuine invocation records (no false Silent, whatever its length — the
 /// validators set no length here either), while a value carrying content —
 /// whitespace, a `=`, a `;`, an uppercase letter — is not a name and is
 /// declined, so the field cannot become a content channel.
+///
+/// A plugin element's invocation carries the namespace separator `:`
+/// (`plugin:name`) and so declines — correctly: the retirement sweep globs the
+/// project tree only, so a plugin element is not one of its subjects, and its
+/// slug not reaching the ledger changes no verdict.
 fn is_slug_shaped(name: &str) -> bool {
     !name.is_empty()
         && name
