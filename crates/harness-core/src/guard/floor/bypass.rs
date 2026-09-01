@@ -226,11 +226,13 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
     ];
     const VALUE_SHORT: [&str; 2] = ["-f", "-t"];
     const WRITE_FLAGS: [&str; 4] = ["--unset", "--unset-all", "--add", "--replace-all"];
-    const READ_FLAGS: [&str; 6] = [
+    const READ_FLAGS: [&str; 8] = [
         "--get",
         "--get-all",
         "--get-regexp",
         "--get-urlmatch",
+        "--get-color",
+        "--get-colorbool",
         "--list",
         "-l",
     ];
@@ -392,6 +394,9 @@ mod tests {
             // core.hooksPath named only as the `--default` fallback while a
             // different key is read — not the subject, so not a reroute.
             &["config", "--default", "core.hooksPath", "user.missing"],
+            // The color-reading verbs are reads, not writes.
+            &["config", "--get-color", "core.hooksPath", "red"],
+            &["config", "--get-colorbool", "core.hooksPath"],
             // An unrelated write must not be dragged in by the flag scan.
             &["config", "--unset", "user.name"],
         ] {
