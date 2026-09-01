@@ -493,13 +493,13 @@ fn section_of(text: &str, heading: &str) -> Section {
     let mut loose: Vec<(u32, String)> = Vec::new();
     let mut open_item: Option<Item> = None;
 
-    for source in doc.lines() {
+    for source in doc.as_written() {
         let (line_no, line) = (source.no, source.text.as_str());
         let unindented = line.trim_start_matches(' ');
         let indent = line.len() - unindented.len();
 
         let at_heading = doc.heading_at(line_no);
-        let is_wanted = at_heading.is_some_and(|h| h.level == 2 && h.text == heading);
+        let is_wanted = at_heading.is_some_and(|h| h.atx && h.level == 2 && h.text == heading);
         match found_at {
             None => {
                 if is_wanted {
@@ -516,7 +516,7 @@ fn section_of(text: &str, heading: &str) -> Section {
                         ),
                     };
                 }
-                if at_heading.is_some_and(|h| h.level <= 2) {
+                if at_heading.is_some_and(|h| h.atx && h.level <= 2) {
                     ended = true;
                     continue;
                 }
@@ -1992,6 +1992,27 @@ mod tests {
              - [Minor] real row <!-- inline [Critical] note -->",
         ));
         assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn an_underline_does_not_end_the_section_and_raw_html_does_not_hide_a_row() {
+        // A renderer reads `note` over `---` as an h2 and `<details>` as a
+        // block it shows. Ending the section at the first and masking the
+        // second each dropped a Critical with no finding at all — the one
+        // outcome the wide net exists to make impossible.
+        for (label, body) in [
+            ("an underline below a paragraph", "- [Minor] first\n\nSome note\n---\n\n- [Critical] second"),
+            (
+                "a row inside raw HTML",
+                "- [Minor] first\n\n<details>\n<summary>Owners</summary>\n\n- [Critical] second\n\n</details>",
+            ),
+        ] {
+            let findings = audit(&plan(body));
+            assert!(
+                slugs(&findings).contains(&"plan-open-blocker"),
+                "{label}: the Critical below it went unread — {findings:#?}"
+            );
+        }
     }
 
     #[test]

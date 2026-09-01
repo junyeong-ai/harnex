@@ -8,18 +8,15 @@
 //!
 //! Both directions, because each catches a different mistake — an example the
 //! parser no longer reads, and an anchor the parser gained that no document
-//! teaches. [`shape`] is an exhaustive match, so a new anchor cannot be added
-//! without arriving here.
+//! teaches. The denominator is `AnchorKind::ALL`, which the macro generates:
+//! an anchor added to `Anchor` forces an arm in `Anchor::kind`, which forces a
+//! variant here, and no step in that chain is a list anyone keeps by hand.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use harness_core::config::{EvidenceConfig, VerifierDecl};
-use harness_core::evidence::{Anchor, ClaimKind, EvidenceVerifier, parse_claims};
-
-const WHOLE: &str = "the whole file";
-const LINE: &str = "a line";
-const SECTION: &str = "a section";
+use harness_core::evidence::{AnchorKind, ClaimKind, EvidenceVerifier, parse_claims};
 
 /// Every anchor an author can write, and the documents that teach it.
 ///
@@ -29,26 +26,17 @@ const SECTION: &str = "a section";
 /// public surface. Nothing else respells it — a fourth site is a fourth
 /// chance to teach a form the parser does not read, and `SKILL.md` names the
 /// concept and points at the template instead.
-const GRAMMAR: &[(&str, &[&str])] = &[
-    ("README.md", &[WHOLE, LINE, SECTION]),
+const GRAMMAR: &[(&str, &[AnchorKind])] = &[
+    ("README.md", &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section]),
     (
         "plugins/harnex/templates/common/harness.toml",
-        &[WHOLE, LINE, SECTION],
+        &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section],
     ),
     (
         "plugins/harnex/templates/common/rule-template.md",
-        &[WHOLE, LINE, SECTION],
+        &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section],
     ),
 ];
-
-/// The anchor's shape, as the documentation names it.
-fn shape(anchor: &Anchor) -> &'static str {
-    match anchor {
-        Anchor::Whole => WHOLE,
-        Anchor::Line(_) => LINE,
-        Anchor::Section(_) => SECTION,
-    }
-}
 
 fn repo_file(relative: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -66,12 +54,12 @@ fn repo_file(relative: &str) -> String {
 /// form it accepts. The leading whitespace goes with the container: kept, an
 /// example indented under a bullet is an indented code block on its own, and
 /// the guard would be measuring the layout rather than the grammar.
-fn anchors_taught(text: &str) -> Vec<(String, Anchor)> {
+fn anchors_taught(text: &str) -> Vec<(String, AnchorKind)> {
     text.lines()
         .filter(|line| line.contains("[file:"))
         .flat_map(|line| parse_claims(line.trim_start()))
         .filter_map(|claim| match claim.kind {
-            ClaimKind::File { path, anchor } => Some((path, anchor)),
+            ClaimKind::File { path, anchor } => Some((path, anchor.kind())),
             _ => None,
         })
         .collect()
@@ -100,11 +88,11 @@ fn every_documented_form_is_one_the_parser_reads() {
 #[test]
 fn every_document_teaches_the_anchors_it_is_declared_to() {
     for (document, declared) in GRAMMAR {
-        let taught: BTreeSet<&str> = anchors_taught(&repo_file(document))
+        let taught: BTreeSet<AnchorKind> = anchors_taught(&repo_file(document))
             .iter()
-            .map(|(_, anchor)| shape(anchor))
+            .map(|(_, kind)| *kind)
             .collect();
-        let declared: BTreeSet<&str> = declared.iter().copied().collect();
+        let declared: BTreeSet<AnchorKind> = declared.iter().copied().collect();
         assert_eq!(
             taught, declared,
             "{document} teaches {taught:?} and is declared to teach {declared:?}"
@@ -114,22 +102,15 @@ fn every_document_teaches_the_anchors_it_is_declared_to() {
 
 #[test]
 fn every_anchor_the_parser_reads_is_taught_somewhere() {
-    // The denominator. An anchor added to the parser and to `shape` above,
-    // and to no document, is a capability an author cannot discover — and one
-    // whose absence from a rule looks exactly like a rule that needed no
-    // citation.
-    let taught: BTreeSet<&str> = GRAMMAR
+    // The denominator. An anchor the parser reads and no document teaches is
+    // a capability an author cannot discover — and one whose absence from a
+    // rule looks exactly like a rule that needed no citation.
+    let taught: BTreeSet<AnchorKind> = GRAMMAR
         .iter()
         .flat_map(|(document, _)| anchors_taught(&repo_file(document)))
-        .map(|(_, anchor)| shape(&anchor))
+        .map(|(_, kind)| kind)
         .collect();
-    let known: BTreeSet<&str> = [
-        shape(&Anchor::Whole),
-        shape(&Anchor::Line(1)),
-        shape(&Anchor::Section(String::new())),
-    ]
-    .into_iter()
-    .collect();
+    let known: BTreeSet<AnchorKind> = AnchorKind::ALL.iter().copied().collect();
     assert_eq!(
         taught, known,
         "the parser reads {known:?} and the shipped documentation teaches {taught:?}"
