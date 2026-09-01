@@ -563,10 +563,14 @@ mod tests {
         // git command; missing it would be a silent bypass.
         assert!(line("time { git commit --no-verify; }").is_some());
         assert!(line("! { git commit --no-verify; }").is_some());
-        // A bare reserved-word prefix runs git directly on one line.
+        // A bare reserved-word prefix runs git directly on one line, in both
+        // the long and clustered-short spellings of the skip.
         assert!(line("! git commit --no-verify").is_some());
         assert!(line("if git commit --no-verify; then :; fi").is_some());
+        assert!(line("if git commit -n; then :; fi").is_some());
         assert!(line("if x; then git commit --no-verify; fi").is_some());
+        // A reserved word mid-argument is not a prefix — `echo` runs, not git.
+        assert!(line("echo if git commit --no-verify").is_none());
     }
 
     #[test]
