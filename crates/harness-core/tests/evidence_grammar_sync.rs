@@ -40,6 +40,22 @@ const GRAMMAR: &[(&str, &[AnchorKind])] = &[
     ),
 ];
 
+fn internal_verifier() -> EvidenceVerifier {
+    EvidenceVerifier::new(&EvidenceConfig {
+        default_provenance: "internal".into(),
+        block_on_memory_only: false,
+        verifiers: vec![VerifierDecl {
+            provenance: "internal".into(),
+            strategy: "file-path-line".into(),
+            library_allowlist: Vec::new(),
+            max_age_days: None,
+        }],
+        advisory_dir: "evidence".into(),
+        advisories: Vec::new(),
+    })
+    .expect("the internal verifier is a declared strategy")
+}
+
 fn repo_file(relative: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -129,20 +145,7 @@ fn readmes_examples_resolve_through_the_gate_they_describe() {
     //
     // The other two documents ship to projects that do not exist yet, so
     // their examples are illustrative and only their parse is checked above.
-    let verifier = EvidenceVerifier::new(&EvidenceConfig {
-        default_provenance: "internal".into(),
-        block_on_memory_only: false,
-        verifiers: vec![VerifierDecl {
-            provenance: "internal".into(),
-            strategy: "file-path-line".into(),
-            library_allowlist: Vec::new(),
-            max_age_days: None,
-        }],
-        advisory_dir: "evidence".into(),
-        advisories: Vec::new(),
-    })
-    .expect("the internal verifier is a declared strategy");
-
+    let verifier = internal_verifier();
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let readme = repo_file("README.md");
     let shown: Vec<&str> = readme
@@ -163,14 +166,6 @@ fn readmes_examples_resolve_through_the_gate_they_describe() {
         );
     }
 }
-
-/// Files that carry the marker and are checked by nothing here, each with
-/// the reason it is allowed to.
-const ALLOWED_UNCHECKED: &[(&str, &str)] = &[(
-    "crates/harness-core/CLAUDE.md",
-    "a crate-scoped CLAUDE.md, which `harnex check` does not scan — its candidate set is the \
-     root CLAUDE.md and the rule glob; widening it is a gate change for every installed harness",
-)];
 
 #[test]
 fn every_tracked_file_carrying_the_marker_is_accounted_for() {
@@ -209,7 +204,8 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
             || (path.starts_with("crates/") && path.ends_with(".rs"))
             // Ledgers: the marker is data.
             || path.starts_with(".harness/")
-            || ALLOWED_UNCHECKED.iter().any(|(allowed, _)| *allowed == path)
+            // Resolved by `nested_claude_md_files_resolve_against_the_repository`.
+            || (path.ends_with("/CLAUDE.md") && !path.starts_with("plugins/harnex/"))
     };
     let stray: Vec<&str> = carrying
         .iter()
@@ -219,15 +215,46 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
     assert!(
         stray.is_empty(),
         "these tracked files carry the claim marker and nothing checks them — route each to \
-         the gate that reads it, add it to `GRAMMAR`, or name it in `ALLOWED_UNCHECKED` with \
-         a reason:\n  {}",
+         the gate that reads it, or add it to `GRAMMAR`:\n  {}",
         stray.join("\n  ")
     );
-    for (allowed, reason) in ALLOWED_UNCHECKED {
+}
+
+#[test]
+fn nested_claude_md_files_resolve_against_the_repository() {
+    // A crate-scoped CLAUDE.md loads when work happens in that crate and
+    // cites the crate's own files, so its claims are as real as the root's —
+    // and `harnex check`'s candidate set is the root CLAUDE.md and the rule
+    // glob. Widening that set is a gate change for every installed harness;
+    // resolving them here is not, and leaves nothing allowed unchecked. The
+    // plugin's own CLAUDE.md cites the plugin's layout and is
+    // `plugin_claims_resolve`'s, resolved against the plugin root.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let verifier = internal_verifier();
+    let nested: Vec<PathBuf> = common::tracked(&root, ".")
+        .into_iter()
+        .filter(|path| {
+            path.file_name().is_some_and(|name| name == "CLAUDE.md")
+                && path.parent().is_some_and(|dir| dir != root)
+                && !path.starts_with(root.join("plugins/harnex"))
+        })
+        .collect();
+    assert!(!nested.is_empty(), "no nested CLAUDE.md is tracked");
+    for path in nested {
+        let content = std::fs::read_to_string(&path).unwrap();
+        let verdict = |text: &str| verifier.verify_text(text, &path, &root);
+        let findings = verdict(&content);
         assert!(
-            carrying.contains(allowed),
-            "`{allowed}` is allowed unchecked ({reason}) but no longer carries the marker — \
-             drop the allowance"
+            findings.is_empty(),
+            "{} cites what the repository does not carry:\n{findings:#?}",
+            path.display()
         );
+        // The control, through the same closure: the same document with one
+        // claim the repository cannot carry yields exactly that finding — so
+        // an empty result above is a verdict, not a verifier that ran over
+        // nothing.
+        let control = verdict(&format!("{content}\n\nProbe: [file: no/such/probe.rs:1].\n"));
+        assert_eq!(control.len(), 1, "{}: {control:#?}", path.display());
+        assert!(control[0].message.contains("no/such/probe.rs"), "{control:#?}");
     }
 }

@@ -7,10 +7,9 @@
 //! renders — derived by running every row through `pandoc --from=commonmark`
 //! and asking whether the marker survives outside a code block or a comment.
 //!
-//! Measured against the release before the reader was rewritten, that
-//! implementation disagreed with pandoc on 26 of these 96 cases. Keeping the
-//! table means the next change to the reader is checked against CommonMark
-//! rather than against whoever writes it.
+//! The reader this replaced disagreed with pandoc in every group below.
+//! Keeping the table means the next change to the reader is checked against
+//! CommonMark rather than against whoever writes it.
 //!
 //! Every row runs in all three line endings, because a document written with
 //! carriage returns is the same document to a renderer and was one line to
@@ -79,6 +78,9 @@ const CASES: &[(&str, &str, bool)] = &[
         true,
     ),
     ("quoted comment marker", "Write `<!--` then {M}.", true),
+    ("after a comment closes on its line", "<!-- c --> {M}", true),
+    ("after a multi-line comment closes", "<!--\nc\n--> {M}", true),
+    ("between two comments on one line", "<!-- a --> {M} <!-- b -->", true),
     // Tight, so the marker is inside the HTML block rather than a paragraph
     // after it — a renderer hands the block to the browser, which shows it.
     (
