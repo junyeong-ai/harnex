@@ -56,6 +56,11 @@
 //!   entry points is tagged the same way, because a shared unescape is how one
 //!   grammar's rule leaks into the other's answer.
 
+/// The environment variable itself, as the runtime exports it to a spawned
+/// hook. A hook process reads the project root here rather than deriving it
+/// from its working directory, which the runtime does not promise.
+pub const PROJECT_DIR_ENV: &str = "CLAUDE_PROJECT_DIR";
+
 /// The documented project-root variable spellings. Both braced and bare are
 /// valid in a hook command, so a check that read only one would be blind to
 /// half the harnesses in the wild.
@@ -333,6 +338,21 @@ fn literal_token(candidate: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_anchor_spellings_are_the_env_variable_this_module_names() {
+        // Two representations of one name: the variable a hook process reads,
+        // and the two ways a hook command writes it. Renamed upstream, both
+        // must move together — a hook that reads one name while the auditor
+        // recognizes another is a harness auditing a variable nothing sets.
+        assert_eq!(
+            ANCHORS,
+            &[
+                format!("${{{PROJECT_DIR_ENV}}}").as_str(),
+                format!("${PROJECT_DIR_ENV}").as_str(),
+            ]
+        );
+    }
 
     #[test]
     fn command_substitution_ends_a_quoted_path() {
