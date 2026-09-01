@@ -328,7 +328,9 @@ operator to re-phrase using a verb from this list.
   - `spec-workflow` — the spec orchestrator as a **skill** (four gate events, a
     closed decision-token enum, resume from disk), the threshold-and-lifecycle
     rule, and `specs/_template/`.
-  - `observability` — span naming, PII boundary, baseline-before-alert.
+  - `telemetry-kinds` — the closed-schema event ledger the harness measures
+    itself with: an auto-emit **hook** (Skill / MCP usage, outcome from the
+    event), the enforced privacy contract, and the retirement feed.
   - `deprecation` — allow-marker grammar with sunset dates.
   - `pr-conventions` — PR template + AI-fill discipline.
   - `naming-decisions` — team naming vocabulary (tool suffixes, factory

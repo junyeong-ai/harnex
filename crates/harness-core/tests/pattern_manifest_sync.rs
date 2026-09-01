@@ -894,8 +894,8 @@ mod escapes {
     #[test]
     fn the_classifier_accepts_what_the_validators_cover() {
         for (destination, expected) in [
-            (".claude/rules/observability.md", Surface::Rule),
-            (".claude/rules/nested/observability.md", Surface::Rule),
+            (".claude/rules/telemetry-kinds.md", Surface::Rule),
+            (".claude/rules/nested/telemetry-kinds.md", Surface::Rule),
             (".claude/agents/reviewer.md", Surface::Agent),
             (".claude/agents/team/reviewer.md", Surface::Agent),
             (".claude/output-styles/terse.md", Surface::OutputStyle),

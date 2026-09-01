@@ -52,9 +52,15 @@ an observation is the blank-page problem in disguise.
   layout the analysis observed — the scaffold's pre-commit dispatches every
   arm there, which is how the review floor gets a commit-time computer
   without editing a byte-identical hook.
-- `observability` — detect logging/tracing framework (structlog, winston,
-  tracing, OpenTelemetry SDK). Pre-fill namespace prefix from the project
-  name. Adapt span naming examples to the detected framework.
+- `telemetry-kinds` — read the project's `[telemetry]` and any domain
+  `[[telemetry.kinds]]` already declared; the pattern ships the auto-emit Kind
+  (`harness_invocation`) in the scaffold's `harness.toml`, so do not invent a
+  second one. Wire `hooks/telemetry-emit.sh` as two `.claude/settings.json`
+  entries — `PostToolUse` and `PostToolUseFailure`, matcher `Skill|mcp__.*`,
+  dispatched through `_runner.sh`, best marked `async` so the append never
+  sits on the tool's critical path. It is install-to-enable and silent without
+  the oracle. State whether the retirement sweep should read this ledger; only
+  the surface identifier and the outcome ever cross, never a tool's arguments.
 - `deprecation` — detect existing deprecation markers (`@deprecated`
   decorators, JSDoc tags, `#[deprecated]` attributes). Adapt the
   allow-marker format to complement, not conflict with, the language's
