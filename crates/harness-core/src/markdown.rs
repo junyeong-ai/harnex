@@ -519,12 +519,11 @@ mod tests {
     fn raw_html_that_is_not_a_comment_is_content_a_reader_opens() {
         // A `<details>` block renders; masking it swallowed a live claim and
         // a finding-shaped row with no finding from either gate.
-        let seen: Vec<String> = visible(
-            "<details>\n<summary>Owners</summary>\nCLAIM\n</details>\n\nAfter.\n",
-        )
-        .into_iter()
-        .map(|(_, t)| t)
-        .collect();
+        let seen: Vec<String> =
+            visible("<details>\n<summary>Owners</summary>\nCLAIM\n</details>\n\nAfter.\n")
+                .into_iter()
+                .map(|(_, t)| t)
+                .collect();
         assert!(seen.iter().any(|line| line.contains("CLAIM")), "{seen:?}");
         assert!(seen.iter().any(|line| line.contains("After")), "{seen:?}");
     }
@@ -561,7 +560,10 @@ mod tests {
         // And the container closing restores the level for what follows.
         let doc = Document::of("> ## Quoted\n\n## Own\n");
         assert_eq!(
-            doc.headings().iter().map(|h| h.top_level).collect::<Vec<_>>(),
+            doc.headings()
+                .iter()
+                .map(|h| h.top_level)
+                .collect::<Vec<_>>(),
             vec![false, true]
         );
     }
@@ -581,7 +583,10 @@ mod tests {
     fn a_heading_reads_without_the_whitespace_a_renderer_strips() {
         for (source, want) in [
             ("## Storage\t\n", "Storage"),
-            ("## Outstanding issues <!-- one row per finding -->\n", "Outstanding issues"),
+            (
+                "## Outstanding issues <!-- one row per finding -->\n",
+                "Outstanding issues",
+            ),
             ("## <!-- lead --> Storage\n", "Storage"),
             ("##   Storage   \n", "Storage"),
         ] {
@@ -597,9 +602,8 @@ mod tests {
     fn text_after_a_comment_closes_on_its_line_is_still_read() {
         // A block comment's closing line is one raw-HTML event; masking the
         // whole event hid the row or claim written after `-->`.
-        let seen = |text: &str| -> Vec<String> {
-            visible(text).into_iter().map(|(_, t)| t).collect()
-        };
+        let seen =
+            |text: &str| -> Vec<String> { visible(text).into_iter().map(|(_, t)| t).collect() };
         assert_eq!(seen("<!-- c --> Owner: CLAIM"), vec![" Owner: CLAIM"]);
         assert_eq!(seen("<!-- a --> x <!-- b --> y"), vec![" x  y"]);
         assert_eq!(

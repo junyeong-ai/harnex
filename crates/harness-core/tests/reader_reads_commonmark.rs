@@ -79,8 +79,16 @@ const CASES: &[(&str, &str, bool)] = &[
     ),
     ("quoted comment marker", "Write `<!--` then {M}.", true),
     ("after a comment closes on its line", "<!-- c --> {M}", true),
-    ("after a multi-line comment closes", "<!--\nc\n--> {M}", true),
-    ("between two comments on one line", "<!-- a --> {M} <!-- b -->", true),
+    (
+        "after a multi-line comment closes",
+        "<!--\nc\n--> {M}",
+        true,
+    ),
+    (
+        "between two comments on one line",
+        "<!-- a --> {M} <!-- b -->",
+        true,
+    ),
     // Tight, so the marker is inside the HTML block rather than a paragraph
     // after it — a renderer hands the block to the browser, which shows it.
     (
