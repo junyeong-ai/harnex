@@ -29,7 +29,7 @@ use harness_core::plan::AcceptanceCounts;
 const REFUSALS: &[(&str, &str)] = &[
     ("lifecycle retire", "unmeasured"),
     ("plan audit", "unmeasured"),
-    ("hooks/pre-commit", "unscanned"),
+    ("hooks/pre-commit", "unjudged"),
     ("lifecycle candidates", "observations_read"),
     ("guard stop-audit", "skip"),
 ];
@@ -37,8 +37,10 @@ const REFUSALS: &[(&str, &str)] = &[
 /// A leak code has to survive the shell that carries it and stay clear of
 /// every code already spoken for: 0 is a clean scan, 1 is how gitleaks itself
 /// fails, 2 is shell misuse, 126 and 127 are an unexecutable or absent
-/// command, 128 and up are signals, and anything past 255 wraps — 256 arrives
-/// as 0, which turns a finding into a clean scan.
+/// command, and anything past 255 wraps — 256 arrives as 0, which turns a
+/// finding into a clean scan. 128 and up are signals, and 130 is the one to
+/// picture: the Ctrl-C an operator lands on a slow scan would report as
+/// flagged secrets and steer them to the hatch that stops scanning for good.
 const LEAK_CODE_RANGE: std::ops::RangeInclusive<i64> = 3..=125;
 
 fn plugin_file(relative: &str) -> String {
@@ -83,6 +85,35 @@ fn every_row_answers_with_the_word_this_guard_watches() {
             "the `{surface}` row must answer with `{word}`, and answers: {outcome}"
         );
     }
+}
+
+#[test]
+fn the_table_carries_no_row_this_guard_does_not_watch() {
+    // Binding each expectation to its row catches a row that changed; nothing
+    // in that catches a row that arrived. A sixth surface added here ships an
+    // uncited claim the skill would generate against, so the table's own size
+    // is the denominator — the same reason `plugin_prose_sync` declares a
+    // count per document.
+    let passage = plugin_file("reference/enforced-vs-advisory.md");
+    let section = passage
+        .split("## Unmeasured is not passed")
+        .nth(1)
+        .expect("the passage carries the section")
+        .split("\n## ")
+        .next()
+        .expect("bounded by the next heading");
+    let body = section
+        .lines()
+        .filter(|line| line.starts_with('|'))
+        .skip(2) // the header and its separator
+        .count();
+    assert_eq!(
+        body,
+        REFUSALS.len(),
+        "the doctrine table holds {body} surfaces and this guard watches \
+         {}; register the new row above, or drop it",
+        REFUSALS.len()
+    );
 }
 
 #[test]
@@ -212,6 +243,17 @@ fn the_stop_audit_skips_rather_than_deciding_when_its_probe_gave_no_answer() {
 #[test]
 fn the_secret_scan_gives_its_findings_a_code_the_shell_carries_intact() {
     let hook = plugin_file("templates/common/git-hooks/pre-commit");
+    // The row credits the hook with a word, so the hook has to still say it —
+    // otherwise the passage cites vocabulary the surface dropped, which is the
+    // drift binding to the row moved one step rather than closed.
+    let (_, word) = REFUSALS
+        .iter()
+        .find(|(surface, _)| *surface == "hooks/pre-commit")
+        .expect("the pre-commit row is watched");
+    assert!(
+        hook.contains(word),
+        "the passage credits the scan with `{word}` and the shipped hook no longer says it"
+    );
     let raw = hook
         .lines()
         .find_map(|line| line.trim().strip_prefix("GITLEAKS_LEAK_CODE="))

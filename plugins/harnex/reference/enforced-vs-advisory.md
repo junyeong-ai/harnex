@@ -48,19 +48,25 @@ thing that survives a confused, careless, or adversarial agent turn.
 
 ## Unmeasured is not passed
 
-A gate reports what it measured, and the one report it may never emit is the
-shape of a pass over something it did not read. Zero findings across a corpus
-the gate never opened is byte-identical to zero findings across one it read
-closely, so the reader cannot tell them apart and reads the stronger claim.
+A gate reports what it measured, and the answer it must never invent is the one
+it did not reach. Inventing a pass is the dangerous direction, because zero
+findings across a corpus the gate never opened is byte-identical to zero across
+one it read closely and the reader takes the stronger claim; inventing a
+finding is the same error facing the other way, and costs whatever acting on it
+costs.
 
-Give the third answer a name in the type rather than a caveat in the prose
-around it. Every enforced surface harnex ships names its own:
+Failing open is not this. A gate may decline to run — an absent scanner, a
+named hatch the operator set — and stay honest by saying so where the operator
+reads. What it may not do is decline silently, in the shape of a verdict.
 
-| Surface | The zero it refuses | What it says instead |
+Give the answer a name in the type rather than a caveat in the prose around
+it. Every enforced surface harnex ships names its own:
+
+| Surface | The answer it refuses to invent | What it says instead |
 |---|---|---|
 | `lifecycle retire` | silence inferred from a record that could never have named the artifact | `unmeasured`, which fires no signal |
 | `plan audit` acceptance | a criterion nothing answered, counted as passed | `unmeasured`, blocking an approval exactly as a Blocker does |
-| `hooks/pre-commit` | a secret scan that failed, exiting like one that found nothing | a code of its own for findings, so a failure is unscanned rather than clean |
+| `hooks/pre-commit` | a secret scan that failed, exiting like one that found nothing | a code of its own for findings, so a failure is `unjudged` rather than clean |
 | `lifecycle candidates` | an unwritten or unreadable ledger, read as a corpus that produced nothing | `observations_read` beside the candidates, and an error where the read failed |
 | `guard stop-audit` | a probe that gave no answer, read as "there is work" | a skip naming why, having spent nothing |
 
