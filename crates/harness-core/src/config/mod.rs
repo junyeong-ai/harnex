@@ -571,16 +571,22 @@ impl StopAuditConfig {
     /// probe should be is a project fact — which trees, which staging state,
     /// which submodules — so it is asked for rather than guessed.
     pub fn changes_probe(&self) -> Result<(&str, &[String])> {
-        self.has_changes_check
-            .split_first()
-            .map(|(program, args)| (program.as_str(), args))
-            .ok_or_else(|| Error::ConfigInvalid {
-                message: "[guard.stop_audit] has_changes_check is empty — the section \
-                          spawns a critique per Stop, so the command that decides when \
-                          must be stated (e.g. [\"git\", \"diff\", \"--quiet\"])"
-                    .into(),
-                location: None,
-            })
+        let invalid = |message: &str| Error::ConfigInvalid {
+            message: format!("[guard.stop_audit] has_changes_check {message}"),
+            location: None,
+        };
+        let (program, args) = self.has_changes_check.split_first().ok_or_else(|| {
+            invalid(
+                "is empty — the section spawns a critique per Stop, so the command \
+                 that decides when must be stated (e.g. [\"git\", \"diff\", \"--quiet\"])",
+            )
+        })?;
+        // Whether a named program is installed is the runner's answer, not
+        // this machine's; a blank name is no program anywhere.
+        if program.trim().is_empty() {
+            return Err(invalid("names no program"));
+        }
+        Ok((program.as_str(), args))
     }
 }
 
@@ -1547,14 +1553,37 @@ mod tests {
         // Declaring the section commits to spawning a critique. Without the
         // probe the auditor answers "there is work" without looking, and every
         // Stop of every session costs a model call — the one field the section
-        // needs and the only one that had no floor.
-        let src = r#"
+        // needs and the only one that had no floor. A blank program name is
+        // the same absence spelled differently; whether a named one is
+        // installed is the runner's answer and not checked here.
+        for probe in [
+            "",
+            r#"has_changes_check = []"#,
+            r#"has_changes_check = [""]"#,
+        ] {
+            let src = format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+                [guard.stop_audit]
+                critique_skill = "/critique"
+                {probe}
+                "#
+            );
+            assert_eq!(
+                parse(&src).unwrap_err().code(),
+                ErrorCode::ConfigInvalid,
+                "probe {probe:?} must be refused"
+            );
+        }
+        let named = r#"
             [meta]
             harnex_version = ">=0.1, <0.2"
             [guard.stop_audit]
             critique_skill = "/critique"
+            has_changes_check = ["a-program-this-machine-may-not-have"]
         "#;
-        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
+        assert!(parse(named).is_ok());
     }
 
     #[test]
