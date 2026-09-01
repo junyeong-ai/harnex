@@ -31,6 +31,17 @@ const HOOKED_SUBCOMMANDS: [&str; 4] = ["commit", "push", "merge", "pull"];
 /// this avoids.
 const COMMAND_PREFIX_WORDS: [&str; 6] = ["env", "command", "nice", "nohup", "time", "setsid"];
 
+/// Shell reserved words that stand where a command does and are followed by
+/// one: negation (`! git …`), the condition of a compound command (`if` /
+/// `while` / `until` git …), and its body (`then` / `elif` / `else` / `do`
+/// git …). The splitter has already cut the line at `;` / newline, so the
+/// keyword leads its own simple command; skipping it reaches the git word the
+/// keyword introduces. A `then git commit --no-verify` whose branch never runs
+/// is blocked anyway — the check is static, and the safe direction is to
+/// assume the branch is taken.
+const RESERVED_PREFIX_WORDS: [&str; 8] =
+    ["!", "if", "elif", "then", "else", "while", "until", "do"];
+
 /// Whether a token spells `--no-verify` as git's own option parser reads it.
 ///
 /// Git accepts any **unambiguous prefix** of a long option, so `--no-verif`
@@ -92,7 +103,9 @@ fn is_hooks_path_key(word: &str) -> bool {
 pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
     let mut idx = 0;
     while idx < words.len()
-        && (is_env_assignment(&words[idx]) || COMMAND_PREFIX_WORDS.contains(&words[idx].as_str()))
+        && (is_env_assignment(&words[idx])
+            || COMMAND_PREFIX_WORDS.contains(&words[idx].as_str())
+            || RESERVED_PREFIX_WORDS.contains(&words[idx].as_str()))
     {
         idx += 1;
     }
@@ -199,8 +212,6 @@ pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
 /// section. Detecting it needs the live config, which this syntactic check
 /// does not read; it is out of scope, backstopped by the server-side re-run.
 fn detect_config_reroute(rest: &[String]) -> Option<String> {
-    rest.iter().find(|w| is_hooks_path_key(w))?;
-
     // Options that take the next token as a value — read-scoping (`--file`,
     // `--blob`, `--type`, `--default`) and write-filtering (`--comment`,
     // `--value`) alike. Skipping the value is what stops a read flag spelled as
@@ -246,6 +257,12 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
             k += 1;
         }
     }
+
+    // core.hooksPath is operated on only as a positional — the key argument.
+    // Named anywhere else (a `--default core.hooksPath` fallback while reading
+    // another key, the value written to a different key) it is not the subject,
+    // and the command reroutes nothing.
+    positionals.iter().find(|w| is_hooks_path_key(w))?;
 
     // A write flag in option position is a definitive write; a read flag there
     // is a definitive read (it names what to fetch). Write wins the tie so
@@ -372,6 +389,11 @@ mod tests {
             // (measured); its value must not be read as the key.
             &["config", "--default", "x", "core.hooksPath"],
             &["config", "--default", "x", "--get", "core.hooksPath"],
+            // core.hooksPath named only as the `--default` fallback while a
+            // different key is read — not the subject, so not a reroute.
+            &["config", "--default", "core.hooksPath", "user.missing"],
+            // An unrelated write must not be dragged in by the flag scan.
+            &["config", "--unset", "user.name"],
         ] {
             let mut argv = vec!["git"];
             argv.extend_from_slice(read);
@@ -380,6 +402,33 @@ mod tests {
                 "false-blocked read: {read:?}"
             );
         }
+    }
+
+    #[test]
+    fn sees_through_reserved_word_command_position_prefixes() {
+        // Negation, the condition of a compound command, and its body all stand
+        // where a command does and run the git that follows; a static check
+        // blocks the git word regardless of whether the branch is taken.
+        for prefix in [
+            &["!"][..],
+            &["if"],
+            &["while"],
+            &["until"],
+            &["then"],
+            &["elif"],
+            &["else"],
+            &["do"],
+        ] {
+            let mut argv = vec![];
+            argv.extend_from_slice(prefix);
+            argv.extend_from_slice(&["git", "commit", "--no-verify"]);
+            assert!(
+                detect_hook_bypass(&words(&argv)).is_some(),
+                "missed reserved-word prefix: {prefix:?}"
+            );
+        }
+        // A reserved word before a non-git command is not a false positive.
+        assert!(detect_hook_bypass(&words(&["!", "ls"])).is_none());
     }
 
     #[test]
@@ -514,6 +563,10 @@ mod tests {
         // git command; missing it would be a silent bypass.
         assert!(line("time { git commit --no-verify; }").is_some());
         assert!(line("! { git commit --no-verify; }").is_some());
+        // A bare reserved-word prefix runs git directly on one line.
+        assert!(line("! git commit --no-verify").is_some());
+        assert!(line("if git commit --no-verify; then :; fi").is_some());
+        assert!(line("if x; then git commit --no-verify; fi").is_some());
     }
 
     #[test]
