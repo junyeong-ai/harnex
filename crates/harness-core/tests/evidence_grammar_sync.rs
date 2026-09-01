@@ -15,6 +15,8 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+mod common;
+
 use harness_core::config::{EvidenceConfig, VerifierDecl};
 use harness_core::evidence::{AnchorKind, ClaimKind, EvidenceVerifier, parse_claims};
 
@@ -178,17 +180,14 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
     // it, adds it to `GRAMMAR`, or names it above with a reason. A
     // hand-written whitelist can only catch what it already knows about.
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let listing = std::process::Command::new("git")
-        .args(["ls-files", "-z"])
-        .current_dir(&root)
-        .output()
-        .expect("git ls-files runs in this repository");
-    assert!(listing.status.success(), "git ls-files failed: {listing:?}");
-    let tracked = String::from_utf8(listing.stdout).expect("tracked paths are UTF-8");
+    let tracked: Vec<String> = common::tracked(&root, ".")
+        .iter()
+        .map(|path| path.strip_prefix(&root).unwrap().to_string_lossy().into_owned())
+        .collect();
 
     let carrying: Vec<&str> = tracked
-        .split('\0')
-        .filter(|path| !path.is_empty())
+        .iter()
+        .map(String::as_str)
         .filter(|path| {
             std::fs::read(root.join(path))
                 .map(|bytes| bytes.windows(6).any(|w| w == b"[file:"))
