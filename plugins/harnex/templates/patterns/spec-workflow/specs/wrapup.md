@@ -1,12 +1,14 @@
 # <title> — Wrapup
 
-Written at the wrapup phase, after the review gate passes. Set the
-`spec.md` frontmatter `status` to `completed` in the same commit.
+Written at the wrapup phase, after the review and acceptance gates pass. Set
+the `spec.md` frontmatter `status` to `completed` in the same commit.
 
 ## Result
 
-<What now holds that did not before, checked against `spec.md`'s acceptance
-criteria one by one. Name any criterion that was dropped and why.>
+<What now holds that did not before. The `acceptance` gate already walked the
+criteria and its verdict is in the decision log; this records the durable half
+for a reader who will not open the log — what each criterion got, and for any
+criterion the gate deferred, what would answer it.>
 
 ## What the work revealed
 

@@ -20,8 +20,11 @@ must fit, decisions already made elsewhere that bind this one.>
 
 ## Acceptance criteria
 
-<Numbered, each independently checkable. Wrapup answers exactly
-this list, so a criterion nobody can check is one that will be waved through.>
+<Numbered, each independently checkable. The `acceptance` gate walks exactly
+this list and answers each from something run or read — passed, failed, or
+unmeasured — and an unmeasured one blocks approval as a failure does. So a
+criterion nobody can check does not get waved through; it stalls the gate.
+Write each one so an instrument can answer it.>
 
 1. <observable outcome>
 2. <observable outcome>
@@ -36,6 +39,7 @@ gate does not read an omission as an oversight.>
 <!-- One bullet per gate firing, appended, never rewritten. The orchestrator
      writes these; the format is
      `<YYYY-MM-DD> · <gate> · <token> · <counts>? · <rationale>`, the token is
-     one of approved | rejected | needs_revision | deferred, and a
-     review-class firing carries its counts as `<n>C/<n>B/<n>M/<n>m`.
+     one of approved | rejected | needs_revision | deferred, and a counted
+     firing carries its own class's counts — `<n>C/<n>B/<n>M/<n>m` for a
+     review-class gate, `<n>P/<n>F/<n>U` for `acceptance`.
      `harnex plan audit` reads exactly this grammar. -->

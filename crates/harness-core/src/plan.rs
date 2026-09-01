@@ -96,11 +96,34 @@ wire_enum! {
     }
 }
 
-/// The gates whose firings must write counts into their decision lines.
-/// Gate names are otherwise open — a project may declare more at install
-/// time — but these two ship in the templates and carry the convergence
-/// contract.
-pub const REVIEW_CLASS_GATES: [&str; 2] = ["design_review", "review"];
+wire_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// What a counted gate's firings count, and so which token they owe.
+    pub enum GateClass {
+        /// Findings by rank — `<n>C/<n>B/<n>M/<n>m`.
+        Review => "review",
+        /// Acceptance criteria by outcome — `<n>P/<n>F/<n>U`.
+        Acceptance => "acceptance",
+    }
+}
+
+/// The gates whose firings must write counts into their decision lines, and
+/// which token each owes. Gate names are otherwise open — a project may
+/// declare more at install time — but these ship in the templates and carry
+/// the convergence contract.
+pub const COUNTED_GATES: [(&str, GateClass); 3] = [
+    ("design_review", GateClass::Review),
+    ("review", GateClass::Review),
+    ("acceptance", GateClass::Acceptance),
+];
+
+/// The class a gate owes counts in, or `None` where it owes none.
+pub fn gate_class(gate: &str) -> Option<GateClass> {
+    COUNTED_GATES
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(gate))
+        .map(|(_, class)| *class)
+}
 
 /// Section heading the finding rows live under, in the plan.
 pub const OUTSTANDING_HEADING: &str = "Outstanding issues";
@@ -118,8 +141,52 @@ pub const ACKNOWLEDGED_PREFIX: &str = "acknowledged:";
 pub struct DecisionLine {
     pub gate: String,
     pub decision: GateDecision,
-    pub counts: Option<Counts>,
+    pub counts: Option<GateCounts>,
     pub rationale: String,
+}
+
+/// The counts token a firing carries, in whichever class its gate owes.
+///
+/// Both classes answer one question — what must fall between consecutive
+/// `needs_revision` firings and be zero at `approved` — so the convergence
+/// rules read [`GateCounts::blocking`] and never the class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateCounts {
+    Review(Counts),
+    Acceptance(AcceptanceCounts),
+}
+
+impl GateCounts {
+    /// The total that must converge to zero. Critical + Blocker for a review;
+    /// failed + unmeasured for an acceptance run, because a criterion the
+    /// instrument could not answer is not one that passed.
+    pub fn blocking(self) -> u32 {
+        match self {
+            Self::Review(c) => c.blocking(),
+            Self::Acceptance(c) => c.blocking(),
+        }
+    }
+
+    pub fn class(self) -> GateClass {
+        match self {
+            Self::Review(_) => GateClass::Review,
+            Self::Acceptance(_) => GateClass::Acceptance,
+        }
+    }
+
+    /// What the blocking total is called in this class, for a finding message.
+    fn blocking_label(self) -> &'static str {
+        match self {
+            Self::Review(_) => "Critical+Blocker",
+            Self::Acceptance(_) => "failed+unmeasured",
+        }
+    }
+
+    fn parse(segment: &str) -> Option<Self> {
+        Counts::parse(segment)
+            .map(Self::Review)
+            .or_else(|| AcceptanceCounts::parse(segment).map(Self::Acceptance))
+    }
 }
 
 /// A `<n>C/<n>B/<n>M/<n>m` token.
@@ -129,6 +196,41 @@ pub struct Counts {
     pub blocker: u32,
     pub major: u32,
     pub minor: u32,
+}
+
+/// A `<n>P/<n>F/<n>U` token: acceptance criteria that passed, failed, and that
+/// the run could not answer for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AcceptanceCounts {
+    pub passed: u32,
+    pub failed: u32,
+    pub unmeasured: u32,
+}
+
+impl AcceptanceCounts {
+    /// Criteria standing between the work and an approval. Unmeasured counts:
+    /// a criterion nothing checked is not a criterion that holds, and reading
+    /// it as one is how a spec ships on an unobserved promise.
+    pub fn blocking(self) -> u32 {
+        self.failed + self.unmeasured
+    }
+
+    fn parse(segment: &str) -> Option<Self> {
+        let mut parts = segment.split('/');
+        let mut take = |letter: char| {
+            let digits = parts.next()?.strip_suffix(letter)?;
+            if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            digits.parse().ok()
+        };
+        let counts = Self {
+            passed: take('P')?,
+            failed: take('F')?,
+            unmeasured: take('U')?,
+        };
+        parts.next().is_none().then_some(counts)
+    }
 }
 
 impl Counts {
@@ -182,7 +284,7 @@ pub fn parse_decision(text: &str) -> Option<DecisionLine> {
         return None;
     }
     let decision = GateDecision::from_str(segments[2])?;
-    let (counts, tail) = match Counts::parse(segments[3]) {
+    let (counts, tail) = match GateCounts::parse(segments[3]) {
         Some(counts) => (Some(counts), &segments[4..]),
         None => (None, &segments[3..]),
     };
@@ -964,30 +1066,54 @@ impl<'a> PlanAuditor<'a> {
         for (line_no, decision) in &decisions {
             let gate = decision.gate.as_str();
             let gate_key = gate.to_ascii_lowercase();
-            let review_class = REVIEW_CLASS_GATES.contains(&gate_key.as_str());
-            if review_class
+            let class = gate_class(gate);
+            if let Some(class) = class
                 && matches!(
                     decision.decision,
                     GateDecision::Approved | GateDecision::NeedsRevision
                 )
-                && decision.counts.is_none()
             {
-                findings.push(Finding {
-                    slug: "plan-log-counts-missing".into(),
-                    severity: Severity::Major,
-                    location: Location::line(spec_path, *line_no),
-                    message: format!(
-                        "`{gate}` recorded `{}` without counts",
-                        decision.decision.as_str()
-                    ),
-                    hint: Some(
-                        "a review-class firing writes `<n>C/<n>B/<n>M/<n>m` into its line — the \
-                         next firing's convergence comparison reads it there, never from memory"
-                            .into(),
-                    ),
-                    auto_fixable: false,
-                    fix_command: None,
-                });
+                let token = match class {
+                    GateClass::Review => "`<n>C/<n>B/<n>M/<n>m`",
+                    GateClass::Acceptance => "`<n>P/<n>F/<n>U`",
+                };
+                if decision.counts.is_none() {
+                    findings.push(Finding {
+                        slug: "plan-log-counts-missing".into(),
+                        severity: Severity::Major,
+                        location: Location::line(spec_path, *line_no),
+                        message: format!(
+                            "`{gate}` recorded `{}` without counts",
+                            decision.decision.as_str()
+                        ),
+                        hint: Some(format!(
+                            "a {} firing writes {token} into its line — the next firing's \
+                             convergence comparison reads it there, never from memory",
+                            class.as_str()
+                        )),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                } else if let Some(counts) = decision.counts
+                    && counts.class() != class
+                {
+                    // The wrong token parses and reads as a total, so a review
+                    // token on an acceptance line would report zero blocking
+                    // while unmeasured criteria stand.
+                    findings.push(Finding {
+                        slug: "plan-log-counts-class".into(),
+                        severity: Severity::Major,
+                        location: Location::line(spec_path, *line_no),
+                        message: format!(
+                            "`{gate}` owes {} counts but its line carries {}",
+                            class.as_str(),
+                            counts.class().as_str()
+                        ),
+                        hint: Some(format!("write {token}, which is what this gate counts")),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                }
             }
             match decision.decision {
                 GateDecision::NeedsRevision => {
@@ -1001,8 +1127,9 @@ impl<'a> PlanAuditor<'a> {
                                 severity: Severity::Blocker,
                                 location: Location::line(spec_path, *line_no),
                                 message: format!(
-                                    "`{gate}` re-fired with Critical+Blocker at {} — not below \
-                                     the previous firing's {previous}",
+                                    "`{gate}` re-fired with {} at {} — not below the previous \
+                                     firing's {previous}",
+                                    counts.blocking_label(),
                                     counts.blocking()
                                 ),
                                 hint: Some(format!(
@@ -1030,14 +1157,21 @@ impl<'a> PlanAuditor<'a> {
                     severity: Severity::Blocker,
                     location: Location::line(spec_path, *line_no),
                     message: format!(
-                        "`{gate}` recorded `approved` carrying {} open Critical+Blocker",
-                        counts.blocking()
+                        "`{gate}` recorded `approved` carrying {} open {}",
+                        counts.blocking(),
+                        counts.blocking_label()
                     ),
-                    hint: Some(
-                        "approved means zero Critical and zero Blocker — record `needs_revision` \
-                         with the counts, or clear the findings first"
+                    hint: Some(match counts {
+                        GateCounts::Review(_) => "approved means zero Critical and zero Blocker — \
+                             record `needs_revision` with the counts, or clear the findings first"
                             .into(),
-                    ),
+                        GateCounts::Acceptance(_) => {
+                            "approved means every criterion passed — a failed one, or one the run \
+                             could not answer for, is not a pass; record `needs_revision` naming \
+                             them, or `deferred` if the measurement is out of reach"
+                                .into()
+                        }
+                    }),
                     auto_fixable: false,
                     fix_command: None,
                 });
@@ -1045,11 +1179,10 @@ impl<'a> PlanAuditor<'a> {
         }
 
         if let Some(rows) = rows
-            && let Some((line_no, decision)) = decisions.iter().rev().find(|(_, d)| {
-                REVIEW_CLASS_GATES
-                    .iter()
-                    .any(|g| g.eq_ignore_ascii_case(&d.gate))
-            })
+            && let Some((line_no, decision)) = decisions
+                .iter()
+                .rev()
+                .find(|(_, d)| gate_class(&d.gate) == Some(GateClass::Review))
             && decision.decision == GateDecision::Approved
         {
             let open_blocking = rows
@@ -1415,7 +1548,43 @@ mod tests {
         .expect("the template's own example must parse");
         assert_eq!(line.gate, "review");
         assert_eq!(line.decision, GateDecision::NeedsRevision);
-        assert_eq!(line.counts.map(Counts::blocking), Some(2));
+        assert_eq!(line.counts.map(GateCounts::blocking), Some(2));
+    }
+
+    #[test]
+    fn an_acceptance_line_parses_its_own_token_and_counts_unmeasured_as_blocking() {
+        let line = parse_decision(
+            "2026-01-15 · acceptance · needs_revision · 4P/1F/2U · criterion 3 fails; 5 and 6 \
+             need the staging environment",
+        )
+        .expect("the acceptance token must parse");
+        assert_eq!(gate_class(&line.gate), Some(GateClass::Acceptance));
+        assert_eq!(
+            line.counts,
+            Some(GateCounts::Acceptance(AcceptanceCounts {
+                passed: 4,
+                failed: 1,
+                unmeasured: 2,
+            }))
+        );
+        // An unobserved criterion stands between the work and an approval
+        // exactly as a failed one does.
+        assert_eq!(line.counts.map(GateCounts::blocking), Some(3));
+    }
+
+    #[test]
+    fn the_two_count_tokens_do_not_parse_as_each_other() {
+        for (token, class) in [
+            ("0C/2B/3M/1m", GateClass::Review),
+            ("4P/1F/2U", GateClass::Acceptance),
+        ] {
+            let line = parse_decision(&format!("2026-01-15 · review · approved · {token} · why"))
+                .expect("parses");
+            assert_eq!(line.counts.map(|c| c.class()), Some(class), "{token}");
+        }
+        // A token of neither shape is rationale, not counts.
+        let line = parse_decision("2026-01-15 · review · approved · 4P/1F · why").expect("parses");
+        assert_eq!(line.counts, None);
     }
 
     #[test]
@@ -1532,6 +1701,49 @@ mod tests {
             &spec("- 2026-01-15 · review · approved · 1C/0B/0M/0m · oops"),
         );
         assert_eq!(slugs(&findings), ["plan-log-approved-nonzero"]);
+    }
+
+    #[test]
+    fn an_unmeasured_criterion_blocks_an_acceptance_approval() {
+        // The whole point of the third state: nothing checked criterion 5, so
+        // the run cannot claim the spec's promise was kept.
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec("- 2026-01-15 · acceptance · approved · 4P/0F/2U · shipped"),
+        );
+        assert_eq!(slugs(&findings), ["plan-log-approved-nonzero"]);
+
+        // Measured and passing approves.
+        let clean = audit_with_spec(
+            &plan(""),
+            &spec("- 2026-01-15 · acceptance · approved · 6P/0F/0U · all hold"),
+        );
+        assert!(slugs(&clean).is_empty(), "{clean:?}");
+    }
+
+    #[test]
+    fn an_acceptance_gate_owes_its_own_token() {
+        // A review token on an acceptance line parses and reads as zero
+        // blocking, which would approve over unmeasured criteria.
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec("- 2026-01-15 · acceptance · approved · 0C/0B/0M/0m · looks clean"),
+        );
+        assert_eq!(slugs(&findings), ["plan-log-counts-class"]);
+    }
+
+    #[test]
+    fn acceptance_rounds_converge_under_the_same_floor_as_a_review() {
+        // One rule, both classes: a re-fire whose blocking total did not fall
+        // escalates instead of firing again.
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec(
+                "- 2026-01-14 · acceptance · needs_revision · 4P/1F/1U · c3 fails; c5 unmeasured\n\
+                 - 2026-01-15 · acceptance · needs_revision · 4P/2F/0U · c3 and c4 fail",
+            ),
+        );
+        assert_eq!(slugs(&findings), ["plan-log-not-falling"]);
     }
 
     #[test]
