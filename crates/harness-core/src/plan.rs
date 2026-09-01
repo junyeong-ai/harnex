@@ -131,6 +131,10 @@ pub const OUTSTANDING_HEADING: &str = "Outstanding issues";
 /// Section heading the decision bullets live under, in the spec.
 pub const DECISION_LOG_HEADING: &str = "Decision log";
 
+/// Section heading the numbered acceptance criteria live under, in the spec.
+/// The `acceptance` gate's counts are held to how many it carries.
+pub const CRITERIA_HEADING: &str = "Acceptance criteria";
+
 /// Rationale prefix that records the operator's acknowledgement of a
 /// non-falling Critical+Blocker count, authorizing another round.
 pub const ACKNOWLEDGED_PREFIX: &str = "acknowledged:";
@@ -160,10 +164,22 @@ impl GateCounts {
     /// The total that must converge to zero. Critical + Blocker for a review;
     /// failed + unmeasured for an acceptance run, because a criterion the
     /// instrument could not answer is not one that passed.
-    pub fn blocking(self) -> u32 {
+    ///
+    /// Widened, because the summands are author-supplied: at `u32` a total
+    /// past the ceiling panics in debug and wraps in release, and a wrapped
+    /// total reads as zero — an approval the counts should have refused.
+    pub fn blocking(self) -> u64 {
         match self {
             Self::Review(c) => c.blocking(),
             Self::Acceptance(c) => c.blocking(),
+        }
+    }
+
+    /// Every criterion the firing accounts for, whatever it concluded.
+    fn accounted(self) -> Option<u64> {
+        match self {
+            Self::Review(_) => None,
+            Self::Acceptance(c) => Some(c.accounted()),
         }
     }
 
@@ -182,6 +198,8 @@ impl GateCounts {
         }
     }
 
+    /// Read a counts token, whichever class it is written in. Only ever
+    /// called for a gate that owes counts — see [`parse_decision`].
     fn parse(segment: &str) -> Option<Self> {
         Counts::parse(segment)
             .map(Self::Review)
@@ -211,8 +229,14 @@ impl AcceptanceCounts {
     /// Criteria standing between the work and an approval. Unmeasured counts:
     /// a criterion nothing checked is not a criterion that holds, and reading
     /// it as one is how a spec ships on an unobserved promise.
-    pub fn blocking(self) -> u32 {
-        self.failed + self.unmeasured
+    pub fn blocking(self) -> u64 {
+        self.failed as u64 + self.unmeasured as u64
+    }
+
+    /// Criteria the firing accounted for at all — what must equal the number
+    /// the spec carries, or the token is counting a different list.
+    pub fn accounted(self) -> u64 {
+        self.passed as u64 + self.blocking()
     }
 
     fn parse(segment: &str) -> Option<Self> {
@@ -236,8 +260,8 @@ impl AcceptanceCounts {
 impl Counts {
     /// The convergence total: Critical + Blocker. What must fall between
     /// consecutive `needs_revision` firings, and be zero on `approved`.
-    pub fn blocking(self) -> u32 {
-        self.critical + self.blocker
+    pub fn blocking(self) -> u64 {
+        self.critical as u64 + self.blocker as u64
     }
 
     fn parse(segment: &str) -> Option<Self> {
@@ -264,9 +288,13 @@ impl Counts {
 ///
 /// Segments split on `·` and trim, because spacing around the separator is an
 /// author's habit rather than part of the grammar. The rationale is the tail
-/// rejoined, so a `·` inside it survives; the counts position is the fourth
-/// segment and nothing else — a rationale whose first segment happens to be
-/// counts-shaped is read as counts, which is what the line then declares.
+/// rejoined, so a `·` inside it survives.
+///
+/// The counts position is read only for a gate that owes counts
+/// ([`gate_class`]). A gate that owes none has no counts position at all, so
+/// its rationale cannot be mistaken for one however it is spelled — the field
+/// is identified by the gate's declared class, never by the shape of what an
+/// author happened to write.
 pub fn parse_decision(text: &str) -> Option<DecisionLine> {
     let segments: Vec<&str> = text.split('·').map(str::trim).collect();
     if segments.len() < 4 {
@@ -284,7 +312,7 @@ pub fn parse_decision(text: &str) -> Option<DecisionLine> {
         return None;
     }
     let decision = GateDecision::from_str(segments[2])?;
-    let (counts, tail) = match GateCounts::parse(segments[3]) {
+    let (counts, tail) = match gate_class(gate).and_then(|_| GateCounts::parse(segments[3])) {
         Some(counts) => (Some(counts), &segments[4..]),
         None => (None, &segments[3..]),
     };
@@ -1062,22 +1090,21 @@ impl<'a> PlanAuditor<'a> {
         // Keyed case-folded: `Review` and `review` are one gate to a reader,
         // and letting them track separately reset the comparison a case-typo
         // was enough to escape.
-        let mut last_blocking: BTreeMap<String, u32> = BTreeMap::new();
+        let mut last_blocking: BTreeMap<String, u64> = BTreeMap::new();
         for (line_no, decision) in &decisions {
             let gate = decision.gate.as_str();
             let gate_key = gate.to_ascii_lowercase();
             let class = gate_class(gate);
-            if let Some(class) = class
-                && matches!(
-                    decision.decision,
-                    GateDecision::Approved | GateDecision::NeedsRevision
-                )
-            {
+            if let Some(class) = class {
                 let token = match class {
                     GateClass::Review => "`<n>C/<n>B/<n>M/<n>m`",
                     GateClass::Acceptance => "`<n>P/<n>F/<n>U`",
                 };
-                if decision.counts.is_none() {
+                // `rejected` ends the work rather than measuring it, so it
+                // owes no count; every other token states where the gate
+                // stands and is read by what follows.
+                let owes_counts = !matches!(decision.decision, GateDecision::Rejected);
+                if owes_counts && decision.counts.is_none() {
                     findings.push(Finding {
                         slug: "plan-log-counts-missing".into(),
                         severity: Severity::Major,
@@ -1175,6 +1202,61 @@ impl<'a> PlanAuditor<'a> {
                     auto_fixable: false,
                     fix_command: None,
                 });
+            }
+        }
+
+        // The live acceptance claim must account for every criterion the spec
+        // now carries. Only the last firing is held to it: the log is
+        // append-only history and the criteria are current, so an earlier line
+        // counted a list that may since have changed. Without this the token
+        // is unbound — `0P/0F/0U` would approve a spec whose criteria nothing
+        // ever looked at, which is the omission the third state exists to name.
+        if let Some((line_no, decision)) = decisions
+            .iter()
+            .rev()
+            .find(|(_, d)| gate_class(&d.gate) == Some(GateClass::Acceptance))
+            && let Some(accounted) = decision.counts.and_then(GateCounts::accounted)
+        {
+            let declared = match section_of(spec_text, CRITERIA_HEADING) {
+                Section::Found { items, .. } => Some(items.len() as u64),
+                _ => None,
+            };
+            match declared {
+                Some(declared) if declared != accounted => findings.push(Finding {
+                    slug: "plan-log-criteria-unaccounted".into(),
+                    severity: Severity::Blocker,
+                    location: Location::line(spec_path, *line_no),
+                    message: format!(
+                        "`{}` accounted for {accounted} criteria, but `## {CRITERIA_HEADING}` \
+                         carries {declared}",
+                        decision.gate
+                    ),
+                    hint: Some(
+                        "every criterion gets a verdict — passed, failed, or unmeasured — so the \
+                         three add up to the list; a criterion left out of the token is one the \
+                         gate never looked at"
+                            .into(),
+                    ),
+                    auto_fixable: false,
+                    fix_command: None,
+                }),
+                None => findings.push(Finding {
+                    slug: "plan-log-criteria-unreadable".into(),
+                    severity: Severity::Blocker,
+                    location: Location::line(spec_path, *line_no),
+                    message: format!(
+                        "`{}` counted criteria, but no readable `## {CRITERIA_HEADING}` section \
+                         states which",
+                        decision.gate
+                    ),
+                    hint: Some(format!(
+                        "restore the `## {CRITERIA_HEADING}` section — the gate's counts are held \
+                         to the list it carries, and an absent list cannot be counted against"
+                    )),
+                    auto_fixable: false,
+                    fix_command: None,
+                }),
+                _ => {}
             }
         }
 
@@ -1353,6 +1435,13 @@ mod tests {
 
     fn spec(log: &str) -> String {
         format!("# t\n\n## Decision log\n\n{log}\n")
+    }
+
+    /// A spec carrying `n` numbered criteria, for the acceptance rules that
+    /// hold a firing's counts to the list it claims to have walked.
+    fn spec_with_criteria(n: usize, log: &str) -> String {
+        let criteria: String = (1..=n).map(|i| format!("{i}. c{i}\n")).collect();
+        format!("# t\n\n## {CRITERIA_HEADING}\n\n{criteria}\n## Decision log\n\n{log}\n")
     }
 
     #[test]
@@ -1709,16 +1798,87 @@ mod tests {
         // the run cannot claim the spec's promise was kept.
         let findings = audit_with_spec(
             &plan(""),
-            &spec("- 2026-01-15 · acceptance · approved · 4P/0F/2U · shipped"),
+            &spec_with_criteria(
+                6,
+                "- 2026-01-15 · acceptance · approved · 4P/0F/2U · shipped",
+            ),
         );
         assert_eq!(slugs(&findings), ["plan-log-approved-nonzero"]);
 
         // Measured and passing approves.
         let clean = audit_with_spec(
             &plan(""),
-            &spec("- 2026-01-15 · acceptance · approved · 6P/0F/0U · all hold"),
+            &spec_with_criteria(
+                6,
+                "- 2026-01-15 · acceptance · approved · 6P/0F/0U · all hold",
+            ),
         );
         assert!(slugs(&clean).is_empty(), "{clean:?}");
+    }
+
+    #[test]
+    fn an_acceptance_token_is_held_to_the_criteria_the_spec_carries() {
+        // The token is a claim about a list. Unbound, `0P/0F/0U` approves a
+        // spec whose criteria nothing ever looked at — the omission the third
+        // state exists to name, escaping through the count itself.
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec_with_criteria(
+                2,
+                "- 2026-01-15 · acceptance · approved · 0P/0F/0U · shipped",
+            ),
+        );
+        assert_eq!(slugs(&findings), ["plan-log-criteria-unaccounted"]);
+
+        // Only the last firing is held to the current list: an earlier one
+        // counted a list that may since have changed.
+        let historical = audit_with_spec(
+            &plan(""),
+            &spec_with_criteria(
+                2,
+                "- 2026-01-14 · acceptance · needs_revision · 1P/1F/0U · c2 fails\n\
+                 - 2026-01-15 · acceptance · approved · 2P/0F/0U · both hold",
+            ),
+        );
+        assert!(slugs(&historical).is_empty(), "{historical:?}");
+
+        // A counted firing with no list to count against is not a pass.
+        let unreadable = audit_with_spec(
+            &plan(""),
+            &spec("- 2026-01-15 · acceptance · approved · 2P/0F/0U · both hold"),
+        );
+        assert_eq!(slugs(&unreadable), ["plan-log-criteria-unreadable"]);
+    }
+
+    #[test]
+    fn an_uncounted_gates_rationale_is_never_read_as_counts() {
+        // The counts position belongs to the gate's declared class, not to
+        // whatever an author's first rationale segment looks like — otherwise
+        // a clarify line acquires convergence findings from its own prose.
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec("- 2026-01-15 · clarify · approved · 4P/1F/2U · answered"),
+        );
+        assert!(slugs(&findings).is_empty(), "{findings:?}");
+        let line = parse_decision("2026-01-15 · clarify · approved · 4P/1F/2U · answered")
+            .expect("parses");
+        assert_eq!(line.counts, None);
+        assert_eq!(line.rationale, "4P/1F/2U · answered");
+    }
+
+    #[test]
+    fn a_counts_total_past_the_ceiling_neither_panics_nor_wraps_to_approval() {
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec_with_criteria(
+                1,
+                "- 2026-01-15 · acceptance · approved · 0P/4294967295F/1U · x",
+            ),
+        );
+        assert!(
+            slugs(&findings).contains(&"plan-log-approved-nonzero"),
+            "a wrapped total would read as zero blocking and approve: {findings:?}"
+        );
     }
 
     #[test]
@@ -1738,7 +1898,8 @@ mod tests {
         // escalates instead of firing again.
         let findings = audit_with_spec(
             &plan(""),
-            &spec(
+            &spec_with_criteria(
+                6,
                 "- 2026-01-14 · acceptance · needs_revision · 4P/1F/1U · c3 fails; c5 unmeasured\n\
                  - 2026-01-15 · acceptance · needs_revision · 4P/2F/0U · c3 and c4 fail",
             ),

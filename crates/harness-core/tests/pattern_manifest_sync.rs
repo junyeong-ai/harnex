@@ -123,41 +123,51 @@ fn disposition_vocabulary_is_stated_identically() {
     }
 }
 
-/// The example decision line gates.md ships parses under the shipped parser,
-/// with the counts and gate the prose beside it describes. A doc whose own
-/// example the computer rejects is teaching a grammar that does not exist.
+/// Every counted gate is documented by gates.md, and every counts class is
+/// shown there by an example the parser reads back in that class's own token.
+/// Checking headings alone leaves the doc free to teach one class's token on
+/// another class's line — the exact mistake `plan-log-counts-class` catches in
+/// a real spec, taught by the file a reader learns the grammar from. Classes
+/// rather than gates: two gates of one class share a token, and a second
+/// example of it teaches nothing a reader did not already have.
 #[test]
-fn the_gates_example_line_parses_under_the_shipped_grammar() {
+fn every_counted_gate_is_documented_and_every_class_shown_in_its_own_token() {
     let text = std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
         .expect("read gates.md");
-    let example = text
+    let examples: Vec<harness_core::plan::DecisionLine> = text
         .lines()
-        .find_map(|l| l.strip_prefix("- ").filter(|rest| rest.contains(" · ")))
-        .expect("gates.md carries an example decision bullet");
-    let line = harness_core::plan::parse_decision(example)
-        .unwrap_or_else(|| panic!("the gates.md example does not parse: {example}"));
-    let class = harness_core::plan::gate_class(&line.gate)
-        .expect("the example fires a gate the counts contract binds");
-    assert_eq!(
-        line.counts.map(|c| c.class()),
-        Some(class),
-        "the example carries the counts its gate's class owes"
-    );
-}
+        .filter_map(|l| l.strip_prefix("- ").filter(|rest| rest.contains(" · ")))
+        .map(|example| {
+            harness_core::plan::parse_decision(example)
+                .unwrap_or_else(|| panic!("a gates.md example does not parse: {example}"))
+        })
+        .collect();
 
-/// Every counted gate the parser holds to the contract is one gates.md
-/// documents, in the class the constant declares — the constant and the doc
-/// name one set, and an example in the wrong token would teach the wrong one.
-#[test]
-fn the_counted_gates_are_the_ones_the_doc_documents() {
-    let text = std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
-        .expect("read gates.md");
     for (gate, _) in harness_core::plan::COUNTED_GATES {
         assert!(
             text.lines()
                 .any(|l| l.trim_end().starts_with(&format!("## {gate} "))),
             "gates.md documents no `## {gate}` event, yet the parser holds it to the counts \
              contract"
+        );
+    }
+
+    for class in harness_core::plan::GateClass::ALL {
+        let shown = examples
+            .iter()
+            .find(|line| harness_core::plan::gate_class(&line.gate) == Some(*class))
+            .unwrap_or_else(|| {
+                panic!(
+                    "gates.md shows no example firing of a {} gate",
+                    class.as_str()
+                )
+            });
+        assert_eq!(
+            shown.counts.map(|c| c.class()),
+            Some(*class),
+            "the {} example is written in the wrong class's token — a reader would learn the \
+             grammar the audit rejects",
+            class.as_str()
         );
     }
 }

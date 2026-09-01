@@ -116,9 +116,15 @@ both: `<n>P/<n>F/<n>U`, and `approved` requires the last two at zero —
 `harnex plan audit` refuses an approval that carries either.
 
 The way out of an unmeasured criterion is to measure it, or to say plainly
-that it cannot be measured here: `deferred`, with the rationale naming the
-criterion and what would answer it. `deferred` is a decision the log keeps;
-silence is not.
+that it cannot be measured here: `deferred`, with the counts and a rationale
+naming the criterion and what would answer it. `deferred` is a decision the
+log keeps; silence is not. It also stops the work short of `completed` — the
+spec waits for the gate to re-fire `approved`, or it is abandoned or
+superseded with the record saying which criteria went unanswered.
+
+The three counts add up to the list `spec.md` carries, and `harnex plan audit`
+holds them to it: a criterion left out of the token is one the gate never
+looked at, which is the omission the third state exists to name.
 
 Name the criteria by their number from `spec.md`, so the next session reads
 which ones stand rather than re-deriving them:
