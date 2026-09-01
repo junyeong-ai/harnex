@@ -14,6 +14,8 @@
 
 use std::path::{Path, PathBuf};
 
+mod common;
+
 use harness_core::config::{EvidenceConfig, VerifierDecl};
 use harness_core::envelope::Finding;
 use harness_core::evidence::EvidenceVerifier;
@@ -23,23 +25,14 @@ fn plugin_root() -> PathBuf {
 }
 
 /// Every markdown document the plugin ships as its own, templates aside.
-///
-/// Enumerated from the index rather than the disk: a gate whose input set is
-/// a directory walk answers about whatever is on this machine — an editor's
-/// backup, a scratch file, a sibling worktree — and its verdict here and in
-/// CI diverge on the same commit. What ships is what is tracked.
 fn own_documents(root: &Path) -> Vec<PathBuf> {
-    let listing = std::process::Command::new("git")
-        .args(["ls-files", "-z", "--", "plugins/harnex"])
-        .current_dir(root.join("../.."))
-        .output()
-        .expect("git ls-files runs in this repository");
-    assert!(listing.status.success(), "git ls-files failed: {listing:?}");
-    String::from_utf8(listing.stdout)
-        .expect("tracked paths are UTF-8")
-        .split('\0')
-        .filter(|path| path.ends_with(".md") && !path.starts_with("plugins/harnex/templates/"))
-        .map(|path| root.join("../..").join(path))
+    common::tracked(&root.join("../.."), "plugins/harnex")
+        .into_iter()
+        .filter(|path| {
+            let relative = path.strip_prefix(root.join("../..")).unwrap_or(path);
+            relative.extension().is_some_and(|ext| ext == "md")
+                && !relative.starts_with("plugins/harnex/templates")
+        })
         .collect()
 }
 
