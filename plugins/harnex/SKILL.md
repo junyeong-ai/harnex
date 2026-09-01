@@ -336,7 +336,7 @@ operator to re-phrase using a verb from this list.
   - `copy-conventions` — communication register, terminology, error
     message format, i18n.
   - `routines` — recurring harness work with a cadence and a record:
-    two scheduled hygiene routines, the contract rule, and a SessionStart
+    two recurring hygiene routines, the contract rule, and a SessionStart
     surface for what is overdue.
   - `write-guard` — PreToolUse(Edit|Write) enforcement: verifier
     skeleton + governance rule for write-time convention checking.
