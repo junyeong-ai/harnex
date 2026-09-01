@@ -74,6 +74,19 @@ pub(crate) fn ledger_dir_present(dir: &Path) -> Result<bool> {
     }
 }
 
+/// Whether a directory entry is one of a ledger's record files.
+///
+/// The filename suffix, not `Path::extension`, which answers `None` for a
+/// leading-dot name: a record filed as `.jsonl` is a record, and a scan that
+/// skips it is a read that comes back short. The encoder refuses the tag that
+/// produces that name, so nothing writes one now; this is what still reads the
+/// ones an older build wrote.
+pub(crate) fn is_ledger_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".jsonl"))
+}
+
 /// Encode a tag into a filesystem-safe ledger filename stem. A tag is a
 /// semantic grouping key (it may be namespaced, e.g. `rust/async`); the
 /// real tag is always stored in the JSONL record body, so the filename
