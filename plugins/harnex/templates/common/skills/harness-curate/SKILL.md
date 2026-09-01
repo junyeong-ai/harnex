@@ -17,13 +17,21 @@ commands and lands the results, and never restates a bar the rule already sets.
 Deterministic, and none of it invents text:
 
 ```
-harnex lifecycle candidates    # observations past the instance + age thresholds
+harnex lifecycle candidates    # groups past the thresholds, and the ledger they came from
 harnex telemetry report        # per-Kind counts; never a retirement verdict
 harnex lifecycle retire        # Stale / NoConsumers / Silent verdicts
 ```
 
-An empty result is a finished pass. Say so and stop — a sweep that always
-finds something is a sweep that has started inventing.
+Read `observations_read` before the candidates. Zero is an unwritten ledger:
+the emit half of this loop never fired and this pass has read nothing, so say
+that and go find where the observations went — a wrapup that recorded them
+somewhere the loop does not reach is the usual answer. `groups_considered` and
+`groups_resolved` split the rest between what the thresholds saw and what an
+earlier pass already closed.
+
+Observations read and no candidates IS a finished pass — the recurrence bar
+held. Say so and stop; a sweep that always finds something is a sweep that has
+started inventing.
 
 ## 2. Judge
 

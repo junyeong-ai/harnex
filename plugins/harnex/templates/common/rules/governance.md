@@ -21,11 +21,18 @@ operator-driven and evidence-gated — never auto-applied, never AI-invented.
 A candidate starts as an observation, not a rule. Record it where it survives
 the session without spending always-loaded context:
 
-- **Commit body** — always available; `git log` is the durable trail.
-- **Oracle ledger** (if the project runs the `harnex` oracle) —
-  `harnex lifecycle observe --tag <topic> --text "<observation>" --source <where>`
-  appends to the per-tag ledger that surfacing reads. Preferred when adopted:
-  thresholds are enforced deterministically.
+- **Oracle ledger** —
+  `harnex lifecycle observe --tag <topic> --text "<what recurs>" --source <where>`
+  appends to the per-tag ledger the surfacing step below reads. This is the
+  only home where recurrence is counted for you.
+- **Commit body** — durable, and nothing surfaces it. `git log` keeps the
+  trail, and a candidate recorded only there is found by a person who goes
+  looking, never by `harnex lifecycle candidates`.
+
+Recurrence is counted by exact text after case and whitespace. A constraint
+the ledger already knows, rephrased, starts a second count, and neither entry
+then proves the recurrence both were recording — read the tag's ledger before
+appending and reuse the standing wording.
 
 Do not record observations in always-loaded memory — that pays context cost
 every session for a candidate that has not earned a rule yet.
@@ -65,7 +72,9 @@ Reach for it rather than working the steps by hand.
 The commands are deterministic and never invent text:
 
 - `harnex lifecycle candidates` — observations that crossed the configured
-  instance + age thresholds.
+  instance + age thresholds, with the ledger they were drawn from. No
+  candidates over an unwritten ledger is a loop whose first half never fired,
+  not a corpus with nothing in it.
 - `harnex telemetry report` — per-Kind counts, for reading the ledger itself.
   Never a retirement verdict: it counts Kinds, not artifacts.
 - `harnex lifecycle retire` — Stale / NoConsumers / Silent verdicts. Silence

@@ -23,9 +23,17 @@ promotion gate reads; write what happened, not what should have.>
 
 ## Harness proposals
 
-<Candidate rules, hooks, or skills this spec argues for. Each needs the
-governance bar — recurring across two independent contexts, verifiable by
-reading output, low false-positive — or it stays an observation.>
+<Candidate rules, hooks, or skills this spec argues for, and what each would
+enforce. Write what this spec saw; whether it has recurred enough to promote
+is the ledger's answer, not this file's.>
 
-Record each one where it survives without spending always-loaded context (see
-`.claude/rules/governance.md`); do not add it to a rule from here.
+Record one observation per proposal before this directory is retired:
+
+```
+harnex lifecycle observe --tag <topic> --text "<what recurs>" --source <slug>
+```
+
+Completing the spec removes this directory, so a proposal left only here is
+one the promotion pass never sees. Reuse a standing observation's wording
+verbatim — `.claude/rules/governance.md` has why, and owns the bar each
+proposal is judged against. Do not write the rule from here.
