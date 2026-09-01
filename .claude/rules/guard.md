@@ -60,13 +60,12 @@ One home because two would drift: the hook-wiring auditor and the
 scaffold-manifest test ask the same question of the same grammar.
 
 StopAuditor handles the Stop event in three phases:
-1. `has_changes_check` — a shell predicate: exit 0 means no changes and
-   allows the stop, exit 1 means there is work. Required whenever the
-   section is declared, because phase 3 spends a model call, so the probe
-   that decides when is asked for rather than defaulted and an unstated
-   one is refused at load. Any other exit, a signal, or a spawn failure is
-   the probe failing rather than answering — `Skip`, never `Present`, which
-   would buy a critique on a command that never ran.
+1. `has_changes_check` — a predicate: exit 0 allows the stop, exit 1 means
+   there is work, and any other exit, a signal, or a spawn failure is the
+   probe failing rather than answering, which is a `Skip` and never a
+   `Present` that would buy a critique on a command that never ran.
+   `StopAuditConfig::changes_probe` owns what a usable probe is and refuses
+   the rest at load, because phase 3 spends a model call.
 2. Bump per-session retry counter via `path_guard::write_atomic`.
    Exceeding `max_retries` escalates with a Block reason.
 3. Spawn the configured critique skill via `claude --print`. Parse the

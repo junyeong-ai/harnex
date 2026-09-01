@@ -810,7 +810,7 @@
           "default": 3
         },
         "has_changes_check": {
-          "description": "The shell predicate that says whether this session left work behind:\nexit 0 for no changes, exit 1 for changes, and anything else a probe\nthat failed rather than answered. Required, because declaring this\nsection commits to spawning a critique and this is what decides when —\ne.g. [\"git\", \"diff\", \"--quiet\"].",
+          "description": "The predicate that says whether this session left work behind: exit 0\nfor no changes, exit 1 for changes, and anything else a probe that\nfailed rather than answered. Required, because declaring this section\ncommits to spawning a critique and this is what decides when.\n\nIt has to see everything the project counts as work. `git diff --quiet`\nalone answers 0 for a session whose changes are only staged or only\nuntracked, and the Stop hook beside it counts both, so a whole class of\nsession would be critiqued by one and called clean by the other —\ne.g. [\"sh\", \"-c\", \"test -z \\\"$(git status --porcelain)\\\"\"].",
           "type": "array",
           "items": {
             "type": "string"

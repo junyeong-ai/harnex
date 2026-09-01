@@ -161,10 +161,9 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
 
     /// The probe is a shell predicate, read the way the ecosystem writes one:
     /// 0 is true, 1 is false, anything else is the predicate failing rather
-    /// than answering. `git diff --quiet` — the example the config names — is
-    /// exactly that, exiting 129 on a flag it does not know. Folding every
-    /// non-zero code into "there is work" is what buys a critique on a probe
-    /// that never ran.
+    /// than answering. Measured, `git diff --quiet` exits 0 and 1 for its two
+    /// answers and 129 on a flag it does not know, so folding every non-zero
+    /// code into "there is work" buys a critique on a probe that never ran.
     fn changes(&self) -> Changes {
         let (program, args) = match self.config.changes_probe() {
             Ok(probe) => probe,
@@ -330,7 +329,11 @@ mod tests {
             runtime: "claude-code".to_string(),
             critique_skill: "/aix-critique".to_string(),
             max_retries: 3,
-            has_changes_check: vec!["git".into(), "diff".into(), "--quiet".into()],
+            has_changes_check: vec![
+                "sh".into(),
+                "-c".into(),
+                "test -z \"$(git status --porcelain)\"".into(),
+            ],
             retry_ledger_dir: dir.path().join("_audit_retry"),
         }
     }
@@ -398,7 +401,10 @@ mod tests {
         // the has_changes probe first, then the critique skill spawn.
         let calls = auditor.runner.calls();
         assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0], vec!["git", "diff", "--quiet"]);
+        assert_eq!(
+            calls[0],
+            vec!["sh", "-c", "test -z \"$(git status --porcelain)\""]
+        );
         assert_eq!(calls[1], vec!["claude", "--print", "/aix-critique"]);
     }
 
