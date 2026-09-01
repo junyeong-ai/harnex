@@ -11,6 +11,7 @@
 use std::path::PathBuf;
 
 use harness_core::guard::HARNESS_INVOCATION_KIND;
+use harness_core::session::ASSET_TOOL_KEYS;
 
 fn read(rel: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -19,11 +20,14 @@ fn read(rel: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-/// The tools whose invocations the emit records — the exact set `asset_of`
-/// resolves an element for (`ASSET_TOOL_KEYS`). The emit reuses `asset_of`, so
-/// this is not a second copy of the mapping; it is the matcher the wiring prose
-/// must keep aligned with it, checked here.
-const ELEMENT_TOOLS: [&str; 3] = ["Skill", "Task", "Agent"];
+/// The distinct tools whose invocations the emit records, read from the
+/// authority itself — never a second copy, so a tool added to `ASSET_TOOL_KEYS`
+/// fails this guard until the matcher prose names it too.
+fn element_tools() -> Vec<&'static str> {
+    let mut tools: Vec<&str> = ASSET_TOOL_KEYS.iter().map(|(tool, _, _)| *tool).collect();
+    tools.dedup();
+    tools
+}
 
 #[test]
 fn the_scaffold_declares_the_kind_the_emit_appends_to() {
@@ -36,35 +40,28 @@ fn the_scaffold_declares_the_kind_the_emit_appends_to() {
 }
 
 #[test]
-fn the_pattern_prose_names_the_kind_and_the_element_tool_matcher() {
+fn the_pattern_prose_names_the_kind_and_every_element_tool_the_authority_defines() {
     // The wiring prose names the Kind literally (the rule states the contract
     // in imperatives and names no specific Kind, per Article VIII).
-    for rel in [
+    let wiring = [
         "plugins/harnex/reference/patterns.md",
         "plugins/harnex/templates/patterns/manifest.toml",
-    ] {
+    ];
+    for rel in wiring {
         let content = read(rel);
         assert!(
             content.contains(HARNESS_INVOCATION_KIND),
             "{rel} no longer names the `{HARNESS_INVOCATION_KIND}` Kind"
         );
-    }
-    // The matcher prose lives where the skill reads it to wire the settings
-    // entries; it must name exactly the element tools the emit resolves.
-    let matcher = "Skill|Task|Agent";
-    for &tool in &ELEMENT_TOOLS {
-        assert!(
-            matcher.contains(tool),
-            "the element-tool matcher dropped `{tool}`, which asset_of still resolves"
-        );
-    }
-    for rel in [
-        "plugins/harnex/reference/patterns.md",
-        "plugins/harnex/templates/patterns/manifest.toml",
-    ] {
-        assert!(
-            read(rel).contains(matcher),
-            "{rel} no longer wires the emit to the `{matcher}` matcher"
-        );
+        // The matcher the skill wires the settings entries from must name every
+        // element tool `asset_of` resolves — bound to the authority, not a
+        // second list, so adding a tool there fails here until the prose moves.
+        for tool in element_tools() {
+            assert!(
+                content.contains(tool),
+                "{rel} wires a matcher that omits `{tool}`, which ASSET_TOOL_KEYS resolves \
+                 an element for — the emit would record it while the wiring never fires it"
+            );
+        }
     }
 }

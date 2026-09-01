@@ -68,7 +68,9 @@ pub use harness::{
 };
 pub use intervention::{Intervention, InterventionFacts, InterventionKind};
 pub use prompt::{PromptFacts, RepeatedBlock, Repetition};
-pub use record::{Authorship, Citation, Compaction, Coverage, TokenUse, ToolUse, asset_of};
+pub use record::{
+    ASSET_TOOL_KEYS, Authorship, Citation, Compaction, Coverage, TokenUse, ToolUse, asset_of,
+};
 pub use repository::{CommitFate, CommitOutcome, HarnessState, RepositoryFacts};
 pub use rework::{PostCommitReedit, ReworkFacts};
 pub use submission::{Submission, SubmissionIndex, SubmissionWindow, systematic_sample};

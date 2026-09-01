@@ -117,7 +117,10 @@ pub(crate) fn compact_instruction(turn: &UserTurn) -> Option<String> {
 /// appear because the runtime renamed the tool and the corpus spans both.
 /// Slash commands are absent: their `command` carries arguments as well as a
 /// name, so it is operator text and not an element.
-const ASSET_TOOL_KEYS: &[(&str, &str, &str)] = &[
+///
+/// Public because the telemetry emit hook's matcher must name exactly these
+/// tools; a drift guard binds the pattern's matcher prose to this set.
+pub const ASSET_TOOL_KEYS: &[(&str, &str, &str)] = &[
     ("Skill", "skill", "skill"),
     ("Task", "subagent_type", "agent"),
     ("Agent", "subagent_type", "agent"),
