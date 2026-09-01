@@ -19,12 +19,14 @@ NoConsumers (grep finds zero), Silent (caller-supplied `SilenceState` —
 derived from the telemetry query). Severity: 3 signals → Major, 2 → Minor,
 ≤1 → Info. `SilenceState` is tri-state — `Silent` fires the signal;
 `Active` and `Unmeasured` do not. Silence is measured only against
-`[lifecycle] invocation_kind`, the telemetry Kind a project declares as its
-record of element invocations. Undeclared, or with no event of it in the
-window, every slug is `Unmeasured` and caps severity at Minor: silence is a
-claim about invocations, so it is never inferred from ledger traffic at large
-— an unrelated Kind's payload may carry any string, and reading one as an
-invocation would decide a slug's fate on a coincidence.
+`[[kinds]] invocation_kind`, the telemetry Kind that kind declares as the
+record of its artifacts' invocations. Undeclared, or with no event of it in
+the window, that kind's slugs are `Unmeasured` and cap severity at Minor.
+Silence is a claim about invocations, so neither half is inferred: not which
+Kind is the record — an unrelated payload may carry any string, and reading
+one as an invocation decides a slug's fate on a coincidence — and not which
+artifacts it speaks for, since a record naming skills can never name a rule,
+which is loaded rather than invoked.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.
@@ -52,9 +54,10 @@ treats every `Approved | Rejected | Demoted` ledger entry as terminal.
 `[[kinds]]` declaration (skipping `foundation = true` kinds), finds
 the matching `[[lifecycle.consumer_detectors]]`, globs the kind's path
 pattern, and classifies each match. The silence state is derived from one
-scan of `invocation_kind`'s events within `silence_window_days`, matching each
-slug as an exact string in a payload; a window that Kind did not record yields
-`Unmeasured`, never a fabricated `Silent`. Operators
+scan of the declared `invocation_kind` records within `silence_window_days`,
+matching each slug as an exact string in a payload; a kind declaring no record,
+or one whose record the window does not hold, yields `Unmeasured` — never a
+fabricated `Silent`. Operators
 `harnex lifecycle retire` covers the entire surface in one call.
 
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`

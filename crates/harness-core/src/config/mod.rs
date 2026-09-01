@@ -152,6 +152,17 @@ pub struct KindDecl {
     pub glob: String,
     #[serde(default)]
     pub foundation: bool,
+    /// The telemetry Kind recording invocations of THIS kind's artifacts —
+    /// the oracle the retirement sweep reads their silence from, matching a
+    /// slug against the payload. Declare it only where the record can name
+    /// them: an artifact that is loaded rather than invoked (a rule) is never
+    /// in an invocation record, so reading its absence there would convict
+    /// every one of them the moment anything else runs. Undeclared, this
+    /// kind's slugs are `unmeasured` and the Silent signal never fires for
+    /// them. The glob must yield the name the record uses as each file's
+    /// stem.
+    #[serde(default)]
+    pub invocation_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -454,12 +465,6 @@ pub struct LifecycleConfig {
     pub observation_dir: PathBuf,
     #[serde(default = "default_decision_dir")]
     pub decision_dir: PathBuf,
-    /// The telemetry Kind whose events record element invocations — the
-    /// oracle the retirement sweep reads a slug's silence from. Undeclared,
-    /// every slug is `unmeasured`: silence is a claim about invocations, and
-    /// without a Kind that records them there is nothing to read it from.
-    #[serde(default)]
-    pub invocation_kind: Option<String>,
     #[serde(default)]
     pub consumer_detectors: Vec<ConsumerDetectorDecl>,
 }
@@ -647,6 +652,20 @@ impl Config {
                 message: format!("[[kinds]] '{}' has invalid glob '{}': {e}", k.name, k.glob),
                 location: None,
             })?;
+            if let Some(invocation) = &k.invocation_kind
+                && !self
+                    .telemetry
+                    .as_ref()
+                    .is_some_and(|t| t.kinds.iter().any(|d| &d.name == invocation))
+            {
+                return Err(Error::ConfigInvalid {
+                    message: format!(
+                        "[[kinds]] '{}' invocation_kind '{invocation}' is not declared in [[telemetry.kinds]]",
+                        k.name
+                    ),
+                    location: None,
+                });
+            }
         }
         Ok(())
     }
@@ -1054,19 +1073,6 @@ impl Config {
         if l.promotion_min_instances == 0 {
             return Err(Error::ConfigInvalid {
                 message: "[lifecycle] promotion_min_instances must be > 0".into(),
-                location: None,
-            });
-        }
-        if let Some(kind) = &l.invocation_kind
-            && !self
-                .telemetry
-                .as_ref()
-                .is_some_and(|t| t.kinds.iter().any(|k| &k.name == kind))
-        {
-            return Err(Error::ConfigInvalid {
-                message: format!(
-                    "[lifecycle] invocation_kind '{kind}' is not declared in [[telemetry.kinds]]"
-                ),
                 location: None,
             });
         }

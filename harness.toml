@@ -82,7 +82,10 @@ kinds = ["constitution"]
 slugs = ["making-changes"]
 
 # Empty kinds on purpose: an event schema is declared when there is something
-# to count (template rationale). The section exists so `lifecycle retire` can
-# derive its Silent verdict from an honest, present-but-empty ledger.
+# to count (template rationale). Nothing records invocations of this project's
+# one kind — a rule is loaded, not invoked — so no `[[kinds]] invocation_kind`
+# is declared and `lifecycle retire` reports every rule `unmeasured` on the
+# silence axis, which is the honest answer rather than a presumed silence.
+# The section exists because the sweep reads the ledger regardless.
 [telemetry]
 storage_dir = ".harness/telemetry"

@@ -53,23 +53,29 @@ fn scaffold_kind_schema() -> KindSchema {
 }
 
 #[test]
-fn the_scaffold_measures_retirement_silence_against_the_emitted_kind() {
+fn the_shipped_prose_wires_retirement_to_the_emitted_kind_by_name() {
     // The auto-emit writes `HARNESS_INVOCATION_KIND`; retirement reads
-    // whichever Kind `[lifecycle] invocation_kind` names. Were the two to
-    // drift, the scaffold would emit into a ledger nothing measures and every
-    // slug would stay `unmeasured` forever — a silent loss of the signal.
-    let config = Config::load_from(&repo_path("plugins/harnex/templates/common/harness.toml"))
-        .expect("scaffold harness.toml loads");
-    let declared = config
-        .lifecycle
-        .expect("scaffold declares [lifecycle]")
-        .invocation_kind;
-    assert_eq!(
-        declared.as_deref(),
-        Some(HARNESS_INVOCATION_KIND),
-        "the scaffold's `[lifecycle] invocation_kind` must name the Kind the \
-         auto-emit writes, or retirement measures silence against nothing"
-    );
+    // whichever Kind a `[[kinds]]` entry names in `invocation_kind`. The
+    // scaffold declares no kinds — what a project retires is its own
+    // vocabulary — so the wiring is an instruction, and it is the instruction
+    // that must not drift: were it to name another Kind or drop the key, the
+    // emit would fill a ledger nothing measures and the Silent signal would
+    // be silently lost.
+    for rel in [
+        "plugins/harnex/reference/patterns.md",
+        "plugins/harnex/templates/patterns/telemetry-kinds/telemetry-kinds.md",
+    ] {
+        let content = read(rel);
+        assert!(
+            content.contains("invocation_kind"),
+            "{rel} must tell the installer to wire `invocation_kind`, or the \
+             emit records into a ledger retirement never reads"
+        );
+        assert!(
+            content.contains(HARNESS_INVOCATION_KIND),
+            "{rel} no longer names the `{HARNESS_INVOCATION_KIND}` Kind"
+        );
+    }
 }
 
 #[test]

@@ -18,7 +18,7 @@ Deterministic, and none of it invents text:
 
 ```
 harnex lifecycle candidates    # observations past the instance + age thresholds
-harnex telemetry report        # hit counts; zero activity is a retirement signal
+harnex telemetry report        # per-Kind counts; never a retirement verdict
 harnex lifecycle retire        # Stale / NoConsumers / Silent verdicts
 ```
 

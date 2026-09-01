@@ -6,9 +6,10 @@
 //! violations all fail synchronously.
 //!
 //! [`TelemetryQuery::report`] aggregates per-Kind activity over
-//! configurable trailing windows. The report feeds retirement decisions
-//! (low / zero activity Kinds surface as silent candidates) and
-//! operator dashboards.
+//! configurable trailing windows, for operator dashboards. Retirement does
+//! not read it: a slug's silence is a per-slug question against the record
+//! its kind declares, which `lifecycle::retire` computes over
+//! [`TelemetryQuery::scan_events`].
 //!
 //! ## What this module refuses to do
 //!
