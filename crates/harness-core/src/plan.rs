@@ -499,7 +499,8 @@ fn section_of(text: &str, heading: &str) -> Section {
         let indent = line.len() - unindented.len();
 
         let at_heading = doc.heading_at(line_no);
-        let is_wanted = at_heading.is_some_and(|h| h.atx && h.level == 2 && h.text == heading);
+        let is_wanted =
+            at_heading.is_some_and(|h| h.top_level && h.atx && h.level == 2 && h.text == heading);
         match found_at {
             None => {
                 if is_wanted {
@@ -516,7 +517,7 @@ fn section_of(text: &str, heading: &str) -> Section {
                         ),
                     };
                 }
-                if at_heading.is_some_and(|h| h.atx && h.level <= 2) {
+                if at_heading.is_some_and(|h| h.top_level && h.atx && h.level <= 2) {
                     ended = true;
                     continue;
                 }
@@ -1992,6 +1993,31 @@ mod tests {
              - [Minor] real row <!-- inline [Critical] note -->",
         ));
         assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn a_heading_a_container_holds_neither_opens_nor_ends_the_section() {
+        // A quoted `## Next` under the real section ended it, and every row
+        // after the quote went unread; a quoted `## Outstanding issues` was
+        // read as the section itself; and a quoted copy of the real heading
+        // was a duplicate. Each is the container's heading, not the plan's.
+        for (label, body) in [
+            ("a quoted h2 mid-section", "- [Minor] a\n\n> ## Another\n\n- [Critical] after the quote"),
+            ("an h2 inside a list item", "- [Minor] a\n\n- note:\n\n  ## Nested\n\n- [Critical] after the item"),
+        ] {
+            let findings = audit(&plan(body));
+            assert!(
+                slugs(&findings).contains(&"plan-open-blocker"),
+                "{label}: the Critical after it went unread — {findings:#?}"
+            );
+        }
+        let quoted_only = "# t\n\n> ## Outstanding issues\n\n- [Critical] x\n";
+        assert_eq!(slugs(&audit(quoted_only)), ["plan-outstanding-missing"]);
+        let quoted_copy = plan("- [Minor] a\n\n> ## Outstanding issues");
+        assert!(
+            !slugs(&audit(&quoted_copy)).contains(&"plan-section-unreadable"),
+            "a quoted copy of the heading is not a second section"
+        );
     }
 
     #[test]

@@ -31,7 +31,8 @@ foundation = true
 # The rules here name the module that owns each fact, which is the whole of
 # Article IX, and a name is only worth more than prose while it still resolves.
 # `harnex check` reads `CLAUDE.md` and `.claude/rules/**/*.md` and holds every
-# marked claim — `[file: path/to/thing.rs:42]`, the line optional — to the tree.
+# marked claim to the tree; the grammar is spelled once, in
+# `plugins/harnex/templates/common/harness.toml`, and not again here.
 #
 # The subject is real: this is the check a generated harness now ships, and a
 # rule pointing at a module that was renamed is exactly the drift the retirement
