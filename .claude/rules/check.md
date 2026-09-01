@@ -33,6 +33,7 @@ Validator slugs (current):
 - `validate.skills`
 - `validate.agents`
 - `validate.output_styles`
+- `validate.routines`
 - `validate.settings`
 - `evidence`
 - `advisory`

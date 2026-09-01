@@ -84,3 +84,13 @@ files = [
   { template = "write-guard.md", destination = ".claude/rules/write-guard.md" },
   { template = "check-pre-write.sh", destination = "hooks/check-pre-write.sh" },
 ]
+
+[[pattern]]
+slug = "routines"
+analyze = ["first when/produces for each shipped routine", "the records directory produces paths land in", "SessionStart hook entry wiring session-routines.sh"]
+files = [
+  { template = "routines.md", destination = ".claude/rules/routines.md" },
+  { template = "review-stale-learnings.md", destination = ".claude/routines/review-stale-learnings.md" },
+  { template = "write-only-signal-census.md", destination = ".claude/routines/write-only-signal-census.md" },
+  { template = "session-routines.sh", destination = "hooks/session-routines.sh" },
+]

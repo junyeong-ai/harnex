@@ -291,6 +291,8 @@ enum Surface {
     Agent,
     /// A path-scoped rule.
     Rule,
+    /// A scheduled routine.
+    Routine,
     /// An output style. The oracle validates one; the classifier had no arm for
     /// it, so a pattern shipping one was rejected as unclassifiable.
     OutputStyle,
@@ -329,7 +331,8 @@ impl Surface {
     /// fail, since `**` and `*` had become the same thing.
     fn of(destination: &str) -> Option<Self> {
         use harness_core::validate::{
-            AgentValidator, OutputStyleValidator, RuleValidator, SkillValidator, SurfaceValidator,
+            AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SkillValidator,
+            SurfaceValidator,
         };
         if SkillValidator::covers(destination) {
             return Some(Self::Skill);
@@ -339,6 +342,9 @@ impl Surface {
         }
         if RuleValidator::covers(destination) {
             return Some(Self::Rule);
+        }
+        if RoutineValidator::covers(destination) {
+            return Some(Self::Routine);
         }
         if OutputStyleValidator::covers(destination) {
             return Some(Self::OutputStyle);
@@ -350,6 +356,7 @@ impl Surface {
             ["specs", "_template", f] if f.ends_with(".md") => Self::SpecTemplate,
             [".github", "pull_request_template.md"] => Self::OutsideClaudeCode,
             ["hooks", f] if f.ends_with(".sh") => Self::OutsideClaudeCode,
+
             ["hooks", "pre-commit.d", f] if f.ends_with(".sh") => Self::OutsideClaudeCode,
             _ => return None,
         })
@@ -359,7 +366,7 @@ impl Surface {
 #[test]
 fn every_pattern_surface_file_validates() {
     use harness_core::validate::{
-        AgentValidator, OutputStyleValidator, RuleValidator, SkillValidator,
+        AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SkillValidator,
     };
 
     let templates = patterns_dir().parent().unwrap().to_path_buf();
@@ -380,6 +387,9 @@ fn every_pattern_surface_file_validates() {
     let output_styles = validate
         .output_styles
         .expect("scaffolded config declares validate.output_styles");
+    let routines = validate
+        .routines
+        .expect("scaffolded config declares validate.routines");
 
     let mut seen: BTreeSet<&'static str> = BTreeSet::new();
     for pattern in &load_manifest().pattern {
@@ -410,6 +420,10 @@ fn every_pattern_surface_file_validates() {
                 Surface::Rule => {
                     seen.insert("rule");
                     RuleValidator::new(&rules).validate_text(&body, &landed)
+                }
+                Surface::Routine => {
+                    seen.insert("routine");
+                    RoutineValidator::new(&routines).validate_text(&body, &landed)
                 }
                 Surface::OutputStyle => {
                     seen.insert("output-style");
@@ -450,7 +464,7 @@ fn every_pattern_surface_file_validates() {
         !seen.is_empty(),
         "the pattern library must exercise at least one validator surface"
     );
-    let known: BTreeSet<&str> = ["agent", "output-style", "rule", "skill"]
+    let known: BTreeSet<&str> = ["agent", "output-style", "routine", "rule", "skill"]
         .into_iter()
         .collect();
     assert!(

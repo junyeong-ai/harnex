@@ -40,6 +40,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::codegen` | sentinel-block source → target sync |
 | `harness-core::plan` | spec-workflow review grammar — finding rows, dispositions, decision-log convergence — computed by `plan audit` |
 | `harness-core::policy` | permission rule grammar + profiles + version pins |
+| `harness-core::routines` | scheduled harness tasks — closed frontmatter grammar + schedule states |
 | `harness-core::scaffold` | composition manifest (`scaffold.toml`) + tier model |
 | `harness-core::spec` | measurement stamps for the Claude Code vocabularies |
 | `harness-core::validate` | rule / skill / agent / output-style / settings / commit-msg checks |
