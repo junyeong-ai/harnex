@@ -60,7 +60,10 @@ One home because two would drift: the hook-wiring auditor and the
 scaffold-manifest test ask the same question of the same grammar.
 
 StopAuditor handles the Stop event in three phases:
-1. `has_changes_check` — exit 0 means no changes, allow stop.
+1. `has_changes_check` — exit 0 means no changes, allow stop. Required
+   whenever the section is declared: phase 3 spends a model call, so the
+   probe that decides when is asked for rather than defaulted, and an
+   unstated one is refused at load instead of read as "there is work".
 2. Bump per-session retry counter via `path_guard::write_atomic`.
    Exceeding `max_retries` escalates with a Block reason.
 3. Spawn the configured critique skill via `claude --print`. Parse the

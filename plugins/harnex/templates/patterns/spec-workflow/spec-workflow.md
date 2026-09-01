@@ -116,6 +116,14 @@ plan: an open Critical/Blocker row, a row deleted, reworded or downgraded
 instead of gaining its terminal disposition, a decision log whose
 Critical+Blocker count will not fall, and a committed decision bullet edited
 instead of appended each block the commit — the grammar the gates write is
-computed there, never trusted to narration. For a gate before the session ends
-rather than at the commit, `harnex guard stop-audit` (`[guard.stop_audit]` in
-`harness.toml`) adds a bounded fresh-context critique at Stop.
+computed there, never trusted to narration.
+
+For a gate before the session ends rather than at the commit,
+`harnex guard stop-audit` (`[guard.stop_audit]` in `harness.toml`) adds a
+bounded fresh-context critique at Stop. It spawns a model call, so
+`has_changes_check` is required — the section is declared with the command
+that says whether this session left work behind, and fires only then. Reach
+for it where the commit-time gates do not already compute what a critique
+would say; the scaffold's Stop hook already reports uncommitted work, and a
+critique that repeats a gate is paid every session for a verdict the commit
+was going to give anyway.
