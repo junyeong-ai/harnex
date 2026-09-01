@@ -1,9 +1,10 @@
 //! Replacement for fragile `_runner.sh` shell wrappers.
 //!
-//! Resolves the project root via `git rev-parse --show-toplevel`, sets it
-//! as cwd, then spawns the inner command. Returns the inner command's
-//! exit code. If git probe fails, returns [`HookRunOutcome::SkippedFailOpen`]
-//! with a stderr advisory — exactly the discipline of the shell `_runner.sh`.
+//! Resolves the project root — from `CLAUDE_PROJECT_DIR` where a runtime set
+//! it, otherwise by probing git from the working directory — sets it as cwd,
+//! then spawns the inner command. Returns the inner command's exit code. If
+//! neither answers, returns [`HookRunOutcome::SkippedFailOpen`] with a stderr
+//! advisory — exactly the discipline of the shell `_runner.sh`.
 //!
 //! Discovery and spawning are separate entry points, as everywhere else in
 //! this crate a working directory is a parameter. Fused, the exit-code
@@ -19,6 +20,7 @@ use std::process::Command;
 use serde::Serialize;
 
 use crate::error::{Error, Result};
+use crate::guard::project_dir::PROJECT_DIR_ENV;
 
 #[derive(Debug, Clone, Copy, Serialize, schemars::JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
@@ -97,7 +99,20 @@ impl HookRunner {
         HookRunOutcome::SkippedFailOpen
     }
 
+    /// The runtime states the project it launched this hook for, and that
+    /// statement outranks anything read from the working directory: Claude Code
+    /// fires hooks from wherever the session is, so a git probe there answers
+    /// about that directory instead — inside a submodule or any nested checkout
+    /// it names the inner repository, and the verifier runs against the wrong
+    /// tree or not at all. The probe remains for every other caller, where
+    /// there is no runtime to ask.
     fn resolve_root() -> Option<PathBuf> {
+        if let Some(dir) = std::env::var_os(PROJECT_DIR_ENV) {
+            let root = PathBuf::from(dir);
+            if root.is_dir() {
+                return Some(root);
+            }
+        }
         let cwd = std::env::current_dir().ok()?;
         Self::resolve_root_from(&cwd)
     }
@@ -125,6 +140,36 @@ impl HookRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The nested-checkout case the probe alone gets wrong: a hook fired from
+    /// inside a submodule sits in a working tree that is not the project's, so
+    /// git answers the inner repository. `run_at` takes the root as a
+    /// parameter precisely so the caller's answer is the one used — this pins
+    /// that the probe and the runtime disagree there, which is why
+    /// `resolve_root` asks the runtime first.
+    #[cfg(unix)]
+    #[test]
+    fn the_probe_answers_the_inner_repository_from_inside_a_nested_checkout() {
+        let outer = tempfile::tempdir().expect("tempdir");
+        let inner = outer.path().join("vendor/dep");
+        std::fs::create_dir_all(&inner).expect("mkdir");
+        for dir in [outer.path(), inner.as_path()] {
+            assert!(
+                Command::new("git")
+                    .args(["init", "-q"])
+                    .current_dir(dir)
+                    .status()
+                    .expect("git init")
+                    .success()
+            );
+        }
+        let probed = HookRunner::resolve_root_from(&inner).expect("probe answers");
+        assert!(
+            probed.ends_with("vendor/dep"),
+            "the probe names the inner repository, not the project: {}",
+            probed.display()
+        );
+    }
 
     /// A directory that does not exist cannot be inside a working tree, and the
     /// probe cannot even start there — the branch a hook takes on env drift,

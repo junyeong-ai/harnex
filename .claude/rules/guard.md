@@ -15,9 +15,12 @@ hook-event surface evolves upstream. Common fields are extracted; the
 rest is accessible via `HookEvent::field(key)`.
 
 HookRunner replaces fragile `_runner.sh` / `_stop_runner.sh` patterns.
-Resolves project root via `git rev-parse --show-toplevel`. If unresolved,
-returns `SkippedFailOpen` and emits `[harness-skipped: …]` to stderr —
-never penalizes the user for env drift.
+Resolves the project root from `PROJECT_DIR_ENV` where a runtime set it,
+falling back to `git rev-parse --show-toplevel` for callers with no runtime to
+ask. The order is load-bearing: hooks fire from wherever the session is, so a
+probe of that directory answers about it — inside a submodule it names the
+inner repository. If neither answers, returns `SkippedFailOpen` and emits
+`[harness-skipped: …]` to stderr — never penalizes the user for env drift.
 
 Variants:
 - [`HookRunner::run`] (`harnex guard hook-run`) — propagates the inner
