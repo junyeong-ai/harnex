@@ -377,6 +377,50 @@ mod tests {
     }
 
     #[test]
+    fn refuses_a_bare_repository_named_dot_git_which_no_name_test_tells_from_a_checkout() {
+        // The bareness is in the config, not the name — a bare repo directory
+        // literally named `.git` must still be refused.
+        let dir = tempfile::tempdir().unwrap();
+        let bare = dir.path().join("dotfiles").join(".git");
+        let worktree = dir.path().join("wt");
+        let gitdir = bare.join("worktrees").join("wt");
+        write(&gitdir.join("commondir"), "../..\n");
+        write(&bare.join("config"), "[core]\n\tbare = true\n");
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .unwrap();
+        assert_eq!(canonical_repo_root(&worktree), None);
+    }
+
+    #[test]
+    fn refuses_a_common_directory_that_is_a_pointer_file_not_a_git_directory() {
+        // `commondir` leads to a `.git` that is itself a pointer file, holding
+        // no `config` to read — the bareness is unanswerable, so it refuses.
+        let dir = tempfile::tempdir().unwrap();
+        let authority = dir.path().join("authority");
+        let gitdir = dir.path().join("repo.git").join("worktrees").join("wt");
+        let worktree = dir.path().join("wt");
+        std::fs::create_dir_all(&gitdir).unwrap();
+        std::fs::create_dir_all(&authority).unwrap();
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(authority.join(".git"), "gitdir: /elsewhere\n").unwrap();
+        std::fs::write(
+            gitdir.join("commondir"),
+            authority.join(".git").to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .unwrap();
+        assert_eq!(canonical_repo_root(&worktree), None);
+    }
+
+    #[test]
     fn reads_bare_the_way_git_does_every_true_spelling_and_only_in_its_own_section() {
         let dir = tempfile::tempdir().unwrap();
         let repo = dir.path().join("repo.git");
