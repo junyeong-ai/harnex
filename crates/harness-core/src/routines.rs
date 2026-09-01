@@ -219,21 +219,35 @@ pub struct RoutineReport {
 /// is broken is an error here — the validator names the defect, and a query
 /// that skipped it silently would report a schedule with a hole.
 pub fn states(root: &Path, today: jiff::civil::Date) -> Result<Vec<RoutineReport>> {
-    use crate::validate::{RoutineValidator, SurfaceValidator};
-    let pattern = crate::glob_root::rooted(root, <RoutineValidator as SurfaceValidator>::GLOB)?;
+    // A directory walk rather than a glob: the pinned glob crate silently
+    // skips a non-UTF-8 filename, which here would be a schedule hole
+    // nothing reports. The layout is one flat directory of `.md` files.
+    let dir = root.join(".claude/routines");
     let mut out = Vec::new();
-    let mut paths: Vec<_> = Vec::new();
-    for entry in glob::glob(&pattern).map_err(|e| Error::ConfigInvalid {
-        message: format!("routines glob: {e}"),
-        location: None,
-    })? {
-        paths.push(entry.map_err(|e| {
-            let path = e.path().to_path_buf();
-            Error::IoFailure {
-                path,
-                source: e.into(),
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(&dir).map_err(|e| Error::IoFailure {
+            path: dir.clone(),
+            source: e,
+        })? {
+            let entry = entry.map_err(|e| Error::IoFailure {
+                path: dir.clone(),
+                source: e,
+            })?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
             }
-        })?);
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                return Err(Error::ConfigInvalid {
+                    message: format!("routine file name is not UTF-8: {}", path.display()),
+                    location: None,
+                });
+            };
+            if name.ends_with(".md") {
+                paths.push(path);
+            }
+        }
     }
     paths.sort();
     for path in paths {
@@ -248,10 +262,7 @@ pub fn states(root: &Path, today: jiff::civil::Date) -> Result<Vec<RoutineReport
         let slug = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .ok_or_else(|| Error::ConfigInvalid {
-                message: format!("routine file name is not UTF-8: {}", path.display()),
-                location: None,
-            })?
+            .expect("collected above as UTF-8 .md names")
             .to_string();
         out.push(RoutineReport {
             slug,
@@ -305,6 +316,11 @@ mod tests {
             ),
             (
                 "when: 2026-08-01\nproduces: out/q3.md\n",
+                RoutineState::Overdue,
+            ),
+            // Actionable on the due day itself.
+            (
+                "when: 2026-09-01\nproduces: out/q4.md\n",
                 RoutineState::Overdue,
             ),
             ("", RoutineState::Unscheduled),
