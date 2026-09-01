@@ -4,7 +4,6 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 
-use harness_core::config::Config;
 use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::evidence::EvidenceVerifier;
@@ -80,11 +79,8 @@ fn record<W: Write>(id: &str, payload: Option<PathBuf>, out: &mut W) -> Result<E
 }
 
 fn verify<W: Write>(paths: Vec<PathBuf>, out: &mut W) -> Result<ExitCode> {
-    let working_dir = std::env::current_dir().map_err(|e| Error::IoFailure {
-        path: PathBuf::from("."),
-        source: e,
-    })?;
-    let (config, _config_path) = Config::load(&working_dir)?;
+    let (config, config_path, working_dir) = super::load_config()?;
+    let root = super::config_dir(&config_path, &working_dir);
     let evidence_cfg = config
         .evidence
         .as_ref()
@@ -96,7 +92,7 @@ fn verify<W: Write>(paths: Vec<PathBuf>, out: &mut W) -> Result<ExitCode> {
 
     let mut findings = Vec::new();
     for p in paths {
-        let mut fs = verifier.verify_file(&p, &working_dir)?;
+        let mut fs = verifier.verify_file(&p, &root)?;
         findings.append(&mut fs);
     }
 
