@@ -29,7 +29,10 @@ use harness_core::evidence::{AnchorKind, ClaimKind, EvidenceVerifier, parse_clai
 /// chance to teach a form the parser does not read, and `SKILL.md` names the
 /// concept and points at the template instead.
 const GRAMMAR: &[(&str, &[AnchorKind])] = &[
-    ("README.md", &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section]),
+    (
+        "README.md",
+        &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section],
+    ),
     (
         "plugins/harnex/templates/common/harness.toml",
         &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section],
@@ -177,7 +180,12 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let tracked: Vec<String> = common::tracked(&root, ".")
         .iter()
-        .map(|path| path.strip_prefix(&root).unwrap().to_string_lossy().into_owned())
+        .map(|path| {
+            path.strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
 
     let carrying: Vec<&str> = tracked
@@ -189,7 +197,10 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
                 .unwrap_or(false)
         })
         .collect();
-    assert!(carrying.len() > 5, "the marker was found almost nowhere: {carrying:?}");
+    assert!(
+        carrying.len() > 5,
+        "the marker was found almost nowhere: {carrying:?}"
+    );
 
     let accounted = |path: &str| {
         // Resolved by `harnex check` over this repository.
@@ -253,8 +264,13 @@ fn nested_claude_md_files_resolve_against_the_repository() {
         // claim the repository cannot carry yields exactly that finding — so
         // an empty result above is a verdict, not a verifier that ran over
         // nothing.
-        let control = verdict(&format!("{content}\n\nProbe: [file: no/such/probe.rs:1].\n"));
+        let control = verdict(&format!(
+            "{content}\n\nProbe: [file: no/such/probe.rs:1].\n"
+        ));
         assert_eq!(control.len(), 1, "{}: {control:#?}", path.display());
-        assert!(control[0].message.contains("no/such/probe.rs"), "{control:#?}");
+        assert!(
+            control[0].message.contains("no/such/probe.rs"),
+            "{control:#?}"
+        );
     }
 }

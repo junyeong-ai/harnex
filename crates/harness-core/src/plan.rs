@@ -2010,8 +2010,14 @@ mod tests {
                 "a trailing comment in the heading",
                 "## Outstanding issues <!-- one row each -->\n\n- [Blocker] b\n",
             ),
-            ("a trailing tab in the heading", "## Outstanding issues\t\n\n- [Blocker] b\n"),
-            ("a row after a comment closes", "## Outstanding issues\n\n<!-- note --> - [Blocker] b\n"),
+            (
+                "a trailing tab in the heading",
+                "## Outstanding issues\t\n\n- [Blocker] b\n",
+            ),
+            (
+                "a row after a comment closes",
+                "## Outstanding issues\n\n<!-- note --> - [Blocker] b\n",
+            ),
         ] {
             let findings = audit(text);
             assert!(
@@ -2028,8 +2034,14 @@ mod tests {
         // read as the section itself; and a quoted copy of the real heading
         // was a duplicate. Each is the container's heading, not the plan's.
         for (label, body) in [
-            ("a quoted h2 mid-section", "- [Minor] a\n\n> ## Another\n\n- [Critical] after the quote"),
-            ("an h2 inside a list item", "- [Minor] a\n\n- note:\n\n  ## Nested\n\n- [Critical] after the item"),
+            (
+                "a quoted h2 mid-section",
+                "- [Minor] a\n\n> ## Another\n\n- [Critical] after the quote",
+            ),
+            (
+                "an h2 inside a list item",
+                "- [Minor] a\n\n- note:\n\n  ## Nested\n\n- [Critical] after the item",
+            ),
         ] {
             let findings = audit(&plan(body));
             assert!(
@@ -2053,7 +2065,10 @@ mod tests {
         // second each dropped a Critical with no finding at all — the one
         // outcome the wide net exists to make impossible.
         for (label, body) in [
-            ("an underline below a paragraph", "- [Minor] first\n\nSome note\n---\n\n- [Critical] second"),
+            (
+                "an underline below a paragraph",
+                "- [Minor] first\n\nSome note\n---\n\n- [Critical] second",
+            ),
             (
                 "a row inside raw HTML",
                 "- [Minor] first\n\n<details>\n<summary>Owners</summary>\n\n- [Critical] second\n\n</details>",
