@@ -93,11 +93,21 @@ fn data(dir: &Path, args: &[&str]) -> serde_json::Value {
 /// one.
 fn instructed_emit(fill: &dyn Fn(&str) -> String) -> Vec<String> {
     let wrapup = template(WRAPUP);
-    let line = wrapup
+    let lines: Vec<&str> = wrapup
         .lines()
         .map(str::trim)
-        .find(|line| line.starts_with("harnex lifecycle observe"))
-        .expect("wrapup.md instructs the emit as a runnable command line");
+        .filter(|line| line.starts_with("harnex lifecycle observe"))
+        .collect();
+    // Exactly one, so this guard cannot check the first and leave a second
+    // unrun — the reader would follow either.
+    assert_eq!(
+        lines.len(),
+        1,
+        "wrapup.md must instruct the emit as exactly one runnable command line, \
+         and it carries {}",
+        lines.len()
+    );
+    let line = lines[0];
 
     let mut argv = Vec::new();
     let mut token = String::new();
