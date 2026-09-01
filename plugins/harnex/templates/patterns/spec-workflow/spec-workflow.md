@@ -98,7 +98,7 @@ spec is not an exception to that, it is the clearest case of it.
 ## Where the procedure lives
 
 Running a spec is a workflow, so it is a skill: `.claude/skills/spec/`. The
-orchestrator derives the phase, fires four gate events, and records each
+orchestrator derives the phase, fires five gate events, and records each
 decision. This file is the part that is guidance rather than procedure — when
 to reach for a spec at all, what the directory holds, and what the lifecycle
 words mean.

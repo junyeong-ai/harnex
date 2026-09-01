@@ -136,23 +136,23 @@ fn the_gates_example_line_parses_under_the_shipped_grammar() {
         .expect("gates.md carries an example decision bullet");
     let line = harness_core::plan::parse_decision(example)
         .unwrap_or_else(|| panic!("the gates.md example does not parse: {example}"));
-    assert!(
-        harness_core::plan::REVIEW_CLASS_GATES.contains(&line.gate.as_str()),
-        "the example fires a review-class gate"
-    );
-    assert!(
-        line.counts.is_some(),
-        "the example carries the counts the prose demands of a review-class firing"
+    let class = harness_core::plan::gate_class(&line.gate)
+        .expect("the example fires a gate the counts contract binds");
+    assert_eq!(
+        line.counts.map(|c| c.class()),
+        Some(class),
+        "the example carries the counts its gate's class owes"
     );
 }
 
-/// Both review-class gates the parser binds the counts contract to are the
-/// gates gates.md documents — the constant and the doc name one set.
+/// Every counted gate the parser holds to the contract is one gates.md
+/// documents, in the class the constant declares — the constant and the doc
+/// name one set, and an example in the wrong token would teach the wrong one.
 #[test]
-fn the_review_class_gates_are_the_ones_the_doc_documents() {
+fn the_counted_gates_are_the_ones_the_doc_documents() {
     let text = std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
         .expect("read gates.md");
-    for gate in harness_core::plan::REVIEW_CLASS_GATES {
+    for (gate, _) in harness_core::plan::COUNTED_GATES {
         assert!(
             text.lines()
                 .any(|l| l.trim_end().starts_with(&format!("## {gate} "))),

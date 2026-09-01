@@ -13,10 +13,10 @@ governs:
 
 `harness_core::plan` owns the grammar the spec-workflow templates write:
 finding rows under `## Outstanding issues`, decision bullets under
-`## Decision log`, the `<n>C/<n>B/<n>M/<n>m` counts, terminal dispositions
+`## Decision log`, the per-class counts tokens, terminal dispositions
 (`Disposition::ALL`), and the `acknowledged:` escalation hatch. The template
 prose is a projection of these constants — `pattern_manifest_sync` holds the
-disposition spelling, the gates.md example line, and `REVIEW_CLASS_GATES`
+disposition spelling, the gates.md example line, and `COUNTED_GATES`
 in lock-step. Change the grammar in the module and let the failing tests name
 every prose site.
 
@@ -26,8 +26,13 @@ every prose site.
 - No git in the module: the baseline is text the caller supplies. The shipped
   `check-plan.sh` arm pipes `git show` into it, and `plan_template_sync`
   (harness-cli) holds the flags that arm spells to the clap surface.
-- Gate names stay open. Only the two `REVIEW_CLASS_GATES` owe counts; any
-  gate that writes counts opts into the convergence comparison.
+- Gate names stay open. Only `COUNTED_GATES` owe counts, each in its declared
+  `GateClass`: review gates count findings by rank, `acceptance` counts
+  criteria by outcome. One convergence rule reads `GateCounts::blocking` and
+  never the class — unmeasured blocks an acceptance approval exactly as a
+  Blocker blocks a review's, because a criterion nothing answered is not one
+  that passed. A firing carrying the other class's token is its own finding:
+  the wrong token parses and reports a total the gate does not owe.
 - A finding-shaped list item that does not parse is a Major finding, never a
   silently skipped row. Keep the detector wider than the parser on every axis
   (marker, case, decoration) — narrowing it restores the silence.

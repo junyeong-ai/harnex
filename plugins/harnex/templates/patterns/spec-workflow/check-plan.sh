@@ -4,7 +4,9 @@
 # For every spec whose plan OR spec is staged, `harnex plan audit` holds what
 # is being committed to the contract the gates wrote: no open Critical/Blocker
 # row, no row deleted, reworded or downgraded instead of gaining its terminal
-# disposition, and a decision log that only ever appends. The staged content
+# disposition, no approval recorded over what its gate still counts against it
+# — an open Blocker, or an acceptance criterion nothing measured — and a
+# decision log that only ever appends. The staged content
 # is what is judged — the worktree may be further along — and HEAD is the
 # baseline both append-only contracts are held against. Paths are read
 # NUL-delimited with renames split into delete + add: a rename that also

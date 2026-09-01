@@ -1,5 +1,5 @@
 ---
-description: "Spec-driven orchestrator. Runs a change through specify / plan / implement / wrapup, pausing at four gate events and recording each decision. Phase is derived from which artifacts exist, never stored — so a fresh session re-derives where the work stands from disk alone."
+description: "Spec-driven orchestrator. Runs a change through specify / plan / implement / wrapup, pausing at five gate events and recording each decision. Phase is derived from which artifacts exist, never stored — so a fresh session re-derives where the work stands from disk alone."
 when_to_use: "Invoke when a change needs a shape approved before it lands, or will outlive one context window and its state has to live somewhere a later session can read. Also for \"resume\" to pick up an in-flight spec, and to run one phase in isolation. Skip when the work lands green in one pass and the commit body carries everything a later reader needs."
 argument-hint: "<what to build> | resume [slug] | <slug> phase=<name>"
 disable-model-invocation: true
@@ -79,11 +79,14 @@ deploy surface --> fires the `design_review` gate before any code.
 
 **implement** — the tasks, in order, each landing green. Tag every commit that
 leaves the spec in flight with its slug so `git log specs/<slug>/` and the
-commit trail agree. The `review` gate fires at the end; it is a gate event, not
-a phase.
+commit trail agree. Two gates fire at the end, in order — `review` on the
+diff, then `acceptance` on the criteria — and both are gate events, not
+phases.
 
 **wrapup** — write `wrapup.md`: what the acceptance criteria actually got,
-what was observed on the way, and what is left. Then retire the spec.
+what was observed on the way, and what is left. The `acceptance` gate has
+already answered the first of those; wrapup records the durable half rather
+than re-deciding it. Then retire the spec.
 
 ## Retiring a spec
 
@@ -102,13 +105,13 @@ A terminal spec is never edited again, and never re-enters a terminal state.
 
 ## Never
 
-- **Never ask outside a gate.** The four gate events, the specify ambiguity
+- **Never ask outside a gate.** The five gate events, the specify ambiguity
   scan, and the concurrency check are the sanctioned moments. One more is
   allowed in plan: a fork that is genuinely the user's — several valid
   approaches, preference-dependent, expensive to reverse, and not answerable
   from the codebase. Most alternatives are not that. Explore and decide them.
 - **Never present a bare menu.** Lead with a recommendation and a one-line
   reason. Ask interdependent questions one at a time.
-- **Never write a decision token outside the four** `gates.md` defines.
+- **Never write a decision token outside the four tokens** `gates.md` defines.
 - **Never carry state in the conversation.** Everything a resume needs is on
   disk before the window turns over.
