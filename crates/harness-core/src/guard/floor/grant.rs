@@ -404,6 +404,45 @@ mod tests {
     }
 
     #[test]
+    fn a_subsection_header_does_not_leak_into_the_core_bare_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo.git");
+        let worktree = dir.path().join("wt");
+        let gitdir = repo.join("worktrees").join("wt");
+        write(&gitdir.join("commondir"), "../..\n");
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .unwrap();
+        // A `bare` under a foreign section/subsection is not `core.bare`; the
+        // real `[core] bare = false` still governs.
+        write(
+            &repo.join("config"),
+            "[remote \"origin\"]\n\tbare = true\n[core]\n\tbare = false\n",
+        );
+        assert_eq!(canonical_repo_root(&worktree).unwrap(), dir.path());
+    }
+
+    #[test]
+    fn an_empty_bare_value_reads_true_as_git_does() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo.git");
+        let worktree = dir.path().join("wt");
+        let gitdir = repo.join("worktrees").join("wt");
+        write(&gitdir.join("commondir"), "../..\n");
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .unwrap();
+        write(&repo.join("config"), "[core]\n\tbare =\n");
+        assert_eq!(canonical_repo_root(&worktree), None);
+    }
+
+    #[test]
     fn honours_a_worktree_config_bare_when_the_extension_is_on() {
         let dir = tempfile::tempdir().unwrap();
         let repo = dir.path().join("repo");
