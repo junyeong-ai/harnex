@@ -240,6 +240,7 @@
           "default": false
         }
       },
+      "additionalProperties": false,
       "required": [
         "id",
         "inputs"
