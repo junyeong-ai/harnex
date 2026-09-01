@@ -810,12 +810,11 @@
           "default": 3
         },
         "has_changes_check": {
-          "description": "Shell command + args that returns exit 0 when there are NO changes.\nStop-audit spawns critique only when this command exits non-zero.",
+          "description": "The shell predicate that says whether this session left work behind:\nexit 0 for no changes, exit 1 for changes, and anything else a probe\nthat failed rather than answered. Required, because declaring this\nsection commits to spawning a critique and this is what decides when —\ne.g. [\"git\", \"diff\", \"--quiet\"].",
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "default": []
+          }
         },
         "retry_ledger_dir": {
           "description": "Directory for the per-session retry counter ledger.",
@@ -824,7 +823,8 @@
         }
       },
       "required": [
-        "critique_skill"
+        "critique_skill",
+        "has_changes_check"
       ]
     },
     "FloorConfig": {

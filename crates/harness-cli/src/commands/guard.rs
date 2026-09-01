@@ -192,40 +192,70 @@ fn hook_stop<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<Ex
 }
 
 fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode> {
-    let (config, config_path, working_dir) = load_config()?;
-    let sa_cfg = config
-        .guard
-        .as_ref()
-        .and_then(|g| g.stop_audit.as_ref())
-        .ok_or_else(|| Error::ConfigInvalid {
-            message: "no [guard.stop_audit] section in harness.toml".into(),
-            location: None,
+    // Exit 2 here is the Block, so it is spelled only for a verdict. Every
+    // reason the audit cannot reach one — an unloadable config, an undeclared
+    // section, hook input it cannot read — allows the stop and says why on the
+    // Stop event's advisory channel. Propagating those as errors would exit 2
+    // through the generic path, which the runtime reads as "keep going": the
+    // same failure at every Stop, past the retry counter, with the reason on a
+    // stdout the Stop event ignores.
+    fn skip<W: Write>(out: &mut W, reason: &str) -> Result<ExitCode> {
+        let body = serde_json::json!({
+            "systemMessage": format!("[stop-audit skipped: {reason}]"),
+            "suppressOutput": true,
+        });
+        writeln!(out, "{body}").map_err(|e| Error::IoFailure {
+            path: PathBuf::from("(stdout)"),
+            source: e,
         })?;
+        Ok(ExitCode::SUCCESS)
+    }
+
+    let (config, config_path, working_dir) = match load_config() {
+        Ok(loaded) => loaded,
+        Err(e) => return skip(out, &e.to_string()),
+    };
+    let Some(sa_cfg) = config.guard.as_ref().and_then(|g| g.stop_audit.as_ref()) else {
+        return skip(
+            out,
+            &format!(
+                "no [guard.stop_audit] section in {} — declare it or remove the Stop wiring",
+                config_path.display()
+            ),
+        );
+    };
     let root = config_dir(&config_path, &working_dir);
 
     let session_id = match session {
         Some(s) => s,
         None => {
             let mut buf = String::new();
-            std::io::stdin()
-                .read_to_string(&mut buf)
-                .map_err(|e| Error::IoFailure {
-                    path: PathBuf::from("(stdin)"),
-                    source: e,
-                })?;
-            HookEvent::from_stdin_json(&buf)?.session_id
+            if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
+                return skip(out, &format!("stdin unreadable: {e}"));
+            }
+            match HookEvent::from_stdin_json(&buf) {
+                Ok(event) => event.session_id,
+                Err(e) => return skip(out, &format!("hook stdin json: {e}")),
+            }
         }
     };
 
-    let auditor = StopAuditor::new(sa_cfg, &root, session_id);
-    let decision = auditor.run()?;
-    // Stop-hook contract: exit 2 prevents the stop and forces continuation;
-    // exit 1 would be non-blocking (the Block would have no effect). The
-    // bounded retry counter inside StopAuditor keeps this from looping.
-    let exit = match decision {
-        StopDecision::Allow => ExitCode::SUCCESS,
-        StopDecision::Block { .. } => ExitCode::from(2),
+    let decision = match StopAuditor::new(sa_cfg, &root, session_id).run() {
+        Ok(decision) => decision,
+        Err(e) => return skip(out, &e.to_string()),
     };
-    write_envelope_success(out, decision)?;
-    Ok(exit)
+    match decision {
+        StopDecision::Skip { reason } => skip(out, &reason),
+        StopDecision::Allow => {
+            write_envelope_success(out, decision)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        // Stop-hook contract: exit 2 prevents the stop and forces continuation;
+        // exit 1 would be non-blocking (the Block would have no effect). The
+        // bounded retry counter inside StopAuditor keeps this from looping.
+        StopDecision::Block { .. } => {
+            write_envelope_success(out, decision)?;
+            Ok(ExitCode::from(2))
+        }
+    }
 }

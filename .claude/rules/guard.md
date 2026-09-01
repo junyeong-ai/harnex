@@ -60,10 +60,13 @@ One home because two would drift: the hook-wiring auditor and the
 scaffold-manifest test ask the same question of the same grammar.
 
 StopAuditor handles the Stop event in three phases:
-1. `has_changes_check` — exit 0 means no changes, allow stop. Required
-   whenever the section is declared: phase 3 spends a model call, so the
-   probe that decides when is asked for rather than defaulted, and an
-   unstated one is refused at load instead of read as "there is work".
+1. `has_changes_check` — a shell predicate: exit 0 means no changes and
+   allows the stop, exit 1 means there is work. Required whenever the
+   section is declared, because phase 3 spends a model call, so the probe
+   that decides when is asked for rather than defaulted and an unstated
+   one is refused at load. Any other exit, a signal, or a spawn failure is
+   the probe failing rather than answering — `Skip`, never `Present`, which
+   would buy a critique on a command that never ran.
 2. Bump per-session retry counter via `path_guard::write_atomic`.
    Exceeding `max_retries` escalates with a Block reason.
 3. Spawn the configured critique skill via `claude --print`. Parse the
@@ -80,6 +83,14 @@ sole sanctioned exception to Article II (where exit 2 = runtime failure).
 Per the Claude Code Stop-hook contract, exit 2 prevents the stop and
 forces continuation; exit 1 would be non-blocking. This is intentional;
 do not "normalize" it to exit 1. The envelope is still emitted on stdout.
+
+Because exit 2 is that verdict, nothing else may reach it. Every reason the
+audit cannot produce one — an unloadable config, an undeclared section, hook
+input it cannot read, a probe that did not answer — is a `Skip`: exit 0 with
+the reason on `systemMessage`, the same direction the floor auditor takes.
+Propagating them as errors exits 2 through the generic path, which the
+runtime reads as a Block that no retry counter bounds, holding the session
+open at every Stop with its reason on a stdout the Stop event ignores.
 
 FloorAuditor (`guard::floor`, gated on `[guard.floor]`) handles PreToolUse
 for Bash and Edit|Write|MultiEdit: the enforcement-surface freeze plus the

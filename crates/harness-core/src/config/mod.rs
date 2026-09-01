@@ -552,9 +552,11 @@ pub struct StopAuditConfig {
     pub critique_skill: String,
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
-    /// Shell command + args that returns exit 0 when there are NO changes.
-    /// Stop-audit spawns critique only when this command exits non-zero.
-    #[serde(default)]
+    /// The shell predicate that says whether this session left work behind:
+    /// exit 0 for no changes, exit 1 for changes, and anything else a probe
+    /// that failed rather than answered. Required, because declaring this
+    /// section commits to spawning a critique and this is what decides when —
+    /// e.g. ["git", "diff", "--quiet"].
     pub has_changes_check: Vec<String>,
     /// Directory for the per-session retry counter ledger.
     #[serde(default = "default_audit_retry_dir")]
