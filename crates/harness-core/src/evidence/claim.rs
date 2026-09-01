@@ -123,11 +123,15 @@ fn file_claim_bodies(line: &str) -> Vec<&str> {
 
 /// Split a claim body into its path and the anchor it names.
 ///
-/// A section separator wins over a line: a path does not carry one and a
-/// heading may, so the leftmost splits and the heading is whatever follows.
+/// [`SECTION_SEPARATOR`] is reserved inside a marker the way `[file:` and `]`
+/// are: a body holding one names a section, leftmost, and the heading is
+/// everything after it — which is why a heading may carry a separator of its
+/// own and a path may not. A path spelled with one reaches the verifier as a
+/// section claim and fails as a missing file, loudly and in one place.
+///
 /// Otherwise a trailing `:<digits>` is the line, which leaves a path free to
-/// hold a colon of its own — a Windows drive letter reaches the verifier
-/// intact. An empty path is not a claim: `[file: ]` says nothing to check.
+/// hold a colon — a Windows drive letter reaches the verifier intact. An
+/// empty path is not a claim: `[file: ]` says nothing to check.
 fn split_file_claim(body: &str) -> Option<(&str, Anchor)> {
     if let Some((path, heading)) = body.split_once(SECTION_SEPARATOR) {
         let (path, heading) = (path.trim_end(), heading.trim());
@@ -326,6 +330,14 @@ mod tests {
                 "See [file: docs/g.md § Step 1:2].",
                 "docs/g.md",
                 Anchor::Section("Step 1:2".into()),
+            ),
+            // And the same rule the other way: the separator is reserved, so
+            // a path spelled with one is read as a section and fails as a
+            // missing file rather than resolving to something else.
+            (
+                "See [file: docs/Policy § 4.md:12].",
+                "docs/Policy",
+                Anchor::Section("4.md:12".into()),
             ),
         ] {
             assert_eq!(
