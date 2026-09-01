@@ -1235,8 +1235,10 @@ impl Config {
                         location: None,
                     });
                 }
-                // Matching is case-insensitive, so uniqueness is too.
-                let lower = entry.to_lowercase();
+                // Matching is case-insensitive, so uniqueness is too; and the
+                // built-in comparison is against the file, not its optional
+                // trailing slash, so `harness.toml/` cannot restate it either.
+                let lower = literal.to_lowercase();
                 if crate::guard::floor::BUILT_IN_PROTECTED.contains(&lower.as_str()) {
                     return Err(Error::ConfigInvalid {
                         message: format!(
@@ -1490,6 +1492,8 @@ mod tests {
     fn rejects_a_floor_entry_restating_the_built_in_set_or_another_entry() {
         for paths in [
             r#"["harness.toml"]"#,
+            r#"["harness.toml/"]"#,
+            r#"[".claude/settings.json"]"#,
             r#"[".claude/Settings.local.json"]"#,
             r#"["hooks/", "Hooks/"]"#,
         ] {

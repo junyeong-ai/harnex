@@ -176,8 +176,27 @@ pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
 /// grows new write subcommands (a flag-enumeration approach would miss the
 /// git 2.46 `unset` subcommand, a valueless write). Reads changing nothing
 /// (hook-routing diagnostics) are the explicit allow-list.
+///
+/// The POSIX `--` terminator is honoured, because git does: a token after it
+/// is a positional (a value or the key), never an option. Without that,
+/// `git config --add -- core.hooksPath --get` — a write whose value happens to
+/// be `--get` — would read as a diagnostic and pass (measured against git
+/// 2.55; a live evasion the flag-position split closes).
 fn detect_config_reroute(rest: &[String]) -> Option<String> {
     rest.iter().find(|w| is_hooks_path_key(w))?;
+    let flags_end = rest.iter().position(|w| w == "--").unwrap_or(rest.len());
+    let flags = &rest[..flags_end];
+
+    // A write flag in option position is a definitive write, whatever value
+    // follows — this is what the terminator protects, so it is decided from
+    // `flags` alone.
+    const WRITE_FLAGS: [&str; 4] = ["--unset", "--unset-all", "--add", "--replace-all"];
+    if flags.iter().any(|w| WRITE_FLAGS.contains(&w.as_str())) {
+        return Some(reroute_reason());
+    }
+    // A read flag in option position is a definitive read; it names what to
+    // fetch (`--get-urlmatch` even takes a URL value), so its presence in the
+    // option stream settles the invocation.
     const READ_FLAGS: [&str; 7] = [
         "--get",
         "--get-all",
@@ -187,51 +206,54 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
         "--list",
         "-l",
     ];
-    if rest.iter().any(|w| READ_FLAGS.contains(&w.as_str())) {
+    if flags.iter().any(|w| READ_FLAGS.contains(&w.as_str())) {
         return None;
     }
-    // The leading positional word — a `get`/`list`/`set`/`unset` subcommand or
-    // the key itself. The value-consuming options that can precede the key
-    // (`--file <path>` / `-f`, `--blob <ref>`, `--type <t>` / `-t`) are
-    // skipped with their value so a `--file /x core.hooksPath` read is not
-    // mistaken for a keyless invocation (same skip the global-option loop
-    // applies to `--git-dir` / `--work-tree`). `--default` is `--get`-only,
-    // already cleared by the read flags above; every other config option is a
-    // valueless switch.
+    // No decisive flag: classify by the positional stream — the subcommand and
+    // key, options and their scoped values removed, everything past the
+    // terminator kept. The value-consuming options that can precede the key
+    // (`--file <path>` / `-f`, `--blob <ref>`, `--type <t>` / `-t`) are dropped
+    // with their value so a `--file /x core.hooksPath` read is not mistaken for
+    // a keyless one.
     const VALUE_SCOPE_OPTS: [&str; 5] = ["--file", "-f", "--blob", "--type", "-t"];
-    let mut head: Option<&str> = None;
+    let mut positionals: Vec<&str> = Vec::new();
     let mut k = 0;
+    let mut terminated = false;
     while k < rest.len() {
         let w = rest[k].as_str();
-        if VALUE_SCOPE_OPTS.contains(&w) {
+        if terminated {
+            positionals.push(w);
+            k += 1;
+        } else if w == "--" {
+            terminated = true;
+            k += 1;
+        } else if VALUE_SCOPE_OPTS.contains(&w) {
             k += 2;
-            continue;
+        } else if w.starts_with('-') {
+            k += 1;
+        } else {
+            positionals.push(w);
+            k += 1;
         }
-        if !w.starts_with('-') {
-            head = Some(w);
-            break;
-        }
-        k += 1;
     }
-    if matches!(head, Some("get" | "list")) {
+    // A read subcommand changes nothing; `set` / `unset` and every other head
+    // falls through to the block.
+    if matches!(positionals.first(), Some(&"get" | &"list")) {
         return None;
     }
-    // Classic bare read: the key is the leading argument, with no value and no
-    // write flag after it (`git config core.hooksPath`).
-    if let Some(head) = head
-        && is_hooks_path_key(head)
+    // Classic bare read: the key is the only positional, with no value to write
+    // (`git config core.hooksPath`). A value after it — whatever it is spelled,
+    // `--unset` past a terminator included — is a write.
+    if matches!(positionals.first(), Some(head) if is_hooks_path_key(head))
+        && positionals.len() == 1
     {
-        let key_index = rest
-            .iter()
-            .position(|w| w == head)
-            .expect("head is in rest");
-        let value_after_key = rest[key_index + 1..].iter().any(|w| !w.starts_with('-'));
-        const WRITE_FLAGS: [&str; 4] = ["--unset", "--unset-all", "--add", "--replace-all"];
-        if !value_after_key && !rest.iter().any(|w| WRITE_FLAGS.contains(&w.as_str())) {
-            return None;
-        }
+        return None;
     }
-    Some("`git config` writes core.hooksPath, rerouting the git hook stack".into())
+    Some(reroute_reason())
+}
+
+fn reroute_reason() -> String {
+    "`git config` writes core.hooksPath, rerouting the git hook stack".into()
 }
 
 /// First floor violation across every simple command in a command line, or
@@ -296,39 +318,54 @@ mod tests {
     }
 
     #[test]
-    fn allows_a_read_of_core_hooks_path() {
-        assert!(
-            detect_hook_bypass(&words(&["git", "config", "--get", "core.hooksPath"])).is_none()
-        );
-        assert!(detect_hook_bypass(&words(&["git", "config", "--list"])).is_none());
-        assert!(detect_hook_bypass(&words(&["git", "config", "get", "core.hooksPath"])).is_none());
-        assert!(detect_hook_bypass(&words(&["git", "config", "core.hooksPath"])).is_none());
-        assert!(
-            detect_hook_bypass(&words(&[
-                "git",
-                "config",
-                "--file",
-                "/x",
-                "get",
-                "core.hooksPath"
-            ]))
-            .is_none()
-        );
+    fn allows_every_measured_read_of_core_hooks_path() {
+        for read in [
+            &["config", "--get", "core.hooksPath"][..],
+            &["config", "--get-all", "core.hooksPath"],
+            &["config", "--get-regexp", "core.hooksPath"],
+            &["config", "--get-urlmatch", "core.hooksPath", "https://x"],
+            &["config", "--list"],
+            &["config", "-l"],
+            &["config", "get", "core.hooksPath"],
+            &["config", "list"],
+            &["config", "core.hooksPath"],
+            &["config", "--file", "/x", "get", "core.hooksPath"],
+            &["config", "-f", "/x", "core.hooksPath"],
+            &["config", "--type", "path", "--get", "core.hooksPath"],
+            &["config", "-t", "path", "core.hooksPath"],
+        ] {
+            let mut argv = vec!["git"];
+            argv.extend_from_slice(read);
+            assert!(
+                detect_hook_bypass(&words(&argv)).is_none(),
+                "false-blocked read: {read:?}"
+            );
+        }
     }
 
     #[test]
-    fn still_flags_a_file_scoped_write_to_core_hooks_path() {
-        assert!(
-            detect_hook_bypass(&words(&[
-                "git",
-                "config",
-                "--file",
-                "/x",
-                "core.hooksPath",
-                "/dev/null"
-            ]))
-            .is_some()
-        );
+    fn flags_every_measured_write_to_core_hooks_path() {
+        for write in [
+            &["config", "core.hooksPath", "/dev/null"][..],
+            &["config", "set", "core.hooksPath", "x"],
+            &["config", "unset", "core.hookspath"],
+            &["config", "--unset", "core.hooksPath"],
+            &["config", "--unset-all", "core.hooksPath"],
+            &["config", "--add", "core.hooksPath", "/x"],
+            &["config", "--replace-all", "core.hooksPath", "/x"],
+            &["config", "--file", "/x", "core.hooksPath", "/dev/null"],
+            // A write whose value is spelled like a read flag, hidden past the
+            // POSIX terminator — the live git 2.55 evasion the split closes.
+            &["config", "--add", "--", "core.hooksPath", "--get"],
+            &["config", "--", "core.hooksPath", "--unset"],
+        ] {
+            let mut argv = vec!["git"];
+            argv.extend_from_slice(write);
+            assert!(
+                detect_hook_bypass(&words(&argv)).is_some(),
+                "missed write: {write:?}"
+            );
+        }
     }
 
     #[test]
@@ -391,6 +428,16 @@ mod tests {
     fn finds_a_bypass_behind_a_brace_group_or_bare_wrapper() {
         assert!(line("{ git commit --no-verify; }").is_some());
         assert!(line("nohup git commit --no-verify").is_some());
+        assert!(line("time git commit --no-verify").is_some());
+        assert!(line("setsid git commit --no-verify").is_some());
+    }
+
+    #[test]
+    fn reads_an_attached_git_dir_value_without_losing_the_subcommand() {
+        // `--git-dir=.` is one token; the subcommand still follows.
+        assert!(
+            detect_hook_bypass(&words(&["git", "--git-dir=.", "commit", "--no-verify"])).is_some()
+        );
     }
 
     #[test]
@@ -434,6 +481,7 @@ mod tests {
             "git commit $'--no-verif\\x79' -m x",
             "git commit $'--no-\\166erify' -m x",
             "git commit $'--no-verify\\0zzz' -m x",
+            "git commit $\"--no-verify\" -m x",
         ] {
             assert!(line(command).is_some(), "missed: {command}");
         }

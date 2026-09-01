@@ -19,8 +19,12 @@
 //! This is a tripwire for the casual bypass, not a security boundary — a
 //! shell is Turing-complete, so local hook enforcement is inherently
 //! evadable, and a write smuggled through Bash (`sed -i`, redirection) is
-//! out of scope. The authoritative backstop for a bypassed commit is the
-//! project's own server-side re-run of its gates.
+//! out of scope. Path matching is byte-exact under the root and
+//! case-insensitive for the entry, so on a case-insensitive filesystem a
+//! deliberately odd-cased root spelling reaches the same file without
+//! matching — an adversarial evasion in the same class, not a
+//! non-adversarial miss. The authoritative backstop for a bypassed commit
+//! is the project's own server-side re-run of its gates.
 //!
 //! ## What this module refuses to do
 //!
@@ -37,8 +41,6 @@ pub mod grant;
 
 use std::path::Path;
 
-use serde::Serialize;
-
 use crate::config::FloorConfig;
 use grant::{FLOOR_EDIT_GRANT_KEY, FloorGrant};
 
@@ -53,9 +55,10 @@ pub const BUILT_IN_PROTECTED: [&str; 3] = [
     ".claude/settings.local.json",
 ];
 
-/// One proposed tool call, judged.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-#[serde(tag = "decision", rename_all = "kebab-case")]
+/// One proposed tool call, judged. The CLI matches on this to speak the
+/// PreToolUse hook contract directly, so it is never serialised — no wire
+/// derives.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FloorDecision {
     Allow,
     /// Evaluation could not run; the write proceeds with a visible reason.
@@ -108,8 +111,17 @@ impl FloorAuditor {
     }
 
     fn evaluate_command(&self, tool_input: &serde_json::Value) -> FloorDecision {
-        let Some(command) = tool_input.get("command").and_then(|c| c.as_str()) else {
-            return FloorDecision::Allow;
+        let command = match tool_input.get("command") {
+            // No command field: nothing to run, nothing to check.
+            None | Some(serde_json::Value::Null) => return FloorDecision::Allow,
+            // A present-but-non-string command is malformed input the floor
+            // cannot evaluate — a visible skip, never a silent allow.
+            Some(serde_json::Value::String(s)) => s.as_str(),
+            Some(_) => {
+                return FloorDecision::Skip {
+                    reason: "tool_input.command is not a string".into(),
+                };
+            }
         };
         if command.trim().is_empty() {
             return FloorDecision::Allow;
@@ -131,10 +143,16 @@ impl FloorAuditor {
     }
 
     fn evaluate_write(&self, root: &Path, tool_input: &serde_json::Value) -> FloorDecision {
-        let Some(file_path) = tool_input.get("file_path").and_then(|p| p.as_str()) else {
-            return FloorDecision::Skip {
-                reason: "no file_path in tool_input".into(),
-            };
+        // An absent, non-string, or empty path is malformed input, not a write
+        // to judge — resolving `""` lands on the repository root, which is
+        // under no protected entry and would silently allow.
+        let file_path = match tool_input.get("file_path").and_then(|p| p.as_str()) {
+            Some(path) if !path.is_empty() => path,
+            _ => {
+                return FloorDecision::Skip {
+                    reason: "no file_path in tool_input".into(),
+                };
+            }
         };
         let target = grant::lexical_resolve(root, Path::new(file_path));
         // A worktree session reaches the main checkout by absolute path, and
@@ -254,6 +272,33 @@ mod tests {
             panic!("expected skip, got {decision:?}");
         };
         assert!(reason.contains("unterminated single quote"));
+    }
+
+    #[test]
+    fn a_malformed_command_field_skips_while_an_absent_one_allows() {
+        let dir = plain_root();
+        let auditor = auditor(&[]);
+        // Present but not a string: malformed input the floor cannot read.
+        let decision = auditor.evaluate(dir.path(), "Bash", &serde_json::json!({"command": 7}));
+        assert!(
+            matches!(decision, FloorDecision::Skip { .. }),
+            "{decision:?}"
+        );
+        // Absent or null: no command to run, nothing to check.
+        assert_eq!(
+            auditor.evaluate(dir.path(), "Bash", &serde_json::json!({"command": null})),
+            FloorDecision::Allow
+        );
+    }
+
+    #[test]
+    fn an_empty_file_path_skips_rather_than_resolving_to_the_repository_root() {
+        let dir = plain_root();
+        let decision = auditor(&[]).evaluate(dir.path(), "Write", &write_input(""));
+        assert!(
+            matches!(decision, FloorDecision::Skip { .. }),
+            "{decision:?}"
+        );
     }
 
     #[test]

@@ -320,6 +320,15 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
             i = end + 1;
             continue;
         }
+        if b == b'$' && bytes.get(i + 1) == Some(&b'"') {
+            // Locale-translation quoting: `$"…"` is a double-quoted string the
+            // shell would translate, and with no catalogue it delivers the
+            // string verbatim — so the body is the flag, exactly as `$'…'` is.
+            // The `$` introduces the quote; drop it and read the double-quote
+            // body from its opening quote.
+            i += 1;
+            continue;
+        }
         if b == b'$' && bytes.get(i + 1) == Some(&b'(') {
             let mut depth = 1;
             let mut j = i + 2;
@@ -364,25 +373,39 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
             }
             continue;
         }
+        if b == b'#' && !acc.has_word {
+            // `#` opens a comment only at a word boundary (`echo a #c` comments,
+            // `echo a#b` is one word) — the shell drops the rest of the line, so
+            // a flag mentioned past it never reaches argv. The comment runs to
+            // the newline, which stays a separator: leaving `i` on it lets the
+            // newline arm close the command already accumulated.
+            i += input[i..].find('\n').unwrap_or(input.len() - i);
+            continue;
+        }
         if b == b'{'
             && !acc.has_word
+            && acc.words.is_empty()
             && bytes
                 .get(i + 1)
                 .is_none_or(|next| next.is_ascii_whitespace())
         {
-            // A brace-group `{` is a reserved word only as a standalone token
-            // followed by whitespace (`{ cmd; }`), so it opens a fresh
-            // command. `{}` (a `find -exec` placeholder), `${VAR}`, and
-            // `a{1,2}` glue the brace to a word — the trailing-whitespace test
-            // and the `has_word` guard keep all three intact. `}` is never a
-            // separator: a group close is always preceded by the `;` /
-            // newline that already split, so a bare `}` (`echo } x`) is a
-            // literal word, not a boundary.
+            // A brace-group `{` is a reserved word only as the first word of a
+            // command (`{ cmd; }`), so it opens a fresh one. Anywhere else it is
+            // an ordinary argument (`printf %s { x`), which the `words.is_empty()`
+            // guard keeps intact; `{}` (a `find -exec` placeholder), `${VAR}` and
+            // `a{1,2}` glue the brace to a word, which the trailing-whitespace and
+            // `has_word` guards keep. `}` is never a separator: a group close is
+            // always preceded by the `;` / newline that already split, so a bare
+            // `}` (`echo } x`) is a literal word.
             acc.push_command();
             i += 1;
             continue;
         }
         if b.is_ascii_whitespace() {
+            // The shell splits words on IFS, whose default is space / tab /
+            // newline — ASCII, deliberately. A non-breaking space is an ordinary
+            // word character to the shell, so treating it as a separator would
+            // split a word the shell keeps whole; ASCII-only matches bash.
             acc.push_word();
             i += 1;
             continue;
@@ -457,6 +480,51 @@ mod tests {
     #[test]
     fn treats_a_standalone_close_brace_as_a_literal_word() {
         assert_eq!(split("echo } x"), owned(&[&["echo", "}", "x"]]));
+    }
+
+    #[test]
+    fn a_brace_opens_a_group_only_as_the_first_word_of_a_command() {
+        // A `{` after a command already has words is an ordinary argument
+        // (`printf %s { x` is one printf call), not a group boundary.
+        assert_eq!(
+            split("printf %s { git commit --no-verify"),
+            owned(&[&["printf", "%s", "{", "git", "commit", "--no-verify"]])
+        );
+        // Still a group where it genuinely opens one.
+        assert_eq!(
+            split("cmd; { git commit; }"),
+            owned(&[&["cmd"], &["git", "commit"], &["}"]])
+        );
+    }
+
+    #[test]
+    fn a_hash_at_a_word_boundary_opens_a_comment_to_end_of_line() {
+        assert_eq!(
+            split("git push origin main # never --no-verify"),
+            owned(&[&["git", "push", "origin", "main"]])
+        );
+        // Comment ends at the newline, which still separates the next command.
+        assert_eq!(
+            split("echo a # c\ngit status"),
+            owned(&[&["echo", "a"], &["git", "status"]])
+        );
+        // A `#` glued to a word is a literal, not a comment.
+        assert_eq!(split("echo a#b"), owned(&[&["echo", "a#b"]]));
+    }
+
+    #[test]
+    fn reads_locale_translation_quoting_as_a_double_quoted_body() {
+        assert_eq!(
+            split("git commit $\"--no-verify\" -m x"),
+            owned(&[&["git", "commit", "--no-verify", "-m", "x"]])
+        );
+    }
+
+    #[test]
+    fn splits_words_on_ascii_whitespace_only_as_the_shell_does() {
+        // A non-breaking space (U+00A0) is an ordinary word character to the
+        // shell, not an IFS separator — one word, matching bash.
+        assert_eq!(split("echo a\u{a0}b"), owned(&[&["echo", "a\u{a0}b"]]));
     }
 
     #[test]
