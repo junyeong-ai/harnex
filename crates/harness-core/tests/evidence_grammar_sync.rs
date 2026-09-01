@@ -1,6 +1,6 @@
 //! Drift guard for the claim grammar the shipped documentation teaches.
 //!
-//! Four documents tell an author how to mark a claim, and [`parse_claims`] is
+//! Three documents tell an author how to mark a claim, and [`parse_claims`] is
 //! what decides where a marker resolves. A form shown in one and dropped by
 //! the other produces the worst outcome this gate has: the author writes the
 //! citation the documentation asked for, `harnex check` reports clean, and
@@ -158,6 +158,77 @@ fn readmes_examples_resolve_through_the_gate_they_describe() {
         assert!(
             findings.is_empty(),
             "README teaches an example the gate rejects: {line}\n{findings:#?}"
+        );
+    }
+}
+
+/// Files that carry the marker and are checked by nothing here, each with
+/// the reason it is allowed to.
+const ALLOWED_UNCHECKED: &[(&str, &str)] = &[(
+    "crates/harness-core/CLAUDE.md",
+    "a crate-scoped CLAUDE.md, which `harnex check` does not scan — its candidate set is the \
+     root CLAUDE.md and the rule glob; widening it is a gate change for every installed harness",
+)];
+
+#[test]
+fn every_tracked_file_carrying_the_marker_is_accounted_for() {
+    // The trigger is the corpus, not a list. A document that starts spelling
+    // the grammar — teaching it, or making a claim — is caught here the moment
+    // it is tracked, and its author either routes it to the gate that reads
+    // it, adds it to `GRAMMAR`, or names it above with a reason. A
+    // hand-written whitelist can only catch what it already knows about.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let listing = std::process::Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(&root)
+        .output()
+        .expect("git ls-files runs in this repository");
+    assert!(listing.status.success(), "git ls-files failed: {listing:?}");
+    let tracked = String::from_utf8(listing.stdout).expect("tracked paths are UTF-8");
+
+    let carrying: Vec<&str> = tracked
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .filter(|path| {
+            std::fs::read(root.join(path))
+                .map(|bytes| bytes.windows(6).any(|w| w == b"[file:"))
+                .unwrap_or(false)
+        })
+        .collect();
+    assert!(carrying.len() > 5, "the marker was found almost nowhere: {carrying:?}");
+
+    let accounted = |path: &str| {
+        // Resolved by `harnex check` over this repository.
+        (path == "CLAUDE.md" || (path.starts_with(".claude/rules/") && path.ends_with(".md")))
+            // Resolved by `plugin_claims_resolve`.
+            || (path.starts_with("plugins/harnex/")
+                && path.ends_with(".md")
+                && !path.starts_with("plugins/harnex/templates/"))
+            // Parsed by this guard.
+            || GRAMMAR.iter().any(|(document, _)| *document == path)
+            // Source and tests: the marker is code.
+            || (path.starts_with("crates/") && path.ends_with(".rs"))
+            // Ledgers: the marker is data.
+            || path.starts_with(".harness/")
+            || ALLOWED_UNCHECKED.iter().any(|(allowed, _)| *allowed == path)
+    };
+    let stray: Vec<&str> = carrying
+        .iter()
+        .copied()
+        .filter(|path| !accounted(path))
+        .collect();
+    assert!(
+        stray.is_empty(),
+        "these tracked files carry the claim marker and nothing checks them — route each to \
+         the gate that reads it, add it to `GRAMMAR`, or name it in `ALLOWED_UNCHECKED` with \
+         a reason:\n  {}",
+        stray.join("\n  ")
+    );
+    for (allowed, reason) in ALLOWED_UNCHECKED {
+        assert!(
+            carrying.contains(allowed),
+            "`{allowed}` is allowed unchecked ({reason}) but no longer carries the marker — \
+             drop the allowance"
         );
     }
 }

@@ -29,12 +29,18 @@
 //!   paraphrase.
 //! - Never hides raw HTML that is not a comment. A `<details>` block is
 //!   content a reader opens; only `<!-- -->` is an instruction.
-//! - Never enables a syntax extension beyond tables and YAML frontmatter.
-//!   Both are in the corpus this reads; the rest are not, and each one
-//!   changes what a heading says — under GFM strikethrough `## ~~Old~~ New`
-//!   is cited as `Old New`, and without it as written. A citation resolves
-//!   against CommonMark core, which is the one renderer every consumer of a
-//!   harness agrees on.
+//! - Never enables a syntax extension beyond YAML frontmatter, which every
+//!   rule file opens with and no core parser reads. The rest change what a
+//!   heading says — under GFM strikethrough `## ~~Old~~ New` is cited as
+//!   `Old New`, and without it as written — and a citation resolves against
+//!   CommonMark core, the one renderer every consumer of a harness agrees on.
+//!   An extension that changes no answer here is not enabled either: it would
+//!   be configuration nothing can test.
+//! - Never decodes a line. `prose()` is the source line with hidden spans
+//!   removed, not rendered inline text, so an entity or a backslash escape
+//!   reaches a gate as written. The gates match reserved tokens, and a token
+//!   is reserved in source — `[file&#58; x]` renders as a marker and is not
+//!   one, exactly as a marker inside a code span is one and does not render.
 
 use std::ops::Range;
 
@@ -61,6 +67,12 @@ pub(crate) struct Heading {
     /// author reaches for as a separator, and `text` + `---` silently ending
     /// a section is not the same event as writing `## Next`.
     pub(crate) atx: bool,
+    /// Not inside a block quote or a list. A heading a container holds is
+    /// that container's, and a gate reading the document's own sections
+    /// neither starts one there nor ends one — a quoted `## Outstanding
+    /// issues` is someone else's section, and a quoted `## Next` under the
+    /// real one is not where it stops.
+    pub(crate) top_level: bool,
 }
 
 /// A delimiter the document ends inside.
@@ -91,8 +103,9 @@ impl Document {
         let mut unterminated = None;
         let mut open_fence: Option<Fence> = None;
         let mut comment_from: Option<usize> = None;
+        let mut containers = 0usize;
 
-        let options = Options::ENABLE_TABLES | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
+        let options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
         for (event, range) in Parser::new_ext(&text, options).into_offset_iter() {
             if !matches!(event, Event::Html(_)) {
                 comment_from = None;
@@ -144,12 +157,15 @@ impl Document {
                     }
                 }
                 Event::Start(Tag::MetadataBlock(_)) => quoted.push(range),
+                Event::Start(Tag::BlockQuote(_) | Tag::List(_)) => containers += 1,
+                Event::End(TagEnd::BlockQuote(_) | TagEnd::List(_)) => containers -= 1,
                 Event::Start(Tag::Heading { level, .. }) => {
                     open_heading = Some(Heading {
                         level: level as u32,
                         text: String::new(),
                         line: line_of(&text, range.start),
                         atx: text[range.start..].trim_start().starts_with('#'),
+                        top_level: containers == 0,
                     });
                 }
                 Event::End(TagEnd::Heading(_)) => headings.extend(open_heading.take()),
@@ -493,6 +509,22 @@ mod tests {
         assert_eq!(
             headings("Two\nLines\n=====\n"),
             vec![(1, "Two Lines".into(), 1)]
+        );
+    }
+
+    #[test]
+    fn a_heading_reports_whether_a_container_holds_it() {
+        let top_level = |text: &str| Document::of(text).headings()[0].top_level;
+        assert!(top_level("## Storage\n"));
+        assert!(top_level("Storage\n=======\n"));
+        assert!(!top_level("> ## Storage\n"));
+        assert!(!top_level("- a\n\n  ## Storage\n"));
+        assert!(!top_level("- a\n  - b\n\n    ## Storage\n"));
+        // And the container closing restores the level for what follows.
+        let doc = Document::of("> ## Quoted\n\n## Own\n");
+        assert_eq!(
+            doc.headings().iter().map(|h| h.top_level).collect::<Vec<_>>(),
+            vec![false, true]
         );
     }
 

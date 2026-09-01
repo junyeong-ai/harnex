@@ -23,20 +23,24 @@ fn plugin_root() -> PathBuf {
 }
 
 /// Every markdown document the plugin ships as its own, templates aside.
-fn own_documents(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("{} unreadable: {e}", dir.display()))
-        .map(|e| e.expect("directory entry").path());
-    for path in entries {
-        if path.is_dir() {
-            if path.file_name().is_some_and(|name| name == "templates") {
-                continue;
-            }
-            own_documents(&path, out);
-        } else if path.extension().is_some_and(|ext| ext == "md") {
-            out.push(path);
-        }
-    }
+///
+/// Enumerated from the index rather than the disk: a gate whose input set is
+/// a directory walk answers about whatever is on this machine — an editor's
+/// backup, a scratch file, a sibling worktree — and its verdict here and in
+/// CI diverge on the same commit. What ships is what is tracked.
+fn own_documents(root: &Path) -> Vec<PathBuf> {
+    let listing = std::process::Command::new("git")
+        .args(["ls-files", "-z", "--", "plugins/harnex"])
+        .current_dir(root.join("../.."))
+        .output()
+        .expect("git ls-files runs in this repository");
+    assert!(listing.status.success(), "git ls-files failed: {listing:?}");
+    String::from_utf8(listing.stdout)
+        .expect("tracked paths are UTF-8")
+        .split('\0')
+        .filter(|path| path.ends_with(".md") && !path.starts_with("plugins/harnex/templates/"))
+        .map(|path| root.join("../..").join(path))
+        .collect()
 }
 
 #[test]
@@ -56,8 +60,7 @@ fn every_claim_the_plugin_makes_about_itself_resolves() {
     })
     .expect("the internal verifier is a declared strategy");
 
-    let mut documents = Vec::new();
-    own_documents(&root, &mut documents);
+    let documents = own_documents(&root);
     assert!(
         documents.len() > 5,
         "the plugin's own documents were not discovered: {documents:?}"
@@ -89,8 +92,7 @@ fn a_pointer_into_a_renamed_section_is_what_this_guard_catches() {
     // section anchors — a corpus of file-only claims would pass while every
     // heading in the skill was renamed.
     let root = plugin_root();
-    let mut documents = Vec::new();
-    own_documents(&root, &mut documents);
+    let documents = own_documents(&root);
 
     let sections: Vec<String> = documents
         .iter()
