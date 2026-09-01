@@ -552,11 +552,16 @@ pub struct StopAuditConfig {
     pub critique_skill: String,
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
-    /// The shell predicate that says whether this session left work behind:
-    /// exit 0 for no changes, exit 1 for changes, and anything else a probe
-    /// that failed rather than answered. Required, because declaring this
-    /// section commits to spawning a critique and this is what decides when —
-    /// e.g. ["git", "diff", "--quiet"].
+    /// The predicate that says whether this session left work behind: exit 0
+    /// for no changes, exit 1 for changes, and anything else a probe that
+    /// failed rather than answered. Required, because declaring this section
+    /// commits to spawning a critique and this is what decides when.
+    ///
+    /// It has to see everything the project counts as work. `git diff --quiet`
+    /// alone answers 0 for a session whose changes are only staged or only
+    /// untracked, and the Stop hook beside it counts both, so a whole class of
+    /// session would be critiqued by one and called clean by the other —
+    /// e.g. ["sh", "-c", "test -z \"$(git status --porcelain)\""].
     pub has_changes_check: Vec<String>,
     /// Directory for the per-session retry counter ledger.
     #[serde(default = "default_audit_retry_dir")]
@@ -580,7 +585,8 @@ impl StopAuditConfig {
         let (program, args) = self.has_changes_check.split_first().ok_or_else(|| {
             invalid(
                 "is empty — the section spawns a critique per Stop, so the command \
-                 that decides when must be stated (e.g. [\"git\", \"diff\", \"--quiet\"])",
+                 that decides when must be stated (e.g. \
+                 [\"sh\", \"-c\", \"test -z \\\"$(git status --porcelain)\\\"\"])",
             )
         })?;
         // Whether a named program is installed is the runner's answer, not
@@ -1545,7 +1551,7 @@ mod tests {
             [guard.stop_audit]
             critique_skill = "/critique"
             max_retries = 3
-            has_changes_check = ["git", "diff", "--quiet"]
+            has_changes_check = ["sh", "-c", "test -z \"$(git status --porcelain)\""]
         "#;
         assert!(parse(src).is_ok());
     }
