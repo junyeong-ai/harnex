@@ -230,6 +230,47 @@ fn a_ledger_that_could_not_be_read_is_not_a_ledger_nobody_wrote_to() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_ledger_whose_symlink_lost_its_target_is_not_an_absent_ledger() {
+    // `path_guard` sanctions a symlinked ancestor, so a ledger reached through
+    // one is a supported layout — and when its target moves the path resolves
+    // to nothing, which reads as "never written" while the records are
+    // elsewhere. On the decision side that silently resurfaces every candidate
+    // the operator settled, and a curate pass never writes, so nothing else in
+    // the loop would notice.
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("real");
+    let link = tmp.path().join("linked");
+    std::fs::create_dir_all(&target).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let ledger = ObservationLedger::new(link.clone());
+    ledger.append("naming", "use snake case", "spec-a").unwrap();
+    assert_eq!(ledger.load_all().unwrap().len(), 1);
+
+    std::fs::rename(&target, tmp.path().join("moved")).unwrap();
+    assert!(
+        matches!(ledger.load_all(), Err(Error::IoFailure { .. })),
+        "a ledger symlink with no target must fail, not read as never written"
+    );
+    assert!(
+        matches!(
+            DecisionLedger::new(link).load_all(),
+            Err(Error::IoFailure { .. })
+        ),
+        "the decision ledger owes the same answer, or settled candidates resurface"
+    );
+
+    // The genuinely absent directory is still an empty result, not an error.
+    assert!(
+        ObservationLedger::new(tmp.path().join("never-written"))
+            .load_all()
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn a_record_the_ledger_accepted_is_a_record_it_reads_back() {
     // Both ledgers file by tag and scan for a `jsonl` extension, so a tag

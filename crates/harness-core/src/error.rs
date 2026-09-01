@@ -390,6 +390,6 @@ mod error_code_tests {
         let count = ErrorCode::ALL.len();
         let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(count, unique.len(), "ALL has a duplicate variant");
-        assert!(count >= 28, "ALL shrank unexpectedly — variant dropped?");
+        assert!(count >= 38, "ALL shrank unexpectedly — variant dropped?");
     }
 }

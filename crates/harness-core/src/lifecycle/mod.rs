@@ -19,6 +19,8 @@
 //! - Never invent observation or decision text — callers supply both.
 //! - Never silently delete ledger records on rotation.
 
+use std::path::Path;
+
 use crate::error::{Error, Result};
 
 pub mod consumer;
@@ -39,6 +41,38 @@ pub use decision_recorder::{
 pub use observation::{Observation, ObservationLedger};
 pub use retire::{RetirementSweeper, SweepOutcome};
 pub use retirement::{RetirementClassifier, RetirementOutcome, RetirementSignal, SilenceState};
+
+/// Whether a ledger directory is there to be read, for the one caller shape
+/// both ledgers have: absent is an empty result, present is a scan, and
+/// anything else fails.
+///
+/// Absent has to mean nothing has been written yet, and only that. Two other
+/// states reach the same branch and neither is an empty ledger. A path this
+/// process cannot stat is one it did not read — `exists` reports that as
+/// false. And a directory symlink whose target has moved away still resolves
+/// to nothing, which `try_exists` also reports as false, while the operator
+/// configured a ledger and its records are somewhere: `path_guard` sanctions
+/// an ancestor symlink deliberately, so this is a configuration to repair
+/// rather than a state that cannot arise. `symlink_metadata` separates them
+/// because it stats the link instead of following it.
+pub(crate) fn ledger_dir_present(dir: &Path) -> Result<bool> {
+    let io = |source| Error::IoFailure {
+        path: dir.to_path_buf(),
+        source,
+    };
+    match dir.try_exists() {
+        Ok(true) => Ok(true),
+        Ok(false) => match std::fs::symlink_metadata(dir) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Ok(_) => Err(io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "ledger path is a symlink with no target",
+            ))),
+            Err(e) => Err(io(e)),
+        },
+        Err(e) => Err(io(e)),
+    }
+}
 
 /// Encode a tag into a filesystem-safe ledger filename stem. A tag is a
 /// semantic grouping key (it may be namespaced, e.g. `rust/async`); the
