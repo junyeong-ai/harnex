@@ -78,6 +78,7 @@ impl Document {
         let mut headings: Vec<Heading> = Vec::new();
         let mut open_heading: Option<Heading> = None;
         let mut unterminated = None;
+        let mut open_fence: Option<Fence> = None;
         let mut html_run: Option<Range<usize>> = None;
 
         let options = Options::ENABLE_TABLES | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
@@ -88,15 +89,22 @@ impl Document {
             match event {
                 Event::Start(Tag::CodeBlock(kind)) => match kind {
                     CodeBlockKind::Fenced(_) => {
-                        if !closes_its_fence(&text[range.clone()]) {
-                            unterminated = Some(Unterminated::Fence {
-                                line: line_of(&text, range.start),
-                            });
-                        }
+                        open_fence = Some(Fence {
+                            line: line_of(&text, range.start),
+                            end: range.end,
+                            content_end: line_end(&text, range.start),
+                        });
                         quoted.push(range);
                     }
                     CodeBlockKind::Indented => indented.push(range),
                 },
+                Event::End(TagEnd::CodeBlock) => {
+                    if let Some(fence) = open_fence.take()
+                        && fence.end <= fence.content_end
+                    {
+                        unterminated = Some(Unterminated::Fence { line: fence.line });
+                    }
+                }
                 Event::Html(_) => {
                     html_run = Some(match html_run {
                         Some(open) => open.start..range.end,
@@ -124,6 +132,9 @@ impl Document {
                 }
                 Event::End(TagEnd::Heading(_)) => headings.extend(open_heading.take()),
                 Event::Text(run) | Event::Code(run) => {
+                    if let Some(fence) = open_fence.as_mut() {
+                        fence.content_end = range.end;
+                    }
                     if let Some(heading) = open_heading.as_mut() {
                         heading.text.push_str(&run);
                     }
@@ -241,27 +252,26 @@ fn line_of(text: &str, offset: usize) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
 
-/// Whether a fenced block ends with its own closing fence rather than with
-/// the document.
+/// A fenced block being read, and how far its content reaches.
 ///
-/// The parser has already delimited the block, so this asks one question of
-/// text whose extent is settled: the opening run is the block's first line,
-/// and only its last line can close it.
-fn closes_its_fence(block: &str) -> bool {
-    let mut lines = block.trim_end_matches('\n').split('\n');
-    let Some(open) = lines.next() else {
-        return false;
-    };
-    let open = open.trim_start_matches(' ');
-    let Some(marker) = open.chars().next().filter(|&c| c == '`' || c == '~') else {
-        return false;
-    };
-    let run = open.chars().take_while(|&c| c == marker).count();
-    let Some(last) = lines.next_back() else {
-        return false;
-    };
-    let last = last.trim_start_matches(' ').trim_end();
-    !last.is_empty() && last.chars().all(|c| c == marker) && last.chars().count() >= run
+/// A closing fence is the one line of a fenced block that is neither the
+/// opener nor content, so a block whose extent runs past its content closed
+/// itself and one that stops there was closed by the document. Both numbers
+/// come from the parser, which is what keeps this from re-deriving the fence
+/// rule it would then get wrong — a closing fence carries its container's
+/// indent inside a list and its `>` inside a block quote, and a run shorter
+/// than the opener closes nothing.
+struct Fence {
+    line: u32,
+    end: usize,
+    content_end: usize,
+}
+
+/// The offset just past the line `at` falls on.
+fn line_end(text: &str, at: usize) -> usize {
+    text[at..]
+        .find('\n')
+        .map_or(text.len(), |offset| at + offset + 1)
 }
 
 /// Each source line as a reader meets it: quoted spans removed, a line an
@@ -493,13 +503,25 @@ mod tests {
             Some(Unterminated::Comment { line: 3 })
         );
 
+        // A closing fence carries whatever its container puts before it —
+        // spaces inside a list, `>` inside a block quote — so this reads the
+        // parser's extents rather than the fence's own spelling.
+        assert_eq!(Document::of("> ```\n> x\n").unterminated(), fence(1));
+        assert_eq!(
+            Document::of("- a\n\n    ```\n    x\n").unterminated(),
+            fence(3)
+        );
+
         for closed in [
             "a\n\n```\nx\n```\n",
             "a\n\n```\nx\n```",
             "a\n\n~~~\nx\n~~~\n",
+            "a\n\n```\n```\n",
             "a\n\n    indented\n",
             "a\n\n<!-- opened\nand closed\n-->\n",
             "a\n\n```\nx\n```\n\nb\n",
+            "> ```\n> x\n> ```\n\nafter\n",
+            "- a\n\n    ```\n    x\n    ```\n\n- b\n",
         ] {
             assert_eq!(
                 Document::of(closed).unterminated(),
