@@ -1412,7 +1412,7 @@ mod tests {
     fn loads_minimal_valid_config() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
         "#;
         let cfg = parse(src).unwrap();
         assert!(cfg.kinds.is_empty());
@@ -1424,7 +1424,7 @@ mod tests {
     fn rejects_a_baseline_path_that_climbs_out_of_the_project() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [session]
             roots = ["~/.claude/projects"]
             baseline_path = "../elsewhere/ledger.jsonl"
@@ -1436,7 +1436,7 @@ mod tests {
     fn rejects_a_session_field_it_does_not_declare() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [session]
             roots = ["~/.claude/projects"]
             submission_sampl = 50
@@ -1451,7 +1451,7 @@ mod tests {
     fn session_roots_have_no_default_because_the_path_is_machine_global() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [session]
         "#;
         assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
@@ -1461,7 +1461,7 @@ mod tests {
     fn rejects_a_blank_session_root() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [session]
             roots = ["~/.claude/projects", "  "]
         "#;
@@ -1472,7 +1472,7 @@ mod tests {
     fn rejects_a_zero_min_block_chars() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [session]
             roots = ["~/.claude/projects"]
             min_block_chars = 0
@@ -1486,7 +1486,7 @@ mod tests {
             let src = format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
                 [session]
                 roots = ["~/.claude/projects"]
                 coverage_floor = {bad}
@@ -1504,7 +1504,7 @@ mod tests {
     fn accepts_a_session_section_with_only_roots() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [session]
             roots = ["~/.claude/projects"]
         "#;
@@ -1529,7 +1529,7 @@ mod tests {
             let src = format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
                 [guard.stop_audit]
                 critique_skill = "/critique"
                 max_retries = {bad}
@@ -1547,7 +1547,7 @@ mod tests {
     fn accepts_in_range_stop_audit_max_retries() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [guard.stop_audit]
             critique_skill = "/critique"
             max_retries = 3
@@ -1572,7 +1572,7 @@ mod tests {
             let src = format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
                 [guard.stop_audit]
                 critique_skill = "/critique"
                 {probe}
@@ -1586,7 +1586,7 @@ mod tests {
         }
         let named = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [guard.stop_audit]
             critique_skill = "/critique"
             has_changes_check = ["a-program-this-machine-may-not-have"]
@@ -1598,7 +1598,7 @@ mod tests {
     fn accepts_a_floor_with_directory_and_exact_protected_paths() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [guard.floor]
             protected_paths = ["hooks/", ".gitleaks.toml"]
         "#;
@@ -1611,7 +1611,7 @@ mod tests {
             let src = format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
                 [guard.floor]
                 protected_paths = ["{bad}"]
                 "#
@@ -1636,7 +1636,7 @@ mod tests {
             let src = format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
                 [guard.floor]
                 protected_paths = {paths}
                 "#
@@ -1665,7 +1665,7 @@ mod tests {
     fn rejects_duplicate_kind() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [[kinds]]
             name = "rule"
             glob = "*.md"
@@ -1682,7 +1682,7 @@ mod tests {
     fn rejects_unknown_verifier_strategy() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [evidence]
             default_provenance = "memory-only"
             [[evidence.verifiers]]
@@ -1698,7 +1698,7 @@ mod tests {
     fn rejects_default_provenance_unregistered() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [evidence]
             default_provenance = "nope"
             [[evidence.verifiers]]
@@ -1714,7 +1714,7 @@ mod tests {
     fn rejects_telemetry_kind_with_non_object_schema() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [telemetry]
             storage = "jsonl"
             storage_dir = ".harness/telemetry"
@@ -1730,7 +1730,7 @@ mod tests {
     fn accepts_full_valid_config() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [[kinds]]
             name = "rule"
@@ -1779,7 +1779,7 @@ mod tests {
         // runtime cannot honor must not load (Article IV).
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [codegen]
             [[codegen.groups]]
@@ -1803,7 +1803,7 @@ mod tests {
         // must be rejected at load just like `..`.
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [codegen]
             [[codegen.groups]]
@@ -1825,7 +1825,7 @@ mod tests {
     fn rejects_duplicate_codegen_target_sentinel() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [codegen]
             [[codegen.groups]]
@@ -1862,7 +1862,7 @@ mod tests {
         // lexical normalization must catch the cycle despite the spelling.
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [codegen]
             [[codegen.groups]]
@@ -1882,7 +1882,7 @@ mod tests {
     fn rejects_telemetry_required_non_string() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [telemetry]
             storage = "jsonl"
             storage_dir = ".harness/telemetry"
@@ -1904,7 +1904,7 @@ mod tests {
         // escape the storage dir.
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [telemetry]
             storage = "jsonl"
             storage_dir = ".harness/telemetry"
@@ -1920,7 +1920,7 @@ mod tests {
     fn rejects_telemetry_unknown_property_type() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [telemetry]
             storage = "jsonl"
             storage_dir = ".harness/telemetry"
@@ -1938,7 +1938,7 @@ mod tests {
     fn rejects_unknown_codegen_source_format() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [codegen]
             [[codegen.groups]]
@@ -1961,7 +1961,7 @@ mod tests {
     fn rejects_empty_codegen_source_key() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [codegen]
             [[codegen.groups]]
@@ -1983,7 +1983,7 @@ mod tests {
     fn rejects_advisory_declarations_the_auditor_cannot_honor() {
         let base = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [evidence]
             default_provenance = "internal"
@@ -2020,7 +2020,7 @@ mod tests {
         let err = parse(
             r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [evidence]
             default_provenance = "internal"
@@ -2039,7 +2039,7 @@ mod tests {
         let err = parse(
             r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
 
             [evidence]
             default_provenance = "internal"
@@ -2069,7 +2069,7 @@ mod tests {
             let err = parse(&format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
 
                 [evidence]
                 default_provenance = "internal"
@@ -2094,7 +2094,7 @@ mod tests {
     fn rejects_unknown_permission_profile() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [policy.permissions]
             profiles = ["baseline", "basline"]
         "#;
@@ -2113,7 +2113,7 @@ mod tests {
             let src = format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
                 [policy.permissions]
                 profiles = ["baseline"]
                 {field} = ["{rule}"]
@@ -2135,7 +2135,7 @@ mod tests {
         // deny side is the sanctioned over-reach, not a trap.
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [policy.permissions]
             profiles = ["baseline"]
             extra_deny = ["Edit(/vault/**)", "Bash(terraform apply *)", "Agent(model:opus)", "Bash(find * -delete)"]
@@ -2154,7 +2154,7 @@ mod tests {
             let src = format!(
                 r#"
                 [meta]
-                harnex_version = ">=0.2, <0.3"
+                harnex_version = ">=0.3, <0.4"
                 [policy.permissions]
                 profiles = ["baseline"]
                 {field} = ["{rule}"]
@@ -2174,7 +2174,7 @@ mod tests {
     fn accepts_known_permission_profiles() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [policy.permissions]
             profiles = ["baseline", "python-dev"]
         "#;
@@ -2185,7 +2185,7 @@ mod tests {
     fn rejects_unicode_kind_name() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [[kinds]]
             name = "日本語"
             glob = "*.md"
@@ -2198,7 +2198,7 @@ mod tests {
     fn accepts_valid_kind_names() {
         let src = r#"
             [meta]
-            harnex_version = ">=0.2, <0.3"
+            harnex_version = ">=0.3, <0.4"
             [[kinds]]
             name = "my-kind-2"
             glob = "*.md"
