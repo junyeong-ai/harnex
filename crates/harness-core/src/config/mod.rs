@@ -311,6 +311,8 @@ pub struct VersionPinDecl {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ValidateConfig {
     #[serde(default)]
+    pub routines: Option<RoutinesPolicy>,
+    #[serde(default)]
     pub rules: Option<RulesPolicy>,
     #[serde(default)]
     pub skills: Option<SkillsPolicy>,
@@ -364,6 +366,12 @@ pub struct CommitMsgTrailerDecl {
     #[serde(default)]
     pub required: bool,
 }
+
+/// Enables `.claude/routines/*.md` shape validation. No knobs yet: the
+/// grammar is closed and the schedule states are the query's, not a
+/// policy's.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct RoutinesPolicy {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RulesPolicy {

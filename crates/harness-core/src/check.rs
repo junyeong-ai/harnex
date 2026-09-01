@@ -30,8 +30,8 @@ use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
 use crate::validate::{
-    AgentValidator, OutputStyleValidator, RuleValidator, SettingsScope, SettingsValidator,
-    SkillValidator, SurfaceValidator,
+    AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SettingsScope,
+    SettingsValidator, SkillValidator, SurfaceValidator,
 };
 
 /// Aggregate result of running every enabled validator.
@@ -201,6 +201,13 @@ impl<'a> ProjectChecker<'a> {
             &mut files_scanned,
         )?;
         self.run_surface_validator::<AgentValidator<'_>>(
+            &changed,
+            &mut findings,
+            &mut run,
+            &mut skipped,
+            &mut files_scanned,
+        )?;
+        self.run_surface_validator::<RoutineValidator>(
             &changed,
             &mut findings,
             &mut run,

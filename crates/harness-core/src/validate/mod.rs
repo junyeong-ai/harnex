@@ -25,6 +25,7 @@ pub mod agents;
 pub mod commit_msg;
 pub mod frontmatter;
 pub mod output_styles;
+pub mod routines;
 pub mod rules;
 pub mod settings;
 pub mod skills;
@@ -93,6 +94,7 @@ pub trait SurfaceValidator<'p>: Sized {
 pub use agents::{AgentValidator, KNOWN_AGENT_KEYS};
 pub use commit_msg::CommitMsgValidator;
 pub use output_styles::{KNOWN_OUTPUT_STYLE_KEYS, OutputStyleValidator};
+pub use routines::RoutineValidator;
 pub use rules::RuleValidator;
 pub use settings::{
     KNOWN_DEFAULT_MODE_VALUES, KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS,
