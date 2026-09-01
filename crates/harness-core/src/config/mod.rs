@@ -454,6 +454,12 @@ pub struct LifecycleConfig {
     pub observation_dir: PathBuf,
     #[serde(default = "default_decision_dir")]
     pub decision_dir: PathBuf,
+    /// The telemetry Kind whose events record element invocations — the
+    /// oracle the retirement sweep reads a slug's silence from. Undeclared,
+    /// every slug is `unmeasured`: silence is a claim about invocations, and
+    /// without a Kind that records them there is nothing to read it from.
+    #[serde(default)]
+    pub invocation_kind: Option<String>,
     #[serde(default)]
     pub consumer_detectors: Vec<ConsumerDetectorDecl>,
 }
@@ -1048,6 +1054,19 @@ impl Config {
         if l.promotion_min_instances == 0 {
             return Err(Error::ConfigInvalid {
                 message: "[lifecycle] promotion_min_instances must be > 0".into(),
+                location: None,
+            });
+        }
+        if let Some(kind) = &l.invocation_kind
+            && !self
+                .telemetry
+                .as_ref()
+                .is_some_and(|t| t.kinds.iter().any(|k| &k.name == kind))
+        {
+            return Err(Error::ConfigInvalid {
+                message: format!(
+                    "[lifecycle] invocation_kind '{kind}' is not declared in [[telemetry.kinds]]"
+                ),
                 location: None,
             });
         }

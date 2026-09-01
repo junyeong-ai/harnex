@@ -685,6 +685,14 @@
           "type": "string",
           "default": ".harness/decisions"
         },
+        "invocation_kind": {
+          "description": "The telemetry Kind whose events record element invocations — the\noracle the retirement sweep reads a slug's silence from. Undeclared,\nevery slug is `unmeasured`: silence is a claim about invocations, and\nwithout a Kind that records them there is nothing to read it from.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "consumer_detectors": {
           "type": "array",
           "items": {

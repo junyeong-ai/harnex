@@ -2,8 +2,12 @@
 //!
 //! - `Stale`: file mtime older than `stale_days`
 //! - `NoConsumers`: ConsumerDetector finds zero referencing files
-//! - `Silent`: zero telemetry events mentioning the slug within
-//!   `silence_window_days` (caller computes; passes in as a bool)
+//! - `Silent`: the telemetry ledger recorded a tracked invocation within
+//!   `silence_window_days` and none names the slug. A ledger with no tracked
+//!   invocation in the window yields [`SilenceState::Unmeasured`], not Silent
+//!   — silence cannot be concluded from a ledger with nothing to be absent
+//!   from, so it never counts as a signal. The caller derives the state; the
+//!   classifier counts it.
 
 use std::path::{Path, PathBuf};
 
@@ -14,6 +18,7 @@ use crate::config::{LifecycleConfig, RetirementConfig};
 use crate::envelope::Severity;
 use crate::error::{Error, Result};
 use crate::lifecycle::consumer::ConsumerDetector;
+use crate::wire_enum::wire_enum;
 
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct RetirementOutcome {
@@ -22,7 +27,7 @@ pub struct RetirementOutcome {
     pub path: PathBuf,
     pub age_days: i64,
     pub consumer_count: usize,
-    pub silent: bool,
+    pub silence: SilenceState,
     pub signals: Vec<RetirementSignal>,
     pub severity: Severity,
     pub exempt: bool,
@@ -34,6 +39,23 @@ pub enum RetirementSignal {
     Stale,
     NoConsumers,
     Silent,
+}
+
+wire_enum! {
+    /// The telemetry-derived silence verdict for one slug — the input the
+    /// classifier turns into a `Silent` signal (or not).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum SilenceState {
+        /// Measured: the ledger recorded a tracked invocation in the window
+        /// but none names this slug. The one state that fires `Silent`.
+        Silent => "silent",
+        /// Measured: an in-window event names this slug — the element is in use.
+        Active => "active",
+        /// The ledger recorded no tracked invocation in the window, so silence
+        /// is unknown. Never a signal — an absent measurement is not a zero.
+        Unmeasured => "unmeasured",
+    }
 }
 
 pub struct RetirementClassifier<'a> {
@@ -51,7 +73,7 @@ impl<'a> RetirementClassifier<'a> {
         kind: &str,
         path: &Path,
         consumer: &dyn ConsumerDetector,
-        silent: bool,
+        silence: SilenceState,
     ) -> Result<RetirementOutcome> {
         let slug = path
             .file_stem()
@@ -86,8 +108,11 @@ impl<'a> RetirementClassifier<'a> {
         if consumer_count == 0 {
             signals.push(RetirementSignal::NoConsumers);
         }
-        if silent {
-            signals.push(RetirementSignal::Silent);
+        match silence {
+            SilenceState::Silent => signals.push(RetirementSignal::Silent),
+            // Active names the slug; Unmeasured recorded nothing to be absent
+            // from. Neither concludes silence, so neither is a signal.
+            SilenceState::Active | SilenceState::Unmeasured => {}
         }
 
         let severity = match signals.len() {
@@ -111,10 +136,39 @@ impl<'a> RetirementClassifier<'a> {
             path: path.to_path_buf(),
             age_days,
             consumer_count,
-            silent,
+            silence,
             signals,
             severity,
             exempt,
         })
+    }
+}
+
+#[cfg(test)]
+mod strategy_tests {
+    use super::SilenceState;
+
+    #[test]
+    fn from_str_round_trips_every_variant() {
+        for s in SilenceState::ALL {
+            assert_eq!(SilenceState::from_str(s.as_str()), Some(*s));
+        }
+    }
+
+    #[test]
+    fn from_str_rejects_unknown() {
+        assert_eq!(SilenceState::from_str("quiet"), None);
+    }
+
+    #[test]
+    fn as_str_matches_serde_kebab_case() {
+        // The CLI `--silence` value_parser reads `as_str`; the envelope
+        // serializes through serde. The two must spell each state alike.
+        for s in SilenceState::ALL {
+            assert_eq!(
+                serde_json::to_string(s).unwrap(),
+                format!("{:?}", s.as_str())
+            );
+        }
     }
 }

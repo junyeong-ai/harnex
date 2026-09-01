@@ -36,7 +36,7 @@ pub use decision_recorder::{
 };
 pub use observation::{Observation, ObservationLedger};
 pub use retire::{RetirementSweeper, SweepOutcome};
-pub use retirement::{RetirementClassifier, RetirementOutcome, RetirementSignal};
+pub use retirement::{RetirementClassifier, RetirementOutcome, RetirementSignal, SilenceState};
 
 /// Encode a tag into a filesystem-safe ledger filename stem. A tag is a
 /// semantic grouping key (it may be namespaced, e.g. `rust/async`); the
