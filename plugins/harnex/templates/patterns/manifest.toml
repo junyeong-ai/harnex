@@ -42,10 +42,11 @@ files = [
 ]
 
 [[pattern]]
-slug = "observability"
-analyze = ["logging/tracing framework", "project name → namespace", "source roots for governs.live_truth"]
+slug = "telemetry-kinds"
+analyze = ["the [telemetry] storage_dir and any domain [[telemetry.kinds]] already declared", "PostToolUse + PostToolUseFailure hook entries wiring telemetry-emit.sh with matcher Skill|mcp__.*", "whether the retirement sweep should read the harness_invocation ledger"]
 files = [
-  { template = "observability.md", destination = ".claude/rules/observability.md" },
+  { template = "telemetry-kinds.md", destination = ".claude/rules/telemetry-kinds.md" },
+  { template = "telemetry-emit.sh", destination = "hooks/telemetry-emit.sh" },
 ]
 
 [[pattern]]

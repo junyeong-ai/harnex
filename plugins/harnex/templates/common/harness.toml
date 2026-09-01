@@ -122,9 +122,20 @@ protected_paths = ["hooks/", ".gitleaks.toml"]
 roots = ["~/.claude/projects"]
 
 # `lifecycle retire` derives its Silent verdict from this ledger, so the sweep
-# needs the section even before the project records anything. `kinds` starts
-# empty: an event schema is a project's own vocabulary and inventing one here
-# would be the domain guessing harnex refuses. Declare a kind when there is
-# something to count.
+# needs the section even before the project records anything. A project's own
+# event schema is its own vocabulary — declare a `[[telemetry.kinds]]` when
+# there is something domain-specific to count; inventing one here would be the
+# guessing harnex refuses.
 [telemetry]
 storage_dir = ".harness/telemetry"
+
+# The auto-emit Kind the telemetry-kinds pattern feeds: one row per Skill / MCP
+# invocation, carrying only the surface identifier and whether the call
+# succeeded. The closed schema IS the privacy boundary — a tool's arguments or
+# any content would be rejected at append. `outcome` comes from which hook
+# event fired, so a failure cannot be recorded as a success. This is the
+# retirement sweep's input: a surface the ledger has not seen is a Silent
+# candidate.
+[[telemetry.kinds]]
+name = "harness_invocation"
+payload_schema = { type = "object", required = ["surface", "outcome"], properties = { surface = { type = "string" }, outcome = { type = "string", enum = ["ok", "failed"] } } }
