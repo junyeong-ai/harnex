@@ -104,7 +104,10 @@ fn floor<W: Write>(out: &mut W) -> Result<ExitCode> {
     let Some(floor_cfg) = config.guard.as_ref().and_then(|g| g.floor.as_ref()) else {
         return skip(
             out,
-            "no [guard.floor] section in harness.toml — declare it or remove the PreToolUse wiring",
+            &format!(
+                "no [guard.floor] section in {} — declare it or remove the PreToolUse wiring",
+                config_path.display()
+            ),
         );
     };
     let root = config_dir(&config_path, &working_dir);

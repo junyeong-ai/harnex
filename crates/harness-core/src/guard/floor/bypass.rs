@@ -186,6 +186,14 @@ pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
 /// comment is `--get`) both write on git 2.55, and both would read as
 /// diagnostics without this split.
 ///
+/// Options are matched as git resolves them — the exact spelling or any
+/// unambiguous prefix (`--unset-a` is `--unset-all`, a valueless write that an
+/// exact-match set would miss and read as the bare key). The match is over a
+/// subset of git's options, but it is sound: whenever git accepts an
+/// abbreviation it is unambiguous in git's full set, hence in this subset too,
+/// so the resolution agrees; when it is ambiguous git rejects it and nothing
+/// is written, so the classification cannot matter.
+///
 /// Not modelled: an invocation that un-routes hooks without naming the key —
 /// `git config --remove-section core` drops `core.hooksPath` with the whole
 /// section. Detecting it needs the live config, which this syntactic check
@@ -197,22 +205,20 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
     // `--blob`, `--type`, `--default`) and write-filtering (`--comment`,
     // `--value`) alike. Skipping the value is what stops a read flag spelled as
     // that value from settling the classification.
-    const VALUE_OPTS: [&str; 8] = [
+    const VALUE_OPTS: [&str; 6] = [
         "--file",
-        "-f",
         "--blob",
         "--type",
-        "-t",
         "--default",
         "--comment",
         "--value",
     ];
+    const VALUE_SHORT: [&str; 2] = ["-f", "-t"];
     const WRITE_FLAGS: [&str; 4] = ["--unset", "--unset-all", "--add", "--replace-all"];
-    const READ_FLAGS: [&str; 7] = [
+    const READ_FLAGS: [&str; 6] = [
         "--get",
         "--get-all",
         "--get-regexp",
-        "--get-regex",
         "--get-urlmatch",
         "--list",
         "-l",
@@ -227,11 +233,11 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
         if terminated {
             positionals.push(w);
             k += 1;
+        } else if VALUE_SHORT.contains(&w) || abbreviates(w, &VALUE_OPTS) {
+            k += 2; // the option and its value, neither an operative token
         } else if w == "--" {
             terminated = true;
             k += 1;
-        } else if VALUE_OPTS.contains(&w) {
-            k += 2; // the option and its value, neither an operative token
         } else if w.starts_with('-') {
             option_flags.push(w);
             k += 1;
@@ -244,10 +250,11 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
     // A write flag in option position is a definitive write; a read flag there
     // is a definitive read (it names what to fetch). Write wins the tie so
     // `--get --unset` is a write.
-    if option_flags.iter().any(|w| WRITE_FLAGS.contains(w)) {
+    if option_flags.iter().any(|w| abbreviates(w, &WRITE_FLAGS)) {
         return Some(reroute_reason());
     }
-    if option_flags.iter().any(|w| READ_FLAGS.contains(w)) {
+    // No write flag reached here, so a read flag settles it as a read.
+    if option_flags.iter().any(|w| abbreviates(w, &READ_FLAGS)) {
         return None;
     }
     // No decisive flag: the leading positional is the subcommand or the key.
@@ -264,6 +271,20 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
         return None;
     }
     Some(reroute_reason())
+}
+
+/// Whether `token` is how git would name one of `canon` — the exact spelling,
+/// or a prefix that exactly one of them carries (git's unambiguous-abbreviation
+/// rule). A short `-x` option is exact-only; a `--long` one abbreviates.
+fn abbreviates(token: &str, canon: &[&str]) -> bool {
+    if canon.contains(&token) {
+        return true;
+    }
+    if !token.starts_with("--") {
+        return false;
+    }
+    let mut matches = canon.iter().filter(|c| c.starts_with(token));
+    matches.next().is_some() && matches.next().is_none()
 }
 
 fn reroute_reason() -> String {
@@ -395,6 +416,15 @@ mod tests {
                 "core.hooksPath",
                 "/evil",
             ],
+            // A valueless write reached by git's unambiguous-prefix abbreviation
+            // — `--unset-a` is `--unset-all`, which an exact-match set would miss
+            // and read as the bare key (both write on git 2.55).
+            &["config", "--unset-a", "core.hooksPath"],
+            &["config", "--unset-al", "core.hooksPath"],
+            &["config", "--ad", "core.hooksPath", "/x"],
+            // A write whose abbreviated value-consuming option swallows the read
+            // flag: `--com` is `--comment`, so `--get` is its value, not a read.
+            &["config", "set", "--com", "--get", "core.hooksPath", "/evil"],
         ] {
             let mut argv = vec!["git"];
             argv.extend_from_slice(write);
@@ -403,6 +433,19 @@ mod tests {
                 "missed write: {write:?}"
             );
         }
+    }
+
+    #[test]
+    fn an_ambiguous_abbreviation_git_rejects_is_not_forced_to_a_verdict() {
+        // `--unse` prefixes both --unset and --unset-all, so git rejects it and
+        // nothing is written; the read fallthrough is harmless.
+        assert!(
+            detect_hook_bypass(&words(&["git", "config", "--unse", "core.hooksPath"])).is_none()
+        );
+        // An abbreviated read is still a read.
+        assert!(
+            detect_hook_bypass(&words(&["git", "config", "--get-a", "core.hooksPath"])).is_none()
+        );
     }
 
     #[test]
