@@ -1087,12 +1087,20 @@ fn the_session_hook_reads_the_envelope_the_oracle_writes() {
         .pointer("/data/items/0")
         .expect("the script's .data.items[] path exists in the wire");
     let fields = regex::Regex::new(r"\.([a-z_]+)").unwrap();
-    let jq_block: String = script
-        .lines()
-        .skip_while(|l| !l.contains("jq -r '"))
-        .take_while(|l| !l.trim().eq("'"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    // The display filter is the LAST `jq -r '` block, closed by the line
+    // whose first non-blank byte is the quote — genuinely bounded, so shell
+    // text outside the filter can never satisfy the scan.
+    let lines: Vec<&str> = script.lines().collect();
+    let open = lines
+        .iter()
+        .rposition(|l| l.contains("jq -r '"))
+        .expect("the script carries a display filter");
+    let close = lines[open + 1..]
+        .iter()
+        .position(|l| l.trim_start().starts_with('\''))
+        .map(|i| open + 1 + i)
+        .expect("the display filter is closed");
+    let jq_block: String = lines[open..close].join("\n");
     assert!(
         jq_block.contains(".data.items[]"),
         "the script no longer walks .data.items[] — update this guard with it"
