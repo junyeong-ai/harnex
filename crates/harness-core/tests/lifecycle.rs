@@ -7,9 +7,10 @@ use harness_core::config::{
 use harness_core::lifecycle::{
     ConsumerDetector, DecisionLedger, GrepConsumerDetector, LifecycleDecisionRecorder,
     ObservationLedger, PromotionCandidateFinder, PromotionDecision, RetirementClassifier,
-    RetirementSignal, RetirementSweeper, consumer_detector_for,
+    RetirementSignal, RetirementSweeper, SilenceState, consumer_detector_for,
 };
-use harness_core::telemetry::{JsonlStorage, TelemetryAppender, TelemetryQuery};
+use harness_core::telemetry::{Event, JsonlStorage, TelemetryAppender, TelemetryQuery};
+use jiff::{SignedDuration, Timestamp};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -26,6 +27,7 @@ fn default_lifecycle(observation_dir: PathBuf) -> LifecycleConfig {
         grace_period_days: 0,
         observation_dir,
         decision_dir: parent.join("decisions"),
+        invocation_kind: Some("skill-invoked".into()),
         consumer_detectors: vec![ConsumerDetectorDecl {
             kind: "rule".into(),
             strategy: "grep".into(),
@@ -213,7 +215,7 @@ fn retirement_classifier_marks_no_consumers_silent() {
     let detector = consumer_detector_for(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, None);
     let verdict = classifier
-        .classify("rule", &rule_path, detector.as_ref(), true)
+        .classify("rule", &rule_path, detector.as_ref(), SilenceState::Silent)
         .unwrap();
     assert!(verdict.signals.contains(&RetirementSignal::NoConsumers));
     assert!(verdict.signals.contains(&RetirementSignal::Silent));
@@ -236,7 +238,7 @@ fn retirement_classifier_honors_exempt_list() {
     let detector = consumer_detector_for(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, Some(&retire_cfg));
     let verdict = classifier
-        .classify("rule", &rule_path, detector.as_ref(), true)
+        .classify("rule", &rule_path, detector.as_ref(), SilenceState::Silent)
         .unwrap();
     assert!(verdict.exempt);
 }
@@ -626,10 +628,12 @@ fn sweep_walks_every_kind_with_consumer_detector() {
     let outcome = sweep.run().unwrap();
     assert_eq!(outcome.files_classified, 2);
     assert!(outcome.kinds_processed.contains(&"rule".to_string()));
-    // Both files: no consumer, no recent edit telemetry → Silent + NoConsumers signals
+    // No telemetry ledger exists, so silence is Unmeasured — never a fabricated
+    // Silent. NoConsumers fires; the telemetry-derived signal does not.
     for v in &outcome.verdicts {
         assert!(v.signals.contains(&RetirementSignal::NoConsumers));
-        assert!(v.signals.contains(&RetirementSignal::Silent));
+        assert_eq!(v.silence, SilenceState::Unmeasured);
+        assert!(!v.signals.contains(&RetirementSignal::Silent));
     }
 }
 
@@ -741,14 +745,114 @@ fn sweep_derives_silent_from_telemetry_payload() {
         .iter()
         .find(|v| v.slug == "silent-rule")
         .unwrap();
-    assert!(
-        !active.silent,
-        "active-rule must not be Silent (event references it)"
+    assert_eq!(
+        active.silence,
+        SilenceState::Active,
+        "active-rule must be Active (an in-window event references it)"
     );
-    assert!(
-        silent_rule.silent,
-        "silent-rule must be Silent (no event references)"
+    assert_eq!(
+        silent_rule.silence,
+        SilenceState::Silent,
+        "silent-rule must be Silent (the ledger is live but no event references it)"
     );
+}
+
+#[test]
+fn sweep_reads_only_the_declared_invocation_kind() {
+    // A domain Kind's payload may carry any string, including one that happens
+    // to equal a slug. Read as an invocation it would both revive `orphan-rule`
+    // and convict `other-rule` of silence — a verdict decided by a coincidence.
+    // Only the declared invocation Kind is the record, so both stay Unmeasured.
+    let tmp = TempDir::new().unwrap();
+    let rule_dir = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rule_dir).unwrap();
+    std::fs::write(rule_dir.join("orphan-rule.md"), "body").unwrap();
+    std::fs::write(rule_dir.join("other-rule.md"), "body").unwrap();
+    let cfg = build_sweep_config(
+        tmp.path(),
+        vec![KindDecl {
+            name: "rule".into(),
+            glob: ".claude/rules/*.md".into(),
+            foundation: false,
+        }],
+    );
+    {
+        let mut storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+        storage
+            .append(&Event {
+                kind: "deploy".into(),
+                timestamp: Timestamp::now(),
+                payload: serde_json::json!({"area": "orphan-rule", "status": "ok"}),
+            })
+            .unwrap();
+    }
+    let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+    let query = TelemetryQuery::new(storage);
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    assert_eq!(outcome.verdicts.len(), 2);
+    for v in &outcome.verdicts {
+        assert_eq!(v.silence, SilenceState::Unmeasured, "{}", v.slug);
+        assert!(!v.signals.contains(&RetirementSignal::Silent));
+    }
+}
+
+#[test]
+fn sweep_leaves_every_slug_unmeasured_without_a_declared_invocation_kind() {
+    // Nothing declares where invocations are recorded, so silence has no
+    // oracle to be read from — never a Silent inferred from the ledger at large.
+    let tmp = TempDir::new().unwrap();
+    let rule_dir = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rule_dir).unwrap();
+    std::fs::write(rule_dir.join("orphan-rule.md"), "body").unwrap();
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![KindDecl {
+            name: "rule".into(),
+            glob: ".claude/rules/*.md".into(),
+            foundation: false,
+        }],
+    );
+    cfg.lifecycle.as_mut().unwrap().invocation_kind = None;
+    cfg.validate().unwrap();
+    {
+        let mut appender = TelemetryAppender::new(
+            cfg.telemetry.as_ref().unwrap(),
+            JsonlStorage::new(tmp.path().join("tele"), 10),
+        )
+        .unwrap();
+        appender
+            .append(
+                "skill-invoked",
+                serde_json::json!({"skill": "orphan-rule", "outcome": "ok"}),
+            )
+            .unwrap();
+    }
+    let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+    let query = TelemetryQuery::new(storage);
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    assert_eq!(outcome.verdicts[0].silence, SilenceState::Unmeasured);
+}
+
+#[test]
+fn config_rejects_an_invocation_kind_no_telemetry_kind_declares() {
+    let tmp = TempDir::new().unwrap();
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![KindDecl {
+            name: "rule".into(),
+            glob: ".claude/rules/*.md".into(),
+            foundation: false,
+        }],
+    );
+    cfg.lifecycle.as_mut().unwrap().invocation_kind = Some("never-declared".into());
+    let err = cfg.validate().unwrap_err();
+    assert_eq!(err.code(), harness_core::error::ErrorCode::ConfigInvalid);
 }
 
 #[test]
@@ -765,13 +869,30 @@ fn sweep_window_override_changes_silent_horizon() {
             foundation: false,
         }],
     );
-    // No telemetry seeded — every slug Silent regardless of window
-    let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
-    let query = TelemetryQuery::new(storage);
-    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
-        .unwrap()
-        .with_silence_window(1)
-        .run()
-        .unwrap();
-    assert!(outcome.verdicts.iter().all(|v| v.silent));
+    // One event five days old naming the slug. The window decides whether it
+    // is in view: a wide window sees it (Active); a narrow one leaves the
+    // ledger empty within the horizon (Unmeasured) — never a fabricated Silent.
+    {
+        let mut storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+        storage
+            .append(&Event {
+                kind: "skill-invoked".into(),
+                timestamp: Timestamp::now() - SignedDuration::from_hours(5 * 24),
+                payload: serde_json::json!({"skill": "x", "outcome": "ok"}),
+            })
+            .unwrap();
+    }
+    let silence_at = |window: u32| {
+        let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+        let query = TelemetryQuery::new(storage);
+        RetirementSweeper::new(&cfg, tmp.path(), &query)
+            .unwrap()
+            .with_silence_window(window)
+            .run()
+            .unwrap()
+            .verdicts[0]
+            .silence
+    };
+    assert_eq!(silence_at(10), SilenceState::Active);
+    assert_eq!(silence_at(1), SilenceState::Unmeasured);
 }

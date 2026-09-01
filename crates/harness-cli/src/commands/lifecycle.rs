@@ -8,7 +8,8 @@ use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::lifecycle::{
     DecisionLedger, LifecycleDecisionRecorder, ObservationLedger, PromotionCandidateFinder,
-    PromotionDecision, RetirementClassifier, RetirementSweeper, consumer_detector_for,
+    PromotionDecision, RetirementClassifier, RetirementSweeper, SilenceState,
+    consumer_detector_for,
 };
 use harness_core::telemetry::{JsonlStorage, TelemetryQuery};
 
@@ -44,9 +45,11 @@ pub enum LifecycleCommand {
         kind: String,
         #[arg(long)]
         path: PathBuf,
-        /// Whether telemetry reports zero events for this slug in the silence window
-        #[arg(long)]
-        silent: bool,
+        /// The telemetry silence state for this slug: `silent` (ledger live,
+        /// slug absent), `active` (slug present), or `unmeasured` (no events
+        /// in the window). Asserted here; `retire` derives it from the ledger.
+        #[arg(long, value_parser = silence_state_values())]
+        silence: String,
     },
     /// Sweep every kind × consumer detector, deriving Silent automatically
     /// from the telemetry ledger. Returns aggregate retirement verdicts.
@@ -81,6 +84,12 @@ pub struct DecisionArgs {
 /// from [`PromotionDecision::ALL`] so adding a variant auto-updates the CLI.
 fn decision_kind_values() -> Vec<&'static str> {
     PromotionDecision::ALL.iter().map(|d| d.as_str()).collect()
+}
+
+/// Source of truth for `--silence` clap value_parser — derives directly from
+/// [`SilenceState::ALL`] so adding a variant auto-updates the CLI.
+fn silence_state_values() -> Vec<&'static str> {
+    SilenceState::ALL.iter().map(|s| s.as_str()).collect()
 }
 
 pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
@@ -187,7 +196,11 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
             write_envelope_success(out, ListResponse::new(filtered))?;
             Ok(ExitCode::SUCCESS)
         }
-        LifecycleCommand::Classify { kind, path, silent } => {
+        LifecycleCommand::Classify {
+            kind,
+            path,
+            silence,
+        } => {
             let detector_decl = lc
                 .consumer_detectors
                 .iter()
@@ -206,7 +219,11 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
             } else {
                 root.join(path)
             };
-            let verdict = classifier.classify(&kind, &target_path, detector.as_ref(), silent)?;
+            let silence = SilenceState::from_str(&silence).ok_or_else(|| Error::ConfigInvalid {
+                message: format!("unknown silence state '{silence}'"),
+                location: None,
+            })?;
+            let verdict = classifier.classify(&kind, &target_path, detector.as_ref(), silence)?;
             write_envelope_success(out, verdict)?;
             Ok(ExitCode::SUCCESS)
         }

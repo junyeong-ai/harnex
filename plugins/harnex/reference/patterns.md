@@ -56,7 +56,9 @@ an observation is the blank-page problem in disguise.
   `harness_invocation` Kind exactly as `common/harness.toml` ships it, and add
   it if a brownfield `harness.toml` lacks it — the emit no-ops silently on an
   undeclared Kind, so the pattern would install looking enabled and record
-  nothing. Do not invent a second Kind. Wire `hooks/telemetry-emit.sh` as two
+  nothing. Do not invent a second Kind. Set `[lifecycle] invocation_kind` to
+  it in the same edit: it is what retirement measures silence against, and
+  without it every slug stays `unmeasured` however full the ledger gets. Wire `hooks/telemetry-emit.sh` as two
   `.claude/settings.json` entries — `PostToolUse` and `PostToolUseFailure`,
   matcher `Skill|Task|Agent` (the tools that invoke a harness element; its slug
   is what the retirement sweep reads — MCP tools are not harness elements and

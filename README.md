@@ -192,7 +192,7 @@ harnex lifecycle promote --tag T --text X --decision-text "..."
 harnex lifecycle reject  --tag T --text X --decision-text "..."
 harnex lifecycle defer   --tag T --text X --decision-text "..."
 harnex lifecycle demote  --tag T --text X --decision-text "..."
-harnex lifecycle classify --kind K --path P [--silent]
+harnex lifecycle classify --kind K --path P --silence silent|active|unmeasured
 harnex lifecycle retire [--window N]
 harnex lifecycle decisions [--tag T] [--decision D]
 

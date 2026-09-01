@@ -25,7 +25,8 @@ byte size and never silently deletes.
 
 `TelemetryQuery::report(windows, kind_filter)` returns a per-Kind rollup:
 total + first/last seen + counts within each trailing-day window. Used
-by `harnex telemetry report` and consumed by retirement decisions
-(0-count in a 90-day window indicates a Silent signal candidate). Window
+by `harnex telemetry report`. Retirement's Silent signal is a separate,
+per-slug computation over `scan_events`, not this rollup — see `lifecycle.md`
+for how a slug's silence state is derived. Window
 arithmetic uses `jiff::SignedDuration::from_hours(days * 24)` because
 `jiff::Timestamp` arithmetic forbids calendar-unit spans.

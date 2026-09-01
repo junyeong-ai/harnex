@@ -53,6 +53,26 @@ fn scaffold_kind_schema() -> KindSchema {
 }
 
 #[test]
+fn the_scaffold_measures_retirement_silence_against_the_emitted_kind() {
+    // The auto-emit writes `HARNESS_INVOCATION_KIND`; retirement reads
+    // whichever Kind `[lifecycle] invocation_kind` names. Were the two to
+    // drift, the scaffold would emit into a ledger nothing measures and every
+    // slug would stay `unmeasured` forever — a silent loss of the signal.
+    let config = Config::load_from(&repo_path("plugins/harnex/templates/common/harness.toml"))
+        .expect("scaffold harness.toml loads");
+    let declared = config
+        .lifecycle
+        .expect("scaffold declares [lifecycle]")
+        .invocation_kind;
+    assert_eq!(
+        declared.as_deref(),
+        Some(HARNESS_INVOCATION_KIND),
+        "the scaffold's `[lifecycle] invocation_kind` must name the Kind the \
+         auto-emit writes, or retirement measures silence against nothing"
+    );
+}
+
+#[test]
 fn the_emits_own_payloads_validate_against_the_scaffold_schema() {
     // The append the emit makes for each outcome must pass the scaffold's
     // closed schema. A renamed field, a changed type, or a narrowed `outcome`

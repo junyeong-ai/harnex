@@ -23,8 +23,11 @@ outside the schema at write time.
   `Skill|Task|Agent`, best `async`. It is a no-op without the oracle and never
   blocks a tool call.
 - Add a Kind with a config edit, never a code edit.
-- Read the ledger for retirement with `harnex lifecycle retire`: it scans raw
-  payloads for a surface's slug within the silence window. A surface the ledger
-  has not seen is Silent — which is why the slug is the field the auto-emit
-  Kind carries. (`harnex telemetry report` rolls counts by Kind, not by
+- Point `[lifecycle] invocation_kind` at this Kind so retirement reads it;
+  undeclared, every slug stays `unmeasured` and the Silent signal never fires.
+- Read the ledger for retirement with `harnex lifecycle retire`: within a
+  window this Kind recorded, a surface it never names is Silent — the slug is
+  why the Kind carries it. A window it did not record is Unmeasured, never a
+  fabricated Silent, so the signal means something only once the emit has been
+  filling the ledger. (`harnex telemetry report` rolls counts by Kind, not by
   surface, so it does not answer the per-surface question.)

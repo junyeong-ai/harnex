@@ -15,8 +15,16 @@ whitespace. Candidates require `instance_count ≥ promotion_min_instances`
 AND `span ≥ promotion_min_days`.
 
 Retirement classifier emits three signals: Stale (mtime > stale_days),
-NoConsumers (grep finds zero), Silent (caller-supplied — derived from
-telemetry query). Severity: 3 signals → Major, 2 → Minor, ≤1 → Info.
+NoConsumers (grep finds zero), Silent (caller-supplied `SilenceState` —
+derived from the telemetry query). Severity: 3 signals → Major, 2 → Minor,
+≤1 → Info. `SilenceState` is tri-state — `Silent` fires the signal;
+`Active` and `Unmeasured` do not. Silence is measured only against
+`[lifecycle] invocation_kind`, the telemetry Kind a project declares as its
+record of element invocations. Undeclared, or with no event of it in the
+window, every slug is `Unmeasured` and caps severity at Minor: silence is a
+claim about invocations, so it is never inferred from ledger traffic at large
+— an unrelated Kind's payload may carry any string, and reading one as an
+invocation would decide a slug's fate on a coincidence.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.
@@ -43,9 +51,10 @@ treats every `Approved | Rejected | Demoted` ledger entry as terminal.
 `RetirementSweeper` is the top-level retirement runner. It walks every
 `[[kinds]]` declaration (skipping `foundation = true` kinds), finds
 the matching `[[lifecycle.consumer_detectors]]`, globs the kind's path
-pattern, and classifies each match. The `Silent` signal is derived
-automatically by scanning telemetry payloads for the slug as an exact
-string match within the configured `silence_window_days`. Operators
+pattern, and classifies each match. The silence state is derived from one
+scan of `invocation_kind`'s events within `silence_window_days`, matching each
+slug as an exact string in a payload; a window that Kind did not record yields
+`Unmeasured`, never a fabricated `Silent`. Operators
 `harnex lifecycle retire` covers the entire surface in one call.
 
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`
