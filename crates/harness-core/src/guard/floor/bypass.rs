@@ -25,13 +25,15 @@ use super::command_line::{SplitError, split_commands};
 const HOOKED_SUBCOMMANDS: [&str; 4] = ["commit", "push", "merge", "pull"];
 
 /// Bare (option-less) wrappers and command-position builtins that may
-/// precede the command word, skipped through to reach the real command.
-/// `exec` and `eval` run the git that follows (`exec git …` replaces the
-/// shell with it, `eval git …` re-runs the already-split words). A wrapper
-/// carrying its own options (`nice -n10 git …`), or `eval` given a single
-/// quoted string it re-parses (`eval "git commit --no-verify"`, the `sh -c`
-/// class), is out of scope — the option or the re-parse breaks the skip, and
-/// modelling every wrapper's grammar is the arms race this avoids.
+/// precede the command word, skipped through to reach the real command:
+/// `env` / `command` / `nice` / `nohup` / `time` / `setsid`, the builtins
+/// `exec` / `eval` (`exec git …` replaces the shell with it, `eval git …`
+/// re-runs the already-split words), and the privilege wrappers `sudo` /
+/// `doas`. A wrapper carrying its own options (`nice -n10 git …`,
+/// `sudo -u x git …`), or `eval` given a single quoted string it re-parses
+/// (`eval "git commit --no-verify"`, the `sh -c` class), is out of scope —
+/// the option or the re-parse breaks the skip, and modelling every wrapper's
+/// grammar is the arms race this avoids.
 const COMMAND_PREFIX_WORDS: [&str; 10] = [
     "env", "command", "nice", "nohup", "time", "setsid", "exec", "eval", "sudo", "doas",
 ];
