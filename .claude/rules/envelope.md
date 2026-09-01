@@ -45,3 +45,6 @@ without extending this list:
   a Block exits 2 with its reason on stderr (the documented feedback channel),
   a skip or grant emits one `{systemMessage, suppressOutput}` object, and a
   plain allow emits nothing. See guard.md.
+- `guard telemetry-emit`: emits nothing on stdout and always exits 0 — it
+  records a harness-invocation event as a side effect and must never block or
+  interrupt the tool call that triggered it. See guard.md.
