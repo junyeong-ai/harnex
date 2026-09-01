@@ -200,6 +200,9 @@ harnex guard hook-event                               # parse stdin hook JSON
 harnex guard hook-run <prog> [args...]                # standard hook wrapper
 harnex guard hook-stop <prog> [args...]               # Stop hook (always exit 0)
 harnex guard stop-audit [--session ID]                # fresh-context Stop audit
+harnex guard floor                                    # PreToolUse floor-integrity:
+                                                      # blocks hook-skipping git commands
+                                                      # and protected-path writes
 
 harnex plan audit --plan P [--spec S]                 # spec-workflow review floor:
                   [--baseline B] [--baseline-spec BS] # open C/B rows, vanished rows,

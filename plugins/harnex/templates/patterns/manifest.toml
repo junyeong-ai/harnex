@@ -94,3 +94,10 @@ files = [
   { template = "write-only-signal-census.md", destination = ".claude/routines/write-only-signal-census.md" },
   { template = "session-routines.sh", destination = "hooks/session-routines.sh" },
 ]
+
+[[pattern]]
+slug = "enforcement-floor"
+analyze = ["the project's gate-defining files (git hooks dir, secret-scan config, lint configs, verifier sources) for [guard.floor] protected_paths", "the two PreToolUse hook entries in .claude/settings.json invoking harnex guard floor for Bash and Edit|Write|MultiEdit", "the [guard.floor] section in harness.toml"]
+files = [
+  { template = "enforcement-floor.md", destination = ".claude/rules/enforcement-floor.md" },
+]

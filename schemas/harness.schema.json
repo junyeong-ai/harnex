@@ -767,6 +767,17 @@
             }
           ],
           "default": null
+        },
+        "floor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FloorConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       }
     },
@@ -805,6 +816,21 @@
       "required": [
         "critique_skill"
       ]
+    },
+    "FloorConfig": {
+      "description": "The enforcement-surface freeze (`guard::floor`). Declaring the section is\nwhat turns the floor on; `protected_paths` adds the project's own\ngate-defining files to the built-in set the module documents.",
+      "type": "object",
+      "properties": {
+        "protected_paths": {
+          "description": "Repo-relative literal paths; a trailing `/` freezes a directory.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      },
+      "additionalProperties": false
     },
     "SessionConfig": {
       "description": "Where Claude Code transcripts live, and what reading them is parameterised by.\n\n`roots` has no default on purpose. It is a machine-global path, and a\nbuilt-in one would put the author's layout into a binary that runs on other\nmachines — Constitution VII, applied to a path rather than a threshold.",
