@@ -14,15 +14,21 @@
 #
 # A scan has three outcomes, not two, and gitleaks spells only two of them by
 # default: a finding and a failure of the scan itself both exit 1. So findings
-# are given an exit code of their own (`--exit-code`, a root flag since 8.0),
-# leaving 1 to mean the scan reached no verdict. The distinction is the point:
-# an unscanned tree is not a clean one, and reporting a broken scanner as a
-# finding sends the operator to the false-positive hatch — which turns a
-# scanner that failed into a scanner that no longer runs.
+# are given an exit code of their own (`--exit-code`), leaving 1 to mean the
+# scan reached no verdict — it failed before starting, or failed partway and
+# so speaks for no part of the tree. The distinction is the point: an unjudged
+# tree is not a clean one, and reporting a broken scanner as a finding sends
+# the operator to the false-positive hatch — which turns a scanner that failed
+# into a scanner that no longer runs.
+#
+# Wants gitleaks 8.19 or newer: `--exit-code` is a root flag from 8.0, but the
+# `git` subcommand this scans staged changes with arrives in 8.19. An older
+# build lands in the no-verdict arm, which says so.
 set -uo pipefail
 
-# Distinct from 0 (clean), from 1 (gitleaks' own failures), and from the codes
-# a shell assigns for an absent or unexecutable command and for signals.
+# Distinct from 0 (clean), from the codes gitleaks itself uses to fail (1, and
+# 126 for a flag it does not know), and from those a shell assigns for an
+# absent or unexecutable command and for signals.
 GITLEAKS_LEAK_CODE=99
 
 if [[ "${HARNEX_SKIP_GITLEAKS:-}" != "1" ]]; then
@@ -38,11 +44,12 @@ if [[ "${HARNEX_SKIP_GITLEAKS:-}" != "1" ]]; then
         exit 1
         ;;
       *)
-        echo "[harnex] gitleaks exited $scan without scanning — the staged changes are" >&2
-        echo "         unscanned, not clean, so the commit is blocked." >&2
+        echo "[harnex] gitleaks exited $scan, reaching no verdict — the staged changes are" >&2
+        echo "         unjudged, not clean, so the commit is blocked." >&2
         echo "         Diagnose: gitleaks git --staged --verbose" >&2
-        echo "         Usually a malformed .gitleaks.toml or a build older than 8.0." >&2
-        echo "         HARNEX_SKIP_GITLEAKS=1 commits it unscanned; fixing the scan does not." >&2
+        echo "         Usually a malformed .gitleaks.toml, or a build before 8.19, which" >&2
+        echo "         has no \`git\` subcommand — \`gitleaks version\` says which you have." >&2
+        echo "         HARNEX_SKIP_GITLEAKS=1 commits it unjudged; fixing the scan does not." >&2
         exit 1
         ;;
     esac
