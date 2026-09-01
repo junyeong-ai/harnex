@@ -50,7 +50,16 @@ impl ObservationLedger {
     }
 
     pub fn load_all(&self) -> Result<Vec<Observation>> {
-        if !self.dir.exists() {
+        // Every failure to read surfaces rather than shortening the result:
+        // a ledger read short undercounts observations and corrupts promotion
+        // grouping, and one that could not be read at all is not one nobody
+        // has written to. `try_exists` is what separates absent from
+        // unreadable — `exists` answers false for both.
+        let present = self.dir.try_exists().map_err(|e| Error::IoFailure {
+            path: self.dir.clone(),
+            source: e,
+        })?;
+        if !present {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
@@ -58,10 +67,6 @@ impl ObservationLedger {
             path: self.dir.clone(),
             source: e,
         })?;
-        // A dir-entry read error must surface, not be dropped: silently
-        // skipping a ledger file would undercount observations and corrupt
-        // promotion grouping. The rest of this function already fails loudly
-        // (corrupt line, unreadable file) — the directory scan matches.
         let mut paths: Vec<PathBuf> = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|e| Error::IoFailure {
