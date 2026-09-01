@@ -4,18 +4,19 @@
 # and dispatches the named .sh verifier; the verifier's outcome is observed but
 # never propagated. Rejects path traversal in the script-name argument.
 #
-# The anchors are the runtime's CLAUDE_PROJECT_DIR and this file's own
-# location, never the working directory — see `_runner.sh` for why git cannot
-# answer this. The hazard below is what that choice avoids: from inside a
-# submodule, git names the inner repository, which is the other repository.
+# The anchors are the runtime's CLAUDE_PROJECT_DIR, then git asked about this
+# file's own location, then its parent — never the working directory. See
+# `_runner.sh` for the order and why. The hazard below is what it avoids: asked
+# from inside a submodule, git names the inner repository, which is the other
+# repository.
 #
 # The verifier's stdout IS the hook's control channel — a Stop verifier speaks
 # JSON there — so its stderr stays stderr. Folding the two together lets any
 # verifier that logs a diagnostic corrupt the JSON and lose the advisory.
 set -uo pipefail
 
-HOOKS="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)" || exit 0
-ROOT="${CLAUDE_PROJECT_DIR:-${HOOKS%/*}}"
+HOOKS="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)" || exit 0
+ROOT="${CLAUDE_PROJECT_DIR:-$(git -C "${HOOKS}" rev-parse --show-toplevel 2>/dev/null || echo "${HOOKS%/*}")}"
 # A root is an absolute path — relative, it would resolve against the directory
 # the hook fired in, which is the anchor these wrappers exist to stop reading.
 case "$ROOT" in /*) ;; *) exit 0 ;; esac

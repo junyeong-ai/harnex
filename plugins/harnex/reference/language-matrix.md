@@ -121,11 +121,12 @@ repo is never penalised for the tool it does not install.
   context lives in git, not per-developer caches) — emit only if the project
   signals it; never force.
 - Two Claude Code hook wrappers, both language-agnostic: `_runner.sh` (anchor
-  cwd at the project root — `${CLAUDE_PROJECT_DIR}`, else the wrapper's own
-  parent, never a git probe of a working directory the runtime does not
-  promise → dispatch by verifier extension) and `_stop_runner.sh` (same,
-  always exit 0). Both reject `..` path-traversal in the script-name
-  argument. The wrapper probes no toolchain — each non-shell dispatch arm
+  cwd at the project root — `${CLAUDE_PROJECT_DIR}`, else git asked about the
+  wrapper's own directory, else that directory's parent; never a probe of the
+  working directory, which the runtime does not promise and which names the
+  inner repository inside a submodule → dispatch by verifier extension) and
+  `_stop_runner.sh` (same, always exit 0). Both reject `..` path-traversal in
+  the script-name argument. The wrapper probes no toolchain — each non-shell dispatch arm
   probes the interpreter it invokes, and a `.sh` verifier probes whatever it
   shells out to. A wrapper that gated on the language's build tool skipped
   working hooks whenever an unrelated tool was missing.
