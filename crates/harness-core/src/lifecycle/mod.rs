@@ -32,7 +32,7 @@ pub use consumer::{
 };
 pub use decision::{DecisionLedger, DecisionRecord, PromotionDecision};
 pub use decision_recorder::{
-    LifecycleDecisionRecorder, PromotionCandidate, PromotionCandidateFinder,
+    CandidateSurvey, LifecycleDecisionRecorder, PromotionCandidate, PromotionCandidateFinder,
 };
 pub use observation::{Observation, ObservationLedger};
 pub use retire::{RetirementSweeper, SweepOutcome};

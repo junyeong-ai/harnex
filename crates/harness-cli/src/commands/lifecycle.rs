@@ -26,7 +26,8 @@ pub enum LifecycleCommand {
         #[arg(long)]
         source: String,
     },
-    /// List promotion candidates that crossed configured thresholds
+    /// Survey the observation ledger: the candidates that crossed the
+    /// configured thresholds, and the corpus they were drawn from
     Candidates,
     /// Every routine under .claude/routines/ with its schedule state today
     Routines,
@@ -133,8 +134,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         LifecycleCommand::Candidates => {
-            let candidates = finder.list_candidates()?;
-            write_envelope_success(out, ListResponse::new(candidates))?;
+            write_envelope_success(out, finder.survey()?)?;
             Ok(ExitCode::SUCCESS)
         }
         LifecycleCommand::Promote(args) => emit_record(
