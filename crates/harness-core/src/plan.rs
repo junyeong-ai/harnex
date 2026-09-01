@@ -1996,6 +1996,32 @@ mod tests {
     }
 
     #[test]
+    fn a_row_the_reader_almost_lost_is_still_read() {
+        // Three shapes the release before this reader read and the first
+        // rewrite did not: an issue reference over an underline read as an
+        // ATX boundary, a section heading with a trailing comment or tab
+        // read as a different heading, and a row after a comment's close.
+        for (label, text) in [
+            (
+                "a setext heading starting with #",
+                "## Outstanding issues\n\n- [Minor] a\n\n#123 closed upstream\n---\n\n- [Blocker] b\n",
+            ),
+            (
+                "a trailing comment in the heading",
+                "## Outstanding issues <!-- one row each -->\n\n- [Blocker] b\n",
+            ),
+            ("a trailing tab in the heading", "## Outstanding issues\t\n\n- [Blocker] b\n"),
+            ("a row after a comment closes", "## Outstanding issues\n\n<!-- note --> - [Blocker] b\n"),
+        ] {
+            let findings = audit(text);
+            assert!(
+                slugs(&findings).contains(&"plan-open-blocker"),
+                "{label}: the Blocker went unread — {findings:#?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_heading_a_container_holds_neither_opens_nor_ends_the_section() {
         // A quoted `## Next` under the real section ended it, and every row
         // after the quote went unread; a quoted `## Outstanding issues` was

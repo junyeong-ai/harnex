@@ -36,6 +36,14 @@
 //!   CommonMark core, the one renderer every consumer of a harness agrees on.
 //!   An extension that changes no answer here is not enabled either: it would
 //!   be configuration nothing can test.
+//! - Never reads a link reference definition as anything but the line it
+//!   is. `[file: x.rs:1]: https://…` renders nothing and is a claim here —
+//!   the marker is the token, and a token spelled as a link label is not a
+//!   shape any rule writes.
+//! - Never reads a leading `---` as a thematic break. With frontmatter
+//!   enabled it opens a metadata block, and a document that opens with a
+//!   rule instead of frontmatter is hidden to its next `---` — loudly, as a
+//!   section the gate then reports missing.
 //! - Never decodes a line. `prose()` is the source line with hidden spans
 //!   removed, not rendered inline text, so an entity or a backslash escape
 //!   reaches a gate as written. The gates match reserved tokens, and a token
@@ -134,19 +142,41 @@ impl Document {
                     }
                 }
                 Event::Html(_) => {
+                    // Raw HTML is content a browser shows, except the comments
+                    // in it, which it hides — each `<!-- -->` span is masked
+                    // and the rest of the line stays, so a row or a claim
+                    // written after a comment's close is still read. An open
+                    // `<!--` runs to the end of the document.
                     let slice = &text[range.clone()];
-                    if comment_from.is_none() && slice.trim_start().starts_with("<!--") {
-                        comment_from = Some(range.start);
-                    }
-                    if let Some(from) = comment_from {
-                        if slice.contains("-->") {
-                            comment_from = None;
-                        } else if range.end >= text.len() {
-                            unterminated = Some(Unterminated::Comment {
-                                line: line_of(&text, from),
-                            });
+                    let mut at = 0usize;
+                    loop {
+                        if let Some(from) = comment_from {
+                            match slice[at..].find("-->") {
+                                Some(close) => {
+                                    let end = at + close + 3;
+                                    quoted.push(range.start + at..range.start + end);
+                                    comment_from = None;
+                                    at = end;
+                                }
+                                None => {
+                                    quoted.push(range.start + at..range.end);
+                                    if range.end >= text.len() {
+                                        unterminated = Some(Unterminated::Comment {
+                                            line: line_of(&text, from),
+                                        });
+                                    }
+                                    break;
+                                }
+                            }
+                        } else {
+                            match slice[at..].find("<!--") {
+                                Some(open) => {
+                                    comment_from = Some(range.start + at + open);
+                                    at += open;
+                                }
+                                None => break,
+                            }
                         }
-                        quoted.push(range);
                     }
                 }
                 Event::InlineHtml(_) => {
@@ -164,11 +194,19 @@ impl Document {
                         level: level as u32,
                         text: String::new(),
                         line: line_of(&text, range.start),
-                        atx: text[range.start..].trim_start().starts_with('#'),
+                        atx: !text[range.clone()].trim_end().contains('\n'),
                         top_level: containers == 0,
                     });
                 }
-                Event::End(TagEnd::Heading(_)) => headings.extend(open_heading.take()),
+                Event::End(TagEnd::Heading(_)) => {
+                    if let Some(mut heading) = open_heading.take() {
+                        // A renderer strips the whitespace a trailing tab or
+                        // a masked comment leaves; a citation is written from
+                        // what it shows.
+                        heading.text = heading.text.trim().to_string();
+                        headings.push(heading);
+                    }
+                }
                 Event::Text(run) | Event::Code(run) => {
                     if let Some(fence) = open_fence.as_mut() {
                         fence.content_end = range.end;
@@ -526,6 +564,52 @@ mod tests {
             doc.headings().iter().map(|h| h.top_level).collect::<Vec<_>>(),
             vec![false, true]
         );
+    }
+
+    #[test]
+    fn a_setext_heading_whose_text_starts_with_a_hash_is_not_atx() {
+        // `#123 was closed upstream` over `---` is an h2 whose range opens
+        // with `#`. Read as ATX it ended a plan section, and every row after
+        // it was read by no gate; the release before caught the row.
+        let doc = Document::of("#123 was closed upstream\n---\n");
+        assert_eq!(doc.headings().len(), 1);
+        assert!(!doc.headings()[0].atx);
+        assert_eq!(doc.headings()[0].text, "#123 was closed upstream");
+    }
+
+    #[test]
+    fn a_heading_reads_without_the_whitespace_a_renderer_strips() {
+        for (source, want) in [
+            ("## Storage\t\n", "Storage"),
+            ("## Outstanding issues <!-- one row per finding -->\n", "Outstanding issues"),
+            ("## <!-- lead --> Storage\n", "Storage"),
+            ("##   Storage   \n", "Storage"),
+        ] {
+            assert_eq!(
+                Document::of(source).headings()[0].text,
+                want,
+                "from: {source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn text_after_a_comment_closes_on_its_line_is_still_read() {
+        // A block comment's closing line is one raw-HTML event; masking the
+        // whole event hid the row or claim written after `-->`.
+        let seen = |text: &str| -> Vec<String> {
+            visible(text).into_iter().map(|(_, t)| t).collect()
+        };
+        assert_eq!(seen("<!-- c --> Owner: CLAIM"), vec![" Owner: CLAIM"]);
+        assert_eq!(seen("<!-- a --> x <!-- b --> y"), vec![" x  y"]);
+        assert_eq!(
+            seen("<!--\nmulti\n--> Owner: CLAIM\nnext"),
+            vec![" Owner: CLAIM".to_string(), "next".to_string()]
+        );
+        // A comment inside another raw-HTML block is hidden wherever it sits.
+        let seen = seen("<div>\nx <!-- hidden --> y\n</div>");
+        assert!(seen.iter().any(|l| l == "x  y"), "{seen:?}");
+        assert!(!seen.iter().any(|l| l.contains("hidden")), "{seen:?}");
     }
 
     #[test]
