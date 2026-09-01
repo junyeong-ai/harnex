@@ -795,7 +795,7 @@
       "type": "object",
       "properties": {
         "runtime": {
-          "description": "Runtime name. Only `claude-code` is supported in v0.1.",
+          "description": "Runtime name. `claude-code` is the only one implemented.",
           "type": "string",
           "default": "claude-code"
         },
