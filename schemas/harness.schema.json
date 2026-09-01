@@ -447,6 +447,17 @@
     "ValidateConfig": {
       "type": "object",
       "properties": {
+        "routines": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RoutinesPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "rules": {
           "anyOf": [
             {
@@ -503,6 +514,10 @@
           "default": null
         }
       }
+    },
+    "RoutinesPolicy": {
+      "description": "Enables `.claude/routines/*.md` shape validation. No knobs yet: the\ngrammar is closed and the schedule states are the query's, not a\npolicy's.",
+      "type": "object"
     },
     "RulesPolicy": {
       "type": "object",

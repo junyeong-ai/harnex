@@ -53,6 +53,7 @@ pub mod lifecycle;
 pub mod path_guard;
 pub mod plan;
 pub mod policy;
+pub mod routines;
 pub mod scaffold;
 pub mod sentinel;
 pub mod session;

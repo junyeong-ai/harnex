@@ -27,6 +27,8 @@ pub enum LifecycleCommand {
     },
     /// List promotion candidates that crossed configured thresholds
     Candidates,
+    /// Every routine under .claude/routines/ with its schedule state today
+    Routines,
     /// Record an Approved decision — pattern promoted to a rule
     Promote(DecisionArgs),
     /// Record a Rejected decision — pattern declined
@@ -83,6 +85,17 @@ fn decision_kind_values() -> Vec<&'static str> {
 
 pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
     let (config, config_path, working_dir) = load_config()?;
+    if matches!(cmd, LifecycleCommand::Routines) {
+        // Routines read the tree and the clock, not the ledgers — the query
+        // works before a project configures [lifecycle].
+        let root = config_dir(&config_path, &working_dir);
+        let today = jiff::Timestamp::now()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .date();
+        let reports = harness_core::routines::states(&root, today)?;
+        write_envelope_success(out, ListResponse::new(reports))?;
+        return Ok(ExitCode::SUCCESS);
+    }
     let lc = config
         .lifecycle
         .as_ref()
@@ -104,6 +117,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
     let recorder = LifecycleDecisionRecorder::new(&decisions);
 
     match cmd {
+        LifecycleCommand::Routines => unreachable!("answered before the ledgers are required"),
         LifecycleCommand::Observe { tag, text, source } => {
             let obs = ledger.append(&tag, &text, &source)?;
             write_envelope_success(out, obs)?;

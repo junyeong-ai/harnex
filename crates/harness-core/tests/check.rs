@@ -23,6 +23,8 @@ default_provenance = "memory-only"
 provenance = "memory-only"
 strategy = "memory-only"
 
+[validate.routines]
+
 [validate.rules]
 max_lines = 200
 always_loaded_slugs = ["constitution"]
@@ -74,6 +76,7 @@ fn check_runs_every_enabled_validator() {
 
     // Every enabled validator ran
     for v in [
+        "validate.routines",
         "validate.rules",
         "validate.skills",
         "validate.agents",
@@ -116,6 +119,7 @@ harnex_version = ">=0.1, <0.2"
         "policy.permissions",
         "validate.agents",
         "validate.output_styles",
+        "validate.routines",
         "validate.rules",
         "validate.settings",
         "validate.skills",
