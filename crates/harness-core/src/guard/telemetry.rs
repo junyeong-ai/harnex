@@ -47,11 +47,22 @@ pub enum EmitOutcome {
 /// Whether a resolved name is an element slug: non-empty and drawn from the
 /// character class the skill and agent name validators enforce — lowercase
 /// ASCII, digits, and `-` (`validate::skills` / `validate::agents`
-/// `NAME_PATTERN`). That is exactly what a project element name is, so every
-/// genuine invocation records (no false Silent, whatever its length — the
-/// validators set no length here either), while a value carrying content —
-/// whitespace, a `=`, a `;`, an uppercase letter — is not a name and is
-/// declined, so the field cannot become a content channel.
+/// `NAME_PATTERN`). That is exactly a project element name, so every genuine
+/// invocation records: the emit imposes no length of its own, matching the
+/// agent validator, which sets no maximum (the skill validator caps at 64), so
+/// a long agent name is no false Silent. A value carrying content — whitespace,
+/// a `=`, a `;`, an uppercase letter — is not a name and is declined.
+///
+/// This is a syntactic bound, not project-element membership: a value that is
+/// nonetheless well-formed — a failed invocation of a name no element has —
+/// records. It is a stated residual, not a hole. The record is inert to the
+/// one consumer: the retirement scan matches a slug against a real project
+/// element, which a name no element has never is, so it changes no verdict;
+/// only the element's own name-shaped field ever crosses, never a tool's
+/// arguments; and it stays a strict subset of what `session::asset_of` records
+/// with no validation at all. Proving membership would cost a project-tree read
+/// on every tool call, on the hot path, to reject a value already inert — a
+/// price the port source does not pay either (it checks shape, not membership).
 ///
 /// A plugin element's invocation carries the namespace separator `:`
 /// (`plugin:name`) and so declines — correctly: the retirement sweep globs the
