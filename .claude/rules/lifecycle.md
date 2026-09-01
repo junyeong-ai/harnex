@@ -14,6 +14,15 @@ Observation ledger is append-only JSONL per tag. Promoter groups by
 whitespace. Candidates require `instance_count ≥ promotion_min_instances`
 AND `span ≥ promotion_min_days`.
 
+`survey` answers with the candidates AND the corpus they were drawn from —
+`observations_read`, `groups_considered`, `groups_resolved` — because a pass
+that drains the ledger reads an unwritten one and a corpus that produced
+nothing oppositely. The counts close over the ledger: every observation falls
+in exactly one group, every group is either resolved by a suppressing decision
+or considered against the thresholds. Sort candidates by instance count, then
+`(tag, normalized_text)`: groups arrive in hash order and one ledger owes one
+envelope.
+
 Retirement classifier emits three signals: Stale (mtime > stale_days),
 NoConsumers (grep finds zero), Silent (caller-supplied `SilenceState` —
 derived from the telemetry query). Severity: 3 signals → Major, 2 → Minor,

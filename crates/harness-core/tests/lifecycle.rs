@@ -107,7 +107,7 @@ fn promoter_lists_threshold_crossing_groups() {
         .unwrap();
 
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
-    let candidates = promoter.finder.list_candidates().unwrap();
+    let candidates = promoter.finder.survey().unwrap().candidates;
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].instance_count, 3);
     assert_eq!(candidates[0].normalized_text, "use snake case");
@@ -124,8 +124,9 @@ fn promoter_excludes_below_threshold() {
     ledger.append("naming", "only once", "spec-b").unwrap();
     let candidates = mk_promoter(&cfg, &ledger, &decisions)
         .finder
-        .list_candidates()
-        .unwrap();
+        .survey()
+        .unwrap()
+        .candidates;
     assert!(candidates.is_empty());
 }
 
@@ -140,10 +141,109 @@ fn promoter_normalizes_whitespace_and_case() {
     ledger.append("x", "USE SNAKE CASE", "c").unwrap();
     let candidates = mk_promoter(&cfg, &ledger, &decisions)
         .finder
-        .list_candidates()
-        .unwrap();
+        .survey()
+        .unwrap()
+        .candidates;
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].instance_count, 3);
+}
+
+#[test]
+fn survey_tells_an_unwritten_ledger_from_a_corpus_that_produced_nothing() {
+    // Three states that all yield no candidates, and the curate pass acts on
+    // each differently: a ledger nobody has written to is a loop whose emit
+    // half never fired, observations under the bar are the bar working, and a
+    // resolved group is a decision already taken. A bare list is the same
+    // answer to all three — a zero the pass never measured, read as a clean
+    // corpus.
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().join("never-written"));
+    let decisions = decisions_for(&tmp);
+
+    let absent = ObservationLedger::new(tmp.path().join("never-written"));
+    let survey = mk_promoter(&cfg, &absent, &decisions)
+        .finder
+        .survey()
+        .unwrap();
+    assert_eq!(survey.observations_read, 0);
+    assert_eq!(survey.groups_considered, 0);
+    assert_eq!(survey.groups_resolved, 0);
+
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    ledger.append("naming", "seen twice", "spec-a").unwrap();
+    ledger.append("naming", "seen twice", "spec-b").unwrap();
+    let survey = mk_promoter(&cfg, &ledger, &decisions)
+        .finder
+        .survey()
+        .unwrap();
+    assert!(survey.candidates.is_empty());
+    assert_eq!(survey.observations_read, 2);
+    assert_eq!(survey.groups_considered, 1);
+
+    seed_three_observations(&ledger);
+    let promoter = mk_promoter(&cfg, &ledger, &decisions);
+    promoter
+        .recorder
+        .reject("naming", "use snake case", "the linter already enforces it")
+        .unwrap();
+    let survey = promoter.finder.survey().unwrap();
+    assert!(survey.candidates.is_empty());
+    assert_eq!(survey.observations_read, 5);
+    assert_eq!(survey.groups_resolved, 1);
+    // The resolved group left the considered set rather than the ledger: the
+    // observations behind it are still read and still counted.
+    assert_eq!(survey.groups_considered, 1);
+}
+
+#[test]
+fn survey_accounts_for_every_group_the_ledger_holds() {
+    // The counts close over the whole ledger, so a candidate list shorter
+    // than expected is explained by the survey itself rather than read as
+    // records the grouper lost.
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().to_path_buf());
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    let decisions = decisions_for(&tmp);
+    seed_three_observations(&ledger);
+    for source in ["spec-a", "spec-b"] {
+        ledger
+            .append("errors", "wrap at the boundary", source)
+            .unwrap();
+    }
+    let promoter = mk_promoter(&cfg, &ledger, &decisions);
+    promoter
+        .recorder
+        .promote("errors", "wrap at the boundary", "landed in errors.md")
+        .unwrap();
+
+    let survey = promoter.finder.survey().unwrap();
+    assert_eq!(survey.observations_read, 5);
+    assert_eq!(survey.groups_considered + survey.groups_resolved, 2);
+    assert!(survey.candidates.len() <= survey.groups_considered);
+}
+
+#[test]
+fn survey_orders_tied_candidates_the_same_way_every_run() {
+    // Groups arrive from a hash map, so equal instance counts would otherwise
+    // order differently run to run over an unchanged ledger (Article I).
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().to_path_buf());
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    let decisions = decisions_for(&tmp);
+    for tag in ["naming", "errors", "logging"] {
+        for source in ["spec-a", "spec-b", "spec-c"] {
+            ledger.append(tag, "same weight", source).unwrap();
+        }
+    }
+    let ordering: Vec<String> = mk_promoter(&cfg, &ledger, &decisions)
+        .finder
+        .survey()
+        .unwrap()
+        .candidates
+        .into_iter()
+        .map(|c| c.tag)
+        .collect();
+    assert_eq!(ordering, ["errors", "logging", "naming"]);
 }
 
 #[test]
@@ -324,7 +424,7 @@ fn approve_excludes_from_future_listing() {
     let decisions = decisions_for(&tmp);
     seed_three_observations(&ledger);
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
-    assert_eq!(promoter.finder.list_candidates().unwrap().len(), 1);
+    assert_eq!(promoter.finder.survey().unwrap().candidates.len(), 1);
     promoter
         .recorder
         .promote(
@@ -333,7 +433,7 @@ fn approve_excludes_from_future_listing() {
             "promoted to naming-conventions.md",
         )
         .unwrap();
-    assert!(promoter.finder.list_candidates().unwrap().is_empty());
+    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
 }
 
 #[test]
@@ -348,7 +448,7 @@ fn reject_also_excludes() {
         .recorder
         .reject("naming", "use snake case", "team owns naming per-package")
         .unwrap();
-    assert!(promoter.finder.list_candidates().unwrap().is_empty());
+    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
 }
 
 #[test]
@@ -363,7 +463,7 @@ fn defer_keeps_surfacing() {
         .recorder
         .defer("naming", "use snake case", "revisit after spec-z")
         .unwrap();
-    assert_eq!(promoter.finder.list_candidates().unwrap().len(), 1);
+    assert_eq!(promoter.finder.survey().unwrap().candidates.len(), 1);
 }
 
 #[test]
@@ -420,7 +520,7 @@ fn promote_after_demote_is_allowed_and_resuppresses() {
         .collect();
     assert_eq!(naming_decisions.len(), 3);
     // Surfacing remains suppressed regardless of which decision is latest
-    assert!(promoter.finder.list_candidates().unwrap().is_empty());
+    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
 }
 
 #[test]
@@ -499,7 +599,7 @@ fn demote_succeeds_after_approval_and_excludes_from_listing() {
         .unwrap();
     assert_eq!(demoted.decision, PromotionDecision::Demoted);
     // Both Approved AND Demoted live in the ledger; both suppress surfacing.
-    assert!(promoter.finder.list_candidates().unwrap().is_empty());
+    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
 }
 
 #[test]

@@ -187,7 +187,8 @@ harnex lifecycle routines                             # schedule states: produce
                                                       # scheduled | overdue |
                                                       # unscheduled | superseded
 harnex lifecycle observe --tag T --text X --source S
-harnex lifecycle candidates
+harnex lifecycle candidates                           # groups past the thresholds,
+                                                      # and the ledger they came from
 harnex lifecycle promote --tag T --text X --decision-text "..."
 harnex lifecycle reject  --tag T --text X --decision-text "..."
 harnex lifecycle defer   --tag T --text X --decision-text "..."
