@@ -42,4 +42,4 @@ pub use hook_event::HookEvent;
 pub use hook_runner::{HookRunOutcome, HookRunner};
 pub use project_dir::{path_in_argument, paths_in_command};
 pub use stop_audit::{StopAuditor, StopDecision};
-pub use telemetry::{EmitOutcome, HARNESS_INVOCATION_KIND};
+pub use telemetry::{EmitOutcome, HARNESS_INVOCATION_KIND, OUTCOME_FIELD, SURFACE_FIELD};

@@ -60,10 +60,13 @@ an observation is the blank-page problem in disguise.
   `.claude/settings.json` entries — `PostToolUse` and `PostToolUseFailure`,
   matcher `Skill|Task|Agent` (the tools that invoke a harness element; its slug
   is what the retirement sweep reads — MCP tools are not harness elements and
-  are deliberately not recorded), dispatched through `_runner.sh`, with
-  `async: true` and a short `timeout` so the append never sits on the tool's
-  critical path. The wrapper only checks for the oracle and delegates to
-  `harnex guard telemetry-emit`, which owns the tool→element mapping, the
+  are deliberately not recorded), with `async: true` and a short `timeout` so
+  the append never sits on the tool's critical path. Wire the wrapper
+  **directly**, not through `_runner.sh`, the same as the floor hook:
+  `harnex guard telemetry-emit` does its own `harness.toml` discovery, so the
+  runner's git-worktree gate would only add a skip path the emit does not want.
+  The wrapper exists only to make an absent oracle a silent exit 0; it delegates
+  to `harnex guard telemetry-emit`, which owns the tool→element mapping, the
   outcome derivation, and every silent skip. It is install-to-enable and silent
   without the oracle. State whether the retirement sweep should read this
   ledger; only the element's slug and the outcome ever cross.

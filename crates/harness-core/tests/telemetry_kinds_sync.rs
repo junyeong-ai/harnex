@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 
-use harness_core::guard::HARNESS_INVOCATION_KIND;
+use harness_core::guard::{HARNESS_INVOCATION_KIND, OUTCOME_FIELD, SURFACE_FIELD};
 use harness_core::session::ASSET_TOOL_KEYS;
 
 fn read(rel: &str) -> String {
@@ -30,13 +30,25 @@ fn element_tools() -> Vec<&'static str> {
 }
 
 #[test]
-fn the_scaffold_declares_the_kind_the_emit_appends_to() {
+fn the_scaffold_declares_the_kind_and_fields_the_emit_appends() {
     let toml = read("plugins/harnex/templates/common/harness.toml");
     assert!(
         toml.contains(&format!("name = \"{HARNESS_INVOCATION_KIND}\"")),
         "the scaffold harness.toml no longer declares the `{HARNESS_INVOCATION_KIND}` Kind \
          the emit appends to — HARNESS_INVOCATION_KIND changed and the config drifted"
     );
+    // The emit writes exactly these fields (SURFACE_FIELD / OUTCOME_FIELD). If
+    // the scaffold schema renamed one, the append would fail the closed schema
+    // and the emit would silently skip in production while its own unit test
+    // fixture kept passing — so bind the scaffold schema's field names to the
+    // emit's here.
+    for field in [SURFACE_FIELD, OUTCOME_FIELD] {
+        assert!(
+            toml.contains(&format!("\"{field}\"")),
+            "the scaffold harness_invocation schema no longer declares the `{field}` field the \
+             emit writes — a rename here makes production emission a silent no-op"
+        );
+    }
 }
 
 #[test]
@@ -63,5 +75,12 @@ fn the_pattern_prose_names_the_kind_and_every_element_tool_the_authority_defines
                  an element for — the emit would record it while the wiring never fires it"
             );
         }
+        // …and in the `|`-joined alternation form a Claude Code matcher takes,
+        // so the right tool names in a wrong shape do not pass.
+        let alternation = element_tools().join("|");
+        assert!(
+            content.contains(&alternation),
+            "{rel} names the element tools but not as the `{alternation}` matcher form"
+        );
     }
 }

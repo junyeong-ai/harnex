@@ -28,6 +28,11 @@ use crate::telemetry::{JsonlStorage, TelemetryAppender};
 /// `harness.toml`; a drift guard holds the two equal.
 pub const HARNESS_INVOCATION_KIND: &str = "harness_invocation";
 
+/// The payload field carrying the invoked element's slug.
+pub const SURFACE_FIELD: &str = "surface";
+/// The payload field carrying the outcome (`ok` / `failed`).
+pub const OUTCOME_FIELD: &str = "outcome";
+
 /// What a hook event resolved to, for the caller to act on. The command maps
 /// every arm to exit 0; the distinction exists for tests.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +42,18 @@ pub enum EmitOutcome {
     /// Nothing to record — not an outcome-bearing event, not an element
     /// invocation, or telemetry is not configured for this Kind. Never an error.
     Skipped,
+}
+
+/// The generous upper bound on a slug's length. A skill or agent name is a
+/// short identifier; anything past this is not one, and recording it would let
+/// the field carry content instead.
+const MAX_SLUG_LEN: usize = 128;
+
+/// Whether a resolved name has an element slug's shape: non-empty, single line,
+/// and bounded. Not a charset grammar — element names are not constrained to
+/// one here — but enough to keep the field from carrying multi-line content.
+fn is_slug_shaped(name: &str) -> bool {
+    !name.is_empty() && name.len() <= MAX_SLUG_LEN && !name.chars().any(|c| c.is_control())
 }
 
 /// Resolve the outcome an event name carries, or `None` when the event is not
@@ -75,8 +92,20 @@ pub fn emit(working_dir: &Path, hook_json: &str) -> EmitOutcome {
     let Some(asset) = asset_of(tool, input) else {
         return EmitOutcome::Skipped;
     };
+    // The slug is an element's own name — but the field it is read from is
+    // agent-supplied, so bound it to a slug's shape before it crosses: a real
+    // name is one line and short. A control character or an implausible length
+    // is not a name; declining to record it keeps the field from becoming a
+    // content channel, without diverging from the session contract for the
+    // ordinary case.
+    if !is_slug_shaped(&asset.name) {
+        return EmitOutcome::Skipped;
+    }
 
-    let payload = serde_json::json!({ "surface": asset.name, "outcome": outcome });
+    let mut payload = serde_json::Map::new();
+    payload.insert(SURFACE_FIELD.into(), asset.name.clone().into());
+    payload.insert(OUTCOME_FIELD.into(), outcome.into());
+    let payload = serde_json::Value::Object(payload);
     if append(working_dir, &payload).is_none() {
         return EmitOutcome::Skipped;
     }
@@ -168,6 +197,22 @@ mod tests {
                 outcome: "failed".into()
             }
         );
+    }
+
+    #[test]
+    fn a_surface_that_is_not_slug_shaped_is_declined() {
+        let dir = scaffold_dir();
+        let multiline = "review\nsecret: leaked";
+        let hook = format!(
+            r#"{{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{{"skill":{}}}}}"#,
+            serde_json::to_string(multiline).unwrap()
+        );
+        assert_eq!(emit(dir.path(), &hook), EmitOutcome::Skipped);
+        let long = "x".repeat(MAX_SLUG_LEN + 1);
+        let hook = format!(
+            r#"{{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{{"skill":"{long}"}}}}"#
+        );
+        assert_eq!(emit(dir.path(), &hook), EmitOutcome::Skipped);
     }
 
     #[test]
