@@ -14,8 +14,11 @@
 # verifier that logs a diagnostic corrupt the JSON and lose the advisory.
 set -uo pipefail
 
-HOOKS="$(cd "$(dirname "$0")" && pwd)" || exit 0
+HOOKS="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)" || exit 0
 ROOT="${CLAUDE_PROJECT_DIR:-${HOOKS%/*}}"
+# A root is an absolute path — relative, it would resolve against the directory
+# the hook fired in, which is the anchor these wrappers exist to stop reading.
+case "$ROOT" in /*) ;; *) exit 0 ;; esac
 # Explicit, because there is no `set -e` here: an unguarded failure would fall
 # through and the verifier would report on whatever directory the caller was
 # in, naming another repository's uncommitted work as this session's.

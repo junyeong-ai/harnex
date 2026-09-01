@@ -106,12 +106,16 @@ impl HookRunner {
     /// it names the inner repository, and the verifier runs against the wrong
     /// tree or not at all. The probe remains for every other caller, where
     /// there is no runtime to ask.
+    /// Set but unusable decides too. Falling through to the probe there would
+    /// answer about the working directory — the one place the runtime does not
+    /// promise anything — so a stale or mangled variable, on a hook fired from
+    /// a nested checkout, would silently gate the inner repository. Skipping
+    /// fails open, which is this wrapper's contract; the shell wrappers say the
+    /// same by naming the root they could not enter.
     fn resolve_root() -> Option<PathBuf> {
         if let Some(dir) = std::env::var_os(PROJECT_DIR_ENV) {
             let root = PathBuf::from(dir);
-            if root.is_dir() {
-                return Some(root);
-            }
+            return (root.is_absolute() && root.is_dir()).then_some(root);
         }
         let cwd = std::env::current_dir().ok()?;
         Self::resolve_root_from(&cwd)
