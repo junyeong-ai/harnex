@@ -41,3 +41,7 @@ without extending this list:
   action). See guard.md.
 - `guard stop-audit`: maps a `Block` to exit 2 (Stop-hook force-continuation),
   the sole exception to Article II's exit-code set. See guard.md.
+- `guard floor`: speaks the PreToolUse hook contract instead of the envelope —
+  a Block exits 2 with its reason on stderr (the documented feedback channel),
+  a skip or grant emits one `{systemMessage, suppressOutput}` object, and a
+  plain allow emits nothing. See guard.md.

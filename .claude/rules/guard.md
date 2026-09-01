@@ -74,3 +74,27 @@ sole sanctioned exception to Article II (where exit 2 = runtime failure).
 Per the Claude Code Stop-hook contract, exit 2 prevents the stop and
 forces continuation; exit 1 would be non-blocking. This is intentional;
 do not "normalize" it to exit 1. The envelope is still emitted on stdout.
+
+FloorAuditor (`guard::floor`, gated on `[guard.floor]`) handles PreToolUse
+for Bash and Edit|Write|MultiEdit: the enforcement-surface freeze plus the
+hook-bypass tripwire. Its two halves fail in deliberately opposite
+directions — violation checks fail open (inability to evaluate is a
+`Skip` with a reason, never a block), while the operator's break-glass
+grant fails closed (an unreadable override is an absent one). The grant is
+`HARNEX_ALLOW_FLOOR_EDIT: "1"` in the **main** checkout's
+`.claude/settings.local.json` env block, read live from the file — never
+from the process environment, which Claude Code hot-reloads from the same
+file and which is therefore a copy, not a second witness.
+`canonical_repo_root` follows a linked worktree's `.git` → `commondir` to
+the main checkout so a worktree cannot mint its own grant.
+
+`harnex guard floor` speaks the PreToolUse hook contract, not the
+envelope: exit 2 (reason on stderr) is reserved for a *detected*
+violation; a config failure, missing `[guard.floor]`, unreadable stdin, or
+unparseable command line exits 0 with a `[floor-check skipped: …]`
+systemMessage — a broken floor must degrade to the project's other gates,
+never block every tool call. A granted protected write emits the
+`[floor-edit allowed …]` notice: the one signal the freeze was bypassed.
+Wire it directly as PreToolUse (not through `_runner.sh`); it resolves the
+project root from `harness.toml` discovery like every config-bearing
+command.

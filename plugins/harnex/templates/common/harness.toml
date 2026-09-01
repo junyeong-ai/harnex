@@ -93,6 +93,16 @@ strategy = "file-path-line"
 # engine = ["tools/contrast-audit", "package-lock.json"]
 # unattended_remeasure = false
 
+# The enforcement floor: `harnex guard floor` (PreToolUse, wired by the
+# enforcement-floor pattern) blocks a git command that would skip the hook
+# stack and an agent write to a file the gates are defined by. harness.toml,
+# .claude/settings.json and .claude/settings.local.json are built into the
+# floor; list the project's own gate-defining files here (a trailing /
+# freezes a directory). The operator's break-glass is
+# HARNEX_ALLOW_FLOOR_EDIT: "1" in the settings.local.json env block.
+[guard.floor]
+protected_paths = ["hooks/", ".gitleaks.toml"]
+
 # The promotion-and-retirement loop `governance.md` and `artifact-lifecycle.md`
 # describe. Every threshold has a default, so the section is declared empty on
 # purpose: the loop is runnable from the first commit, and the numbers are

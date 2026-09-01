@@ -99,6 +99,21 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
 
 - **Precedence (high→low):** managed → CLI args → local (.claude/settings.local.json)
   → project (.claude/settings.json) → user (~/.claude/settings.json).
+- **A settings `env` block hot-reloads into the running session** — a value
+  added mid-session reaches the spawned process's environment on the next
+  tool call (measured at 2.1.220). A gate that treats a settings entry as an
+  operator grant must therefore read the FILE, not the process env: the env
+  var is a copy of the entry, not a second witness, and only the file read
+  makes revocation immediate (`guard::floor` is built on this).
+- **A session whose cwd is a linked git worktree resolves project/local
+  settings from the MAIN checkout**, following `.git` → `commondir`
+  (measured at 2.1.220: a worktree session applied the main checkout's `env`
+  marker, not the worktree's own). `guard::floor`'s canonical-root resolution
+  mirrors this so hook and engine read the same file.
+- **The engine schema-validates its own settings files before hooks run** —
+  an invalid Edit to `.claude/settings.json` is rejected by the schema layer
+  with no PreToolUse hook consulted; a schema-valid one reaches the hooks
+  (measured at 2.1.220).
 - **Permissions evaluate deny > ask > allow, first-match-wins. Arrays MERGE
   (concat + dedupe) across scopes — they do not override.** An `allow` cannot
   loosen a higher-scope `deny`. With no matching rule, `default` mode PROMPTS

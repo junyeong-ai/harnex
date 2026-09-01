@@ -512,6 +512,19 @@ pub struct RetirementExemptDecl {
 pub struct GuardConfig {
     #[serde(default)]
     pub stop_audit: Option<StopAuditConfig>,
+    #[serde(default)]
+    pub floor: Option<FloorConfig>,
+}
+
+/// The enforcement-surface freeze (`guard::floor`). Declaring the section is
+/// what turns the floor on; `protected_paths` adds the project's own
+/// gate-defining files to the built-in set the module documents.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FloorConfig {
+    /// Repo-relative literal paths; a trailing `/` freezes a directory.
+    #[serde(default)]
+    pub protected_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1209,6 +1222,41 @@ impl Config {
                 });
             }
         }
+        if let Some(floor) = &g.floor {
+            let mut seen: Vec<String> = Vec::new();
+            for entry in &floor.protected_paths {
+                let literal = entry.strip_suffix('/').unwrap_or(entry);
+                if literal.is_empty() || !crate::path_guard::literal_relative(literal) {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "[guard.floor] protected_paths entry '{entry}' is not a literal \
+                             repo-relative path (a trailing / marks a directory)"
+                        ),
+                        location: None,
+                    });
+                }
+                // Matching is case-insensitive, so uniqueness is too.
+                let lower = entry.to_lowercase();
+                if crate::guard::floor::BUILT_IN_PROTECTED.contains(&lower.as_str()) {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "[guard.floor] protected_paths entry '{entry}' is built into the \
+                             floor — declaring it again is a second copy that can drift"
+                        ),
+                        location: None,
+                    });
+                }
+                if seen.contains(&lower) {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "[guard.floor] protected_paths entry '{entry}' is duplicated"
+                        ),
+                        location: None,
+                    });
+                }
+                seen.push(lower);
+            }
+        }
         Ok(())
     }
 }
@@ -1406,6 +1454,59 @@ mod tests {
             max_retries = 3
         "#;
         assert!(parse(src).is_ok());
+    }
+
+    #[test]
+    fn accepts_a_floor_with_directory_and_exact_protected_paths() {
+        let src = r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+            [guard.floor]
+            protected_paths = ["hooks/", ".gitleaks.toml"]
+        "#;
+        assert!(parse(src).is_ok());
+    }
+
+    #[test]
+    fn rejects_a_floor_entry_that_is_not_a_literal_relative_path() {
+        for bad in ["../hooks/", "/etc/hooks", "hooks/*.sh", "", "/"] {
+            let src = format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+                [guard.floor]
+                protected_paths = ["{bad}"]
+                "#
+            );
+            assert_eq!(
+                parse(&src).unwrap_err().code(),
+                ErrorCode::ConfigInvalid,
+                "entry '{bad}' must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_a_floor_entry_restating_the_built_in_set_or_another_entry() {
+        for paths in [
+            r#"["harness.toml"]"#,
+            r#"[".claude/Settings.local.json"]"#,
+            r#"["hooks/", "Hooks/"]"#,
+        ] {
+            let src = format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+                [guard.floor]
+                protected_paths = {paths}
+                "#
+            );
+            assert_eq!(
+                parse(&src).unwrap_err().code(),
+                ErrorCode::ConfigInvalid,
+                "{paths} must be rejected"
+            );
+        }
     }
 
     #[test]

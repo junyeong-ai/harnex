@@ -74,3 +74,15 @@ an observation is the blank-page problem in disguise.
   keeps long-lived records. Wire `hooks/session-routines.sh` as a
   SessionStart hook entry in `.claude/settings.json`, alongside the
   scaffold's own; it is install-to-enable and silent without the oracle.
+- `enforcement-floor` — read `[guard.floor] protected_paths` off the
+  project's own gates: the git hooks directory, the secret-scan config, the
+  configs its linters and formatters read, and the sources of any verifier a
+  hook dispatches (the enforcer sweep already lists them). harness.toml and
+  the two settings files are built into the floor — never list them. Wire
+  two PreToolUse entries in `.claude/settings.json` invoking `harnex guard
+  floor` directly (matchers `Bash` and `Edit|Write|MultiEdit`, stdin passed
+  through, no `_runner.sh`). A missing `[guard.floor]` section skips with a
+  visible notice; a missing binary errors on every call — deliberately not
+  silenced, because enforcement that dies quietly is the failure the floor
+  exists to catch, so this pattern requires the oracle installed. Tell the
+  operator the break-glass entry by name; it is theirs, not the agent's.
