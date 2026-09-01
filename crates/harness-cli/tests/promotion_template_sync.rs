@@ -198,23 +198,35 @@ fn the_observation_the_wrapup_instructs_lands_where_the_curate_pass_reads_it() {
     // reads.
     let project = scaffolded();
     let before = data(project.path(), &["lifecycle", "candidates"]);
+    assert!(
+        before["candidates"].as_array().is_some_and(Vec::is_empty),
+        "the survey answers with the candidate list itself, and a fresh \
+         scaffold's is empty: {before}"
+    );
     assert_eq!(
         before["observations_read"], 0,
         "a fresh scaffold has observed nothing until a wrapup does"
     );
 
+    let wording = "the same constraint, in the standing wording";
     for slug in ["spec-a", "spec-b"] {
         let argv = instructed_emit(&|name| match name {
             "slug" => slug.to_string(),
             "topic" => "naming".to_string(),
-            _ => "the same constraint, in the standing wording".to_string(),
+            _ => wording.to_string(),
         });
-        let envelope = envelope(project.path(), &argv);
-        assert_eq!(
-            envelope["ok"],
-            serde_json::Value::Bool(true),
-            "the command the wrapup instructs must run: {envelope}"
+        let recorded = data(
+            project.path(),
+            &argv.iter().map(String::as_str).collect::<Vec<_>>(),
         );
+        // Each argument reached the field it names. A placeholder the command
+        // drops or fills from the wrong slot still records something, and the
+        // one that decides is `source`: the promotion bar is evidence across
+        // independent contexts, so two specs filing under one source is one
+        // session wearing the shape of two.
+        assert_eq!(recorded["source"], slug, "the emit recorded: {recorded}");
+        assert_eq!(recorded["tag"], "naming", "the emit recorded: {recorded}");
+        assert_eq!(recorded["text"], wording, "the emit recorded: {recorded}");
     }
 
     let after = data(project.path(), &["lifecycle", "candidates"]);
