@@ -40,7 +40,11 @@ without extending this list:
   code is meaningful to Claude Code — e.g. PreToolUse exit 2 blocks the
   action). See guard.md.
 - `guard stop-audit`: maps a `Block` to exit 2 (Stop-hook force-continuation),
-  the sole exception to Article II's exit-code set. See guard.md.
+  the sole exception to Article II's exit-code set. Exit 2 is spelled only for
+  that verdict — anything that stops the audit reaching one emits a
+  `{systemMessage, suppressOutput}` object and exits 0, because the runtime
+  reads the error path's exit 2 as a Block the retry counter never bounds.
+  See guard.md.
 - `guard floor`: speaks the PreToolUse hook contract instead of the envelope —
   a Block exits 2 with its reason on stderr (the documented feedback channel),
   a skip or grant emits one `{systemMessage, suppressOutput}` object, and a

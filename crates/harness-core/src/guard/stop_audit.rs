@@ -1,7 +1,8 @@
 //! Fresh-context Stop auditor.
 //!
 //! Flow:
-//! 1. Run the configured changes probe — if exit 0 (no changes), allow stop.
+//! 1. Run the configured changes probe — exit 0 (no changes) allows the stop,
+//!    and anything but its two answers is a [`StopDecision::Skip`].
 //! 2. Bump per-session retry counter; if > max_retries, escalate via Block.
 //! 3. Spawn the critique skill via `claude --print <critique_skill>` from
 //!    the working directory.
@@ -22,13 +23,42 @@ use crate::path_guard;
 #[serde(tag = "decision", rename_all = "kebab-case")]
 pub enum StopDecision {
     Allow,
-    Block { reason: String },
+    /// The audit could not reach a verdict, and says why. Never a Block: on
+    /// the Stop event a block forces continuation, so an auditor that cannot
+    /// run would hold the session open at every Stop with nothing the operator
+    /// can act on and no retry bound, which is the loop the counter exists to
+    /// prevent arriving through the one door it does not watch.
+    Skip {
+        reason: String,
+    },
+    Block {
+        reason: String,
+    },
 }
 
 /// Output of a spawned command, reduced to what the Stop auditor needs.
 pub struct ProcessOutput {
-    pub success: bool,
+    /// The process's exit code, or `None` where a signal ended it.
+    pub code: Option<i32>,
     pub stdout: String,
+}
+
+impl ProcessOutput {
+    pub fn success(&self) -> bool {
+        self.code == Some(0)
+    }
+}
+
+/// What the configured probe said about work this session left behind.
+enum Changes {
+    /// Exit 0 — nothing to critique, so stopping costs nothing.
+    None,
+    /// Exit 1 — the predicate is false, so there is work.
+    Present,
+    /// The probe did not answer: it could not run, or it exited outside the
+    /// convention it is written against. Never read as `Present`, which would
+    /// spend a model call on a broken probe at every Stop.
+    Unknown(String),
 }
 
 /// Abstracted command invocation for the Stop auditor. The trait exists for
@@ -63,7 +93,7 @@ impl CommandRunner for DefaultCommandRunner {
                 message: format!("spawn '{program}': {e}"),
             })?;
         Ok(ProcessOutput {
-            success: output.status.success(),
+            code: output.status.code(),
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         })
     }
@@ -101,8 +131,10 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
     }
 
     pub fn run(&self) -> Result<StopDecision> {
-        if !self.has_changes()? {
-            return Ok(StopDecision::Allow);
+        match self.changes() {
+            Changes::None => return Ok(StopDecision::Allow),
+            Changes::Unknown(reason) => return Ok(StopDecision::Skip { reason }),
+            Changes::Present => {}
         }
         let attempt = self.bump_retry_counter()?;
         if attempt > self.config.max_retries {
@@ -127,12 +159,30 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
         }
     }
 
-    fn has_changes(&self) -> Result<bool> {
-        let (program, args) = self.config.changes_probe()?;
+    /// The probe is a shell predicate, read the way the ecosystem writes one:
+    /// 0 is true, 1 is false, anything else is the predicate failing rather
+    /// than answering. `git diff --quiet` — the example the config names — is
+    /// exactly that, exiting 129 on a flag it does not know. Folding every
+    /// non-zero code into "there is work" is what buys a critique on a probe
+    /// that never ran.
+    fn changes(&self) -> Changes {
+        let (program, args) = match self.config.changes_probe() {
+            Ok(probe) => probe,
+            Err(e) => return Changes::Unknown(e.to_string()),
+        };
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        let output = self.runner.run(program, &args, self.working_dir)?;
-        // Convention: exit 0 == no changes; non-zero == changes present.
-        Ok(!output.success)
+        match self.runner.run(program, &args, self.working_dir) {
+            Err(e) => Changes::Unknown(format!("changes probe did not run: {e}")),
+            Ok(output) => match output.code {
+                Some(0) => Changes::None,
+                Some(1) => Changes::Present,
+                Some(code) => Changes::Unknown(format!(
+                    "changes probe '{program}' exited {code}, which is neither of the \
+                     answers it is asked for (0 clean, 1 work left behind)"
+                )),
+                None => Changes::Unknown(format!("changes probe '{program}' was killed")),
+            },
+        }
     }
 
     fn retry_path(&self) -> PathBuf {
@@ -240,9 +290,12 @@ mod tests {
             }
         }
 
-        fn out(success: bool, stdout: &str) -> ProcessOutput {
+        /// A canned response, named by the exit code the probe or the
+        /// critique returns — the auditor reads 0 and 1 as answers and
+        /// anything else as the command failing to give one.
+        fn exits(code: i32, stdout: &str) -> ProcessOutput {
             ProcessOutput {
-                success,
+                code: Some(code),
                 stdout: stdout.to_string(),
             }
         }
@@ -288,11 +341,41 @@ mod tests {
     ],"total":1}}"#;
 
     #[test]
+    fn a_probe_that_did_not_answer_skips_rather_than_buying_a_critique() {
+        // Every way the probe can fail to answer, and none of them may reach
+        // the critique: a Block would force continuation at every Stop, and
+        // reading the failure as "there is work" would spend a model call on
+        // a command that never ran.
+        let dir = TempDir::new().unwrap();
+        for (code, what) in [(2, "outside the convention"), (129, "a flag it rejects")] {
+            let config = audit_config(&dir);
+            let runner = MockCommandRunner::new(vec![MockCommandRunner::exits(code, "")]);
+            let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
+            match auditor.run().unwrap() {
+                StopDecision::Skip { reason } => {
+                    assert!(reason.contains(&code.to_string()), "{what}: {reason}");
+                }
+                other => panic!("exit {code} ({what}) must skip, got {other:?}"),
+            }
+            assert_eq!(auditor.runner.call_count(), 1, "the critique never ran");
+        }
+
+        // And a section that never said when it fires, which the loader
+        // refuses but a hand-built config can still hold.
+        let mut unstated = audit_config(&dir);
+        unstated.has_changes_check.clear();
+        let runner = MockCommandRunner::new(vec![]);
+        let auditor = StopAuditor::with_runner(&unstated, dir.path(), "sess".into(), runner);
+        assert!(matches!(auditor.run().unwrap(), StopDecision::Skip { .. }));
+        assert_eq!(auditor.runner.call_count(), 0, "nothing was spawned");
+    }
+
+    #[test]
     fn run_allows_when_no_changes() {
         let dir = TempDir::new().unwrap();
         let config = audit_config(&dir);
         // exit 0 from has_changes_check == no changes.
-        let runner = MockCommandRunner::new(vec![MockCommandRunner::out(true, "")]);
+        let runner = MockCommandRunner::new(vec![MockCommandRunner::exits(0, "")]);
         let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
         let decision = auditor.run().unwrap();
         assert!(matches!(decision, StopDecision::Allow));
@@ -305,8 +388,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let config = audit_config(&dir);
         let runner = MockCommandRunner::new(vec![
-            MockCommandRunner::out(false, ""), // changes present
-            MockCommandRunner::out(true, BLOCKER_ENVELOPE),
+            MockCommandRunner::exits(1, ""), // changes present
+            MockCommandRunner::exits(0, BLOCKER_ENVELOPE),
         ]);
         let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
         let decision = auditor.run().unwrap();
@@ -324,8 +407,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let config = audit_config(&dir);
         let runner = MockCommandRunner::new(vec![
-            MockCommandRunner::out(false, ""), // changes present
-            MockCommandRunner::out(true, CLEAN_ENVELOPE),
+            MockCommandRunner::exits(1, ""), // changes present
+            MockCommandRunner::exits(0, CLEAN_ENVELOPE),
         ]);
         let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
         let decision = auditor.run().unwrap();
@@ -340,7 +423,7 @@ mod tests {
         let config = audit_config(&dir);
         // Only the has_changes probe should run: escalation happens before the
         // critique spawn, so a single "changes present" response is enough.
-        let runner = MockCommandRunner::new(vec![MockCommandRunner::out(false, "")]);
+        let runner = MockCommandRunner::new(vec![MockCommandRunner::exits(1, "")]);
         let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
         // Pre-seed the ledger at max_retries; the next bump (max + 1) exceeds it.
         path_guard::write_atomic(
@@ -353,7 +436,7 @@ mod tests {
             StopDecision::Block { reason } => {
                 assert!(reason.contains("retry counter exceeded"), "got: {reason}");
             }
-            StopDecision::Allow => panic!("expected escalation Block"),
+            other => panic!("expected escalation Block, got {other:?}"),
         }
         // The critique was never spawned — only the has_changes probe ran.
         assert_eq!(auditor.runner.call_count(), 1);
@@ -363,7 +446,7 @@ mod tests {
     fn run_escalates_on_corrupt_retry_ledger_instead_of_resetting() {
         let dir = TempDir::new().unwrap();
         let config = audit_config(&dir);
-        let runner = MockCommandRunner::new(vec![MockCommandRunner::out(false, "")]);
+        let runner = MockCommandRunner::new(vec![MockCommandRunner::exits(1, "")]);
         let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
         // A corrupt (non-numeric) ledger must NOT reset the loop guard to 0;
         // it fails safe to max_retries so the next bump escalates.
@@ -372,7 +455,7 @@ mod tests {
             StopDecision::Block { reason } => {
                 assert!(reason.contains("retry counter exceeded"), "got: {reason}");
             }
-            StopDecision::Allow => panic!("corrupt ledger must fail safe, not reset"),
+            other => panic!("corrupt ledger must fail safe, not reset: {other:?}"),
         }
         assert_eq!(auditor.runner.call_count(), 1);
     }
