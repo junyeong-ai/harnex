@@ -29,10 +29,7 @@ use crate::envelope::{Finding, FixCommand, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
-use crate::validate::{
-    AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SettingsScope,
-    SettingsValidator, SkillValidator, SurfaceValidator,
-};
+use crate::validate::{AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SettingsScope, SettingsValidator, SkillValidator, SurfaceValidator};
 
 /// Aggregate result of running every enabled validator.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
@@ -282,6 +279,41 @@ impl<'a> ProjectChecker<'a> {
         Ok(Some(set))
     }
 
+    /// Every `CLAUDE.md` the project owns, at any depth.
+    ///
+    /// Claude Code loads a nested `CLAUDE.md` when work happens under its
+    /// directory, so its claims are as live as the root's — but a walk over
+    /// the tree would also read the one a vendored package ships under
+    /// `node_modules`, and resolve its paths against this project: a Blocker
+    /// about a file nobody here wrote. The project's own ignore rules are the
+    /// one non-heuristic answer to "which files are mine", and a hook still
+    /// has to see the untracked file its author just added, so the set is the
+    /// tracked files plus the untracked ones git does not ignore.
+    fn own_claude_md_files(&self) -> Result<Vec<PathBuf>> {
+        let output = Command::new("git")
+            .args(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+            .current_dir(self.working_dir)
+            .output()
+            .map_err(|e| Error::CheckGitFailure {
+                message: format!("git ls-files spawn: {e}"),
+            })?;
+        if !output.status.success() {
+            return Err(Error::CheckGitFailure {
+                message: format!(
+                    "git ls-files failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+            });
+        }
+        let mut seen = HashSet::new();
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .split('\0')
+            .filter(|path| Path::new(path).file_name().is_some_and(|name| name == "CLAUDE.md"))
+            .map(|path| self.working_dir.join(path))
+            .filter(|path| seen.insert(path.clone()))
+            .collect())
+    }
+
     fn passes_filter(&self, path: &Path, changed: &Option<HashSet<PathBuf>>) -> bool {
         match changed {
             Some(set) => set.contains(path),
@@ -402,11 +434,18 @@ impl<'a> ProjectChecker<'a> {
             return Ok(());
         };
         let verifier = EvidenceVerifier::new(cfg)?;
-        let mut candidates: Vec<PathBuf> = vec![self.working_dir.join("CLAUDE.md")];
-        // The same glob the rule validator discovers with, because it is the
-        // same set of files. A nested rule was validated for frontmatter and
-        // budget while its claims went unchecked, which reads as verified.
-        candidates.extend(self.discover_glob(<RuleValidator as SurfaceValidator>::GLOB)?);
+        // Every surface the runtime loads as instructions and this gate
+        // validates for shape: a file checked for frontmatter and budget
+        // while its claims went unchecked reads as verified. The globs are
+        // the validators' own, so the two sets cannot drift apart.
+        let mut candidates = self.own_claude_md_files()?;
+        for glob in [
+            <RuleValidator as SurfaceValidator>::GLOB,
+            <SkillValidator as SurfaceValidator>::GLOB,
+            <AgentValidator as SurfaceValidator>::GLOB,
+        ] {
+            candidates.extend(self.discover_glob(glob)?);
+        }
         for path in &candidates {
             if !path.is_file() {
                 continue;

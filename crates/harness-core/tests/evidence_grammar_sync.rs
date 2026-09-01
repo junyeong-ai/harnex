@@ -203,20 +203,23 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
     );
 
     let accounted = |path: &str| {
-        // Resolved by `harnex check` over this repository.
-        (path == "CLAUDE.md" || (path.starts_with(".claude/rules/") && path.ends_with(".md")))
-            // Resolved by `plugin_claims_resolve`.
+        // Resolved by `harnex check` over this repository, which CI runs: every
+        // CLAUDE.md the repository owns, at any depth, and its rules.
+        path.ends_with("CLAUDE.md")
+            || (path.starts_with(".claude/rules/") && path.ends_with(".md"))
+            // Resolved by `plugin_claims_resolve`, against the plugin root.
             || (path.starts_with("plugins/harnex/")
                 && path.ends_with(".md")
-                && !path.starts_with("plugins/harnex/templates/"))
+                && !path.starts_with("plugins/harnex/templates/")
+                && path != "plugins/harnex/CLAUDE.md")
+            // Resolved by `pattern_claims_resolve`, in the layout it installs to.
+            || (path.starts_with("plugins/harnex/templates/patterns/") && path.ends_with(".md"))
             // Parsed by this guard.
             || GRAMMAR.iter().any(|(document, _)| *document == path)
             // Source and tests: the marker is code.
             || (path.starts_with("crates/") && path.ends_with(".rs"))
             // Ledgers: the marker is data.
             || path.starts_with(".harness/")
-            // Resolved by `nested_claude_md_files_resolve_against_the_repository`.
-            || (path.ends_with("/CLAUDE.md") && !path.starts_with("plugins/harnex/"))
     };
     let stray: Vec<&str> = carrying
         .iter()
@@ -229,48 +232,4 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
          the gate that reads it, or add it to `GRAMMAR`:\n  {}",
         stray.join("\n  ")
     );
-}
-
-#[test]
-fn nested_claude_md_files_resolve_against_the_repository() {
-    // A crate-scoped CLAUDE.md loads when work happens in that crate and
-    // cites the crate's own files, so its claims are as real as the root's —
-    // and `harnex check`'s candidate set is the root CLAUDE.md and the rule
-    // glob. Widening that set is a gate change for every installed harness;
-    // resolving them here is not, and leaves nothing allowed unchecked. The
-    // plugin's own CLAUDE.md cites the plugin's layout and is
-    // `plugin_claims_resolve`'s, resolved against the plugin root.
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let verifier = internal_verifier();
-    let nested: Vec<PathBuf> = common::tracked(&root, ".")
-        .into_iter()
-        .filter(|path| {
-            path.file_name().is_some_and(|name| name == "CLAUDE.md")
-                && path.parent().is_some_and(|dir| dir != root)
-                && !path.starts_with(root.join("plugins/harnex"))
-        })
-        .collect();
-    assert!(!nested.is_empty(), "no nested CLAUDE.md is tracked");
-    for path in nested {
-        let content = std::fs::read_to_string(&path).unwrap();
-        let verdict = |text: &str| verifier.verify_text(text, &path, &root);
-        let findings = verdict(&content);
-        assert!(
-            findings.is_empty(),
-            "{} cites what the repository does not carry:\n{findings:#?}",
-            path.display()
-        );
-        // The control, through the same closure: the same document with one
-        // claim the repository cannot carry yields exactly that finding — so
-        // an empty result above is a verdict, not a verifier that ran over
-        // nothing.
-        let control = verdict(&format!(
-            "{content}\n\nProbe: [file: no/such/probe.rs:1].\n"
-        ));
-        assert_eq!(control.len(), 1, "{}: {control:#?}", path.display());
-        assert!(
-            control[0].message.contains("no/such/probe.rs"),
-            "{control:#?}"
-        );
-    }
 }

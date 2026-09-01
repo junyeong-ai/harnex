@@ -127,8 +127,8 @@ that its blast radius is small.
 
 The mutating loop's own terminal pass is NOT gated on this trigger: an
 applied edit is its own blast radius, so verifying one is always warranted —
-only a trivial, reversible diff skips it (`.claude/skills/review/SKILL.md`
-§ The terminal pass). A pipeline that wants an additional forked confirmation
+only a trivial, reversible diff skips it
+([file: .claude/skills/review/SKILL.md § The terminal pass]). A pipeline that wants an additional forked confirmation
 over a landed diff gates it on this same trigger rather than defining a
 second one.
 

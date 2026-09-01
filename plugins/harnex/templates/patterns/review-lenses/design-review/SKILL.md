@@ -14,7 +14,7 @@ contract — regime selection, coverage, refutation, the close, delivery. This
 charge adds the gate, the subject, and the stall guard.
 
 **Gate first.** Read the document and evaluate the bookend trigger
-(`.claude/rules/review-lenses.md § The bookend trigger`) against the surface
+([file: .claude/rules/review-lenses.md § The bookend trigger]) against the surface
 it declares. No signal firing: report `Design review: not required — no
 trigger signal`, still closed per the agent contract — coverage names the
 document and the consult, the VERDICT counts zero — and stop; the skipped

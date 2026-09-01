@@ -25,6 +25,11 @@ fn plugin_root() -> PathBuf {
 }
 
 /// Every markdown document the plugin ships as its own, templates aside.
+///
+/// The plugin's `CLAUDE.md` is not among them: a plugin root `CLAUDE.md` is
+/// not loaded as context at install (`reference/spec-facts.md`), so it is
+/// this repository's own nested memory, cites paths from this repository's
+/// root, and `harnex check` reads it as one.
 fn own_documents(root: &Path) -> Vec<PathBuf> {
     common::tracked(&root.join("../.."), "plugins/harnex")
         .into_iter()
@@ -32,6 +37,7 @@ fn own_documents(root: &Path) -> Vec<PathBuf> {
             let relative = path.strip_prefix(root.join("../..")).unwrap_or(path);
             relative.extension().is_some_and(|ext| ext == "md")
                 && !relative.starts_with("plugins/harnex/templates")
+                && relative != Path::new("plugins/harnex/CLAUDE.md")
         })
         .collect()
 }

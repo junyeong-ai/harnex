@@ -49,6 +49,15 @@ declared truth, not to the rule declaring it, so a diff-windowed rule filter
 reads a deleted truth as nothing-to-check — and it counts nothing into
 `files_scanned`.
 
+The `evidence` arm reads every surface the runtime loads as instructions and
+this gate validates for shape — each `CLAUDE.md` the project owns at any depth,
+and the rule, skill and agent globs the validators discover with — because a
+file checked for frontmatter while its claims go unchecked reads as verified.
+The `CLAUDE.md` set comes from `git ls-files --cached --others
+--exclude-standard`, never a walk: a vendored package ships one, and resolving
+its paths against this project is a Blocker about a file nobody here wrote.
+A git failure surfaces as `CheckGitFailure`, as `--since` does.
+
 The `advisory` arm (gated on `[evidence]`) holds each declared advisory's
 recorded baseline fresh: digests of the declared inputs and engine against
 what recording stamped, absence as `advisory-unmeasured`, an undeclared

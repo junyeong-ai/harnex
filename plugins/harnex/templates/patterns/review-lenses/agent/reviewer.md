@@ -23,7 +23,8 @@ own recorded findings — after your set is formed; that read shapes the stall
 verdict, never the set.)
 
 Your charge selects the refutation regime per
-`.claude/rules/review-lenses.md § Two refutation regimes`: over a change set,
+[file: .claude/rules/review-lenses.md § Two refutation regimes, chosen by subject]:
+over a change set,
 refute each candidate before filing it and down-calibrate what you cannot
 settle; over a design document, default-refute — a decision you cannot
 ground-truth as sound is a finding, and one you cannot anchor to an authority

@@ -5,6 +5,10 @@
 //! its verdict here and in CI diverge on the same commit. What ships is what
 //! is tracked, so every guard that enumerates a corpus asks git.
 
+// Each test binary compiles this module on its own and uses the part it
+// needs, so a helper unused by one binary is still owned by another.
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
