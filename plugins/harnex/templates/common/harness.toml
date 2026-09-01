@@ -49,6 +49,11 @@ flag_side_effect_verbs = true
 [validate.agents]
 reject_unknown_keys = true
 
+# Shape gate for .claude/routines/*.md (the routines pattern installs the
+# first ones). Schedule state is `harnex lifecycle routines`' answer, never
+# a check finding.
+[validate.routines]
+
 [validate.output_styles]
 reject_unknown_keys = true
 

@@ -67,3 +67,10 @@ an observation is the blank-page problem in disguise.
   (linter config, type checker). Pre-fill the verifier's case arms with
   observed protection patterns. Add a PreToolUse(Edit|Write) hook entry
   to `.claude/settings.json` dispatching through `_runner.sh`.
+- `routines` — schedule the first tick of each shipped routine (`when:` +
+  `produces:`) or leave them deliberately unscheduled and say so — the
+  session surface reports `unscheduled` loudly until they are. Pick the
+  records directory the `produces:` paths land in from where the project
+  keeps long-lived records. Wire `hooks/session-routines.sh` as a
+  SessionStart hook entry in `.claude/settings.json`, alongside the
+  scaffold's own; it is install-to-enable and silent without the oracle.

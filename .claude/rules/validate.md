@@ -9,7 +9,7 @@ governs:
 
 # validate — Claude Code surface checks
 
-Six sub-validators. Each reads frontmatter or JSON, returns
+Seven sub-validators. Each reads frontmatter or JSON, returns
 [`Finding`] list, never mutates input.
 
 Rule validator — discovery is recursive (`.claude/rules/**/*.md`, per the
@@ -128,7 +128,13 @@ Settings validator:
   collapses the equivalent `cmd:*` / `cmd *` / bare wildcard forms, so both
   spellings are caught and a scoped rule (`rm:./tmp/*`) is not.
 
-Glob-driven validators (rules / skills / agents / output styles) implement
+Routine validator: shape only, one finding slug (`routine-invalid`) mapping
+`harness_core::routines::ShapeError` — the grammar's owner. Schedule state
+is deliberately not validated: the calendar belongs to `harnex lifecycle
+routines`, never to a gate.
+
+Glob-driven validators (rules / skills / agents / output styles / routines)
+implement
 `SurfaceValidator`, which declares the config section that enables them, the
 glob they cover, and their slug. `ProjectChecker` drives every one of them
 through a single method, so the skipped-vs-ran contract, the `--since` filter,

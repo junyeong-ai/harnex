@@ -183,6 +183,9 @@ harnex session baseline save --label <name>            # freeze the window; resu
 harnex session baseline diff [--from <a>] [--to <b>]   # rates across two windows, with each window's span
 harnex session baseline trend [--project <dir>]        # every window of one scope, side by side
 
+harnex lifecycle routines                             # schedule states: produced |
+                                                      # scheduled | overdue |
+                                                      # unscheduled | superseded
 harnex lifecycle observe --tag T --text X --source S
 harnex lifecycle candidates
 harnex lifecycle promote --tag T --text X --decision-text "..."
