@@ -130,7 +130,9 @@ repo is never penalised for the tool it does not install.
 - Two git hooks, activated by `git config core.hooksPath hooks`:
   `hooks/pre-commit` runs gitleaks on staged changes (the enforced half of
   "secrets never reach git"; permission deny covers only Claude — fail-open if
-  gitleaks is absent, escape hatch `HARNEX_SKIP_GITLEAKS=1`), then dispatches
+  gitleaks is absent, and a scan that fails rather than finds blocks as
+  unscanned, since the two exit alike unless findings are given a code of
+  their own; escape hatch `HARNEX_SKIP_GITLEAKS=1`), then dispatches
   every executable in `hooks/pre-commit.d/` in name order — the seam patterns
   add commit gates through, since the hook's own copy is held byte-identical.
   `hooks/commit-msg` validates the trailers `[validate.commit_msg]` declares,
