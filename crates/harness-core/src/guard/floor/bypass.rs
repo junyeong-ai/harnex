@@ -177,26 +177,37 @@ pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
 /// git 2.46 `unset` subcommand, a valueless write). Reads changing nothing
 /// (hook-routing diagnostics) are the explicit allow-list.
 ///
-/// The POSIX `--` terminator is honoured, because git does: a token after it
-/// is a positional (a value or the key), never an option. Without that,
-/// `git config --add -- core.hooksPath --get` — a write whose value happens to
-/// be `--get` — would read as a diagnostic and pass (measured against git
-/// 2.55; a live evasion the flag-position split closes).
+/// The invocation is parsed once, the way git parses it: the POSIX `--`
+/// terminator ends option scanning, and a value-consuming option swallows the
+/// next token. Both matter to the read/write question because a read flag can
+/// masquerade as the *value* of another token — `git config --add --
+/// core.hooksPath --get` (a write whose value is `--get`, past the terminator)
+/// and `git config set --comment --get core.hooksPath /evil` (a write whose
+/// comment is `--get`) both write on git 2.55, and both would read as
+/// diagnostics without this split.
+///
+/// Not modelled: an invocation that un-routes hooks without naming the key —
+/// `git config --remove-section core` drops `core.hooksPath` with the whole
+/// section. Detecting it needs the live config, which this syntactic check
+/// does not read; it is out of scope, backstopped by the server-side re-run.
 fn detect_config_reroute(rest: &[String]) -> Option<String> {
     rest.iter().find(|w| is_hooks_path_key(w))?;
-    let flags_end = rest.iter().position(|w| w == "--").unwrap_or(rest.len());
-    let flags = &rest[..flags_end];
 
-    // A write flag in option position is a definitive write, whatever value
-    // follows — this is what the terminator protects, so it is decided from
-    // `flags` alone.
+    // Options that take the next token as a value — read-scoping (`--file`,
+    // `--blob`, `--type`, `--default`) and write-filtering (`--comment`,
+    // `--value`) alike. Skipping the value is what stops a read flag spelled as
+    // that value from settling the classification.
+    const VALUE_OPTS: [&str; 8] = [
+        "--file",
+        "-f",
+        "--blob",
+        "--type",
+        "-t",
+        "--default",
+        "--comment",
+        "--value",
+    ];
     const WRITE_FLAGS: [&str; 4] = ["--unset", "--unset-all", "--add", "--replace-all"];
-    if flags.iter().any(|w| WRITE_FLAGS.contains(&w.as_str())) {
-        return Some(reroute_reason());
-    }
-    // A read flag in option position is a definitive read; it names what to
-    // fetch (`--get-urlmatch` even takes a URL value), so its presence in the
-    // option stream settles the invocation.
     const READ_FLAGS: [&str; 7] = [
         "--get",
         "--get-all",
@@ -206,16 +217,8 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
         "--list",
         "-l",
     ];
-    if flags.iter().any(|w| READ_FLAGS.contains(&w.as_str())) {
-        return None;
-    }
-    // No decisive flag: classify by the positional stream — the subcommand and
-    // key, options and their scoped values removed, everything past the
-    // terminator kept. The value-consuming options that can precede the key
-    // (`--file <path>` / `-f`, `--blob <ref>`, `--type <t>` / `-t`) are dropped
-    // with their value so a `--file /x core.hooksPath` read is not mistaken for
-    // a keyless one.
-    const VALUE_SCOPE_OPTS: [&str; 5] = ["--file", "-f", "--blob", "--type", "-t"];
+
+    let mut option_flags: Vec<&str> = Vec::new();
     let mut positionals: Vec<&str> = Vec::new();
     let mut k = 0;
     let mut terminated = false;
@@ -227,23 +230,34 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
         } else if w == "--" {
             terminated = true;
             k += 1;
-        } else if VALUE_SCOPE_OPTS.contains(&w) {
-            k += 2;
+        } else if VALUE_OPTS.contains(&w) {
+            k += 2; // the option and its value, neither an operative token
         } else if w.starts_with('-') {
+            option_flags.push(w);
             k += 1;
         } else {
             positionals.push(w);
             k += 1;
         }
     }
-    // A read subcommand changes nothing; `set` / `unset` and every other head
-    // falls through to the block.
+
+    // A write flag in option position is a definitive write; a read flag there
+    // is a definitive read (it names what to fetch). Write wins the tie so
+    // `--get --unset` is a write.
+    if option_flags.iter().any(|w| WRITE_FLAGS.contains(w)) {
+        return Some(reroute_reason());
+    }
+    if option_flags.iter().any(|w| READ_FLAGS.contains(w)) {
+        return None;
+    }
+    // No decisive flag: the leading positional is the subcommand or the key.
+    // `get` / `list` read; `set` / `unset` and every other head falls through
+    // to the block.
     if matches!(positionals.first(), Some(&"get" | &"list")) {
         return None;
     }
     // Classic bare read: the key is the only positional, with no value to write
-    // (`git config core.hooksPath`). A value after it — whatever it is spelled,
-    // `--unset` past a terminator included — is a write.
+    // (`git config core.hooksPath`). A value after it is a write.
     if matches!(positionals.first(), Some(head) if is_hooks_path_key(head))
         && positionals.len() == 1
     {
@@ -333,6 +347,10 @@ mod tests {
             &["config", "-f", "/x", "core.hooksPath"],
             &["config", "--type", "path", "--get", "core.hooksPath"],
             &["config", "-t", "path", "core.hooksPath"],
+            // `--default` supplies a fallback value and reads without `--get`
+            // (measured); its value must not be read as the key.
+            &["config", "--default", "x", "core.hooksPath"],
+            &["config", "--default", "x", "--get", "core.hooksPath"],
         ] {
             let mut argv = vec!["git"];
             argv.extend_from_slice(read);
@@ -358,6 +376,25 @@ mod tests {
             // POSIX terminator — the live git 2.55 evasion the split closes.
             &["config", "--add", "--", "core.hooksPath", "--get"],
             &["config", "--", "core.hooksPath", "--unset"],
+            // A write whose value-consuming option swallows the read flag —
+            // `--comment` / `--value` take the next token, so `--get` there is
+            // the value, not a diagnostic (both write on git 2.55).
+            &[
+                "config",
+                "set",
+                "--comment",
+                "--get",
+                "core.hooksPath",
+                "/evil",
+            ],
+            &[
+                "config",
+                "set",
+                "--value",
+                "--get",
+                "core.hooksPath",
+                "/evil",
+            ],
         ] {
             let mut argv = vec!["git"];
             argv.extend_from_slice(write);
@@ -430,6 +467,10 @@ mod tests {
         assert!(line("nohup git commit --no-verify").is_some());
         assert!(line("time git commit --no-verify").is_some());
         assert!(line("setsid git commit --no-verify").is_some());
+        // A group after the reserved-word prefixes `time` / `!` still runs the
+        // git command; missing it would be a silent bypass.
+        assert!(line("time { git commit --no-verify; }").is_some());
+        assert!(line("! { git commit --no-verify; }").is_some());
     }
 
     #[test]

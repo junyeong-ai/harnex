@@ -384,19 +384,21 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
         }
         if b == b'{'
             && !acc.has_word
-            && acc.words.is_empty()
             && bytes
                 .get(i + 1)
                 .is_none_or(|next| next.is_ascii_whitespace())
         {
-            // A brace-group `{` is a reserved word only as the first word of a
-            // command (`{ cmd; }`), so it opens a fresh one. Anywhere else it is
-            // an ordinary argument (`printf %s { x`), which the `words.is_empty()`
-            // guard keeps intact; `{}` (a `find -exec` placeholder), `${VAR}` and
-            // `a{1,2}` glue the brace to a word, which the trailing-whitespace and
-            // `has_word` guards keep. `}` is never a separator: a group close is
-            // always preceded by the `;` / newline that already split, so a bare
-            // `}` (`echo } x`) is a literal word.
+            // A brace-group `{` opens a fresh command wherever a command word is
+            // expected: at a boundary the splitter already made, and after the
+            // reserved-word prefixes `time` / `!` that keep that position. The
+            // `!has_word` guard alone splits there and also, deliberately, at an
+            // ordinary argument `{` (`printf %s { x`) — a false block on an
+            // unusual line, the safe direction, taken so no `time { git commit
+            // --no-verify; }` group is ever missed. `{}` (a `find -exec`
+            // placeholder), `${VAR}` and `a{1,2}` glue the brace to a word, which
+            // the trailing-whitespace and `has_word` guards keep. `}` is never a
+            // separator: a group close is always preceded by the `;` / newline
+            // that already split, so a bare `}` (`echo } x`) is a literal word.
             acc.push_command();
             i += 1;
             continue;
@@ -483,18 +485,25 @@ mod tests {
     }
 
     #[test]
-    fn a_brace_opens_a_group_only_as_the_first_word_of_a_command() {
-        // A `{` after a command already has words is an ordinary argument
-        // (`printf %s { x` is one printf call), not a group boundary.
+    fn a_brace_at_a_word_boundary_opens_a_group_including_after_time_and_bang() {
+        // The reserved-word prefixes `time` / `!` keep command position, so the
+        // group — and the git command inside it — must be seen. Missing it would
+        // be a silent bypass; the splitter opens a fresh command at the `{`.
         assert_eq!(
-            split("printf %s { git commit --no-verify"),
-            owned(&[&["printf", "%s", "{", "git", "commit", "--no-verify"]])
+            split("time { git commit --no-verify; }"),
+            owned(&[&["time"], &["git", "commit", "--no-verify"], &["}"]])
         );
-        // Still a group where it genuinely opens one.
+        assert_eq!(
+            split("! { git commit; }"),
+            owned(&[&["!"], &["git", "commit"], &["}"]])
+        );
         assert_eq!(
             split("cmd; { git commit; }"),
             owned(&[&["cmd"], &["git", "commit"], &["}"]])
         );
+        // A `{` used as an ordinary argument splits too — a false command on an
+        // unusual line, taken as the safe cost of never missing a group.
+        assert_eq!(split("printf %s { x"), owned(&[&["printf", "%s"], &["x"]]));
     }
 
     #[test]
