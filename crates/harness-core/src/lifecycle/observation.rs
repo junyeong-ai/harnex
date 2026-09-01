@@ -50,16 +50,11 @@ impl ObservationLedger {
     }
 
     pub fn load_all(&self) -> Result<Vec<Observation>> {
-        // Every failure to read surfaces rather than shortening the result:
-        // a ledger read short undercounts observations and corrupts promotion
+        // Every failure to read surfaces rather than shortening the result: a
+        // ledger read short undercounts observations and corrupts promotion
         // grouping, and one that could not be read at all is not one nobody
-        // has written to. `try_exists` is what separates absent from
-        // unreadable — `exists` answers false for both.
-        let present = self.dir.try_exists().map_err(|e| Error::IoFailure {
-            path: self.dir.clone(),
-            source: e,
-        })?;
-        if !present {
+        // has written to.
+        if !super::ledger_dir_present(&self.dir)? {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();

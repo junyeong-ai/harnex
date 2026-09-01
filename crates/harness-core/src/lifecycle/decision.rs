@@ -120,13 +120,8 @@ impl DecisionLedger {
         // ledger read short loses terminal verdicts from the suppression set,
         // resurfacing already-resolved candidates and corrupting the demote
         // precondition, and one that could not be read at all is not one
-        // holding no decisions. `try_exists` is what separates absent from
-        // unreadable — `exists` answers false for both.
-        let present = self.dir.try_exists().map_err(|e| Error::IoFailure {
-            path: self.dir.clone(),
-            source: e,
-        })?;
-        if !present {
+        // holding no decisions.
+        if !super::ledger_dir_present(&self.dir)? {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
