@@ -98,3 +98,15 @@ never block every tool call. A granted protected write emits the
 Wire it directly as PreToolUse (not through `_runner.sh`); it resolves the
 project root from `harness.toml` discovery like every config-bearing
 command.
+
+`guard::telemetry` (`harnex guard telemetry-emit`) handles PostToolUse /
+PostToolUseFailure: it records one `harness_invocation` event — the invoked
+element's slug and the outcome — through `session::asset_of`, the one owner
+of the tool→element mapping (`Skill`→`skill`, `Task`/`Agent`→`subagent_type`),
+so the recorded set cannot drift from the transcript reader's. Outcome is the
+hook event's identity (`PostToolUse` = ok, `PostToolUseFailure` = failed),
+never a payload field. It writes nothing on stdout and always exits 0: every
+reason it cannot record — no `[telemetry]`, the Kind undeclared, a write
+failure — is a silent no-op, because telemetry must never block the tool call
+that triggered it. Only the element's slug (its own name, not operator
+content) and the outcome cross; the closed `payload_schema` rejects the rest.

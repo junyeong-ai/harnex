@@ -47,7 +47,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::audit` | harness-engineering compliance gate; `AuditCheckKind` is the check set |
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
 | `harness-core::session` | reads Claude Code's own transcripts — instructions, interventions, repetition, tool and token use, and what the repository says survived |
-| `harness-core::guard` | Claude Code hook adapter + Stop auditor + floor auditor (enforcement-surface freeze, hook-bypass tripwire) |
+| `harness-core::guard` | Claude Code hook adapter + Stop auditor + floor auditor (enforcement-surface freeze, hook-bypass tripwire) + telemetry emit (auto-records harness-element invocations) |
 | `harness-core::governs` | rule `governs:` declarations — what a rule is truth about, resolved and audited |
 | `harness-core::export` | JSON Schema emission |
 | `harness-core::graph` | read-only `nodex` CLI bridge |

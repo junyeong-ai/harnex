@@ -49,6 +49,12 @@ pub enum GuardCommand {
     /// override. Anything that prevents evaluation allows with a visible
     /// skip notice on the systemMessage channel.
     Floor,
+    /// PostToolUse / PostToolUseFailure telemetry emit — record one
+    /// harness_invocation event (the invoked element's slug + the outcome).
+    /// Wire to both events with matcher Skill|Task|Agent, best `async`. Always
+    /// exits 0 and emits nothing on stdout; any reason it cannot record (no
+    /// [telemetry], the Kind undeclared, a write failure) is a silent no-op.
+    TelemetryEmit,
 }
 
 pub fn run<W: Write>(cmd: GuardCommand, out: &mut W) -> Result<ExitCode> {
@@ -58,7 +64,23 @@ pub fn run<W: Write>(cmd: GuardCommand, out: &mut W) -> Result<ExitCode> {
         GuardCommand::HookStop { program, args } => hook_stop(&program, &args, out),
         GuardCommand::StopAudit { session } => stop_audit(session, out),
         GuardCommand::Floor => floor(out),
+        GuardCommand::TelemetryEmit => telemetry_emit(),
     }
+}
+
+/// Read the hook event from stdin and emit one harness_invocation event. This
+/// speaks the install-to-enable, never-block contract: it writes no envelope,
+/// and every reason it cannot record is a silent exit 0 — telemetry must never
+/// interrupt the tool call that triggered it.
+fn telemetry_emit() -> Result<ExitCode> {
+    use harness_core::guard::telemetry;
+    let mut buf = String::new();
+    if std::io::stdin().read_to_string(&mut buf).is_err() {
+        return Ok(ExitCode::SUCCESS);
+    }
+    let working_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let _ = telemetry::emit(&working_dir, &buf);
+    Ok(ExitCode::SUCCESS)
 }
 
 /// The floor's hook contract, not the envelope: exit 2 is reserved for a

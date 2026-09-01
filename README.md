@@ -203,6 +203,8 @@ harnex guard stop-audit [--session ID]                # fresh-context Stop audit
 harnex guard floor                                    # PreToolUse floor-integrity:
                                                       # blocks hook-skipping git commands
                                                       # and protected-path writes
+harnex guard telemetry-emit                           # PostToolUse: record a harness-element
+                                                      # invocation (silent, never blocks)
 
 harnex plan audit --plan P [--spec S]                 # spec-workflow review floor:
                   [--baseline B] [--baseline-spec BS] # open C/B rows, vanished rows,

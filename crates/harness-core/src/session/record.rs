@@ -131,7 +131,12 @@ pub struct AssetCall {
     pub name: String,
 }
 
-fn asset_of(tool: &str, input: &serde_json::Value) -> Option<AssetCall> {
+/// The harness element a tool call invoked, or `None` when the tool is not one
+/// that invokes an element or the element's own key is absent or not a string.
+/// This is the one place the tool → element-key mapping lives: the transcript
+/// reader and the telemetry emit hook (`guard::telemetry`) both resolve an
+/// invocation through it, so the recorded set and the measured set cannot drift.
+pub fn asset_of(tool: &str, input: &serde_json::Value) -> Option<AssetCall> {
     let (key, kind) = ASSET_TOOL_KEYS
         .iter()
         .find_map(|(t, key, kind)| (*t == tool).then_some((*key, *kind)))?;

@@ -52,15 +52,21 @@ an observation is the blank-page problem in disguise.
   layout the analysis observed — the scaffold's pre-commit dispatches every
   arm there, which is how the review floor gets a commit-time computer
   without editing a byte-identical hook.
-- `telemetry-kinds` — read the project's `[telemetry]` and any domain
-  `[[telemetry.kinds]]` already declared; the pattern ships the auto-emit Kind
-  (`harness_invocation`) in the scaffold's `harness.toml`, so do not invent a
-  second one. Wire `hooks/telemetry-emit.sh` as two `.claude/settings.json`
-  entries — `PostToolUse` and `PostToolUseFailure`, matcher `Skill|mcp__.*`,
-  dispatched through `_runner.sh`, best marked `async` so the append never
-  sits on the tool's critical path. It is install-to-enable and silent without
-  the oracle. State whether the retirement sweep should read this ledger; only
-  the surface identifier and the outcome ever cross, never a tool's arguments.
+- `telemetry-kinds` — verify the scaffold's `harness.toml` declares the
+  `harness_invocation` Kind exactly as `common/harness.toml` ships it, and add
+  it if a brownfield `harness.toml` lacks it — the emit no-ops silently on an
+  undeclared Kind, so the pattern would install looking enabled and record
+  nothing. Do not invent a second Kind. Wire `hooks/telemetry-emit.sh` as two
+  `.claude/settings.json` entries — `PostToolUse` and `PostToolUseFailure`,
+  matcher `Skill|Task|Agent` (the tools that invoke a harness element; its slug
+  is what the retirement sweep reads — MCP tools are not harness elements and
+  are deliberately not recorded), dispatched through `_runner.sh`, with
+  `async: true` and a short `timeout` so the append never sits on the tool's
+  critical path. The wrapper only checks for the oracle and delegates to
+  `harnex guard telemetry-emit`, which owns the tool→element mapping, the
+  outcome derivation, and every silent skip. It is install-to-enable and silent
+  without the oracle. State whether the retirement sweep should read this
+  ledger; only the element's slug and the outcome ever cross.
 - `deprecation` — detect existing deprecation markers (`@deprecated`
   decorators, JSDoc tags, `#[deprecated]` attributes). Adapt the
   allow-marker format to complement, not conflict with, the language's

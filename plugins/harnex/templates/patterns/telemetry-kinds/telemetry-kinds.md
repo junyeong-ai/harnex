@@ -7,35 +7,24 @@ governs:
     - harness.toml
 ---
 
-# Telemetry — a closed-Kind ledger the harness measures itself with
+# Telemetry — a closed-Kind ledger
 
-Every event the harness records is a declared **Kind** in
-`[[telemetry.kinds]]` with a closed `payload_schema`. `harnex telemetry
-append` validates each event against its schema at write time and refuses
-anything outside it; `harnex telemetry report` rolls activity into trailing
-windows, and the retirement sweep reads that rollup to find surfaces nothing
-invokes.
+Declare every event as a Kind in `[[telemetry.kinds]]` with a closed
+`payload_schema`. Emit with `harnex telemetry append`; it rejects any field
+outside the schema at write time.
 
-## The contract
-
-- **The schema is the privacy boundary, enforced.** A Kind's
-  `payload_schema` lists exactly the fields that may cross — for the
-  auto-emit Kind, the surface identifier and an outcome, never a tool's
-  arguments, a file's contents, or anything a person typed. An undeclared
-  field is rejected at append, so redaction is a schema fact rather than a
-  reviewer's vigilance.
-- **Outcome comes from the event, not the payload's word for it.** The
-  auto-emit hook fires on both `PostToolUse` and `PostToolUseFailure`; which
-  one fired is the outcome. A hook cannot mislabel a failure as a success
-  because it never chooses the label.
-- **Install-to-enable, and silent without the oracle.** The emit hook is a
-  no-op when `harnex` is not on the path, and never blocks a tool call —
-  telemetry that fails loud on absence would trade a measurement for an
-  interruption.
-- **A new Kind is a config edit, never a code edit.** Declare it in
-  `[[telemetry.kinds]]`; the schema validator already knows how to enforce
-  the closed shape.
-- **The ledger is the retirement input.** A skill or agent whose identifier
-  the ledger has not seen in the retirement window is a Silent candidate —
-  which is why the surface identifier is the one field the auto-emit Kind
-  carries.
+- Cross only what the schema declares. The auto-emit Kind carries the invoked
+  element's slug and an outcome — never a tool's arguments, a file's contents,
+  or anything a person typed. An undeclared field fails the append.
+- Let the event decide the outcome. `harnex guard telemetry-emit` reads which
+  hook fired — `PostToolUse` or `PostToolUseFailure` — never a payload field;
+  a failure cannot be recorded as a success.
+- Wire the emit to `PostToolUse` and `PostToolUseFailure`, matcher
+  `Skill|Task|Agent`, best `async`. It is a no-op without the oracle and never
+  blocks a tool call.
+- Add a Kind with a config edit, never a code edit.
+- Read the ledger for retirement with `harnex lifecycle retire`: it scans raw
+  payloads for a surface's slug within the silence window. A surface the ledger
+  has not seen is Silent — which is why the slug is the field the auto-emit
+  Kind carries. (`harnex telemetry report` rolls counts by Kind, not by
+  surface, so it does not answer the per-surface question.)
