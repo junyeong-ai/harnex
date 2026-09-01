@@ -24,12 +24,17 @@ use super::command_line::{SplitError, split_commands};
 /// git subcommands whose hook execution `--no-verify` skips.
 const HOOKED_SUBCOMMANDS: [&str; 4] = ["commit", "push", "merge", "pull"];
 
-/// Bare (option-less) wrappers that may legitimately precede the command
-/// word, skipped through to reach the real command. A wrapper carrying its
-/// own options (`nice -n10 git …`) is out of scope — the option word breaks
-/// the skip, and modelling every wrapper's flag grammar is the arms race
-/// this avoids.
-const COMMAND_PREFIX_WORDS: [&str; 6] = ["env", "command", "nice", "nohup", "time", "setsid"];
+/// Bare (option-less) wrappers and command-position builtins that may
+/// precede the command word, skipped through to reach the real command.
+/// `exec` and `eval` run the git that follows (`exec git …` replaces the
+/// shell with it, `eval git …` re-runs the already-split words). A wrapper
+/// carrying its own options (`nice -n10 git …`), or `eval` given a single
+/// quoted string it re-parses (`eval "git commit --no-verify"`, the `sh -c`
+/// class), is out of scope — the option or the re-parse breaks the skip, and
+/// modelling every wrapper's grammar is the arms race this avoids.
+const COMMAND_PREFIX_WORDS: [&str; 8] = [
+    "env", "command", "nice", "nohup", "time", "setsid", "exec", "eval",
+];
 
 /// Shell reserved words that stand where a command does and are followed by
 /// one: negation (`! git …`), the condition of a compound command (`if` /
@@ -260,11 +265,35 @@ fn detect_config_reroute(rest: &[String]) -> Option<String> {
         }
     }
 
-    // core.hooksPath is operated on only as a positional — the key argument.
-    // Named anywhere else (a `--default core.hooksPath` fallback while reading
-    // another key, the value written to a different key) it is not the subject,
-    // and the command reroutes nothing.
-    positionals.iter().find(|w| is_hooks_path_key(w))?;
+    // core.hooksPath is operated on only as the key argument — the first
+    // positional, or the second when a subcommand leads. Named anywhere else
+    // (a `--default core.hooksPath` fallback, or the value written to another
+    // key like `--add user.label core.hooksPath`) it is not the subject, and
+    // the command reroutes nothing.
+    const SUBCOMMANDS: [&str; 15] = [
+        "get",
+        "get-all",
+        "get-regexp",
+        "get-urlmatch",
+        "get-color",
+        "get-colorbool",
+        "set",
+        "unset",
+        "unset-all",
+        "replace-all",
+        "add",
+        "list",
+        "rename-section",
+        "remove-section",
+        "edit",
+    ];
+    let key = match positionals.first() {
+        Some(&first) if SUBCOMMANDS.contains(&first) => positionals.get(1).copied(),
+        first => first.copied(),
+    };
+    if !matches!(key, Some(k) if is_hooks_path_key(k)) {
+        return None;
+    }
 
     // A write flag in option position is a definitive write; a read flag there
     // is a definitive read (it names what to fetch). Write wins the tie so
@@ -399,6 +428,10 @@ mod tests {
             &["config", "--get-colorbool", "core.hooksPath"],
             // An unrelated write must not be dragged in by the flag scan.
             &["config", "--unset", "user.name"],
+            // core.hooksPath as the VALUE of another key is not the subject.
+            &["config", "--add", "user.label", "core.hooksPath"],
+            &["config", "user.label", "core.hooksPath"],
+            &["config", "set", "user.label", "core.hooksPath"],
         ] {
             let mut argv = vec!["git"];
             argv.extend_from_slice(read);
@@ -509,6 +542,10 @@ mod tests {
             detect_hook_bypass(&words(&["env", "nice", "git", "commit", "--no-verify"])).is_some()
         );
         assert!(detect_hook_bypass(&words(&["/usr/bin/git", "commit", "-n"])).is_some());
+        // exec / eval / command run the git that follows.
+        assert!(detect_hook_bypass(&words(&["exec", "git", "commit", "--no-verify"])).is_some());
+        assert!(detect_hook_bypass(&words(&["eval", "git", "commit", "--no-verify"])).is_some());
+        assert!(detect_hook_bypass(&words(&["command", "git", "commit", "-n"])).is_some());
     }
 
     #[test]
