@@ -53,8 +53,10 @@ wire_enum! {
 /// this toolkit's, so an unknown key is a typo, never an extension.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct RoutineDecl {
-    /// Next due date, `YYYY-MM-DD`. Absent = never scheduled.
-    pub when: Option<String>,
+    /// Next due date. Absent = never scheduled. Parsed at the boundary so
+    /// an invalid date is unrepresentable rather than silently unschedulable.
+    #[schemars(with = "Option<String>")]
+    pub when: Option<jiff::civil::Date>,
     /// The human rhythm, in prose (`quarterly`, `each release`).
     pub cadence: String,
     /// The record whose presence is completion, project-relative. Absent =
@@ -141,11 +143,12 @@ impl RoutineDecl {
             })?;
         let raw: RawRoutine = yaml_serde::from_str(&fm.yaml_text)
             .map_err(|e| ShapeError::Malformed(e.to_string()))?;
-        if let Some(when) = &raw.when
-            && jiff::civil::Date::strptime("%Y-%m-%d", when).is_err()
-        {
-            return Err(ShapeError::BadDate(when.clone()));
-        }
+        let when = raw
+            .when
+            .map(|w| {
+                jiff::civil::Date::strptime("%Y-%m-%d", &w).map_err(|_| ShapeError::BadDate(w))
+            })
+            .transpose()?;
         if let Some(produces) = &raw.produces
             && !crate::path_guard::literal_relative(produces)
         {
@@ -167,7 +170,7 @@ impl RoutineDecl {
             }
         }
         Ok(Self {
-            when: raw.when,
+            when,
             cadence: raw.cadence,
             produces: raw.produces,
             owner: raw.owner,
@@ -181,16 +184,19 @@ impl RoutineDecl {
         if self.status == RoutineStatus::Superseded {
             return RoutineState::Superseded;
         }
-        let (Some(when), Some(produces)) = (&self.when, &self.produces) else {
+        let (Some(due), Some(produces)) = (self.when, &self.produces) else {
             return RoutineState::Unscheduled;
         };
-        if root.join(produces).exists() {
+        // The record, not merely a node at its path: a directory or socket
+        // proves nothing was produced.
+        if root.join(produces).is_file() {
             return RoutineState::Produced;
         }
-        // Shape-validated at parse; a decl that reaches here parses.
-        match jiff::civil::Date::strptime("%Y-%m-%d", when) {
-            Ok(due) if due < today => RoutineState::Overdue,
-            _ => RoutineState::Scheduled,
+        // Due on the day itself: `when` is when the work becomes actionable.
+        if due <= today {
+            RoutineState::Overdue
+        } else {
+            RoutineState::Scheduled
         }
     }
 }
@@ -242,12 +248,16 @@ pub fn states(root: &Path, today: jiff::civil::Date) -> Result<Vec<RoutineReport
         })?;
         let slug = path
             .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| Error::ConfigInvalid {
+                message: format!("routine file name is not UTF-8: {}", path.display()),
+                location: None,
+            })?
+            .to_string();
         out.push(RoutineReport {
             slug,
             state: decl.state(root, today),
-            when: decl.when,
+            when: decl.when.map(|d| d.to_string()),
             cadence: decl.cadence,
             produces: decl.produces,
             owner: decl.owner,
@@ -309,7 +319,17 @@ mod tests {
             let decl = RoutineDecl::from_file(&routine(extra), Path::new("r.md")).unwrap();
             assert_eq!(decl.state(root.path(), today), expect, "{extra}");
         }
-        std::fs::create_dir_all(root.path().join("out")).unwrap();
+        // A directory at the produces path proves nothing was produced.
+        std::fs::create_dir_all(root.path().join("out/q4.md")).unwrap();
+        let dir_at_path = RoutineDecl::from_file(
+            &routine("when: 2026-10-01\nproduces: out/q4.md\n"),
+            Path::new("r.md"),
+        )
+        .unwrap();
+        assert_eq!(
+            dir_at_path.state(root.path(), today),
+            RoutineState::Scheduled
+        );
         std::fs::write(root.path().join("out/q3.md"), "done").unwrap();
         let done = RoutineDecl::from_file(
             &routine("when: 2026-08-01\nproduces: out/q3.md\n"),

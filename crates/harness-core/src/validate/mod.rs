@@ -155,6 +155,8 @@ mod glob_tests {
             ".claude/skills/spec/sub/SKILL.md",
             ".claude/output-styles/terse.md",
             ".claude/output-styles/nested/terse.md",
+            ".claude/routines/curate.md",
+            ".claude/routines/nested/curate.md",
         ];
         for file in files {
             let path = root.path().join(file);
@@ -165,5 +167,6 @@ mod glob_tests {
         agrees::<AgentValidator>(root.path(), &files);
         agrees::<SkillValidator>(root.path(), &files);
         agrees::<OutputStyleValidator>(root.path(), &files);
+        agrees::<RoutineValidator>(root.path(), &files);
     }
 }

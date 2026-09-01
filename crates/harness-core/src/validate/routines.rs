@@ -35,6 +35,21 @@ impl RoutineValidator {
 
     pub fn validate_text(&self, content: &str, path: &Path) -> Vec<Finding> {
         match RoutineDecl::from_file(content, path) {
+            // Field presence is tree shape, not calendar: half a schedule is
+            // a lost half-tick wearing the unscheduled state's clothes.
+            Ok(decl) if decl.when.is_some() != decl.produces.is_some() => vec![Finding {
+                slug: "routine-invalid".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), 1),
+                message: "half-scheduled: `when` and `produces` come as a pair".into(),
+                hint: Some(
+                    "declare both to schedule the tick, or neither to leave it deliberately \
+                     unscheduled"
+                        .into(),
+                ),
+                auto_fixable: false,
+                fix_command: None,
+            }],
             Ok(_) => Vec::new(),
             Err(e) => vec![Finding {
                 slug: "routine-invalid".into(),

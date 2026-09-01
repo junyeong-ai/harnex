@@ -1053,3 +1053,71 @@ mod escapes {
         );
     }
 }
+
+/// The session hook's jq filter is a second representation of the routines
+/// envelope, and Article IX forbids one no test can catch. Every `.field`
+/// the script walks and every wire state it selects must exist in the JSON
+/// the oracle actually writes — a rename on either side fails here instead
+/// of going permanently dark behind the hook's fail-open.
+#[test]
+fn the_session_hook_reads_the_envelope_the_oracle_writes() {
+    let script = std::fs::read_to_string(patterns_dir().join("routines/session-routines.sh"))
+        .expect("read session-routines.sh");
+
+    let report = harness_core::routines::RoutineReport {
+        slug: "curate".into(),
+        state: harness_core::routines::RoutineState::Overdue,
+        when: Some("2026-08-01".into()),
+        cadence: "quarterly".into(),
+        produces: Some("records/q3.md".into()),
+        owner: "harness".into(),
+        prompt: "run the pass".into(),
+    };
+    let mut envelope = Vec::new();
+    harness_core::envelope::write_success(
+        &mut envelope,
+        harness_core::envelope::ListResponse::new(vec![report]),
+        &[],
+    )
+    .expect("write envelope");
+    let wire: serde_json::Value = serde_json::from_slice(&envelope).expect("envelope parses");
+
+    // `.data.items[]` then each `.field` inside the filter body.
+    let item = wire
+        .pointer("/data/items/0")
+        .expect("the script's .data.items[] path exists in the wire");
+    let fields = regex::Regex::new(r"\.([a-z_]+)").unwrap();
+    let jq_block: String = script
+        .lines()
+        .skip_while(|l| !l.contains("jq -r '"))
+        .take_while(|l| !l.trim().eq("'"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        jq_block.contains(".data.items[]"),
+        "the script no longer walks .data.items[] — update this guard with it"
+    );
+    let mut checked = 0;
+    for cap in fields.captures_iter(&jq_block) {
+        let field = &cap[1];
+        if field == "data" || field == "items" || field == "ok" {
+            continue;
+        }
+        assert!(
+            item.get(field).is_some(),
+            "the script reads `.{field}`, which the routines envelope does not carry"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 4, "the guard stopped seeing the script's fields");
+    for state in ["overdue", "unscheduled"] {
+        assert!(
+            script.contains(&format!("\"{state}\"")),
+            "the script no longer selects {state}"
+        );
+        assert!(
+            harness_core::routines::RoutineState::from_str(state).is_some(),
+            "the script selects '{state}', which is not a wire state"
+        );
+    }
+}
