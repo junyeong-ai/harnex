@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use super::{Anchor, Claim, ClaimKind, Verifier, VerifyOutcome};
-use crate::markdown::{Unclosed, Visibility, atx_heading, doc_lines};
+use crate::markdown::Document;
 
 pub(crate) struct InternalFileVerifier {
     provenance: String,
@@ -77,7 +77,7 @@ fn unreadable(path: &str) -> VerifyOutcome {
 }
 
 fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
-    let total = doc_lines(content).len() as u32;
+    let total = crate::markdown::line_count(content);
     if line == 0 || line > total {
         return VerifyOutcome::Violation {
             message: format!("line {line} out of range ('{path}' has {total} lines)"),
@@ -89,38 +89,19 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
 
 /// A section anchor resolves when the file spells that heading exactly once.
 ///
-/// Two headings with one name is its own violation rather than a pass on the
-/// first: a pointer that resolves to both places names neither, and the
-/// reader it sends is the one who discovers that.
+/// The comparison is against the heading a reader reads, so `## **Storage**`
+/// and a setext `Storage` both answer to `Storage` — a citation is written
+/// from the rendered document, not from its source. Two headings with one
+/// name is its own violation rather than a pass on the first: a pointer that
+/// resolves to both places names neither, and the reader it sends is the one
+/// who discovers that.
 fn verify_section(path: &str, content: &str, heading: &str) -> VerifyOutcome {
-    let mut doc = Visibility::new();
-    let mut found: Vec<u32> = Vec::new();
-
-    for (idx, raw_line) in doc_lines(content).into_iter().enumerate() {
-        let line_no = (idx as u32) + 1;
-        let Some(line) = doc.read(raw_line, line_no) else {
-            continue;
-        };
-        if atx_heading(&line).is_some_and(|(_, title)| title == heading) {
-            found.push(line_no);
-        }
-    }
-
-    // Headings below an open delimiter were never seen, so neither a miss nor
-    // a single hit is an answer about the file — only about the part of it a
-    // reader still sees.
-    if let Some(unclosed) = doc.unclosed() {
-        let (line, what) = match unclosed {
-            Unclosed::Fence { line } => (line, "a code fence"),
-            Unclosed::Comment { line } => (line, "an HTML comment"),
-        };
-        return VerifyOutcome::Violation {
-            message: format!(
-                "'{path}' cannot be read for headings: {what} opened at line {line} never closes"
-            ),
-            hint: Some(format!("close the delimiter opened at {path}:{line}")),
-        };
-    }
+    let found: Vec<u32> = Document::of(content)
+        .headings()
+        .iter()
+        .filter(|candidate| candidate.text == heading)
+        .map(|candidate| candidate.line)
+        .collect();
 
     match found.as_slice() {
         [_] => VerifyOutcome::Ok,
@@ -220,14 +201,36 @@ mod tests {
     }
 
     #[test]
-    fn a_document_that_cannot_be_read_whole_is_not_answered() {
-        // The heading is present and unique above the open fence, so a reader
-        // that stopped at the count would pass — while every heading below it
-        // is invisible, duplicates included.
-        let doc = "## Limits\n\n```\nnever closed\n## Limits\n";
-        let message = message(doc, "Limits");
-        assert!(message.contains("never closes"), "{message}");
-        assert!(message.contains("line 3"), "{message}");
+    fn a_heading_a_fence_swallows_is_not_a_second_heading() {
+        // CommonMark closes a fence at the end of the document, so the
+        // second spelling is code — one heading, and the pointer resolves.
+        // A state machine that called this unterminated blocked a citation
+        // into a document a renderer reads perfectly well.
+        assert!(matches!(
+            outcome("## Limits\n\n```\nnever closed\n## Limits\n", "Limits"),
+            VerifyOutcome::Ok
+        ));
+    }
+
+    #[test]
+    fn a_heading_is_matched_as_a_reader_reads_it() {
+        // Each of these was a Blocker against a heading the target does have.
+        for (label, doc) in [
+            ("setext", "Storage\n=======\n\nbody\n"),
+            ("emphasis", "## **Storage**\n\nbody\n"),
+            ("a code span", "## `Storage`\n\nbody\n"),
+            ("a closing run", "## Storage ##\n\nbody\n"),
+        ] {
+            assert!(
+                matches!(outcome(doc, "Storage"), VerifyOutcome::Ok),
+                "a heading spelled with {label} did not resolve"
+            );
+        }
+        // And two spellings of one heading are still two.
+        assert!(
+            message("## Storage\n\n## **Storage**\n", "Storage").contains("names 2 headings"),
+            "a duplicate hidden behind markup must still be a duplicate"
+        );
     }
 
     #[test]

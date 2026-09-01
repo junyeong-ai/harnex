@@ -251,8 +251,8 @@ patterns covered out of the box:
   leaving a rule that points nowhere:
 
   ```
-  [file: pyproject.toml]                             the file exists
-  [file: crates/harness-core/src/path_guard.rs:81]   and is at least that long
+  [file: Cargo.toml]                                      the file exists
+  [file: crates/harness-core/src/path_guard.rs:81]        and is at least that long
   [file: .claude/rules/making-changes.md § Verification]  and spells that heading, once
   ```
 
