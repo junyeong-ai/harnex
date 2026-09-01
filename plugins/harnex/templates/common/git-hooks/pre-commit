@@ -11,16 +11,41 @@
 # Fail-open on a missing tool — never block a commit because gitleaks is not
 # installed. Escape hatch via HARNEX_SKIP_GITLEAKS=1 for a confirmed false
 # positive; each arm in pre-commit.d/ carries its own.
+#
+# A scan has three outcomes, not two, and gitleaks spells only two of them by
+# default: a finding and a failure of the scan itself both exit 1. So findings
+# are given an exit code of their own (`--exit-code`, a root flag since 8.0),
+# leaving 1 to mean the scan reached no verdict. The distinction is the point:
+# an unscanned tree is not a clean one, and reporting a broken scanner as a
+# finding sends the operator to the false-positive hatch — which turns a
+# scanner that failed into a scanner that no longer runs.
 set -uo pipefail
+
+# Distinct from 0 (clean), from 1 (gitleaks' own failures), and from the codes
+# a shell assigns for an absent or unexecutable command and for signals.
+GITLEAKS_LEAK_CODE=99
 
 if [[ "${HARNEX_SKIP_GITLEAKS:-}" != "1" ]]; then
   if command -v gitleaks >/dev/null 2>&1; then
-    if ! gitleaks git --staged --no-banner >/dev/null 2>&1; then
-      echo "[harnex] gitleaks flagged potential secrets in staged changes — commit blocked." >&2
-      echo "         Inspect: gitleaks git --staged --verbose" >&2
-      echo "         Confirmed false positive? HARNEX_SKIP_GITLEAKS=1 git commit ..." >&2
-      exit 1
-    fi
+    gitleaks git --staged --no-banner --exit-code "$GITLEAKS_LEAK_CODE" >/dev/null 2>&1
+    scan=$?
+    case "$scan" in
+      0) ;;
+      "$GITLEAKS_LEAK_CODE")
+        echo "[harnex] gitleaks flagged potential secrets in staged changes — commit blocked." >&2
+        echo "         Inspect: gitleaks git --staged --verbose" >&2
+        echo "         Confirmed false positive? HARNEX_SKIP_GITLEAKS=1 git commit ..." >&2
+        exit 1
+        ;;
+      *)
+        echo "[harnex] gitleaks exited $scan without scanning — the staged changes are" >&2
+        echo "         unscanned, not clean, so the commit is blocked." >&2
+        echo "         Diagnose: gitleaks git --staged --verbose" >&2
+        echo "         Usually a malformed .gitleaks.toml or a build older than 8.0." >&2
+        echo "         HARNEX_SKIP_GITLEAKS=1 commits it unscanned; fixing the scan does not." >&2
+        exit 1
+        ;;
+    esac
   else
     echo "[harnex] gitleaks not installed — secret scan skipped." >&2
     echo "         Install: https://github.com/gitleaks/gitleaks" >&2
