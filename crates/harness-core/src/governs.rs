@@ -437,7 +437,9 @@ mod tests {
             decl("governs:\n  concept: x\n  live_truth: []\n").unwrap_err(),
             ShapeError::EmptyLiveTruth
         );
-        for bad in ["/abs", "a/../b", "src/*", "a//b", ".", "a\\b"] {
+        for bad in [
+            "/abs", "a/../b", "src/*", "a//b", ".", "a\\b", "C:/out", "a:b",
+        ] {
             assert_eq!(
                 decl(&format!("governs:\n  concept: x\n  live_truth: '{bad}'\n")).unwrap_err(),
                 ShapeError::BadPath(bad.to_string()),

@@ -177,6 +177,7 @@ fn default_advisory_dir() -> String {
 /// recorded evidence it holds fresh. The advisory's own findings never gate;
 /// the freshness of its basis does.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AdvisoryDecl {
     /// Kebab-case identity; the baseline lands at `<advisory_dir>/<id>.json`.
     pub id: String,
@@ -713,6 +714,22 @@ impl Config {
                             "[[evidence.advisories]] '{}' path '{path}' is not a literal \
                              project-relative path",
                             advisory.id
+                        ),
+                        location: None,
+                    });
+                }
+                let covers_dir = ev.advisory_dir == *path
+                    || ev
+                        .advisory_dir
+                        .strip_prefix(path.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'));
+                if covers_dir {
+                    return Err(Error::ConfigInvalid {
+                        message: format!(
+                            "[[evidence.advisories]] '{}' declares '{path}', which contains \
+                             advisory_dir '{}' — recording would change its own basis and the \
+                             evidence could never be fresh",
+                            advisory.id, ev.advisory_dir
                         ),
                         location: None,
                     });
@@ -1761,6 +1778,58 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("advisory_dir"));
+    }
+
+    #[test]
+    fn rejects_the_harvest_spelling_instead_of_ignoring_it() {
+        let err = parse(
+            r#"
+            [meta]
+            harnex_version = ">=0.1, <0.2"
+
+            [evidence]
+            default_provenance = "internal"
+            [[evidence.verifiers]]
+            provenance = "internal"
+            strategy = "file-path-line"
+            [[evidence.advisories]]
+            id = "a"
+            inputs = ["src"]
+            unattendedRemeasure = true
+        "#,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("unattendedRemeasure"),
+            "a key the schema does not know must fail loudly, never default the              declared behavior away: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_an_advisory_whose_input_contains_its_own_baseline() {
+        for (dir, input) in [("evidence", "evidence"), ("app/evidence", "app")] {
+            let err = parse(&format!(
+                r#"
+                [meta]
+                harnex_version = ">=0.1, <0.2"
+
+                [evidence]
+                default_provenance = "internal"
+                advisory_dir = "{dir}"
+                [[evidence.verifiers]]
+                provenance = "internal"
+                strategy = "file-path-line"
+                [[evidence.advisories]]
+                id = "a"
+                inputs = ["{input}"]
+            "#
+            ))
+            .unwrap_err();
+            assert!(
+                err.to_string().contains("its own basis"),
+                "{dir}/{input}: {err}"
+            );
+        }
     }
 
     #[test]

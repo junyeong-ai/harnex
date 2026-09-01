@@ -56,7 +56,11 @@ what gates: **the advisory never blocks — the freshness of its basis does.**
 
 - The project's own instrument measures; `harnex evidence record --id <id>`
   writes the baseline with content digests of the declared inputs and of the
-  instrument itself (identity, never an alias).
+  instrument itself. The residual is stated, not implied: only in-tree
+  content is identity — an engine that shells out to an npm or system
+  binary re-points with no tree diff, so declare its lockfile or version
+  pin beside it, and an out-of-tree instrument is outside this basis
+  entirely.
 - `harnex check` asks only "does the evidence still describe its inputs" —
   a moved digest, a moved instrument, a moved declaration, or no recording
   at all (`advisory-unmeasured` — never a fabricated zero) is the finding.
@@ -67,7 +71,8 @@ what gates: **the advisory never blocks — the freshness of its basis does.**
 - An advisory's own findings enter reports with a disposition, not a
   severity: `mention` (say it where the operator reads) or `route` (hand it
   to its named reader). A disposition is not a soft severity — it names the
-  reader instead of ranking the alarm.
+  reader instead of ranking the alarm. This is report vocabulary the prose
+  holds; nothing in the oracle reads the payload, by design.
 
 Declared under `[[evidence.advisories]]`; the baseline is a committed
 `evidence/<id>.json` the schema of which is closed.

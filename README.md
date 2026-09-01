@@ -149,11 +149,13 @@ project grows.
 ## Command surface
 
 ```
-harnex check [--since <ref>] [--fix]                  # unified validation gate
+harnex check [--since <ref>] [--fix] [--unattended]   # unified validation gate;
+                                                      # unattended downgrades
+                                                      # unclearable advisory staleness
 harnex audit [--plugin-root <path>]                   # generated harness vs. its composition
 
 harnex evidence verify <files...>
-harnex evidence record --id <id> [--payload <json>]   # advisory baseline:
+harnex evidence record --id <id> [--payload <file|->] # advisory baseline:
                                                       # digests inputs + engine now
 harnex telemetry append --kind K --payload <json>
 harnex telemetry count --kind K [--since <rfc3339>]

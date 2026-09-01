@@ -26,8 +26,9 @@ pub struct CheckArgs {
 }
 
 pub fn run<W: Write>(args: CheckArgs, out: &mut W) -> Result<ExitCode> {
-    let (config, _config_path, working_dir) = load_config()?;
-    let mut check = ProjectChecker::new(&config, &working_dir);
+    let (config, config_path, working_dir) = load_config()?;
+    let root = super::config_dir(&config_path, &working_dir);
+    let mut check = ProjectChecker::new(&config, &root);
     if let Some(since) = args.since.as_deref() {
         check = check.with_since(since);
     }

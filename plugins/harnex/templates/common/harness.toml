@@ -83,7 +83,9 @@ strategy = "file-path-line"
 # [[evidence.advisories]]
 # id = "content-contrast"
 # inputs = ["src/styles"]
-# engine = ["tools/contrast-audit"]
+# # In-tree content is the instrument's identity; a wrapper that shells out
+# # re-points with no tree diff, so its lockfile stands beside it.
+# engine = ["tools/contrast-audit", "package-lock.json"]
 # unattended_remeasure = false
 
 # The promotion-and-retirement loop `governance.md` and `artifact-lifecycle.md`
