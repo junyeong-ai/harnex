@@ -1,22 +1,26 @@
 //! # plan — the spec-workflow review grammar, held by a computer
 //!
-//! The spec-workflow and review-lenses patterns write three machine-read
+//! The spec-workflow and review-lenses patterns write four machine-read
 //! shapes into a spec's artifacts: finding rows under `## Outstanding issues`
 //! in the plan, decision bullets under `## Decision log` in the spec, and the
-//! `<n>C/<n>B/<n>M/<n>m` counts a review-class firing records. The templates
-//! state that contract in prose, and [`PlanAuditor`] is the computer the
-//! prose names: open Critical/Blocker rows, rows that vanished instead of
-//! gaining a terminal disposition, decision lines whose counts contradict
-//! their token, and a Critical+Blocker total that will not fall. The measured
-//! failure of the prose-only version of this floor is a gate that recorded
-//! eleven firings while its own rule said stop at the second.
+//! counts a counted firing records — `<n>C/<n>B/<n>M/<n>m` for a review gate,
+//! `<n>P/<n>F/<n>U` for `acceptance`, which walks the numbered criteria under
+//! `## Acceptance criteria`. The templates state that contract in prose, and
+//! [`PlanAuditor`] is the computer the prose names: open Critical/Blocker
+//! rows, rows that vanished instead of gaining a terminal disposition,
+//! decision lines whose counts contradict their token, an acceptance token
+//! that does not add up to the criteria it claims to have walked, and a
+//! blocking total that will not fall. The measured failure of the prose-only
+//! version of this floor is a gate that recorded eleven firings while its own
+//! rule said stop at the second.
 //!
 //! The grammar is harness vocabulary — harnex's own templates emit every
 //! token here, the same standing the sentinel grammars have. Gate NAMES stay
-//! open (a project may add gates at install time): a decision line under any
-//! gate parses, the counts obligations bind the two review-class gates the
-//! templates ship, and any gate that writes counts opts into the convergence
-//! comparison by doing so.
+//! open (a project may add gates at install time) and a decision line under
+//! any gate parses; the counts contract does not follow. Only
+//! [`COUNTED_GATES`] have a counts position at all, each in its declared
+//! [`GateClass`], so a gate that owes no counts cannot acquire them from a
+//! rationale that happens to be token-shaped.
 //!
 //! ## What this module refuses to do
 //!
@@ -1075,8 +1079,10 @@ impl<'a> PlanAuditor<'a> {
                         ),
                         hint: Some(
                             "write decisions as `- <YYYY-MM-DD> · <gate> · approved|rejected|\
-                             needs_revision|deferred [· <n>C/<n>B/<n>M/<n>m] · <rationale>` — \
-                             the separator is `·` (U+00B7)"
+                             needs_revision|deferred [· <counts>] · <rationale>` — the separator \
+                             is `·` (U+00B7), and `<counts>` is the token the gate's class owes: \
+                             `<n>C/<n>B/<n>M/<n>m` for a review gate, `<n>P/<n>F/<n>U` for \
+                             `acceptance`"
                                 .into(),
                         ),
                         auto_fixable: false,
@@ -1100,6 +1106,26 @@ impl<'a> PlanAuditor<'a> {
                     GateClass::Review => "`<n>C/<n>B/<n>M/<n>m`",
                     GateClass::Acceptance => "`<n>P/<n>F/<n>U`",
                 };
+                // The class check runs on any firing that carries a token,
+                // including one that owed none: a wrong token is wrong wherever
+                // it appears, and reading it as a total is the harm.
+                if let Some(counts) = decision.counts
+                    && counts.class() != class
+                {
+                    findings.push(Finding {
+                        slug: "plan-log-counts-class".into(),
+                        severity: Severity::Major,
+                        location: Location::line(spec_path, *line_no),
+                        message: format!(
+                            "`{gate}` owes {} counts but its line carries {}",
+                            class.as_str(),
+                            counts.class().as_str()
+                        ),
+                        hint: Some(format!("write {token}, which is what this gate counts")),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                }
                 // `rejected` ends the work rather than measuring it, so it
                 // owes no count; every other token states where the gate
                 // stands and is read by what follows.
@@ -1118,25 +1144,6 @@ impl<'a> PlanAuditor<'a> {
                              convergence comparison reads it there, never from memory",
                             class.as_str()
                         )),
-                        auto_fixable: false,
-                        fix_command: None,
-                    });
-                } else if let Some(counts) = decision.counts
-                    && counts.class() != class
-                {
-                    // The wrong token parses and reads as a total, so a review
-                    // token on an acceptance line would report zero blocking
-                    // while unmeasured criteria stand.
-                    findings.push(Finding {
-                        slug: "plan-log-counts-class".into(),
-                        severity: Severity::Major,
-                        location: Location::line(spec_path, *line_no),
-                        message: format!(
-                            "`{gate}` owes {} counts but its line carries {}",
-                            class.as_str(),
-                            counts.class().as_str()
-                        ),
-                        hint: Some(format!("write {token}, which is what this gate counts")),
                         auto_fixable: false,
                         fix_command: None,
                     });
@@ -1848,6 +1855,27 @@ mod tests {
             &spec("- 2026-01-15 · acceptance · approved · 2P/0F/0U · both hold"),
         );
         assert_eq!(slugs(&unreadable), ["plan-log-criteria-unreadable"]);
+    }
+
+    #[test]
+    fn a_wrong_class_token_is_a_finding_on_any_firing_that_carries_one() {
+        // The prose states it unqualified, and the harm — a total read from
+        // the wrong units — does not depend on which token the line ends in.
+        let findings = audit_with_spec(
+            &plan(""),
+            &spec_with_criteria(
+                1,
+                "- 2026-01-15 · acceptance · rejected · 0C/0B/0M/0m · nope",
+            ),
+        );
+        assert_eq!(slugs(&findings), ["plan-log-counts-class"]);
+
+        // `rejected` ends the work rather than measuring it, so it owes none.
+        let clean = audit_with_spec(
+            &plan(""),
+            &spec_with_criteria(1, "- 2026-01-15 · acceptance · rejected · not the change"),
+        );
+        assert!(slugs(&clean).is_empty(), "{clean:?}");
     }
 
     #[test]

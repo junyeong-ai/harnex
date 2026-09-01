@@ -133,9 +133,9 @@ which ones stand rather than re-deriving them:
 - 2026-01-15 · acceptance · needs_revision · 4P/1F/2U · criterion 3 fails on empty input; 5 and 6 need the staging environment
 ```
 
-A criterion that cannot be checked was not a criterion — `spec.md` says so at
-the point it is written. Finding one here is a finding about the spec, and it
-belongs in `plan.md ## Outstanding issues` like any other.
+A criterion that cannot be checked was not a criterion — the specify phase
+says to rewrite it until it can be. Finding one only here is a finding about
+the spec, and it belongs in `plan.md ## Outstanding issues` like any other.
 
 ## resume — inline, on a dirty worktree
 
