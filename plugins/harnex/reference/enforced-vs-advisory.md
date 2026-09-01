@@ -46,6 +46,32 @@ thing that survives a confused, careless, or adversarial agent turn.
    floor, and the append-only row contract, and the shipped pre-commit arm
    holds them at the commit.
 
+## Unmeasured is not passed
+
+A gate reports what it measured, and the one report it may never emit is the
+shape of a pass over something it did not read. Zero findings across a corpus
+the gate never opened is byte-identical to zero findings across one it read
+closely, so the reader cannot tell them apart and reads the stronger claim.
+
+Give the third answer a name in the type rather than a caveat in the prose
+around it. Every enforced surface harnex ships names its own:
+
+| Surface | The zero it refuses | What it says instead |
+|---|---|---|
+| `lifecycle retire` | silence inferred from a record that could never have named the artifact | `unmeasured`, which fires no signal |
+| `plan audit` acceptance | a criterion nothing answered, counted as passed | `unmeasured`, blocking an approval exactly as a Blocker does |
+| `hooks/pre-commit` | a secret scan that failed, exiting like one that found nothing | a code of its own for findings, so a failure is unscanned rather than clean |
+| `lifecycle candidates` | an unwritten or unreadable ledger, read as a corpus that produced nothing | `observations_read` beside the candidates, and an error where the read failed |
+| `guard stop-audit` | a probe that gave no answer, read as "there is work" | a skip naming why, having spent nothing |
+
+Two shapes produce it, and a generated gate is worth checking against both. A
+**default standing in for a measurement** — an empty configuration read as
+"yes", an absent record read as zero — decides on the reader's behalf and
+tells them nothing. A **read that came back short** — a directory absent for
+some reason other than emptiness, a record the scan's own filter skipped —
+shortens the result instead of failing, so the count is smaller than the
+corpus and nothing marks the difference.
+
 ## The advisory class — freshness gates, findings never do
 
 Between the two tiers sits the measurement neither can hold: expensive,
