@@ -15,13 +15,22 @@ whitespace. Candidates require `instance_count ≥ promotion_min_instances`
 AND `span ≥ promotion_min_days`.
 
 `survey` answers with the candidates AND the corpus they were drawn from —
-`observations_read`, `groups_considered`, `groups_resolved` — because a pass
-that drains the ledger reads an unwritten one and a corpus that produced
-nothing oppositely. The counts close over the ledger: every observation falls
+`observations_read`, `decisions_read`, `groups_considered`, `groups_resolved`
+— because a pass that drains the ledgers reads an unwritten one and a corpus
+that produced nothing oppositely. It reads two ledgers and reports both: a
+decision ledger that was not found resolves nothing, which is what a pass that
+has settled nothing also looks like. The counts close: every observation falls
 in exactly one group, every group is either resolved by a suppressing decision
 or considered against the thresholds. Sort candidates by instance count, then
 `(tag, normalized_text)`: groups arrive in hash order and one ledger owes one
 envelope.
+
+Both ledgers file by tag and scan by the `.jsonl` filename suffix, never
+`Path::extension`, which answers `None` for a leading-dot name. Refuse an
+empty tag at the encoder both appends route through: its stem files a record
+as `.jsonl`, and what a ledger accepts is what it must read back. Absent means
+nothing written; a path that fails to stat and a directory symlink with no
+target are reads that did not happen, and each fails.
 
 Retirement classifier emits three signals: Stale (mtime > stale_days),
 NoConsumers (grep finds zero), Silent (caller-supplied `SilenceState` —

@@ -69,7 +69,7 @@ impl ObservationLedger {
                 source: e,
             })?;
             let p = entry.path();
-            if p.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+            if super::is_ledger_file(&p) {
                 paths.push(p);
             }
         }

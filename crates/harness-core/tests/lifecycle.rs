@@ -310,6 +310,27 @@ fn a_record_the_ledger_accepted_is_a_record_it_reads_back() {
 }
 
 #[test]
+fn the_scan_reads_a_record_filed_under_a_leading_dot_name() {
+    // `Path::extension` answers `None` for `.jsonl`, so a scan written against
+    // it skips a whole ledger file. Nothing writes that name now, and a record
+    // an older build filed under it is still a record — a read that comes back
+    // short is what both ledgers refuse everywhere else.
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path().join("observations");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(".jsonl"),
+        "{\"tag\":\"\",\"text\":\"filed by an older build\",\"source\":\"spec-z\",\
+         \"timestamp\":\"2026-08-01T00:00:00Z\"}\n",
+    )
+    .unwrap();
+
+    let ledger = ObservationLedger::new(dir);
+    ledger.append("naming", "use snake case", "spec-a").unwrap();
+    assert_eq!(ledger.load_all().unwrap().len(), 2);
+}
+
+#[test]
 fn survey_reports_the_decision_ledger_it_read_too() {
     // `groups_resolved: 0` is the same number for a pass that has closed
     // nothing and for a decision ledger that was not found — and the second
