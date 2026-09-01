@@ -17,6 +17,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::markdown::Document;
+use crate::wire_enum::wire_enum;
 
 #[derive(Debug, Clone)]
 pub struct Claim {
@@ -54,6 +55,33 @@ pub enum Anchor {
     Whole,
     Line(u32),
     Section(String),
+}
+
+wire_enum! {
+    /// The anchors an author can write, without what each one points at.
+    ///
+    /// [`Anchor`] carries data, so nothing about it is enumerable and the
+    /// documentation that teaches the grammar had its own hand-written list
+    /// of what to teach. This is the enumerable half: adding an anchor forces
+    /// an arm in [`Anchor::kind`], which forces a variant here, which the
+    /// macro puts in `ALL` — and `evidence_grammar_sync` reads `ALL` as the
+    /// denominator (constitution IX).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum AnchorKind {
+        Whole => "the whole file",
+        Line => "a line",
+        Section => "a section",
+    }
+}
+
+impl Anchor {
+    pub fn kind(&self) -> AnchorKind {
+        match self {
+            Anchor::Whole => AnchorKind::Whole,
+            Anchor::Line(_) => AnchorKind::Line,
+            Anchor::Section(_) => AnchorKind::Section,
+        }
+    }
 }
 
 static FETCHED_URL: LazyLock<Regex> = LazyLock::new(|| {
@@ -163,11 +191,7 @@ fn split_file_claim(body: &str) -> Option<(&str, Anchor)> {
 pub fn parse_claims(markdown: &str) -> Vec<Claim> {
     let mut claims = Vec::new();
 
-    for source in Document::of(markdown)
-        .lines()
-        .iter()
-        .filter(|line| !line.indented_code)
-    {
+    for source in Document::of(markdown).prose() {
         let (line_no, line) = (source.no, source.text.as_str());
 
         for cap in FETCHED_URL.captures_iter(line) {

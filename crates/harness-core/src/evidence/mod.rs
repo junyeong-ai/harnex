@@ -15,6 +15,13 @@
 //!   stays so.
 //! - Never silently downgrade severity. The block / warn distinction
 //!   derives from the configured `block_on_memory_only` flag.
+//! - Never judge a document's markdown. CommonMark closes a fence the author
+//!   forgot to close at the end of the file, so the claims below it are code
+//!   and go unchecked, and nothing here says so — the accident is real and
+//!   the alternative was worse: the finding that reported it fired on every
+//!   document a renderer reads correctly. `plan audit` keeps its own signal
+//!   because its subject is rows an author believes recorded; this module's
+//!   is what a document asserts, and a reader asserts nothing it cannot see.
 
 pub mod advisory;
 mod claim;
@@ -26,7 +33,7 @@ pub mod memory;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub use claim::{Anchor, Claim, ClaimKind, parse_claims};
+pub use claim::{Anchor, AnchorKind, Claim, ClaimKind, parse_claims};
 
 use crate::config::EvidenceConfig;
 use crate::envelope::{Finding, Location, Severity};

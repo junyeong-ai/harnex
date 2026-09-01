@@ -27,6 +27,14 @@
 //!   is how a document mentions one, and `.claude/rules/audit.md` settles
 //!   where an example goes instead: a fenced block, an HTML comment, or
 //!   paraphrase.
+//! - Never hides raw HTML that is not a comment. A `<details>` block is
+//!   content a reader opens; only `<!-- -->` is an instruction.
+//! - Never enables a syntax extension beyond tables and YAML frontmatter.
+//!   Both are in the corpus this reads; the rest are not, and each one
+//!   changes what a heading says — under GFM strikethrough `## ~~Old~~ New`
+//!   is cited as `Old New`, and without it as written. A citation resolves
+//!   against CommonMark core, which is the one renderer every consumer of a
+//!   harness agrees on.
 
 use std::ops::Range;
 
@@ -37,11 +45,9 @@ pub(crate) struct Line {
     pub(crate) no: u32,
     pub(crate) text: String,
     /// An indent made this line code, where a fence would have been a
-    /// deliberate quotation. The two are one thing to a renderer and two to
-    /// a gate: a gate reading what a document asserts skips both, and a gate
-    /// looking for what its author wrote reads this one, because a stray tab
-    /// is how a line meant as prose stops being read.
-    pub(crate) indented_code: bool,
+    /// deliberate quotation. Which accessor yielded the line says how the
+    /// caller decided to read it, so this stays private.
+    indented_code: bool,
 }
 
 /// One heading, as a reader reads it: the inline text with its markup
@@ -50,6 +56,11 @@ pub(crate) struct Heading {
     pub(crate) level: u32,
     pub(crate) text: String,
     pub(crate) line: u32,
+    /// Spelled with leading `#`s rather than underlined. A gate that treats
+    /// a heading as a boundary reads this: an underline is a character an
+    /// author reaches for as a separator, and `text` + `---` silently ending
+    /// a section is not the same event as writing `## Next`.
+    pub(crate) atx: bool,
 }
 
 /// A delimiter the document ends inside.
@@ -79,12 +90,12 @@ impl Document {
         let mut open_heading: Option<Heading> = None;
         let mut unterminated = None;
         let mut open_fence: Option<Fence> = None;
-        let mut html_run: Option<Range<usize>> = None;
+        let mut comment_from: Option<usize> = None;
 
         let options = Options::ENABLE_TABLES | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
         for (event, range) in Parser::new_ext(&text, options).into_offset_iter() {
             if !matches!(event, Event::Html(_)) {
-                html_run = None;
+                comment_from = None;
             }
             match event {
                 Event::Start(Tag::CodeBlock(kind)) => match kind {
@@ -99,35 +110,46 @@ impl Document {
                     CodeBlockKind::Indented => indented.push(range),
                 },
                 Event::End(TagEnd::CodeBlock) => {
+                    // Reaching the document's end is the second half: a fence
+                    // its container closed swallows only to that boundary,
+                    // and everything past it is read as usual.
                     if let Some(fence) = open_fence.take()
                         && fence.end <= fence.content_end
+                        && fence.end >= text.len()
                     {
                         unterminated = Some(Unterminated::Fence { line: fence.line });
                     }
                 }
                 Event::Html(_) => {
-                    html_run = Some(match html_run {
-                        Some(open) => open.start..range.end,
-                        None => range.clone(),
-                    });
-                    if let Some(run) = html_run.as_ref()
-                        && run.end == text.len()
-                    {
-                        let block = &text[run.clone()];
-                        if block.starts_with("<!--") && !block.contains("-->") {
+                    let slice = &text[range.clone()];
+                    if comment_from.is_none() && slice.trim_start().starts_with("<!--") {
+                        comment_from = Some(range.start);
+                    }
+                    if let Some(from) = comment_from {
+                        if slice.contains("-->") {
+                            comment_from = None;
+                        } else if range.end >= text.len() {
                             unterminated = Some(Unterminated::Comment {
-                                line: line_of(&text, run.start),
+                                line: line_of(&text, from),
                             });
                         }
+                        quoted.push(range);
                     }
-                    quoted.push(range);
                 }
-                Event::Start(Tag::MetadataBlock(_)) | Event::InlineHtml(_) => quoted.push(range),
+                Event::InlineHtml(_) => {
+                    // An inline comment hides its span; `<br>` and every other
+                    // inline tag is content a reader sees around it.
+                    if text[range.clone()].starts_with("<!--") {
+                        quoted.push(range);
+                    }
+                }
+                Event::Start(Tag::MetadataBlock(_)) => quoted.push(range),
                 Event::Start(Tag::Heading { level, .. }) => {
                     open_heading = Some(Heading {
                         level: level as u32,
                         text: String::new(),
                         line: line_of(&text, range.start),
+                        atx: text[range.start..].trim_start().starts_with('#'),
                     });
                 }
                 Event::End(TagEnd::Heading(_)) => headings.extend(open_heading.take()),
@@ -137,6 +159,11 @@ impl Document {
                     }
                     if let Some(heading) = open_heading.as_mut() {
                         heading.text.push_str(&run);
+                    }
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    if let Some(heading) = open_heading.as_mut() {
+                        heading.text.push(' ');
                     }
                 }
                 _ => {}
@@ -150,9 +177,17 @@ impl Document {
         }
     }
 
-    /// The lines a reader sees, in order.
-    pub(crate) fn lines(&self) -> &[Line] {
-        &self.lines
+    /// The lines a reader reads as prose — what the document asserts.
+    pub(crate) fn prose(&self) -> impl Iterator<Item = &Line> {
+        self.lines.iter().filter(|line| !line.indented_code)
+    }
+
+    /// Every line the author wrote and a reader can still see, including the
+    /// ones an indent turned into code. A gate looking for a shape its author
+    /// meant reads these: a stray tab is how such a line stops being read,
+    /// where a fence is a deliberate quotation and appears in neither.
+    pub(crate) fn as_written(&self) -> impl Iterator<Item = &Line> {
+        self.lines.iter()
     }
 
     pub(crate) fn headings(&self) -> &[Heading] {
@@ -238,12 +273,9 @@ fn normalize(source: &str) -> String {
 /// as it looks — counted with `str::lines` it is one, and every claim into
 /// it fails as out of range.
 pub(crate) fn line_count(source: &str) -> u32 {
-    let text = normalize(source);
-    let lines = text.strip_suffix('\n').unwrap_or(&text);
-    match lines.is_empty() {
-        true => 0,
-        false => u32::try_from(lines.split('\n').count()).unwrap_or(u32::MAX),
-    }
+    // `str::lines` is right once the terminators are, which is the whole
+    // reason `normalize` runs first.
+    u32::try_from(normalize(source).lines().count()).unwrap_or(u32::MAX)
 }
 
 /// The 1-indexed line an offset falls on.
@@ -337,8 +369,7 @@ mod tests {
 
     fn visible(text: &str) -> Vec<(u32, String)> {
         Document::of(text)
-            .lines()
-            .iter()
+            .prose()
             .map(|line| (line.no, line.text.clone()))
             .collect()
     }
@@ -416,6 +447,79 @@ mod tests {
             seen.iter().any(|line| line.contains("carries live text")),
             "{seen:?}"
         );
+    }
+
+    #[test]
+    fn an_inline_tag_is_content_and_an_inline_comment_is_not() {
+        assert_eq!(
+            visible("Text with <br> and CLAIM").first(),
+            Some(&(1, "Text with <br> and CLAIM".into()))
+        );
+        assert_eq!(
+            visible("Text <!-- hidden --> and CLAIM").first(),
+            Some(&(1, "Text  and CLAIM".into()))
+        );
+    }
+
+    #[test]
+    fn raw_html_that_is_not_a_comment_is_content_a_reader_opens() {
+        // A `<details>` block renders; masking it swallowed a live claim and
+        // a finding-shaped row with no finding from either gate.
+        let seen: Vec<String> = visible(
+            "<details>\n<summary>Owners</summary>\nCLAIM\n</details>\n\nAfter.\n",
+        )
+        .into_iter()
+        .map(|(_, t)| t)
+        .collect();
+        assert!(seen.iter().any(|line| line.contains("CLAIM")), "{seen:?}");
+        assert!(seen.iter().any(|line| line.contains("After")), "{seen:?}");
+    }
+
+    #[test]
+    fn a_fence_its_container_closed_is_not_a_fence_the_document_ends_inside() {
+        // The list item ends the block; everything past it is read as usual,
+        // so calling it unread was both a false Blocker and a false sentence.
+        let text = "- note:\n\n  ```\n  code\n\nBack at top level.\n";
+        assert_eq!(Document::of(text).unterminated(), None);
+        let seen: Vec<String> = visible(text).into_iter().map(|(_, t)| t).collect();
+        assert!(
+            seen.iter().any(|line| line.contains("Back at top level")),
+            "{seen:?}"
+        );
+    }
+
+    #[test]
+    fn a_heading_spanning_source_lines_reads_with_the_break_as_a_space() {
+        assert_eq!(
+            headings("Two\nLines\n=====\n"),
+            vec![(1, "Two Lines".into(), 1)]
+        );
+    }
+
+    #[test]
+    fn a_heading_reports_whether_it_was_spelled_with_hashes() {
+        let atx = |text: &str| Document::of(text).headings()[0].atx;
+        assert!(atx("## Storage\n"));
+        assert!(atx("   ## Storage\n"));
+        assert!(atx("> ## Storage\n"));
+        assert!(!atx("Storage\n=======\n"));
+        assert!(!atx("Some note\n---\n"));
+    }
+
+    #[test]
+    fn a_file_is_as_many_lines_as_an_editor_shows() {
+        for (source, want) in [
+            ("", 0),
+            ("\n", 1),
+            ("a", 1),
+            ("a\n", 1),
+            ("a\nb", 2),
+            ("a\nb\n", 2),
+            ("a\rb\r", 2),
+            ("\u{feff}a\n", 1),
+        ] {
+            assert_eq!(line_count(source), want, "from: {source:?}");
+        }
     }
 
     #[test]
@@ -537,8 +641,7 @@ mod tests {
         // which it is rather than choosing for them.
         let doc = Document::of("Prose.\n\n    - [Critical] indented\n\n```\n- fenced\n```\n");
         let marked: Vec<(u32, bool, String)> = doc
-            .lines()
-            .iter()
+            .as_written()
             .map(|line| (line.no, line.indented_code, line.text.clone()))
             .collect();
         assert!(
