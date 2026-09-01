@@ -66,8 +66,9 @@ no lens can reach if the file is not open.
    that produced it — the loop knows exactly what it changed, and no git
    restore can tell a fix from the operator's own uncommitted work in the
    same file, so nothing here touches git state. The finding keeps its row,
-   with the attempt recorded beneath it (convergence.md § A fix is pinned or
-   it is surfaced); the other fixes stand. An inverse that no longer applies
+   with the attempt recorded beneath it
+   ([file: .claude/skills/review/convergence.md § A fix is pinned or it is surfaced]);
+   the other fixes stand. An inverse that no longer applies
    — a later fix overlapped it — escalates that fix as judgment rather than
    improvising a wider undo. A transient flake retries once; a second flake
    escalates that fix as judgment.

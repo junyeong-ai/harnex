@@ -7,9 +7,21 @@ use harness_core::check::ProjectChecker;
 use harness_core::config::Config;
 use tempfile::TempDir;
 
+mod common;
+
 fn write(p: &Path, contents: &str) {
     fs::create_dir_all(p.parent().unwrap()).unwrap();
     fs::write(p, contents).unwrap();
+}
+
+/// A project the gate can run over: a harness is a git repository by
+/// construction, and the evidence arm asks git which `CLAUDE.md` files are
+/// the project's own.
+fn project() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    let status = common::git(dir.path()).args(["init", "-q"]).status().unwrap();
+    assert!(status.success(), "git init");
+    dir
 }
 
 fn minimal_config_toml() -> String {
@@ -51,7 +63,7 @@ fn load_cfg(tmp: &TempDir, toml_body: &str) -> Config {
 
 #[test]
 fn check_runs_every_enabled_validator() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
 
     write(
@@ -103,7 +115,7 @@ fn check_runs_every_enabled_validator() {
 
 #[test]
 fn check_skips_validators_with_no_config_section() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let minimal = r#"
 [meta]
 harnex_version = ">=0.3, <0.4"
@@ -133,7 +145,7 @@ harnex_version = ">=0.3, <0.4"
 
 #[test]
 fn check_emits_codegen_drift_as_blocker() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let src = tmp.path().join("enums.toml");
     fs::write(&src, "[k]\nallowed = [\"a\", \"b\"]\n").unwrap();
     let target = tmp.path().join("nodex.toml");
@@ -172,7 +184,7 @@ name = "allowed"
 
 #[test]
 fn check_emits_permission_audit_findings() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     // settings.json missing baseline denies — auditor flags
     write(
@@ -191,7 +203,7 @@ fn check_emits_permission_audit_findings() {
 
 #[test]
 fn check_sorts_findings_by_severity_then_slug_then_path() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     // Generate mixed-severity findings
     write(&tmp.path().join(".claude/rules/x.md"), "# no frontmatter\n"); // Major: rule-missing-paths-frontmatter
@@ -226,7 +238,7 @@ fn since_filter_excludes_unchanged_files_when_git_unavailable() {
     // When git isn't available or path is bogus, since spawn returns
     // CheckGitFailure. We assert the error path triggers, exercising
     // the `--since` code branch without needing a real git repo.
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     let result = ProjectChecker::new(&cfg, tmp.path())
         .with_since("nonexistent-ref-12345")
@@ -243,7 +255,7 @@ fn since_filter_excludes_unchanged_files_when_git_unavailable() {
 
 #[test]
 fn fix_resolves_codegen_drift_and_re_check_clean() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     fs::write(
         tmp.path().join("enums.toml"),
         "[k]\nallowed = [\"a\", \"b\"]\n",
@@ -297,7 +309,7 @@ name = "allowed"
 
 #[test]
 fn fix_is_noop_when_no_auto_fixable_findings() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     // No drift; rule/skill validators have no candidates to find issues with
     let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
@@ -311,7 +323,7 @@ fn fix_with_nothing_to_do_attempts_nothing() {
     // finding must attempt no fix rather than dispatching an empty batch.
     // There is no unrecognized-command branch to test: `try_fix` takes a typed
     // `FixCommand` and matches it exhaustively, so no string reaches it.
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
     assert!(outcome.fixes_attempted.is_empty());
@@ -319,7 +331,7 @@ fn fix_with_nothing_to_do_attempts_nothing() {
 
 #[test]
 fn files_scanned_counts_only_passing_filter() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     write(
         &tmp.path().join(".claude/rules/a.md"),
@@ -391,7 +403,7 @@ fn fix_command_serialises_round_trips_and_matches_its_schema() {
 
 #[test]
 fn check_reports_a_governs_truth_that_no_longer_exists() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     std::fs::create_dir_all(tmp.path().join("src")).unwrap();
     write(
@@ -413,7 +425,7 @@ fn check_reports_a_governs_truth_that_no_longer_exists() {
 /// filter would read a deleted truth as nothing-to-check.
 #[test]
 fn governs_truth_missing_survives_a_since_window_that_excludes_the_rule() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
     std::fs::create_dir_all(tmp.path().join("src")).unwrap();
     write(&tmp.path().join("src/registry.rs"), "// truth\n");
@@ -459,7 +471,7 @@ fn governs_truth_missing_survives_a_since_window_that_excludes_the_rule() {
 /// the entries whose re-measurement is not clearable in one sitting.
 #[test]
 fn check_gates_advisory_staleness_by_context() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = project();
     let toml = format!(
         "{}\n[[evidence.advisories]]\nid = \"contrast\"\ninputs = [\"styles\"]\n",
         minimal_config_toml()
@@ -511,5 +523,69 @@ fn check_gates_advisory_staleness_by_context() {
     assert_eq!(
         severity_of(ProjectChecker::new(&cfg, tmp.path()).with_unattended()),
         harness_core::envelope::Severity::Minor
+    );
+}
+
+#[test]
+fn evidence_reads_every_surface_that_carries_claims_and_only_the_projects_own() {
+    // Each surface the runtime loads as instructions carries a claim into a
+    // file that does not exist, so the finding names the surface that was
+    // read. The vendored one is ignored by the project's own rules, and its
+    // claim resolving against this project would be a Blocker about a file
+    // nobody here wrote.
+    let tmp = project();
+    write(
+        &tmp.path().join("harness.toml"),
+        r#"
+[meta]
+harnex_version = ">=0.3, <0.4"
+
+[evidence]
+default_provenance = "internal"
+[[evidence.verifiers]]
+provenance = "internal"
+strategy = "file-path-line"
+
+[validate.rules]
+max_lines = 200
+[validate.skills]
+[validate.agents]
+"#,
+    );
+    write(&tmp.path().join(".gitignore"), "vendor/\n");
+    write(&tmp.path().join("CLAUDE.md"), "Owner: [file: no/such/root.rs:1].\n");
+    write(&tmp.path().join("crates/x/CLAUDE.md"), "Owner: [file: no/such/nested.rs:1].\n");
+    write(&tmp.path().join("vendor/pkg/CLAUDE.md"), "Owner: [file: no/such/vendored.rs:1].\n");
+    write(
+        &tmp.path().join(".claude/rules/r.md"),
+        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/skills/s/SKILL.md"),
+        "---\nname: s\ndescription: d\n---\n\nOwner: [file: no/such/skill.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/agents/a.md"),
+        "---\nname: a\ndescription: d\n---\n\nOwner: [file: no/such/agent.rs:1].\n",
+    );
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    let mut cited: Vec<String> = outcome
+        .findings
+        .iter()
+        .filter(|f| f.slug == "evidence-internal")
+        .filter_map(|f| {
+            f.message
+                .split('\'')
+                .nth(1)
+                .map(|path| path.trim_start_matches("no/such/").to_string())
+        })
+        .collect();
+    cited.sort();
+    assert_eq!(
+        cited.iter().map(String::as_str).collect::<Vec<_>>(),
+        ["agent.rs", "nested.rs", "root.rs", "rule.rs", "skill.rs"],
+        "{:#?}",
+        outcome.findings
     );
 }

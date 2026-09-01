@@ -34,7 +34,7 @@ guides editing it, not using it):
   template shape, and an operator's `extend` additions and any incumbent
   hand-rolled entries are project-owned and survive regenerate. Reading that as
   whole-key ownership is what would erase them. Every other top-level key is
-  project-owned. [file: SKILL.md § Invariants (every mode)] states the same
+  project-owned. [file: plugins/harnex/SKILL.md § Invariants (every mode)] states the same
   partition; this is the editing contract's echo of it, not a second rule.
 - **Budgets:** `SKILL.md` body < 500 lines (`plugin_scaffold_validates` gates
   it); `description` + `when_to_use` ≤ 1536 chars, key use case first. A
