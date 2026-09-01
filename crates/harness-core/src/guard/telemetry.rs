@@ -44,23 +44,19 @@ pub enum EmitOutcome {
     Skipped,
 }
 
-/// The upper bound on a name's length, ledger hygiene rather than a grammar: a
-/// skill or agent name is a short identifier, so a value past this is not one
-/// and would only bloat the ledger. Real names sit far under it, so it never
-/// declines a genuine invocation (no false Silent).
-const MAX_SLUG_LEN: usize = 128;
-
-/// Whether a resolved name is shaped like an element's — a single token,
-/// bounded. Not a charset grammar (element names are not constrained to one
-/// here, and a strict charset would false-decline a real name and mark it
-/// Silent), but a name is one whitespace-free line, so this rejects the
-/// multi-line, control-laden, or spaced values a field would carry content in.
-/// What passes is a strict subset of what `session::asset_of` records, never a
-/// superset, so it stays consistent with the transcript reader.
+/// Whether a resolved name is an element slug: non-empty and drawn from the
+/// character class the skill and agent name validators enforce — lowercase
+/// ASCII, digits, and `-` (`validate::skills` / `validate::agents`
+/// `NAME_PATTERN`). That is exactly what a real element name is, so every
+/// genuine invocation records (no false Silent, whatever its length — the
+/// validators set no length here either), while a value carrying content —
+/// whitespace, a `=`, a `;`, an uppercase letter — is not a name and is
+/// declined, so the field cannot become a content channel.
 fn is_slug_shaped(name: &str) -> bool {
     !name.is_empty()
-        && name.len() <= MAX_SLUG_LEN
-        && !name.chars().any(|c| c.is_control() || c.is_whitespace())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Resolve the outcome an event name carries, or `None` when the event is not
@@ -207,19 +203,30 @@ mod tests {
     }
 
     #[test]
-    fn a_surface_that_is_not_slug_shaped_is_declined() {
+    fn a_surface_carrying_content_is_declined_but_a_long_valid_slug_records() {
         let dir = scaffold_dir();
-        let multiline = "review\nsecret: leaked";
+        // Content — whitespace, punctuation, a newline — is not a name.
+        for content in ["review secret=leak", "review\nleak", "Review", "a;b", "a@b"] {
+            let hook = format!(
+                r#"{{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{{"skill":{}}}}}"#,
+                serde_json::to_string(content).unwrap()
+            );
+            assert_eq!(emit(dir.path(), &hook), EmitOutcome::Skipped, "{content}");
+        }
+        // A long but valid lowercase-hyphen agent name is a real element and
+        // must record — no length cap, so no false Silent (the exact failure
+        // the original wrong-key bug caused).
+        let long = format!("agent-{}", "x".repeat(200));
         let hook = format!(
-            r#"{{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{{"skill":{}}}}}"#,
-            serde_json::to_string(multiline).unwrap()
+            r#"{{"hook_event_name":"PostToolUse","tool_name":"Agent","tool_input":{{"subagent_type":"{long}"}}}}"#
         );
-        assert_eq!(emit(dir.path(), &hook), EmitOutcome::Skipped);
-        let long = "x".repeat(MAX_SLUG_LEN + 1);
-        let hook = format!(
-            r#"{{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{{"skill":"{long}"}}}}"#
+        assert_eq!(
+            emit(dir.path(), &hook),
+            EmitOutcome::Recorded {
+                surface: long,
+                outcome: "ok".into()
+            }
         );
-        assert_eq!(emit(dir.path(), &hook), EmitOutcome::Skipped);
     }
 
     #[test]
