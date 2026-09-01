@@ -129,13 +129,15 @@ roots = ["~/.claude/projects"]
 [telemetry]
 storage_dir = ".harness/telemetry"
 
-# The auto-emit Kind the telemetry-kinds pattern feeds: one row per Skill / MCP
-# invocation, carrying only the surface identifier and whether the call
-# succeeded. The closed schema IS the privacy boundary — a tool's arguments or
-# any content would be rejected at append. `outcome` comes from which hook
-# event fired, so a failure cannot be recorded as a success. This is the
-# retirement sweep's input: a surface the ledger has not seen is a Silent
-# candidate.
+# The auto-emit Kind the telemetry-kinds pattern feeds: one row per harness
+# element (Skill / Task / Agent) invocation, carrying the element's slug and
+# whether the call succeeded. The closed schema bounds the SHAPE — an
+# undeclared field is rejected at append; `harnex guard telemetry-emit` bounds
+# the VALUE, emitting only the element's own slug (its name, not operator
+# content) resolved through the one tool→element authority. `outcome` comes
+# from which hook event fired, so a failure cannot be recorded as a success.
+# This is the retirement sweep's input: a slug the ledger has not seen is a
+# Silent candidate.
 [[telemetry.kinds]]
 name = "harness_invocation"
 payload_schema = { type = "object", required = ["surface", "outcome"], properties = { surface = { type = "string" }, outcome = { type = "string", enum = ["ok", "failed"] } } }
