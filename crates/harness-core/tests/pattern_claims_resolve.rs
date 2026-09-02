@@ -68,7 +68,11 @@ fn every_pattern_claim_resolves_in_the_layout_it_installs_to_alone() {
 
     for pattern in &manifest.pattern {
         let dir = patterns_dir().join(&pattern.slug);
-        assert!(dir.is_dir(), "manifest names `{}` and no directory carries it", pattern.slug);
+        assert!(
+            dir.is_dir(),
+            "manifest names `{}` and no directory carries it",
+            pattern.slug
+        );
         let project = tempfile::tempdir().unwrap();
         let mut installed = Vec::new();
         for file in &pattern.files {
@@ -84,18 +88,42 @@ fn every_pattern_claim_resolves_in_the_layout_it_installs_to_alone() {
             installed.push(destination);
         }
         patterns += 1;
-        for path in installed.iter().filter(|p| p.extension().is_some_and(|e| e == "md")) {
+        // A file on disk the manifest does not list is installed by nothing
+        // and resolved by nothing — while carrying whatever claims it likes.
+        for entry in walkdir::WalkDir::new(&dir).into_iter().flatten() {
+            if entry.file_type().is_file() && entry.path().extension().is_some_and(|e| e == "md") {
+                let relative = entry.path().strip_prefix(&dir).unwrap().to_string_lossy();
+                assert!(
+                    pattern.files.iter().any(|f| f.template == relative),
+                    "`{}` carries `{relative}` and its manifest entry does not list it",
+                    pattern.slug
+                );
+            }
+        }
+        for path in installed
+            .iter()
+            .filter(|p| p.extension().is_some_and(|e| e == "md"))
+        {
             let text = std::fs::read_to_string(path).unwrap();
             claims += harness_core::evidence::parse_claims(&text).len();
-            let findings = verifier.verify_text(&text, path, project.path());
+            let verdict = |text: &str| verifier.verify_text(text, path, project.path());
+            let findings = verdict(&text);
             assert!(
                 findings.is_empty(),
                 "`{}` installed alone: {} cites what the pattern does not install:\n{findings:#?}",
                 pattern.slug,
                 path.strip_prefix(project.path()).unwrap().display()
             );
+            // The control, through the same closure: one claim the layout
+            // cannot carry yields exactly that finding, so an empty verdict
+            // above is a verdict and not a verifier that ran over nothing.
+            let control = verdict(&format!("{text}\n\nProbe: [file: no/such/probe.rs:1].\n"));
+            assert_eq!(control.len(), 1, "{}: {control:#?}", path.display());
         }
     }
     assert!(patterns > 3, "the manifest declares almost no patterns");
-    assert!(claims > 0, "no pattern carries a claim, so this guard resolves nothing");
+    assert!(
+        claims > 0,
+        "no pattern carries a claim, so this guard resolves nothing"
+    );
 }

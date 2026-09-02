@@ -51,17 +51,31 @@ reads a deleted truth as nothing-to-check — and it counts nothing into
 
 The `evidence` arm reads every surface this gate validates for shape — the
 rule, skill, agent, output-style and routine globs the validators discover
-with — and each `CLAUDE.md` the project owns at any depth, because a file
-checked for frontmatter while its claims go unchecked reads as verified.
+with — plus the project's memory files, because a file checked for
+frontmatter while its claims go unchecked reads as verified.
 `check_reads_a_claim_from_every_shape_validated_surface` holds the list to the
-validators `run` dispatches. The `CLAUDE.md` set is `git ls-files --cached
---others --exclude-standard`, never a walk: a vendored package ships one, and
-resolving its paths against this project is a Blocker about a file nobody here
-wrote. A tracked file is the project's whatever directory holds it. Both git
-listings are `-z` — without it git quotes a path outside ASCII as octal, and a
-changed `한글.md` is never the candidate it names — and a path that is not
-UTF-8 is `CheckGitFailure`, as any git failure is, never a lossy decode that
-skips it as absent.
+validators `run` dispatches. A claim is project-relative wherever it is
+written; a nested `CLAUDE.md` citing paths from its own directory resolves
+against the wrong file or none, and the frame is the same one Claude Code's
+own tools resolve in.
+
+The memory set is the two locations the runtime always reads (`CLAUDE.md`,
+`.claude/CLAUDE.md`), unconditionally, plus every nested `CLAUDE.md` git lists
+as tracked or untracked-and-not-ignored by the project's own `.gitignore` —
+never `--exclude-standard`, which also reads the developer's global excludes
+and turned an untracked memory file into a machine-dependent verdict. A walk
+would read the one a vendored package ships and resolve its paths here; a
+tracked file is the project's whatever directory holds it. `claudeMdExcludes`
+from both project settings scopes is honored, because a memory file the
+runtime never loads makes no claim. When git cannot answer — no repository,
+dubious ownership — the nested set is declared unmeasured in `skipped` as
+`evidence.nested-memory` and everything else is still read; a git failure
+under `--since` stays `CheckGitFailure`, because that window was asked for.
+Both listings are `-z` and the window is `--relative`: without the first git
+quotes a path outside ASCII as octal and a changed `한글.md` is never the
+candidate it names; without the second a config below the git top level is
+answered from the wrong root. A path that is not UTF-8 is `CheckGitFailure`,
+never a lossy decode that skips it as absent.
 
 The `advisory` arm (gated on `[evidence]`) holds each declared advisory's
 recorded baseline fresh: digests of the declared inputs and engine against
