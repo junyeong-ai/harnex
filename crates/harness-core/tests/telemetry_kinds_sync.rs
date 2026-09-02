@@ -12,6 +12,8 @@
 
 use std::path::PathBuf;
 
+mod common;
+
 use harness_core::config::{Config, ConsumerDetectorDecl, KindDecl};
 use harness_core::guard::{HARNESS_INVOCATION_KIND, OUTCOME_FIELD, SURFACE_FIELD};
 use harness_core::lifecycle::{RetirementSweeper, SilenceState};
@@ -86,6 +88,13 @@ fn the_instruction_the_pattern_ships_actually_measures_a_surface() {
         .expect("the scaffold must accept the wiring the pattern instructs");
 
     let tmp = tempfile::tempdir().unwrap();
+    assert!(
+        common::git(tmp.path())
+            .args(["init", "-q"])
+            .status()
+            .unwrap()
+            .success()
+    );
     for slug in ["review-lenses", "unused-skill"] {
         std::fs::create_dir_all(tmp.path().join(".claude/skills").join(slug)).unwrap();
     }

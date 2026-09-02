@@ -34,6 +34,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::envelope` | JSON envelope contract every command emits |
 | `harness-core::error` | typed `Error` + stable `ErrorCode` wire codes |
 | `harness-core::path_guard` | safe write paths: `write_atomic` + `append_line` |
+| `harness-core::git` | the files a project owns, as git answers it — what `check`'s memory set and the grep consumer detector read |
 | `harness-core::sentinel` | the two reserved marker grammars harnex writes — managed regions + fill markers |
 | `harness-core::markdown` | the one reader for what a rendered document shows — a CommonMark parse giving visible lines and headings |
 | `harness-core::evidence` | provenance verifier (strategy enum per claim shape) |

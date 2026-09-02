@@ -46,6 +46,7 @@ pub mod envelope;
 pub mod error;
 pub mod evidence;
 pub mod export;
+mod git;
 pub mod glob_root;
 pub mod governs;
 pub mod graph;

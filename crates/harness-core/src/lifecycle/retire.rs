@@ -16,7 +16,7 @@ use jiff::{SignedDuration, Timestamp};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::config::Config;
+use crate::config::{Config, KindDecl};
 use crate::envelope::SkippedRule;
 use crate::error::{Error, Result};
 use crate::lifecycle::consumer::{ConsumerDetector, consumer_detector_for};
@@ -30,8 +30,9 @@ pub struct SweepOutcome {
     pub verdicts: Vec<RetirementOutcome>,
     /// Kinds that were actually walked.
     pub kinds_processed: Vec<String>,
-    /// Kinds that were skipped, with the reason (foundation, no detector,
-    /// or empty glob match).
+    /// Kinds that were skipped, with the reason: foundation (and how many
+    /// paths it carved out), no consumer detector, a detector that could not
+    /// read its corpus, or a glob that could not be read.
     pub kinds_skipped: Vec<SkippedRule>,
     /// Total files classified.
     pub files_classified: usize,
@@ -89,13 +90,33 @@ impl<'a> RetirementSweeper<'a> {
             detector: Box<dyn ConsumerDetector>,
             entries: Vec<(PathBuf, String)>,
         }
+        // A path a foundation kind names is foundation for every kind: the
+        // declaration is what keeps a load-bearing artifact out of the sweep,
+        // and a broader glob that also matches it must not put it back.
+        let mut foundation: HashSet<PathBuf> = HashSet::new();
+        for kind_decl in self.config.kinds.iter().filter(|k| k.foundation) {
+            let Some(matches) = self.subjects(kind_decl, &mut skipped) else {
+                continue;
+            };
+            // The skip says how much the declaration protected: a glob that
+            // names nothing carves nothing out, and the file it was written
+            // for is swept under whatever other kind matches it.
+            let reason = match matches.len() {
+                0 => {
+                    "foundation kind: its glob names no path, so nothing is carved out".to_string()
+                }
+                n => format!("foundation kind (excluded from retirement): {n} path(s) carved out"),
+            };
+            skipped.push(SkippedRule {
+                slug: kind_decl.name.clone(),
+                reason,
+            });
+            foundation.extend(matches.into_iter().map(|(path, _)| path));
+        }
+
         let mut units: Vec<Unit<'_>> = Vec::new();
         for kind_decl in &self.config.kinds {
             if kind_decl.foundation {
-                skipped.push(SkippedRule {
-                    slug: kind_decl.name.clone(),
-                    reason: "foundation kind (excluded from retirement)".into(),
-                });
                 continue;
             }
             let Some(detector_decl) = lc
@@ -109,54 +130,25 @@ impl<'a> RetirementSweeper<'a> {
                 });
                 continue;
             };
-            let detector = consumer_detector_for(detector_decl.clone(), self.working_dir)?;
-
-            // The project's own path is a literal, not a pattern — see
-            // `glob_root`. Unescaped, a `[` in an ancestor directory empties
-            // every kind's match list and retirement reads it as "nothing here".
-            let Ok(pat_str) = crate::glob_root::rooted(self.working_dir, &kind_decl.glob) else {
-                skipped.push(SkippedRule {
-                    slug: kind_decl.name.clone(),
-                    reason: "kind glob path is not valid UTF-8".into(),
-                });
-                continue;
-            };
-            let glob_iter = match glob::glob(&pat_str) {
-                Ok(it) => it,
-                Err(e) => {
+            // A detector that cannot read its corpus measures nothing for
+            // this kind, and says so; the other kinds are still swept. The
+            // explicit ask, `classify`, still fails on the same error.
+            let detector = match consumer_detector_for(detector_decl.clone(), self.working_dir) {
+                Ok(detector) => detector,
+                Err(Error::LifecycleGitFailure { message })
+                | Err(Error::GraphSpawnFailure { message }) => {
                     skipped.push(SkippedRule {
                         slug: kind_decl.name.clone(),
-                        reason: format!("glob '{}' invalid: {e}", kind_decl.glob),
+                        reason: format!("consumers unmeasured: {message}"),
                     });
                     continue;
                 }
+                Err(e) => return Err(e),
             };
-            // An unreadable match (e.g. permission-denied during traversal)
-            // must NOT be dropped: a silently skipped artifact could escape
-            // classification and be treated as if it does not exist. Record
-            // each unreadable entry as a skip so the gap is visible.
-            let mut entries: Vec<(PathBuf, String)> = Vec::new();
-            for entry in glob_iter {
-                match entry {
-                    Ok(p) => {
-                        let slug = p
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("")
-                            .to_string();
-                        entries.push((p, slug));
-                    }
-                    Err(e) => skipped.push(SkippedRule {
-                        slug: kind_decl.name.clone(),
-                        reason: format!(
-                            "kind '{}' match unreadable ({}): {}",
-                            kind_decl.name,
-                            e.path().display(),
-                            e.error()
-                        ),
-                    }),
-                }
-            }
+            let Some(mut entries) = self.subjects(kind_decl, &mut skipped) else {
+                continue;
+            };
+            entries.retain(|(path, _)| !foundation.contains(path));
             units.push(Unit {
                 kind: &kind_decl.name,
                 record: kind_decl.invocation_kind.as_deref(),
@@ -222,6 +214,63 @@ impl<'a> RetirementSweeper<'a> {
             kinds_skipped: skipped,
             files_classified,
         })
+    }
+
+    /// Every path a kind's glob names, with its slug, or `None` when the glob
+    /// itself could not be read — reported as a skip either way, so a kind
+    /// that matched nothing is told apart from one the sweep could not see.
+    fn subjects(
+        &self,
+        kind_decl: &KindDecl,
+        skipped: &mut Vec<SkippedRule>,
+    ) -> Option<Vec<(PathBuf, String)>> {
+        // The project's own path is a literal, not a pattern — see
+        // `glob_root`. Unescaped, a `[` in an ancestor directory empties
+        // every kind's match list and retirement reads it as "nothing here".
+        let Ok(pat_str) = crate::glob_root::rooted(self.working_dir, &kind_decl.glob) else {
+            skipped.push(SkippedRule {
+                slug: kind_decl.name.clone(),
+                reason: "kind glob path is not valid UTF-8".into(),
+            });
+            return None;
+        };
+        let glob_iter = match glob::glob(&pat_str) {
+            Ok(it) => it,
+            Err(e) => {
+                skipped.push(SkippedRule {
+                    slug: kind_decl.name.clone(),
+                    reason: format!("glob '{}' invalid: {e}", kind_decl.glob),
+                });
+                return None;
+            }
+        };
+        // An unreadable match (e.g. permission-denied during traversal)
+        // must NOT be dropped: a silently skipped artifact could escape
+        // classification and be treated as if it does not exist. Record
+        // each unreadable entry as a skip so the gap is visible.
+        let mut entries = Vec::new();
+        for entry in glob_iter {
+            match entry {
+                Ok(p) => {
+                    let slug = p
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    entries.push((p, slug));
+                }
+                Err(e) => skipped.push(SkippedRule {
+                    slug: kind_decl.name.clone(),
+                    reason: format!(
+                        "kind '{}' match unreadable ({}): {}",
+                        kind_decl.name,
+                        e.path().display(),
+                        e.error()
+                    ),
+                }),
+            }
+        }
+        Some(entries)
     }
 
     /// Read every declared invocation record over the window, as a map from

@@ -2,8 +2,9 @@
 //! anchored working directory.
 //!
 //! Pluggable via the [`ConsumerDetector`] trait. Two built-in strategies:
-//! - [`GrepConsumerDetector`] — fast, works without nodex; matches the
-//!   `pattern` (after `{slug}` substitution) against file contents.
+//! - [`GrepConsumerDetector`] — works without nodex; matches the `pattern`
+//!   (after `{slug}` substitution) against the contents of every file the
+//!   project owns.
 //! - [`GraphBacklinksConsumerDetector`] — precise, requires nodex on PATH;
 //!   queries `nodex query backlinks <node_id>` where `node_id` derives
 //!   from `pattern.replace("{slug}", slug)`.
@@ -15,10 +16,9 @@
 
 use std::path::{Path, PathBuf};
 
-use walkdir::WalkDir;
-
 use crate::config::ConsumerDetectorDecl;
 use crate::error::{Error, Result};
+use crate::git;
 use crate::graph::{DefaultNodexRunner, NodexClient};
 use crate::wire_enum::wire_enum;
 
@@ -43,23 +43,48 @@ wire_enum! {
     }
 }
 
-const SKIP_DIRS: &[&str] = &["target", "node_modules", ".git", ".harness"];
-const SKIP_EXTS: &[&str] = &[
-    "exe", "bin", "so", "dylib", "dll", "wasm", "png", "jpg", "jpeg", "gif", "pdf", "zip", "gz",
-    "tar", "lock",
-];
-
-/// Filesystem-grep strategy. Reads every text file under the anchored
-/// working directory (skipping common build / binary surfaces) and
-/// checks for the substituted pattern.
+/// Grep strategy. Reads every plain file the project owns — as its own
+/// ignore files define it, through [`git::owned_files`] — and checks each
+/// for the substituted pattern. A directory walk would count a match in
+/// build output, a fixture tree or a sibling checkout on this machine as a
+/// consumer, and the count would differ between two clones of one commit;
+/// a project that is not a repository is refused rather than walked. What
+/// the project owns but reads no rule from — a lockfile, a ledger — is
+/// `exclude_globs`' to name; no extension list stands in for it.
 pub struct GrepConsumerDetector {
     decl: ConsumerDetectorDecl,
     working_dir: PathBuf,
+    /// The plain files the project owns, listed once: the set is the same
+    /// for every slug, and a sweep asks for one slug per artifact.
+    files: Vec<PathBuf>,
 }
 
 impl GrepConsumerDetector {
-    pub fn new(decl: ConsumerDetectorDecl, working_dir: PathBuf) -> Self {
-        Self { decl, working_dir }
+    /// Lists the project's files up front, so a project that cannot be
+    /// listed is known before any slug is asked about.
+    pub fn new(decl: ConsumerDetectorDecl, working_dir: PathBuf) -> Result<Self> {
+        let owned = git::owned_files(&working_dir, &[])
+            .map_err(|git::Failure(message)| Error::LifecycleGitFailure { message })?;
+        let mut files = Vec::with_capacity(owned.len());
+        for path in owned {
+            // The listing names more than plain files, and only a plain file
+            // references anything here: a tracked file deleted from the tree,
+            // a submodule's gitlink and a nested repository's directory hold
+            // nothing of this project's, and a symlink's content is its link
+            // text — its target may be outside the project, or a file already
+            // counted under its own path.
+            match std::fs::symlink_metadata(&path) {
+                Ok(meta) if meta.is_file() => files.push(path),
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(Error::IoFailure { path, source: e }),
+            }
+        }
+        Ok(Self {
+            decl,
+            working_dir,
+            files,
+        })
     }
 }
 
@@ -80,57 +105,17 @@ impl ConsumerDetector for GrepConsumerDetector {
             .filter_map(|g| glob::Pattern::new(&g.replace("{slug}", slug)).ok())
             .collect();
         let mut out = Vec::new();
-        // Prune build/binary directories BEFORE descent so an unreadable one
-        // (e.g. a permission-locked `target/`) never aborts the sweep — those
-        // subtrees are skip surfaces, not consumers. `depth() == 0` keeps the
-        // root even if the project dir itself is named like a skip dir.
-        let walker = WalkDir::new(&self.working_dir)
-            .into_iter()
-            .filter_entry(|e| {
-                e.depth() == 0
-                    || !(e.file_type().is_dir()
-                        && e.file_name()
-                            .to_str()
-                            .is_some_and(|n| SKIP_DIRS.contains(&n)))
-            });
-        for entry in walker {
-            // After pruning skip surfaces, a remaining walk error (an
-            // unreadable directory we DO care about) must surface, NOT be
-            // dropped: silently skipping such a subtree could miss a file that
-            // references the slug, producing a false `NoConsumers` signal and
-            // retiring a still-referenced artifact. Fail loudly instead.
-            let entry = entry.map_err(|e| Error::IoFailure {
-                path: e
-                    .path()
-                    .map(Path::to_path_buf)
-                    .unwrap_or_else(|| self.working_dir.clone()),
-                source: e
-                    .into_io_error()
-                    .unwrap_or_else(|| std::io::Error::other("directory walk failed")),
-            })?;
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let path = entry.path();
+        for path in &self.files {
             let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
-            if path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| SKIP_EXTS.contains(&e))
-            {
-                continue;
-            }
             if excludes.iter().any(|p| p.matches_path(relative)) {
                 continue;
             }
-            // Read bytes (not `read_to_string`) and lossy-decode: a genuine IO
-            // error (e.g. permission denied) must surface — silently skipping a
-            // readable-but-errored file could miss a consumer and produce a
-            // false `NoConsumers` retirement signal. Invalid UTF-8 is decoded
-            // lossily rather than dropped, so one stray byte never aborts the
-            // sweep nor hides a slug match.
+            // Read bytes and decode lossily: a file that cannot be read must
+            // fail rather than be skipped — a skipped consumer is a false
+            // `NoConsumers` signal — while one stray byte neither aborts the
+            // sweep nor hides a match.
             let bytes = std::fs::read(path).map_err(|e| Error::IoFailure {
-                path: path.to_path_buf(),
+                path: path.clone(),
                 source: e,
             })?;
             if String::from_utf8_lossy(&bytes).contains(&needle) {
@@ -178,8 +163,9 @@ impl ConsumerDetector for GraphBacklinksConsumerDetector {
 }
 
 /// Build the appropriate detector for the declared strategy, anchored
-/// to `working_dir`. Fails explicitly when `graph-backlinks` is selected
-/// but nodex is missing — never silently falls back to grep.
+/// to `working_dir`. Fails explicitly when the detector cannot read its
+/// corpus — `graph-backlinks` without nodex, `grep` outside a repository —
+/// and never falls back to the other strategy.
 pub fn consumer_detector_for(
     decl: ConsumerDetectorDecl,
     working_dir: &Path,
@@ -193,7 +179,7 @@ pub fn consumer_detector_for(
         ConsumerStrategy::Grep => Ok(Box::new(GrepConsumerDetector::new(
             decl,
             working_dir.to_path_buf(),
-        ))),
+        )?)),
         ConsumerStrategy::GraphBacklinks => {
             let client =
                 NodexClient::anchored(working_dir).ok_or_else(|| Error::GraphSpawnFailure {

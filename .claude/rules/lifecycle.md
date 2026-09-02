@@ -91,8 +91,10 @@ fabricated `Silent`. Operators
 `harnex lifecycle retire` covers the entire surface in one call.
 
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`
-with the reason "foundation kind (excluded from retirement)" — the
-exclusion is explicit, never silent.
+with a reason carrying how many paths its glob carved out — the exclusion
+is explicit, never silent, and a glob that names nothing says so — and every
+path it names is foundation for every other kind, so a broader glob cannot
+put it back.
 
 `harnex lifecycle decisions [--tag T] [--decision D]` lists every
 record in the decision ledger sorted by timestamp descending. Operators
@@ -101,10 +103,18 @@ raw jsonl.
 
 ConsumerDetector is a trait; built-in strategies are the `ConsumerStrategy`
 variants (that enum is the source of truth — do not count them here):
-- `grep` — walks working tree, matches `{slug}`-substituted pattern.
+- `grep` — reads every plain file the project owns (`harness-core::git`:
+  tracked plus untracked not ignored by `.gitignore`; a submodule, a nested
+  repository and a symlink's target are not read), matches the
+  `{slug}`-substituted pattern, listed once at construction. Not a
+  repository → `LIFECYCLE_GIT_FAILURE`, never a walk.
 - `graph-backlinks` — calls `nodex query backlinks <node_id>` via the
   graph module. Fails explicitly if nodex is absent (never silent
   fallback to grep). Pattern field holds the node-id template.
+
+A detector that cannot read its corpus — no repository, no nodex — fails
+`classify`, which asked for that path; the sweep declares the kind in
+`kinds_skipped` as `consumers unmeasured` and sweeps the rest.
 
 When adding a new strategy: add a `ConsumerStrategy` variant (single
 source of truth — `from_str`/`as_str`/`ALL` derive from it), add a
