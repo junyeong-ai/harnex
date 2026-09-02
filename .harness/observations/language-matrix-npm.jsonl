@@ -1,0 +1,1 @@
+{"tag":"language-matrix-npm","text":"The TypeScript tier is fingerprinted on pnpm-lock.yaml only; an npm (package-lock.json) or yarn (yarn.lock) project gets no language tier and no package-manager grant, and the skill says so","source":"pilot 2026-09-02 memory-poc: web/ is Next.js under npm, tier withheld","timestamp":"2026-09-02T04:44:54.406526Z"}
