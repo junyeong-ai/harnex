@@ -14,8 +14,13 @@
 //! - Never run a validator whose config section is absent — it surfaces
 //!   in `skipped` instead, so the consumer knows the absence is explicit.
 //! - Never mutate any file. The check is read-only.
-//! - Never spawn subprocesses except `git diff --name-only <ref>` when
-//!   `--since` is used.
+//! - Never spawn a subprocess but git, and git only to ask which files are
+//!   the project's: `git diff --name-only -z --relative <ref>` under `--since`,
+//!   and `git ls-files` for the nested `CLAUDE.md` set. The first failing is
+//!   an error, because the caller asked for a git-derived window; the second
+//!   failing declares that set unmeasured in `skipped` and reads the rest,
+//!   because a tarball export or a container with dubious ownership still
+//!   has a root memory file and rules to check.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -29,7 +34,10 @@ use crate::envelope::{Finding, FixCommand, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
-use crate::validate::{AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SettingsScope, SettingsValidator, SkillValidator, SurfaceValidator};
+use crate::validate::{
+    AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SettingsScope,
+    SettingsValidator, SkillValidator, SurfaceValidator,
+};
 
 /// Aggregate result of running every enabled validator.
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
@@ -263,7 +271,11 @@ impl<'a> ProjectChecker<'a> {
         // so a changed `.claude/rules/한글.md` never equals the candidate the
         // gate discovered and a windowed run reports clean over a file it
         // never opened.
-        let listed = self.git_paths(&["diff", "--name-only", "-z", since])?;
+        // `--relative`: a config below the git top level — `apps/web/harness.toml`
+        // in a monorepo — is answered from the repository root otherwise, and
+        // `apps/web/CLAUDE.md` never equals the candidate `CLAUDE.md` the gate
+        // discovered from its own directory. Scanned nothing, reported clean.
+        let listed = self.git_paths(&["diff", "--name-only", "-z", "--relative", since])?;
         Ok(Some(listed.into_iter().collect()))
     }
 
@@ -299,27 +311,60 @@ impl<'a> ProjectChecker<'a> {
             .collect())
     }
 
-    /// Every `CLAUDE.md` the project owns, at any depth.
+    /// Every nested `CLAUDE.md` the project owns.
     ///
     /// Claude Code loads a nested `CLAUDE.md` when work happens under its
     /// directory, so its claims are as live as the root's — but a walk over
     /// the tree would also read the one a vendored package ships under
     /// `node_modules`, and resolve its paths against this project: a Blocker
-    /// about a file nobody here wrote. The project's own ignore rules are the
-    /// one non-heuristic answer to "which files are mine", and a hook still
-    /// has to see the untracked file its author just added, so the set is the
-    /// tracked files plus the untracked ones git does not ignore. A tracked
-    /// file is the project's whatever its directory is called: committing a
-    /// vendored `CLAUDE.md` makes its claims the project's claims, resolved
-    /// like every other from the project root.
-    fn own_claude_md_files(&self) -> Result<Vec<PathBuf>> {
-        let mut seen = HashSet::new();
-        Ok(self
-            .git_paths(&["ls-files", "-z", "--cached", "--others", "--exclude-standard"])?
-            .into_iter()
-            .filter(|path| path.file_name().is_some_and(|name| name == "CLAUDE.md"))
-            .filter(|path| seen.insert(path.clone()))
-            .collect())
+    /// about a file nobody here wrote. The project's ignore files are the
+    /// one non-heuristic answer to which files are its own, and only the
+    /// project's: `--exclude-standard` would also read the developer's global
+    /// excludes and `.git/info/exclude`, and a global `CLAUDE.md` line — a
+    /// common habit for AI configuration — made the same commit pass on one
+    /// machine and fail on another. A hook still has to see the untracked
+    /// file its author just added, so the set is tracked plus untracked not
+    /// ignored by `.gitignore`. A tracked file is the project's whatever its
+    /// directory is called: committing a vendored `CLAUDE.md` makes its claims
+    /// the project's, resolved like every other from the project root.
+    fn nested_claude_md_files(&self) -> Result<Vec<PathBuf>> {
+        self.git_paths(&[
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-per-directory=.gitignore",
+            "--",
+            ":(glob)**/CLAUDE.md",
+        ])
+    }
+
+    /// `claudeMdExcludes` from the project's settings, merged across the two
+    /// project scopes the way the runtime merges them. A pattern the runtime
+    /// could not honor is an error here too.
+    fn claude_md_excludes(&self) -> Result<Vec<glob::Pattern>> {
+        let mut patterns = Vec::new();
+        for scope in [".claude/settings.json", ".claude/settings.local.json"] {
+            let path = self.working_dir.join(scope);
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+                // Malformed settings are `validate.settings`' finding, not a
+                // reason for this arm to guess at an exclude list.
+                continue;
+            };
+            let Some(listed) = value.get("claudeMdExcludes").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for raw in listed.iter().filter_map(|v| v.as_str()) {
+                patterns.push(glob::Pattern::new(raw).map_err(|e| Error::ConfigInvalid {
+                    message: format!("{scope}: claudeMdExcludes pattern '{raw}' is invalid: {e}"),
+                    location: None,
+                })?);
+            }
+        }
+        Ok(patterns)
     }
 
     fn passes_filter(&self, path: &Path, changed: &Option<HashSet<PathBuf>>) -> bool {
@@ -448,7 +493,23 @@ impl<'a> ProjectChecker<'a> {
         // shape-checked in is the set its claims are resolved in;
         // `check_reads_a_claim_from_every_shape_validated_surface` holds
         // this list to the validators `run` dispatches.
-        let mut candidates = self.own_claude_md_files()?;
+        //
+        // The two project memory locations the runtime always reads are
+        // unconditional. The nested set comes from git, and a git that
+        // cannot answer — no repository, dubious ownership — leaves that set
+        // declared unmeasured rather than the gate unrun.
+        let mut candidates: Vec<PathBuf> = ["CLAUDE.md", ".claude/CLAUDE.md"]
+            .iter()
+            .map(|name| self.working_dir.join(name))
+            .collect();
+        match self.nested_claude_md_files() {
+            Ok(nested) => candidates.extend(nested),
+            Err(Error::CheckGitFailure { message }) => skipped.push(SkippedRule {
+                slug: "evidence.nested-memory".into(),
+                reason: message,
+            }),
+            Err(e) => return Err(e),
+        }
         for glob in [
             <RuleValidator as SurfaceValidator>::GLOB,
             <SkillValidator as SurfaceValidator>::GLOB,
@@ -458,11 +519,25 @@ impl<'a> ProjectChecker<'a> {
         ] {
             candidates.extend(self.discover_glob(glob)?);
         }
+        // `.claude/rules/CLAUDE.md` is a rule and a memory file; read once.
+        candidates.sort();
+        candidates.dedup();
+        let excluded = self.claude_md_excludes()?;
         for path in &candidates {
             if !path.is_file() {
                 continue;
             }
             if !self.passes_filter(path, changed) {
+                continue;
+            }
+            // The runtime's own skip list: a memory file it never loads makes
+            // no claim, whatever the tree holds.
+            if path.file_name().is_some_and(|name| name == "CLAUDE.md")
+                && let Ok(relative) = path.strip_prefix(self.working_dir)
+                && excluded
+                    .iter()
+                    .any(|pattern| pattern.matches_path(relative))
+            {
                 continue;
             }
             *files_scanned += 1;

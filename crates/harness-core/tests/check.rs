@@ -19,7 +19,10 @@ fn write(p: &Path, contents: &str) {
 /// the project's own.
 fn project() -> TempDir {
     let dir = TempDir::new().unwrap();
-    let status = common::git(dir.path()).args(["init", "-q"]).status().unwrap();
+    let status = common::git(dir.path())
+        .args(["init", "-q"])
+        .status()
+        .unwrap();
     assert!(status.success(), "git init");
     dir
 }
@@ -571,8 +574,14 @@ fn check_reads_a_claim_from_every_shape_validated_surface() {
     // add a validator, and its glob has to appear in `run_evidence` too.
     let tmp = project();
     write(&tmp.path().join("harness.toml"), evidence_config());
-    write(&tmp.path().join("CLAUDE.md"), "Owner: [file: no/such/root.rs:1].\n");
-    write(&tmp.path().join("crates/x/CLAUDE.md"), "Owner: [file: no/such/nested.rs:1].\n");
+    write(
+        &tmp.path().join("CLAUDE.md"),
+        "Owner: [file: no/such/root.rs:1].\n",
+    );
+    write(
+        &tmp.path().join("crates/x/CLAUDE.md"),
+        "Owner: [file: no/such/nested.rs:1].\n",
+    );
     write(
         &tmp.path().join(".claude/rules/r.md"),
         "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
@@ -596,8 +605,19 @@ fn check_reads_a_claim_from_every_shape_validated_surface() {
     let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     assert_eq!(
-        cited(&outcome).iter().map(String::as_str).collect::<Vec<_>>(),
-        ["agent.rs", "nested.rs", "root.rs", "routine.rs", "rule.rs", "skill.rs", "style.rs"],
+        cited(&outcome)
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        [
+            "agent.rs",
+            "nested.rs",
+            "root.rs",
+            "routine.rs",
+            "rule.rs",
+            "skill.rs",
+            "style.rs"
+        ],
         "{:#?}",
         outcome.findings
     );
@@ -614,8 +634,14 @@ fn a_claude_md_the_project_ignores_is_not_its_own_and_one_it_tracks_is() {
     write(&tmp.path().join("harness.toml"), evidence_config());
     write(&tmp.path().join(".gitignore"), "vendor/\n");
     write(&tmp.path().join("CLAUDE.md"), "root\n");
-    write(&tmp.path().join("vendor/pkg/CLAUDE.md"), "Owner: [file: no/such/ignored.rs:1].\n");
-    write(&tmp.path().join("vendor/kept/CLAUDE.md"), "Owner: [file: no/such/tracked.rs:1].\n");
+    write(
+        &tmp.path().join("vendor/pkg/CLAUDE.md"),
+        "Owner: [file: no/such/ignored.rs:1].\n",
+    );
+    write(
+        &tmp.path().join("vendor/kept/CLAUDE.md"),
+        "Owner: [file: no/such/tracked.rs:1].\n",
+    );
     let status = common::git(tmp.path())
         .args(["add", "-f", "vendor/kept/CLAUDE.md"])
         .status()
@@ -638,15 +664,202 @@ fn a_changed_file_named_outside_ascii_is_still_in_the_since_window() {
     write(&rule, "---\npaths: [\"src/**\"]\n---\n\nbase\n");
     for args in [
         vec!["add", "harness.toml", "CLAUDE.md", ".claude"],
-        vec!["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"],
+        vec![
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            "base",
+        ],
     ] {
-        assert!(common::git(tmp.path()).args(&args).status().unwrap().success());
+        assert!(
+            common::git(tmp.path())
+                .args(&args)
+                .status()
+                .unwrap()
+                .success()
+        );
     }
-    write(&rule, "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/korean.rs:1].\n");
+    write(
+        &rule,
+        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/korean.rs:1].\n",
+    );
     let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
     let outcome = ProjectChecker::new(&cfg, tmp.path())
         .with_since("HEAD")
         .run()
         .unwrap();
     assert_eq!(cited(&outcome), ["korean.rs"], "{:#?}", outcome.findings);
+}
+
+#[test]
+fn personal_git_excludes_do_not_decide_what_the_project_owns() {
+    // A global gitignore listing `CLAUDE.md` is a common habit, and
+    // `--exclude-standard` read it: an untracked memory file vanished from
+    // the set on one machine and not another, for the same commit. Only the
+    // project's own ignore files decide; `.git/info/exclude` stands in for
+    // the personal layer here because it is per-clone and not per-project.
+    let tmp = project();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join(".git/info/exclude"), "CLAUDE.md\n");
+    write(
+        &tmp.path().join("CLAUDE.md"),
+        "Owner: [file: no/such/root.rs:1].\n",
+    );
+    write(
+        &tmp.path().join("crates/x/CLAUDE.md"),
+        "Owner: [file: no/such/nested.rs:1].\n",
+    );
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert_eq!(
+        cited(&outcome),
+        ["nested.rs", "root.rs"],
+        "{:#?}",
+        outcome.findings
+    );
+}
+
+#[test]
+fn a_config_below_the_git_top_level_still_sees_its_changed_files() {
+    // A monorepo keeps `apps/web/harness.toml`. `git diff --name-only` spells
+    // a change from the repository root and the candidates are spelled from
+    // the config's directory, so a windowed run matched nothing and reported
+    // clean over two broken claims.
+    let tmp = project();
+    let web = tmp.path().join("apps/web");
+    write(&web.join("harness.toml"), evidence_config());
+    write(&web.join("CLAUDE.md"), "base\n");
+    write(
+        &web.join(".claude/rules/r.md"),
+        "---\npaths: [\"src/**\"]\n---\n\nbase\n",
+    );
+    for args in [
+        vec!["add", "apps"],
+        vec![
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            "base",
+        ],
+    ] {
+        assert!(
+            common::git(tmp.path())
+                .args(&args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    write(
+        &web.join("CLAUDE.md"),
+        "Owner: [file: no/such/root.rs:1].\n",
+    );
+    write(
+        &web.join(".claude/rules/r.md"),
+        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
+    );
+    let cfg = Config::load_from(&web.join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, &web)
+        .with_since("HEAD")
+        .run()
+        .unwrap();
+    assert_eq!(
+        cited(&outcome),
+        ["root.rs", "rule.rs"],
+        "{:#?}",
+        outcome.findings
+    );
+}
+
+#[test]
+fn the_runtimes_own_exclude_list_is_honored() {
+    // `claudeMdExcludes` is the runtime's list of memory files it never loads.
+    // A tracked example carrying its own example's paths would otherwise be
+    // a Blocker about a file the runtime never reads.
+    let tmp = project();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(
+        &tmp.path().join(".claude/settings.json"),
+        "{\"claudeMdExcludes\": [\"examples/**/CLAUDE.md\"]}\n",
+    );
+    write(
+        &tmp.path().join("CLAUDE.md"),
+        "Owner: [file: no/such/root.rs:1].\n",
+    );
+    write(
+        &tmp.path().join("examples/demo/CLAUDE.md"),
+        "Owner: [file: no/such/example.rs:1].\n",
+    );
+    write(
+        &tmp.path().join("crates/x/CLAUDE.md"),
+        "Owner: [file: no/such/nested.rs:1].\n",
+    );
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert_eq!(
+        cited(&outcome),
+        ["nested.rs", "root.rs"],
+        "{:#?}",
+        outcome.findings
+    );
+}
+
+#[test]
+fn a_file_in_two_candidate_sources_is_read_once() {
+    // `.claude/rules/CLAUDE.md` is a rule and a memory file; both sources
+    // listed it, and the same Blocker was emitted twice at the same line.
+    let tmp = project();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("CLAUDE.md"), "root\n");
+    write(
+        &tmp.path().join(".claude/rules/CLAUDE.md"),
+        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/dup.rs:1].\n",
+    );
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert_eq!(cited(&outcome), ["dup.rs"], "{:#?}", outcome.findings);
+    // `files_scanned` counts every validator's pass: the rule validator reads
+    // the file once, and evidence reads root and rule once each — four is the
+    // count that meant evidence read the rule twice.
+    assert_eq!(outcome.files_scanned, 3);
+}
+
+#[test]
+fn without_git_the_nested_set_is_declared_unmeasured_and_the_rest_is_read() {
+    // A tarball export or a container whose checkout git refuses to read still
+    // has a root memory file and rules. The nested set is what git answers
+    // for, so that set is what is declared unmeasured — and nothing else
+    // goes unread because of it.
+    let tmp = TempDir::new().unwrap();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(
+        &tmp.path().join("CLAUDE.md"),
+        "Owner: [file: no/such/root.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/rules/r.md"),
+        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
+    );
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert_eq!(
+        cited(&outcome),
+        ["root.rs", "rule.rs"],
+        "{:#?}",
+        outcome.findings
+    );
+    assert!(
+        outcome
+            .skipped
+            .iter()
+            .any(|s| s.slug == "evidence.nested-memory"),
+        "the nested set must be declared unmeasured: {:#?}",
+        outcome.skipped
+    );
 }

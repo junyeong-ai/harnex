@@ -204,8 +204,10 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
 
     let accounted = |path: &str| {
         // Resolved by `harnex check` over this repository, which CI runs: every
-        // CLAUDE.md the repository owns, at any depth, and its rules.
-        path.ends_with("CLAUDE.md")
+        // memory file the repository owns, at any depth, and each surface the
+        // gate validates for shape — rules, skills, agents, output styles,
+        // routines — of which this repository keeps only rules.
+        Path::new(path).file_name().is_some_and(|name| name == "CLAUDE.md")
             || (path.starts_with(".claude/rules/") && path.ends_with(".md"))
             // Resolved by `plugin_claims_resolve`, against the plugin root.
             || (path.starts_with("plugins/harnex/")
