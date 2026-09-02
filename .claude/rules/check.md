@@ -49,14 +49,19 @@ declared truth, not to the rule declaring it, so a diff-windowed rule filter
 reads a deleted truth as nothing-to-check — and it counts nothing into
 `files_scanned`.
 
-The `evidence` arm reads every surface the runtime loads as instructions and
-this gate validates for shape — each `CLAUDE.md` the project owns at any depth,
-and the rule, skill and agent globs the validators discover with — because a
-file checked for frontmatter while its claims go unchecked reads as verified.
-The `CLAUDE.md` set comes from `git ls-files --cached --others
---exclude-standard`, never a walk: a vendored package ships one, and resolving
-its paths against this project is a Blocker about a file nobody here wrote.
-A git failure surfaces as `CheckGitFailure`, as `--since` does.
+The `evidence` arm reads every surface this gate validates for shape — the
+rule, skill, agent, output-style and routine globs the validators discover
+with — and each `CLAUDE.md` the project owns at any depth, because a file
+checked for frontmatter while its claims go unchecked reads as verified.
+`check_reads_a_claim_from_every_shape_validated_surface` holds the list to the
+validators `run` dispatches. The `CLAUDE.md` set is `git ls-files --cached
+--others --exclude-standard`, never a walk: a vendored package ships one, and
+resolving its paths against this project is a Blocker about a file nobody here
+wrote. A tracked file is the project's whatever directory holds it. Both git
+listings are `-z` — without it git quotes a path outside ASCII as octal, and a
+changed `한글.md` is never the candidate it names — and a path that is not
+UTF-8 is `CheckGitFailure`, as any git failure is, never a lossy decode that
+skips it as absent.
 
 The `advisory` arm (gated on `[evidence]`) holds each declared advisory's
 recorded baseline fresh: digests of the declared inputs and engine against

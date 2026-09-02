@@ -8,10 +8,11 @@
 //! the harness before it is generated. A pointer into a section the pattern
 //! renamed fails here rather than in the first project that installs it.
 //!
-//! Every pattern is installed into one tree, so a pattern may cite another
-//! pattern's artifact; a template citing something only `scaffold.toml`'s
-//! common tier installs would fail here, and the honest fix is to widen the
-//! tree, not the exclusion.
+//! One project per pattern, because `extend pattern <slug>` installs one at a
+//! time: a claim that resolves only because a second pattern happens to be
+//! present would pass here and fail in the first project to install the
+//! pattern alone. A template citing something only `scaffold.toml`'s common
+//! tier installs fails here too, and the honest fix is to widen the tree.
 
 use std::path::PathBuf;
 
@@ -26,6 +27,7 @@ struct Manifest {
 
 #[derive(Deserialize)]
 struct Pattern {
+    slug: String,
     #[serde(default)]
     files: Vec<FileEntry>,
 }
@@ -40,41 +42,8 @@ fn patterns_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/templates/patterns")
 }
 
-#[test]
-fn every_pattern_claim_resolves_in_the_layout_it_installs_to() {
-    let raw = std::fs::read_to_string(patterns_dir().join("manifest.toml")).unwrap();
-    let manifest: Manifest = toml::from_str(&raw).unwrap();
-    let project = tempfile::tempdir().unwrap();
-
-    let mut installed = Vec::new();
-    for (slug_dir, pattern) in std::fs::read_dir(patterns_dir())
-        .unwrap()
-        .flatten()
-        .filter(|entry| entry.path().is_dir())
-        .map(|entry| entry.path())
-        .zip(std::iter::repeat(()))
-        .map(|(dir, ())| dir)
-        .flat_map(|dir| manifest.pattern.iter().map(move |p| (dir.clone(), p)))
-        .filter(|(dir, p)| {
-            p.files
-                .iter()
-                .all(|f| dir.join(&f.template).is_file())
-                && !p.files.is_empty()
-        })
-    {
-        for file in &pattern.files {
-            let source = slug_dir.join(&file.template);
-            let destination = project.path().join(&file.destination);
-            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
-            std::fs::copy(&source, &destination).unwrap();
-            installed.push(destination);
-        }
-    }
-    installed.sort();
-    installed.dedup();
-    assert!(installed.len() > 10, "the patterns installed almost nothing: {installed:?}");
-
-    let verifier = EvidenceVerifier::new(&EvidenceConfig {
+fn internal_verifier() -> EvidenceVerifier {
+    EvidenceVerifier::new(&EvidenceConfig {
         default_provenance: "internal".into(),
         block_on_memory_only: false,
         verifiers: vec![VerifierDecl {
@@ -86,18 +55,47 @@ fn every_pattern_claim_resolves_in_the_layout_it_installs_to() {
         advisory_dir: "evidence".into(),
         advisories: Vec::new(),
     })
-    .unwrap();
+    .unwrap()
+}
 
+#[test]
+fn every_pattern_claim_resolves_in_the_layout_it_installs_to_alone() {
+    let raw = std::fs::read_to_string(patterns_dir().join("manifest.toml")).unwrap();
+    let manifest: Manifest = toml::from_str(&raw).unwrap();
+    let verifier = internal_verifier();
     let mut claims = 0;
-    for path in installed.iter().filter(|p| p.extension().is_some_and(|e| e == "md")) {
-        let text = std::fs::read_to_string(path).unwrap();
-        claims += harness_core::evidence::parse_claims(&text).len();
-        let findings = verifier.verify_text(&text, path, project.path());
-        assert!(
-            findings.is_empty(),
-            "{} cites what its pattern does not install:\n{findings:#?}",
-            path.strip_prefix(project.path()).unwrap().display()
-        );
+    let mut patterns = 0;
+
+    for pattern in &manifest.pattern {
+        let dir = patterns_dir().join(&pattern.slug);
+        assert!(dir.is_dir(), "manifest names `{}` and no directory carries it", pattern.slug);
+        let project = tempfile::tempdir().unwrap();
+        let mut installed = Vec::new();
+        for file in &pattern.files {
+            assert!(
+                !file.destination.contains('{'),
+                "`{}` installs to a parameterised destination this test does not resolve: {}",
+                pattern.slug,
+                file.destination
+            );
+            let destination = project.path().join(&file.destination);
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::copy(dir.join(&file.template), &destination).unwrap();
+            installed.push(destination);
+        }
+        patterns += 1;
+        for path in installed.iter().filter(|p| p.extension().is_some_and(|e| e == "md")) {
+            let text = std::fs::read_to_string(path).unwrap();
+            claims += harness_core::evidence::parse_claims(&text).len();
+            let findings = verifier.verify_text(&text, path, project.path());
+            assert!(
+                findings.is_empty(),
+                "`{}` installed alone: {} cites what the pattern does not install:\n{findings:#?}",
+                pattern.slug,
+                path.strip_prefix(project.path()).unwrap().display()
+            );
+        }
     }
+    assert!(patterns > 3, "the manifest declares almost no patterns");
     assert!(claims > 0, "no pattern carries a claim, so this guard resolves nothing");
 }

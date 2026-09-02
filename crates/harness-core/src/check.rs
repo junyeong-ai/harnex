@@ -259,24 +259,44 @@ impl<'a> ProjectChecker<'a> {
         let Some(since) = self.since else {
             return Ok(None);
         };
+        // `-z`: without it git quotes any path outside ASCII as octal escapes,
+        // so a changed `.claude/rules/한글.md` never equals the candidate the
+        // gate discovered and a windowed run reports clean over a file it
+        // never opened.
+        let listed = self.git_paths(&["diff", "--name-only", "-z", since])?;
+        Ok(Some(listed.into_iter().collect()))
+    }
+
+    /// The NUL-delimited paths a git listing prints, joined to the project.
+    ///
+    /// A path that is not UTF-8 is an error rather than a lossy decode: the
+    /// replacement character names a file that does not exist, which the
+    /// gate would then skip as absent while reporting the arm as run.
+    fn git_paths(&self, args: &[&str]) -> Result<Vec<PathBuf>> {
+        let command = format!("git {}", args.join(" "));
         let output = Command::new("git")
-            .args(["diff", "--name-only", since])
+            .args(args)
             .current_dir(self.working_dir)
             .output()
             .map_err(|e| Error::CheckGitFailure {
-                message: format!("git diff --name-only {since} spawn: {e}"),
+                message: format!("{command} spawn: {e}"),
             })?;
         if !output.status.success() {
             return Err(Error::CheckGitFailure {
                 message: format!(
-                    "git diff --name-only {since} failed: {}",
+                    "{command} failed: {}",
                     String::from_utf8_lossy(&output.stderr).trim()
                 ),
             });
         }
-        let raw = String::from_utf8_lossy(&output.stdout);
-        let set: HashSet<PathBuf> = raw.lines().map(|l| self.working_dir.join(l)).collect();
-        Ok(Some(set))
+        let raw = String::from_utf8(output.stdout).map_err(|_| Error::CheckGitFailure {
+            message: format!("{command} listed a path that is not UTF-8"),
+        })?;
+        Ok(raw
+            .split('\0')
+            .filter(|path| !path.is_empty())
+            .map(|path| self.working_dir.join(path))
+            .collect())
     }
 
     /// Every `CLAUDE.md` the project owns, at any depth.
@@ -288,28 +308,16 @@ impl<'a> ProjectChecker<'a> {
     /// about a file nobody here wrote. The project's own ignore rules are the
     /// one non-heuristic answer to "which files are mine", and a hook still
     /// has to see the untracked file its author just added, so the set is the
-    /// tracked files plus the untracked ones git does not ignore.
+    /// tracked files plus the untracked ones git does not ignore. A tracked
+    /// file is the project's whatever its directory is called: committing a
+    /// vendored `CLAUDE.md` makes its claims the project's claims, resolved
+    /// like every other from the project root.
     fn own_claude_md_files(&self) -> Result<Vec<PathBuf>> {
-        let output = Command::new("git")
-            .args(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
-            .current_dir(self.working_dir)
-            .output()
-            .map_err(|e| Error::CheckGitFailure {
-                message: format!("git ls-files spawn: {e}"),
-            })?;
-        if !output.status.success() {
-            return Err(Error::CheckGitFailure {
-                message: format!(
-                    "git ls-files failed: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
-                ),
-            });
-        }
         let mut seen = HashSet::new();
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .split('\0')
-            .filter(|path| Path::new(path).file_name().is_some_and(|name| name == "CLAUDE.md"))
-            .map(|path| self.working_dir.join(path))
+        Ok(self
+            .git_paths(&["ls-files", "-z", "--cached", "--others", "--exclude-standard"])?
+            .into_iter()
+            .filter(|path| path.file_name().is_some_and(|name| name == "CLAUDE.md"))
             .filter(|path| seen.insert(path.clone()))
             .collect())
     }
@@ -434,15 +442,19 @@ impl<'a> ProjectChecker<'a> {
             return Ok(());
         };
         let verifier = EvidenceVerifier::new(cfg)?;
-        // Every surface the runtime loads as instructions and this gate
-        // validates for shape: a file checked for frontmatter and budget
-        // while its claims went unchecked reads as verified. The globs are
-        // the validators' own, so the two sets cannot drift apart.
+        // Every surface this gate validates for shape: a file checked for
+        // frontmatter and budget while its claims went unchecked reads as
+        // verified. The globs are the validators' own, so the set a file is
+        // shape-checked in is the set its claims are resolved in;
+        // `check_reads_a_claim_from_every_shape_validated_surface` holds
+        // this list to the validators `run` dispatches.
         let mut candidates = self.own_claude_md_files()?;
         for glob in [
             <RuleValidator as SurfaceValidator>::GLOB,
             <SkillValidator as SurfaceValidator>::GLOB,
             <AgentValidator as SurfaceValidator>::GLOB,
+            <OutputStyleValidator as SurfaceValidator>::GLOB,
+            <RoutineValidator as SurfaceValidator>::GLOB,
         ] {
             candidates.extend(self.discover_glob(glob)?);
         }
