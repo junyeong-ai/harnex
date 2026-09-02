@@ -1,5 +1,5 @@
 ---
-description: "Periodic harness hygiene pass: surface what the oracle's ledgers have accumulated, judge each candidate against the governance rubric, land the promotions and retirements, and record every decision. Reads `harnex lifecycle candidates`, `harnex telemetry report` and `harnex lifecycle retire`; writes rules, archives artifacts, and appends decisions."
+description: "Periodic harness hygiene pass: surface what the oracle's ledgers have accumulated, judge each candidate against the governance rubric, land the promotions and retirements, and record every decision. Reads `harnex lifecycle candidates`, `harnex lifecycle observations`, `harnex telemetry report` and `harnex lifecycle retire`; writes rules, archives artifacts, and appends decisions."
 when_to_use: "Run on the team's own cadence — a retro, a release, the end of a spec — or when the corpus has visibly drifted: a rule cites a symbol that no longer exists, two rules state the same contract, the same retirement candidate keeps reappearing. Manual only, because it edits rules and archives artifacts and an unintended pass is not undone by re-running it. Distinct from `harnex check` (the gate, run every commit) and `harnex audit` (spec drift in generated wiring, read-only) — this is the corpus, and it writes."
 argument-hint: "[--tag <topic>]  — omit to sweep every tag"
 disable-model-invocation: true
@@ -18,6 +18,7 @@ Deterministic, and none of it invents text:
 
 ```
 harnex lifecycle candidates    # groups past the thresholds, and the ledger they came from
+harnex lifecycle observations [--tag <topic>]  # every wording by tag, widest breadth first
 harnex telemetry report        # per-Kind counts; never a retirement verdict
 harnex lifecycle retire        # Stale / NoConsumers / Silent verdicts
 ```
@@ -32,8 +33,13 @@ behind that second number was found at all — zero there, on a corpus this loop
 has run on before, means the pass is about to resurface everything the operator
 already settled.
 
-Observations read and no candidates IS a finished pass — the recurrence bar
-held. Say so and stop; a sweep that always finds something is a sweep that has
+No candidates over a written ledger is the exact-wording bar holding, not
+yet a finished pass. The thresholds count recurrence per wording, and one
+claim recorded in two wordings is two groups under the bar — so read the open
+wordings tag by tag, widest breadth first, and bring a cluster that makes one
+claim from independent `sources` to the rubric exactly as you would a
+candidate. Observations read, no candidate and no cluster IS a finished pass.
+Say so and stop; a sweep that always finds something is a sweep that has
 started inventing.
 
 ## 2. Judge
@@ -73,8 +79,10 @@ harnex lifecycle {promote|reject|defer|demote} --tag <t> --text <text> \
   --decision-text "<the operator's rationale, verbatim>"
 ```
 
-Then one commit per decision, so a promotion that turns out wrong is revertible
-without unpicking the rest of the pass.
+A decision closes one wording: close a cluster by recording the decision under
+each wording it settles, so none of them resurfaces as open. Then one commit
+per decision, so a promotion that turns out wrong is revertible without
+unpicking the rest of the pass.
 
 ## 5. Verify
 

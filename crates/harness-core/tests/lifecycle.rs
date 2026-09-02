@@ -6,8 +6,8 @@ use harness_core::config::{
 };
 use harness_core::error::Error;
 use harness_core::lifecycle::{
-    ConsumerDetector, DecisionLedger, GrepConsumerDetector, LifecycleDecisionRecorder,
-    ObservationLedger, PromotionCandidateFinder, PromotionDecision, RetirementClassifier,
+    ConsumerDetector, DecisionLedger, GrepConsumerDetector, LedgerReader,
+    LifecycleDecisionRecorder, ObservationLedger, PromotionDecision, RetirementClassifier,
     RetirementSignal, RetirementSweeper, SilenceState, consumer_detector_for,
 };
 use harness_core::telemetry::{Event, JsonlStorage, TelemetryAppender, TelemetryQuery};
@@ -47,10 +47,10 @@ fn seed_three_observations(ledger: &ObservationLedger) {
     }
 }
 
-/// Test-only convenience: bundles the read-only Finder and the write
+/// Test-only convenience: bundles the read-only Reader and the write
 /// Recorder into one struct, since most lifecycle tests need both.
 struct TestPromoter<'a> {
-    finder: PromotionCandidateFinder<'a>,
+    reader: LedgerReader<'a>,
     recorder: LifecycleDecisionRecorder<'a>,
 }
 
@@ -60,7 +60,7 @@ fn mk_promoter<'a>(
     decisions: &'a DecisionLedger,
 ) -> TestPromoter<'a> {
     TestPromoter {
-        finder: PromotionCandidateFinder::new(cfg, observations, decisions),
+        reader: LedgerReader::new(cfg, observations, decisions),
         recorder: LifecycleDecisionRecorder::new(decisions),
     }
 }
@@ -108,7 +108,7 @@ fn promoter_lists_threshold_crossing_groups() {
         .unwrap();
 
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
-    let candidates = promoter.finder.survey().unwrap().candidates;
+    let candidates = promoter.reader.survey().unwrap().candidates;
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].instance_count, 3);
     assert_eq!(candidates[0].normalized_text, "use snake case");
@@ -124,7 +124,7 @@ fn promoter_excludes_below_threshold() {
     ledger.append("naming", "only once", "spec-a").unwrap();
     ledger.append("naming", "only once", "spec-b").unwrap();
     let candidates = mk_promoter(&cfg, &ledger, &decisions)
-        .finder
+        .reader
         .survey()
         .unwrap()
         .candidates;
@@ -141,7 +141,7 @@ fn promoter_normalizes_whitespace_and_case() {
     ledger.append("x", "use   snake case", "b").unwrap();
     ledger.append("x", "USE SNAKE CASE", "c").unwrap();
     let candidates = mk_promoter(&cfg, &ledger, &decisions)
-        .finder
+        .reader
         .survey()
         .unwrap()
         .candidates;
@@ -163,18 +163,24 @@ fn survey_tells_an_unwritten_ledger_from_a_corpus_that_produced_nothing() {
 
     let absent = ObservationLedger::new(tmp.path().join("never-written"));
     let survey = mk_promoter(&cfg, &absent, &decisions)
-        .finder
+        .reader
         .survey()
         .unwrap();
     assert_eq!(survey.observations_read, 0);
     assert_eq!(survey.groups_considered, 0);
     assert_eq!(survey.groups_resolved, 0);
+    let live = mk_promoter(&cfg, &absent, &decisions)
+        .reader
+        .live()
+        .unwrap();
+    assert!(live.tags.is_empty());
+    assert_eq!(live.observations_read, 0);
 
     let ledger = ObservationLedger::new(tmp.path().to_path_buf());
     ledger.append("naming", "seen twice", "spec-a").unwrap();
     ledger.append("naming", "seen twice", "spec-b").unwrap();
     let survey = mk_promoter(&cfg, &ledger, &decisions)
-        .finder
+        .reader
         .survey()
         .unwrap();
     assert!(survey.candidates.is_empty());
@@ -187,7 +193,7 @@ fn survey_tells_an_unwritten_ledger_from_a_corpus_that_produced_nothing() {
         .recorder
         .reject("naming", "use snake case", "the linter already enforces it")
         .unwrap();
-    let survey = promoter.finder.survey().unwrap();
+    let survey = promoter.reader.survey().unwrap();
     assert!(survey.candidates.is_empty());
     assert_eq!(survey.observations_read, 5);
     assert_eq!(survey.groups_resolved, 1);
@@ -223,10 +229,17 @@ fn a_ledger_that_could_not_be_read_is_not_a_ledger_nobody_wrote_to() {
     let cfg = default_lifecycle(blocker.join("observations"));
     assert!(
         matches!(
-            mk_promoter(&cfg, &ledger, &decisions).finder.survey(),
+            mk_promoter(&cfg, &ledger, &decisions).reader.survey(),
             Err(Error::IoFailure { .. })
         ),
         "the survey must fail with its ledger, never report a fabricated zero"
+    );
+    assert!(
+        matches!(
+            mk_promoter(&cfg, &ledger, &decisions).reader.live(),
+            Err(Error::IoFailure { .. })
+        ),
+        "and so must the live layout, which is the same reading"
     );
 }
 
@@ -346,13 +359,13 @@ fn survey_reports_the_decision_ledger_it_read_too() {
         .recorder
         .reject("naming", "use snake case", "the linter already enforces it")
         .unwrap();
-    let honoured = promoter.finder.survey().unwrap();
+    let honoured = promoter.reader.survey().unwrap();
     assert_eq!(honoured.groups_resolved, 1);
     assert_eq!(honoured.decisions_read, 1);
 
     let elsewhere = DecisionLedger::new(tmp.path().join("relocated"));
     let lost = mk_promoter(&cfg, &ledger, &elsewhere)
-        .finder
+        .reader
         .survey()
         .unwrap();
     assert_eq!(lost.groups_resolved, 0, "the rejection is out of reach");
@@ -383,7 +396,7 @@ fn survey_accounts_for_every_group_the_ledger_holds() {
         .promote("errors", "wrap at the boundary", "landed in errors.md")
         .unwrap();
 
-    let survey = promoter.finder.survey().unwrap();
+    let survey = promoter.reader.survey().unwrap();
     assert_eq!(survey.observations_read, 5);
     assert_eq!(survey.groups_considered + survey.groups_resolved, 2);
     assert!(survey.candidates.len() <= survey.groups_considered);
@@ -403,7 +416,7 @@ fn survey_orders_tied_candidates_the_same_way_every_run() {
         }
     }
     let ordering: Vec<String> = mk_promoter(&cfg, &ledger, &decisions)
-        .finder
+        .reader
         .survey()
         .unwrap()
         .candidates
@@ -411,6 +424,314 @@ fn survey_orders_tied_candidates_the_same_way_every_run() {
         .map(|c| c.tag)
         .collect();
     assert_eq!(ordering, ["errors", "logging", "naming"]);
+}
+
+#[test]
+fn live_lays_out_every_open_wording_by_tag_widest_breadth_first() {
+    // The thresholds count recurrence per exact wording, so one claim in two
+    // wordings never crosses them; the live layout is where a reader sees
+    // both under one tag. A tag orders by how many sources observed it, a
+    // wording under it by how many times.
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().to_path_buf());
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    let decisions = decisions_for(&tmp);
+    seed_three_observations(&ledger);
+    ledger
+        .append("naming", "prefer snake_case identifiers", "spec-d")
+        .unwrap();
+    for source in ["spec-a", "spec-b"] {
+        ledger
+            .append("errors", "wrap at the boundary", source)
+            .unwrap();
+    }
+    for _ in 0..5 {
+        ledger
+            .append("logging", "one line per event", "spec-a")
+            .unwrap();
+    }
+    ledger
+        .append("logging", "no secrets in log lines", "spec-a")
+        .unwrap();
+
+    let live = mk_promoter(&cfg, &ledger, &decisions)
+        .reader
+        .live()
+        .unwrap();
+    assert_eq!(live.observations_read, 12);
+    let breadth: Vec<(&str, usize)> = live
+        .tags
+        .iter()
+        .map(|t| (t.tag.as_str(), t.sources.len()))
+        .collect();
+    assert_eq!(
+        breadth,
+        [("naming", 4), ("errors", 2), ("logging", 1)],
+        "six sightings of two wordings from one source are less breadth than two from two"
+    );
+    let naming = &live.tags[0];
+    assert_eq!(naming.sources, ["spec-a", "spec-b", "spec-c", "spec-d"]);
+    let wordings: Vec<(&str, u32)> = naming
+        .groups
+        .iter()
+        .map(|g| (g.normalized_text.as_str(), g.instance_count))
+        .collect();
+    assert_eq!(
+        wordings,
+        [("use snake case", 3), ("prefer snake_case identifiers", 1)]
+    );
+    assert_eq!(live.tags[2].groups[0].instance_count, 5);
+}
+
+#[test]
+fn live_excludes_what_a_decision_closed_and_counts_it_under_its_tag() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().to_path_buf());
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    let decisions = decisions_for(&tmp);
+    seed_three_observations(&ledger);
+    ledger
+        .append("naming", "prefer snake_case identifiers", "spec-d")
+        .unwrap();
+    for source in ["spec-a", "spec-b"] {
+        ledger
+            .append("errors", "wrap at the boundary", source)
+            .unwrap();
+    }
+    let promoter = mk_promoter(&cfg, &ledger, &decisions);
+    promoter
+        .recorder
+        .defer("naming", "use snake case", "revisit after spec-z")
+        .unwrap();
+    let deferred = promoter.reader.live().unwrap();
+    assert_eq!(
+        deferred.tags[0].groups.len(),
+        2,
+        "a deferral keeps a wording open"
+    );
+    assert!(deferred.tags[0].resolved.is_empty());
+
+    promoter
+        .recorder
+        .reject("naming", "use snake case", "the linter already enforces it")
+        .unwrap();
+    promoter
+        .recorder
+        .promote("errors", "wrap at the boundary", "landed in errors.md")
+        .unwrap();
+    let live = promoter.reader.live().unwrap();
+    assert_eq!(live.decisions_read, 3);
+    let naming = &live.tags[0];
+    assert_eq!(naming.tag, "naming");
+    assert_eq!(naming.groups.len(), 1);
+    assert_eq!(
+        naming.groups[0].normalized_text,
+        "prefer snake_case identifiers"
+    );
+    let closed: Vec<(&str, PromotionDecision)> = naming
+        .resolved
+        .iter()
+        .map(|r| (r.normalized_text.as_str(), r.decision))
+        .collect();
+    assert_eq!(closed, [("use snake case", PromotionDecision::Rejected)]);
+    assert_eq!(
+        naming.sources,
+        ["spec-d"],
+        "a closed wording's sources are no longer the tag's breadth"
+    );
+    // A tag with nothing left open is still listed, with the wording and the
+    // decision a new sighting under it is checked against.
+    let errors = &live.tags[1];
+    assert_eq!(errors.tag, "errors");
+    assert!(errors.groups.is_empty());
+    assert!(errors.sources.is_empty());
+    assert_eq!(errors.resolved.len(), 1);
+    assert_eq!(errors.resolved[0].decision, PromotionDecision::Approved);
+
+    // A wording closed twice shows the latest closing decision, and a later
+    // deferral does not reopen or relabel it.
+    promoter
+        .recorder
+        .demote("errors", "wrap at the boundary", "the rule misfired")
+        .unwrap();
+    promoter
+        .recorder
+        .defer("naming", "use snake case", "revisit after spec-z")
+        .unwrap();
+    let live = promoter.reader.live().unwrap();
+    assert_eq!(
+        live.tags[1].resolved[0].decision,
+        PromotionDecision::Demoted
+    );
+    assert_eq!(
+        live.tags[0].resolved[0].decision,
+        PromotionDecision::Rejected
+    );
+    assert_eq!(live.tags[0].groups.len(), 1);
+
+    // Closed wordings list by wording, so an author checks theirs by eye.
+    promoter
+        .recorder
+        .reject(
+            "naming",
+            "prefer snake_case identifiers",
+            "the linter already enforces it",
+        )
+        .unwrap();
+    let live = promoter.reader.live().unwrap();
+    let closed: Vec<&str> = live
+        .tags
+        .iter()
+        .find(|t| t.tag == "naming")
+        .expect("listed with nothing open")
+        .resolved
+        .iter()
+        .map(|r| r.normalized_text.as_str())
+        .collect();
+    assert_eq!(closed, ["prefer snake_case identifiers", "use snake case"]);
+}
+
+#[test]
+fn live_and_survey_are_one_reading_of_the_ledger() {
+    // Both views project one reading, so their counts close against each
+    // other: every group is open in one and considered in the other, or
+    // resolved in both, and a candidate is an open group that crossed.
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().to_path_buf());
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    let decisions = decisions_for(&tmp);
+    seed_three_observations(&ledger);
+    ledger
+        .append("naming", "prefer snake_case identifiers", "spec-d")
+        .unwrap();
+    for source in ["spec-a", "spec-b"] {
+        ledger
+            .append("errors", "wrap at the boundary", source)
+            .unwrap();
+    }
+    ledger
+        .append("logging", "one line per event", "spec-a")
+        .unwrap();
+    let promoter = mk_promoter(&cfg, &ledger, &decisions);
+    promoter
+        .recorder
+        .promote("errors", "wrap at the boundary", "landed in errors.md")
+        .unwrap();
+
+    let survey = promoter.reader.survey().unwrap();
+    let live = promoter.reader.live().unwrap();
+    assert_eq!(live.observations_read, survey.observations_read);
+    assert_eq!(live.decisions_read, survey.decisions_read);
+    let open: usize = live.tags.iter().map(|t| t.groups.len()).sum();
+    let closed: usize = live.tags.iter().map(|t| t.resolved.len()).sum();
+    assert_eq!(open, survey.groups_considered);
+    assert_eq!(closed, survey.groups_resolved);
+    assert_eq!(survey.candidates.len(), 1);
+    for candidate in &survey.candidates {
+        let tag = live
+            .tags
+            .iter()
+            .find(|t| t.tag == candidate.tag)
+            .expect("a candidate's tag is open");
+        let group = tag
+            .groups
+            .iter()
+            .find(|g| g.normalized_text == candidate.normalized_text)
+            .expect("a candidate is an open group");
+        assert_eq!(group.instance_count, candidate.instance_count);
+        assert_eq!(group.sources, candidate.sources);
+    }
+}
+
+#[test]
+fn the_day_threshold_is_met_by_a_span_of_that_many_days_and_not_one_second_less() {
+    // Every other test runs with `promotion_min_days: 0`, so this is the one
+    // place the day threshold is measured against a span at all; the records
+    // are written by hand because the ledger stamps the clock.
+    let tmp = TempDir::new().unwrap();
+    let mut cfg = default_lifecycle(tmp.path().to_path_buf());
+    cfg.promotion_min_days = 30;
+    let start = Timestamp::from_second(1_800_000_000).unwrap();
+    let record = |text: &str, source: &str, at: Timestamp| {
+        serde_json::json!({
+            "tag": "span",
+            "text": text,
+            "source": source,
+            "timestamp": at,
+        })
+        .to_string()
+    };
+    let thirty = SignedDuration::from_hours(30 * 24);
+    let lines = [
+        record("exactly thirty", "spec-a", start),
+        record("exactly thirty", "spec-b", start + thirty / 2),
+        record("exactly thirty", "spec-c", start + thirty),
+        record("one second short", "spec-a", start),
+        record("one second short", "spec-b", start + thirty / 2),
+        record(
+            "one second short",
+            "spec-c",
+            start + thirty - SignedDuration::from_secs(1),
+        ),
+    ];
+    std::fs::write(tmp.path().join("span.jsonl"), lines.join("\n")).unwrap();
+
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    let decisions = decisions_for(&tmp);
+    let survey = mk_promoter(&cfg, &ledger, &decisions)
+        .reader
+        .survey()
+        .unwrap();
+    let crossed: Vec<(&str, i64)> = survey
+        .candidates
+        .iter()
+        .map(|c| (c.normalized_text.as_str(), c.span_days))
+        .collect();
+    assert_eq!(crossed, [("exactly thirty", 30)]);
+    assert_eq!(survey.groups_considered, 2);
+}
+
+#[test]
+fn live_orders_ties_the_same_way_every_run() {
+    // Tags of one breadth and wordings of one count would otherwise order
+    // differently run to run over an unchanged ledger (Article I).
+    let tmp = TempDir::new().unwrap();
+    let cfg = default_lifecycle(tmp.path().to_path_buf());
+    let ledger = ObservationLedger::new(tmp.path().to_path_buf());
+    let decisions = decisions_for(&tmp);
+    for tag in ["naming", "errors", "logging"] {
+        ledger.append(tag, "zeta wording", "spec-a").unwrap();
+        ledger.append(tag, "alpha wording", "spec-a").unwrap();
+    }
+    let promoter = mk_promoter(&cfg, &ledger, &decisions);
+    for wording in ["zeta closed", "alpha closed", "mid closed"] {
+        ledger.append("archive", wording, "spec-a").unwrap();
+        promoter
+            .recorder
+            .reject("archive", wording, "settled")
+            .unwrap();
+    }
+    let live = promoter.reader.live().unwrap();
+    let tags: Vec<&str> = live.tags.iter().map(|t| t.tag.as_str()).collect();
+    assert_eq!(
+        tags,
+        ["errors", "logging", "naming", "archive"],
+        "breadth before name: a tag with nothing open sorts last whatever it is called"
+    );
+    for tag in &live.tags[..3] {
+        let wordings: Vec<&str> = tag
+            .groups
+            .iter()
+            .map(|g| g.normalized_text.as_str())
+            .collect();
+        assert_eq!(wordings, ["alpha wording", "zeta wording"]);
+    }
+    let closed: Vec<&str> = live.tags[3]
+        .resolved
+        .iter()
+        .map(|r| r.normalized_text.as_str())
+        .collect();
+    assert_eq!(closed, ["alpha closed", "mid closed", "zeta closed"]);
 }
 
 #[test]
@@ -591,7 +912,7 @@ fn approve_excludes_from_future_listing() {
     let decisions = decisions_for(&tmp);
     seed_three_observations(&ledger);
     let promoter = mk_promoter(&cfg, &ledger, &decisions);
-    assert_eq!(promoter.finder.survey().unwrap().candidates.len(), 1);
+    assert_eq!(promoter.reader.survey().unwrap().candidates.len(), 1);
     promoter
         .recorder
         .promote(
@@ -600,7 +921,7 @@ fn approve_excludes_from_future_listing() {
             "promoted to naming-conventions.md",
         )
         .unwrap();
-    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
+    assert!(promoter.reader.survey().unwrap().candidates.is_empty());
 }
 
 #[test]
@@ -615,7 +936,7 @@ fn reject_also_excludes() {
         .recorder
         .reject("naming", "use snake case", "team owns naming per-package")
         .unwrap();
-    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
+    assert!(promoter.reader.survey().unwrap().candidates.is_empty());
 }
 
 #[test]
@@ -630,7 +951,7 @@ fn defer_keeps_surfacing() {
         .recorder
         .defer("naming", "use snake case", "revisit after spec-z")
         .unwrap();
-    assert_eq!(promoter.finder.survey().unwrap().candidates.len(), 1);
+    assert_eq!(promoter.reader.survey().unwrap().candidates.len(), 1);
 }
 
 #[test]
@@ -687,7 +1008,7 @@ fn promote_after_demote_is_allowed_and_resuppresses() {
         .collect();
     assert_eq!(naming_decisions.len(), 3);
     // Surfacing remains suppressed regardless of which decision is latest
-    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
+    assert!(promoter.reader.survey().unwrap().candidates.is_empty());
 }
 
 #[test]
@@ -766,7 +1087,7 @@ fn demote_succeeds_after_approval_and_excludes_from_listing() {
         .unwrap();
     assert_eq!(demoted.decision, PromotionDecision::Demoted);
     // Both Approved AND Demoted live in the ledger; both suppress surfacing.
-    assert!(promoter.finder.survey().unwrap().candidates.is_empty());
+    assert!(promoter.reader.survey().unwrap().candidates.is_empty());
 }
 
 #[test]

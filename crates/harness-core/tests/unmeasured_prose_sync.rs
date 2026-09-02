@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use harness_core::config::{ConsumerDetectorDecl, LifecycleConfig};
 use harness_core::guard::{StopAuditor, StopDecision};
 use harness_core::lifecycle::{
-    DecisionLedger, ObservationLedger, PromotionCandidateFinder, RetirementClassifier,
-    RetirementSignal, SilenceState, consumer_detector_for,
+    DecisionLedger, LedgerReader, ObservationLedger, RetirementClassifier, RetirementSignal,
+    SilenceState, consumer_detector_for,
 };
 use harness_core::plan::AcceptanceCounts;
 
@@ -195,7 +195,7 @@ fn the_candidate_survey_reports_the_corpus_beside_the_candidates() {
     };
     let observations = ObservationLedger::new(config.observation_dir.clone());
     let decisions = DecisionLedger::new(config.decision_dir.clone());
-    let survey = PromotionCandidateFinder::new(&config, &observations, &decisions)
+    let survey = LedgerReader::new(&config, &observations, &decisions)
         .survey()
         .unwrap();
     let carried = serde_json::to_value(&survey).unwrap();
@@ -209,7 +209,7 @@ fn the_candidate_survey_reports_the_corpus_beside_the_candidates() {
     std::fs::write(&blocker, "").unwrap();
     let unreadable = ObservationLedger::new(blocker.join("obs"));
     assert!(
-        PromotionCandidateFinder::new(&config, &unreadable, &decisions)
+        LedgerReader::new(&config, &unreadable, &decisions)
             .survey()
             .is_err(),
         "a ledger that could not be read must fail, not report a corpus of zero"

@@ -499,7 +499,7 @@ fn glob_under(dir: &Path, pattern: &str) -> Vec<PathBuf> {
 ///
 /// Zero findings says the harness is spec-correct; it says nothing about
 /// whether the operator can use it. The generated `governance.md` sends its
-/// reader to `harnex lifecycle observe|candidates|retire` and
+/// reader to `harnex lifecycle observe|observations|candidates|retire` and
 /// `harnex telemetry report`, and every one of those answered CONFIG_NOT_FOUND
 /// on a fresh scaffold — the manifest declared no `harness.toml` at all, so the
 /// loop those rules describe was documented and inoperable. Auditing the

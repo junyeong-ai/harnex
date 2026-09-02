@@ -227,12 +227,13 @@ harnex lifecycle observe --tag measure-gap    --text "<the addition>"  --source 
 be a constraint, in the oracle's own grouping of it; `measure-gap` is a judged
 gap, in the words of its `addition`. Record nothing from `within_sessions`
 alone — installation does not touch it — and nothing the rule files already
-carry. **Before writing, read what the tag's ledger file already holds.** The
-promoter groups by exact text after case and whitespace, so a constraint the
-ledger knows, rephrased, is a new constraint to it, and the recurrence this
-entry exists to prove never accrues — reuse the standing words verbatim. One
-observation per constraint per window: the within-window count is already in
-the report, and counting windows is the ledger's job.
+carry. **Before writing, `harnex lifecycle observations --tag <t>` says what
+the tag already holds.** The promoter groups by exact text after case and
+whitespace, so a constraint the ledger knows, rephrased, is a new constraint
+to it, and the recurrence this entry exists to prove never accrues — reuse the
+standing words verbatim. One observation per constraint per window: the
+within-window count is already in the report, and counting windows is the
+ledger's job.
 
 Then `harnex lifecycle candidates`. A pair that crossed the configured
 thresholds has waited through enough windows to stop being a sighting: report

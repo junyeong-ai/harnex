@@ -189,6 +189,9 @@ harnex lifecycle routines                             # schedule states: produce
 harnex lifecycle observe --tag T --text X --source S
 harnex lifecycle candidates                           # groups past the thresholds,
                                                       # and the ledger they came from
+harnex lifecycle observations [--tag T]               # every wording by tag, widest
+                                                      # breadth first; closed ones
+                                                      # with their decision
 harnex lifecycle promote --tag T --text X --decision-text "..."
 harnex lifecycle reject  --tag T --text X --decision-text "..."
 harnex lifecycle defer   --tag T --text X --decision-text "..."

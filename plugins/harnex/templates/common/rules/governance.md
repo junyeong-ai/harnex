@@ -32,8 +32,9 @@ the session without spending always-loaded context:
 Recurrence is counted per `(tag, text)`, the text after case and whitespace
 and the tag exactly as spelled. A constraint the ledger already knows,
 rephrased or filed under a differently-spelled tag, starts a second count, and
-neither entry then proves the recurrence both were recording — read the tag's
-ledger before appending and reuse the standing wording. An empty tag is
+neither entry then proves the recurrence both were recording.
+`harnex lifecycle observations --tag <topic>` lists the standing wordings;
+reuse one before appending. An empty tag is
 refused: a record is surfaced under its tag, and one with no tag is one no
 pass would ever reach.
 
@@ -78,6 +79,11 @@ The commands are deterministic and never invent text:
   instance + age thresholds, with the ledger they were drawn from. No
   candidates over an unwritten ledger is a loop whose first half never fired,
   not a corpus with nothing in it.
+- `harnex lifecycle observations` — every wording by tag, widest breadth
+  first: open ones whole, closed ones with their decision. The thresholds
+  count recurrence per exact wording, so one claim in two wordings is two
+  groups under the bar: this is where a reader sees them side by side, with
+  the independent sources counted.
 - `harnex telemetry report` — per-Kind counts, for reading the ledger itself.
   Never a retirement verdict: it counts Kinds, not artifacts.
 - `harnex lifecycle retire` — Stale / NoConsumers / Silent verdicts. Silence

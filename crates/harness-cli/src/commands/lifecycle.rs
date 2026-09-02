@@ -7,9 +7,8 @@ use clap::Subcommand;
 use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::lifecycle::{
-    DecisionLedger, LifecycleDecisionRecorder, ObservationLedger, PromotionCandidateFinder,
-    PromotionDecision, RetirementClassifier, RetirementSweeper, SilenceState,
-    consumer_detector_for,
+    DecisionLedger, LedgerReader, LifecycleDecisionRecorder, ObservationLedger, PromotionDecision,
+    RetirementClassifier, RetirementSweeper, SilenceState, consumer_detector_for,
 };
 use harness_core::telemetry::{JsonlStorage, TelemetryQuery};
 
@@ -29,6 +28,13 @@ pub enum LifecycleCommand {
     /// Survey the observation ledger: the candidates that crossed the
     /// configured thresholds, and the corpus they were drawn from
     Candidates,
+    /// Every wording the observation ledger holds, by tag, widest breadth
+    /// first: open ones whole, closed ones by wording and decision.
+    /// Optionally narrowed to one tag.
+    Observations {
+        #[arg(long)]
+        tag: Option<String>,
+    },
     /// Every routine under .claude/routines/ with its schedule state today
     Routines,
     /// Record an Approved decision — pattern promoted to a rule
@@ -123,7 +129,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
     };
     let ledger = ObservationLedger::new(resolve(&lc.observation_dir));
     let decisions = DecisionLedger::new(resolve(&lc.decision_dir));
-    let finder = PromotionCandidateFinder::new(lc, &ledger, &decisions);
+    let reader = LedgerReader::new(lc, &ledger, &decisions);
     let recorder = LifecycleDecisionRecorder::new(&decisions);
 
     match cmd {
@@ -134,7 +140,15 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         LifecycleCommand::Candidates => {
-            write_envelope_success(out, finder.survey()?)?;
+            write_envelope_success(out, reader.survey()?)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        LifecycleCommand::Observations { tag } => {
+            let mut live = reader.live()?;
+            if let Some(tag) = tag {
+                live.tags.retain(|t| t.tag == tag);
+            }
+            write_envelope_success(out, live)?;
             Ok(ExitCode::SUCCESS)
         }
         LifecycleCommand::Promote(args) => emit_record(

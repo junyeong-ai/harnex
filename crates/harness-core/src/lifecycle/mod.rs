@@ -1,8 +1,9 @@
 //! # lifecycle — promotion / retirement / consumer detection
 //!
 //! Treats harness elements (rules, skills, hooks) as nodes with lifecycle.
-//! Promotion surfaces candidates that crossed (instances × time) thresholds;
-//! retirement classifies stale + unused + silent elements; consumer detection
+//! Promotion surfaces candidates that crossed (instances × time) thresholds
+//! and lays every open wording out by tag for the reader who judges what the
+//! thresholds cannot; retirement classifies stale + unused + silent elements; consumer detection
 //! finds every file referencing a slug (grep or graph-backlinks strategy);
 //! the decision ledger records human-authored promote / reject / defer / demote
 //! verdicts.
@@ -36,7 +37,8 @@ pub use consumer::{
 };
 pub use decision::{DecisionLedger, DecisionRecord, PromotionDecision};
 pub use decision_recorder::{
-    CandidateSurvey, LifecycleDecisionRecorder, PromotionCandidate, PromotionCandidateFinder,
+    CandidateSurvey, LedgerReader, LifecycleDecisionRecorder, LiveObservations, ObservationGroup,
+    ResolvedGroup, TagObservations,
 };
 pub use observation::{Observation, ObservationLedger};
 pub use retire::{RetirementSweeper, SweepOutcome};
