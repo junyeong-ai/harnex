@@ -140,6 +140,7 @@
           "type": "string"
         },
         "foundation": {
+          "description": "Excluded from retirement. A path this kind's glob names is foundation\nfor every kind: a broader glob that also matches it does not put it\nback in the sweep.",
           "type": "boolean",
           "default": false
         },
