@@ -155,6 +155,9 @@ pub struct MetaConfig {
 pub struct KindDecl {
     pub name: String,
     pub glob: String,
+    /// Excluded from retirement. A path this kind's glob names is foundation
+    /// for every kind: a broader glob that also matches it does not put it
+    /// back in the sweep.
     #[serde(default)]
     pub foundation: bool,
     /// The telemetry Kind recording invocations of THIS kind's artifacts —

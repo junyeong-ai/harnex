@@ -70,16 +70,21 @@ roots = ["~/.claude/projects"]
 # (.gitignore holds the split).
 [lifecycle]
 
+# A rule is cited by file name — an evidence claim on its path, the
+# documentation map, another rule's prose — and never by bare slug: `check`
+# is a slug and an English word, and matched bare it names most of the tree.
+# The ledgers under .harness/ are records of past measurements, not readers
+# of a rule.
 [[lifecycle.consumer_detectors]]
 kind = "rule"
 strategy = "grep"
-pattern = "{slug}"
-exclude_globs = [".claude/rules/{slug}.md"]
+pattern = "{slug}.md"
+exclude_globs = [".claude/rules/{slug}.md", ".harness/**"]
 
 # The always-loaded pair is load-bearing by construction; retiring either is
-# a governance decision, not a sweep verdict.
+# a governance decision, not a sweep verdict. The constitution is carved out
+# by its foundation kind above; this holds the other one.
 [retirement.exempt]
-kinds = ["constitution"]
 slugs = ["making-changes"]
 
 # Empty kinds on purpose: an event schema is declared when there is something

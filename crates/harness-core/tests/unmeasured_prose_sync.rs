@@ -16,6 +16,8 @@
 
 use std::path::{Path, PathBuf};
 
+mod common;
+
 use harness_core::config::{ConsumerDetectorDecl, LifecycleConfig};
 use harness_core::guard::{StopAuditor, StopDecision};
 use harness_core::lifecycle::{
@@ -119,6 +121,13 @@ fn the_table_carries_no_row_this_guard_does_not_watch() {
 #[test]
 fn retirement_fires_no_silence_signal_for_a_slug_it_could_not_measure() {
     let dir = tempfile::tempdir().unwrap();
+    assert!(
+        common::git(dir.path())
+            .args(["init", "-q"])
+            .status()
+            .unwrap()
+            .success()
+    );
     let rules = dir.path().join(".claude/rules");
     std::fs::create_dir_all(&rules).unwrap();
     let rule = rules.join("naming.md");

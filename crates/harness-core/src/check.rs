@@ -24,7 +24,6 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
 
@@ -33,6 +32,7 @@ use crate::config::Config;
 use crate::envelope::{Finding, FixCommand, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
+use crate::git;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
 use crate::validate::{
     AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SettingsScope,
@@ -275,40 +275,12 @@ impl<'a> ProjectChecker<'a> {
         // in a monorepo — is answered from the repository root otherwise, and
         // `apps/web/CLAUDE.md` never equals the candidate `CLAUDE.md` the gate
         // discovered from its own directory. Scanned nothing, reported clean.
-        let listed = self.git_paths(&["diff", "--name-only", "-z", "--relative", since])?;
+        let listed = git::listed_paths(
+            self.working_dir,
+            &["diff", "--name-only", "-z", "--relative", since],
+        )
+        .map_err(|git::Failure(message)| Error::CheckGitFailure { message })?;
         Ok(Some(listed.into_iter().collect()))
-    }
-
-    /// The NUL-delimited paths a git listing prints, joined to the project.
-    ///
-    /// A path that is not UTF-8 is an error rather than a lossy decode: the
-    /// replacement character names a file that does not exist, which the
-    /// gate would then skip as absent while reporting the arm as run.
-    fn git_paths(&self, args: &[&str]) -> Result<Vec<PathBuf>> {
-        let command = format!("git {}", args.join(" "));
-        let output = Command::new("git")
-            .args(args)
-            .current_dir(self.working_dir)
-            .output()
-            .map_err(|e| Error::CheckGitFailure {
-                message: format!("{command} spawn: {e}"),
-            })?;
-        if !output.status.success() {
-            return Err(Error::CheckGitFailure {
-                message: format!(
-                    "{command} failed: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
-                ),
-            });
-        }
-        let raw = String::from_utf8(output.stdout).map_err(|_| Error::CheckGitFailure {
-            message: format!("{command} listed a path that is not UTF-8"),
-        })?;
-        Ok(raw
-            .split('\0')
-            .filter(|path| !path.is_empty())
-            .map(|path| self.working_dir.join(path))
-            .collect())
     }
 
     /// Every nested `CLAUDE.md` the project owns.
@@ -317,26 +289,11 @@ impl<'a> ProjectChecker<'a> {
     /// directory, so its claims are as live as the root's — but a walk over
     /// the tree would also read the one a vendored package ships under
     /// `node_modules`, and resolve its paths against this project: a Blocker
-    /// about a file nobody here wrote. The project's ignore files are the
-    /// one non-heuristic answer to which files are its own, and only the
-    /// project's: `--exclude-standard` would also read the developer's global
-    /// excludes and `.git/info/exclude`, and a global `CLAUDE.md` line — a
-    /// common habit for AI configuration — made the same commit pass on one
-    /// machine and fail on another. A hook still has to see the untracked
-    /// file its author just added, so the set is tracked plus untracked not
-    /// ignored by `.gitignore`. A tracked file is the project's whatever its
-    /// directory is called: committing a vendored `CLAUDE.md` makes its claims
-    /// the project's, resolved like every other from the project root.
+    /// about a file nobody here wrote. Which files are the project's own is
+    /// `git::owned_files`' answer.
     fn nested_claude_md_files(&self) -> Result<Vec<PathBuf>> {
-        self.git_paths(&[
-            "ls-files",
-            "-z",
-            "--cached",
-            "--others",
-            "--exclude-per-directory=.gitignore",
-            "--",
-            ":(glob)**/CLAUDE.md",
-        ])
+        git::owned_files(self.working_dir, &[":(glob)**/CLAUDE.md"])
+            .map_err(|git::Failure(message)| Error::CheckGitFailure { message })
     }
 
     /// `claudeMdExcludes` from the project's settings, merged across the two

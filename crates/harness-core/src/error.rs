@@ -56,6 +56,7 @@ wire_enum! {
         GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
         GraphSpawnFailure => "GRAPH_SPAWN_FAILURE",
         CheckGitFailure => "CHECK_GIT_FAILURE",
+        LifecycleGitFailure => "LIFECYCLE_GIT_FAILURE",
         GovernsQueryUnresolvable => "GOVERNS_QUERY_UNRESOLVABLE",
         SessionRootUnreadable => "SESSION_ROOT_UNREADABLE",
         SessionCoverageBelowFloor => "SESSION_COVERAGE_BELOW_FLOOR",
@@ -189,6 +190,9 @@ pub enum Error {
     #[error("git command failed: {message}")]
     CheckGitFailure { message: String },
 
+    #[error("git command failed: {message}")]
+    LifecycleGitFailure { message: String },
+
     #[error("governs query cannot resolve inside the project: '{query}'")]
     GovernsQueryUnresolvable { query: String },
 
@@ -257,6 +261,7 @@ impl Error {
             Self::GraphResponseInvalid { .. } => ErrorCode::GraphResponseInvalid,
             Self::GraphSpawnFailure { .. } => ErrorCode::GraphSpawnFailure,
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
+            Self::LifecycleGitFailure { .. } => ErrorCode::LifecycleGitFailure,
             Self::GovernsQueryUnresolvable { .. } => ErrorCode::GovernsQueryUnresolvable,
             Self::SessionRootUnreadable { .. } => ErrorCode::SessionRootUnreadable,
             Self::SessionCoverageBelowFloor { .. } => ErrorCode::SessionCoverageBelowFloor,
@@ -323,6 +328,9 @@ impl Error {
             Self::CheckGitFailure { .. } => {
                 Some("ensure git is installed and the working directory is a repository")
             }
+            Self::LifecycleGitFailure { .. } => Some(
+                "the grep consumer detector reads the files git says the project owns; ensure git is installed and the working directory is a repository",
+            ),
             Self::LifecycleDemoteWithoutApproval { .. } => Some(
                 "demote applies only to previously Approved patterns; use reject for never-approved patterns",
             ),

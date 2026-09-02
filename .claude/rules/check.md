@@ -60,22 +60,18 @@ against the wrong file or none, and the frame is the same one Claude Code's
 own tools resolve in.
 
 The memory set is the two locations the runtime always reads (`CLAUDE.md`,
-`.claude/CLAUDE.md`), unconditionally, plus every nested `CLAUDE.md` git lists
-as tracked or untracked-and-not-ignored by the project's own `.gitignore` —
-never `--exclude-standard`, which also reads the developer's global excludes
-and turned an untracked memory file into a machine-dependent verdict. A walk
-would read the one a vendored package ships and resolve its paths here; a
-tracked file is the project's whatever directory holds it. `claudeMdExcludes`
-from both project settings scopes is honored, because a memory file the
-runtime never loads makes no claim. When git cannot answer — no repository,
-dubious ownership — the nested set is declared unmeasured in `skipped` as
+`.claude/CLAUDE.md`), unconditionally, plus every nested `CLAUDE.md` the
+project owns — `harness-core::git` owns that set and why it is the project's
+ignore files and not the developer's. A walk would read the one a vendored
+package ships and resolve its paths here. `claudeMdExcludes` from both
+project settings scopes is honored, because a memory file the runtime never
+loads makes no claim. When git cannot answer — no repository, dubious
+ownership — the nested set is declared unmeasured in `skipped` as
 `evidence.nested-memory` and everything else is still read; a git failure
 under `--since` stays `CheckGitFailure`, because that window was asked for.
-Both listings are `-z` and the window is `--relative`: without the first git
-quotes a path outside ASCII as octal and a changed `한글.md` is never the
-candidate it names; without the second a config below the git top level is
-answered from the wrong root. A path that is not UTF-8 is `CheckGitFailure`,
-never a lossy decode that skips it as absent.
+The window is `--relative`: without it a config below the git top level is
+answered from the wrong root, and a changed `apps/web/CLAUDE.md` is never the
+candidate the gate discovered from its own directory.
 
 The `advisory` arm (gated on `[evidence]`) holds each declared advisory's
 recorded baseline fresh: digests of the declared inputs and engine against

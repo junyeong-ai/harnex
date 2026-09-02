@@ -15,6 +15,20 @@ use jiff::{SignedDuration, Timestamp};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
+mod common;
+
+/// A temporary project that is a repository, which is what the grep consumer
+/// detector reads: it asks git which files the project owns.
+fn repo() -> TempDir {
+    let tmp = TempDir::new().unwrap();
+    let init = common::git(tmp.path())
+        .args(["init", "-q"])
+        .status()
+        .unwrap();
+    assert!(init.success());
+    tmp
+}
+
 fn default_lifecycle(observation_dir: PathBuf) -> LifecycleConfig {
     let parent = observation_dir
         .parent()
@@ -736,10 +750,12 @@ fn live_orders_ties_the_same_way_every_run() {
 
 #[test]
 fn consumer_detector_finds_references() {
-    let tmp = TempDir::new().unwrap();
+    // The rule names itself in its own body, so the exclude is what keeps an
+    // artifact from being its own consumer.
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
-    std::fs::write(rule_dir.join("my-rule.md"), "rule body").unwrap();
+    std::fs::write(rule_dir.join("my-rule.md"), "# my-rule\n\nrule body").unwrap();
     let consumer1 = tmp.path().join("docs/spec.md");
     std::fs::create_dir_all(consumer1.parent().unwrap()).unwrap();
     std::fs::write(&consumer1, "see my-rule for details").unwrap();
@@ -754,24 +770,35 @@ fn consumer_detector_finds_references() {
             exclude_globs: vec![".claude/rules/{slug}.md".into()],
         },
         tmp.path().to_path_buf(),
-    );
+    )
+    .unwrap();
     let consumers = detector.find_consumers("my-rule").unwrap();
-    assert_eq!(consumers.len(), 1);
-    assert!(consumers[0].to_string_lossy().ends_with("spec.md"));
+    assert_eq!(
+        consumers,
+        [PathBuf::from("docs/spec.md")],
+        "the excluded rule file is not its own consumer"
+    );
 }
 
 #[test]
-fn consumer_detector_prunes_skip_dirs() {
-    // A match inside a build/binary skip dir (e.g. `target/`) must not count
-    // as a consumer — and the prune happens before descent, so an unreadable
-    // skip dir would never abort the sweep either.
-    let tmp = TempDir::new().unwrap();
-    let target = tmp.path().join("target/debug");
-    std::fs::create_dir_all(&target).unwrap();
-    std::fs::write(target.join("build.log"), "references my-rule here").unwrap();
+fn consumer_detector_reads_what_the_project_owns_and_nothing_else_on_the_machine() {
+    // The set is the project's own: tracked, plus untracked the project's
+    // `.gitignore` does not ignore. A match in build output is not a consumer
+    // — and a walk would have counted it, differently on every machine.
+    let tmp = repo();
+    std::fs::write(tmp.path().join(".gitignore"), "target/\n").unwrap();
     let real = tmp.path().join("docs/spec.md");
     std::fs::create_dir_all(real.parent().unwrap()).unwrap();
     std::fs::write(&real, "see my-rule").unwrap();
+    let status = common::git(tmp.path())
+        .args(["add", ".gitignore", "docs/spec.md"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let target = tmp.path().join("target/debug");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("build.log"), "references my-rule here").unwrap();
+    std::fs::write(tmp.path().join("notes.md"), "my-rule, untracked as yet").unwrap();
 
     let detector = GrepConsumerDetector::new(
         ConsumerDetectorDecl {
@@ -781,19 +808,169 @@ fn consumer_detector_prunes_skip_dirs() {
             exclude_globs: vec![],
         },
         tmp.path().to_path_buf(),
-    );
-    let consumers = detector.find_consumers("my-rule").unwrap();
+    )
+    .unwrap();
+    let mut consumers = detector.find_consumers("my-rule").unwrap();
+    consumers.sort();
     assert_eq!(
-        consumers.len(),
-        1,
-        "target/ match must be pruned: {consumers:?}"
+        consumers,
+        [PathBuf::from("docs/spec.md"), PathBuf::from("notes.md")],
+        "the ignored build output is not a consumer and the author's untracked file is"
     );
-    assert!(consumers[0].to_string_lossy().ends_with("spec.md"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_is_its_link_text_and_neither_its_target_nor_a_second_count() {
+    // git owns the link text, not what it points at: a target outside the
+    // project is the machine's content, and a target inside it is already
+    // counted under its own path.
+    let tmp = repo();
+    let outside = TempDir::new().unwrap();
+    std::fs::write(outside.path().join("notes.md"), "mentions my-rule").unwrap();
+    let real = tmp.path().join("docs/spec.md");
+    std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+    std::fs::write(&real, "see my-rule").unwrap();
+    std::os::unix::fs::symlink(
+        outside.path().join("notes.md"),
+        tmp.path().join("elsewhere.md"),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink("docs/spec.md", tmp.path().join("again.md")).unwrap();
+
+    let detector = GrepConsumerDetector::new(
+        ConsumerDetectorDecl {
+            kind: "rule".into(),
+            strategy: "grep".into(),
+            pattern: "{slug}".into(),
+            exclude_globs: vec![],
+        },
+        tmp.path().to_path_buf(),
+    )
+    .unwrap();
+    assert_eq!(
+        detector.find_consumers("my-rule").unwrap(),
+        [PathBuf::from("docs/spec.md")]
+    );
+}
+
+#[test]
+fn an_unmerged_file_is_one_consumer_not_one_per_index_stage() {
+    // A conflicted path sits in the index once per stage, and a listing that
+    // repeats it counts one reader three times.
+    let tmp = repo();
+    let git = |args: &[&str]| {
+        let status = common::git(tmp.path())
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    std::fs::write(tmp.path().join("conf.md"), "base my-rule\n").unwrap();
+    git(&["add", "conf.md"]);
+    git(&["commit", "-q", "-m", "base"]);
+    git(&["checkout", "-q", "-b", "other"]);
+    std::fs::write(tmp.path().join("conf.md"), "theirs my-rule\n").unwrap();
+    git(&["commit", "-q", "-am", "theirs"]);
+    git(&["checkout", "-q", "-"]);
+    std::fs::write(tmp.path().join("conf.md"), "ours my-rule\n").unwrap();
+    git(&["commit", "-q", "-am", "ours"]);
+    let merge = common::git(tmp.path())
+        .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+        .args(["merge", "-q", "other"])
+        .status()
+        .unwrap();
+    assert!(
+        !merge.success(),
+        "the merge must conflict for this to test anything"
+    );
+    let unmerged = common::git(tmp.path())
+        .args(["ls-files", "-u"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&unmerged.stdout).lines().count(),
+        3,
+        "and the conflict must leave the path in three index stages, or the \
+         listing has nothing to repeat"
+    );
+
+    let detector = GrepConsumerDetector::new(
+        ConsumerDetectorDecl {
+            kind: "rule".into(),
+            strategy: "grep".into(),
+            pattern: "{slug}".into(),
+            exclude_globs: vec![],
+        },
+        tmp.path().to_path_buf(),
+    )
+    .unwrap();
+    assert_eq!(
+        detector.find_consumers("my-rule").unwrap(),
+        [PathBuf::from("conf.md")]
+    );
+}
+
+#[test]
+fn a_directory_that_is_not_a_repository_is_refused_rather_than_walked() {
+    let tmp = TempDir::new().unwrap();
+    let real = tmp.path().join("docs/spec.md");
+    std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+    std::fs::write(&real, "see my-rule").unwrap();
+    let decl = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        strategy: "grep".into(),
+        pattern: "{slug}".into(),
+        exclude_globs: vec![],
+    };
+    assert!(
+        matches!(
+            GrepConsumerDetector::new(decl.clone(), tmp.path().to_path_buf()),
+            Err(Error::LifecycleGitFailure { .. })
+        ),
+        "without git the set the detector reads does not exist, and a walk in its place \
+         would be the machine's answer, not the project's"
+    );
+
+    // The sweep does not die with the kind: it declares the kind unmeasured
+    // and sweeps the rest, as `check` declares nested memory unmeasured.
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("naming.md"), "a rule").unwrap();
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![KindDecl {
+            name: "rule".into(),
+            glob: ".claude/rules/*.md".into(),
+            foundation: false,
+            invocation_kind: None,
+        }],
+    );
+    cfg.lifecycle.as_mut().unwrap().consumer_detectors = vec![decl];
+    let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+    let query = TelemetryQuery::new(storage);
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    let skip = outcome
+        .kinds_skipped
+        .iter()
+        .find(|s| s.slug == "rule")
+        .expect("the kind is declared, not dropped");
+    assert!(
+        skip.reason.starts_with("consumers unmeasured:"),
+        "the reason names what could not be read: {}",
+        skip.reason
+    );
+    assert!(outcome.verdicts.is_empty());
+    assert!(outcome.kinds_processed.is_empty());
 }
 
 #[test]
 fn retirement_classifier_marks_no_consumers_silent() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     let rule_path = rule_dir.join("orphan-rule.md");
@@ -810,7 +987,7 @@ fn retirement_classifier_marks_no_consumers_silent() {
 
 #[test]
 fn retirement_classifier_honors_exempt_list() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     let rule_path = rule_dir.join("constitution.md");
@@ -1186,7 +1363,7 @@ fn build_sweep_config(tmp_path: &std::path::Path, extra_kinds: Vec<KindDecl>) ->
 
 #[test]
 fn sweep_walks_every_kind_with_consumer_detector() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     std::fs::write(
@@ -1226,14 +1403,69 @@ fn sweep_walks_every_kind_with_consumer_detector() {
 }
 
 #[test]
-fn sweep_skips_foundation_kinds() {
-    let tmp = TempDir::new().unwrap();
+fn sweep_skips_foundation_kinds_and_every_path_they_name() {
+    // The foundation glob is carved out of the rule glob, so the same file
+    // answers to both kinds; the declaration wins over the broader match,
+    // and wins whichever kind is declared first.
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("constitution.md"), "the laws").unwrap();
+    std::fs::write(rules.join("naming.md"), "a rule").unwrap();
+    let cfg = build_sweep_config(
+        tmp.path(),
+        vec![
+            KindDecl {
+                name: "rule".into(),
+                glob: ".claude/rules/*.md".into(),
+                foundation: false,
+                invocation_kind: None,
+            },
+            KindDecl {
+                name: "constitution".into(),
+                glob: ".claude/rules/constitution.md".into(),
+                foundation: true,
+                invocation_kind: None,
+            },
+        ],
+    );
+    let storage = JsonlStorage::new(tmp.path().join("tele"), 10);
+    let query = TelemetryQuery::new(storage);
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    let skip = outcome
+        .kinds_skipped
+        .iter()
+        .find(|s| s.slug == "constitution")
+        .expect("foundation kind must be skipped");
+    assert!(
+        skip.reason.contains("1 path"),
+        "the skip says how much the declaration protected: {}",
+        skip.reason
+    );
+    assert!(outcome.kinds_processed.contains(&"rule".to_string()));
+    let judged: Vec<&str> = outcome.verdicts.iter().map(|v| v.slug.as_str()).collect();
+    assert_eq!(
+        judged,
+        ["naming"],
+        "a file the foundation kind names gets no verdict under any kind"
+    );
+}
+
+#[test]
+fn a_foundation_glob_that_names_nothing_says_so_and_protects_nothing() {
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("constitution.md"), "the laws").unwrap();
     let cfg = build_sweep_config(
         tmp.path(),
         vec![
             KindDecl {
                 name: "constitution".into(),
-                glob: ".claude/rules/constitution.md".into(),
+                glob: ".claude/rules/no-such-file.md".into(),
                 foundation: true,
                 invocation_kind: None,
             },
@@ -1251,19 +1483,30 @@ fn sweep_skips_foundation_kinds() {
         .unwrap()
         .run()
         .unwrap();
+    let skip = outcome
+        .kinds_skipped
+        .iter()
+        .find(|s| s.slug == "constitution")
+        .expect("the foundation kind is still reported");
     assert!(
-        outcome
-            .kinds_skipped
-            .iter()
-            .any(|s| s.slug == "constitution"),
-        "foundation kind must be skipped"
+        skip.reason.contains("names no path"),
+        "a declaration that protected nothing must say so: {}",
+        skip.reason
     );
-    assert!(outcome.kinds_processed.contains(&"rule".to_string()));
+    assert_eq!(
+        outcome
+            .verdicts
+            .iter()
+            .map(|v| v.slug.as_str())
+            .collect::<Vec<_>>(),
+        ["constitution"],
+        "and the file it was written for is swept under the kind that matches it"
+    );
 }
 
 #[test]
 fn sweep_skips_kind_without_consumer_detector() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let cfg = build_sweep_config(
         tmp.path(),
         vec![
@@ -1293,7 +1536,7 @@ fn sweep_skips_kind_without_consumer_detector() {
 
 #[test]
 fn sweep_derives_silent_from_telemetry_payload() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     std::fs::write(rule_dir.join("active-rule.md"), "x").unwrap();
@@ -1356,7 +1599,7 @@ fn sweep_reads_only_the_declared_invocation_kind() {
     // to equal a slug. Read as an invocation it would both revive `orphan-rule`
     // and convict `other-rule` of silence — a verdict decided by a coincidence.
     // Only the declared invocation Kind is the record, so both stay Unmeasured.
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     std::fs::write(rule_dir.join("orphan-rule.md"), "body").unwrap();
@@ -1399,7 +1642,7 @@ fn a_live_record_convicts_only_the_kinds_that_declared_it() {
     // invoked, so it is never in one — reading its absence there would retire
     // every rule in the project the moment one skill runs. The rule kind
     // declares no record and stays unmeasured while the skill kind measures.
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     std::fs::create_dir_all(tmp.path().join(".claude/rules")).unwrap();
     std::fs::create_dir_all(tmp.path().join(".claude/skills")).unwrap();
     std::fs::write(tmp.path().join(".claude/rules/jiff-time.md"), "body").unwrap();
@@ -1472,7 +1715,7 @@ fn a_live_record_convicts_only_the_kinds_that_declared_it() {
 fn sweep_leaves_every_slug_unmeasured_without_a_declared_invocation_kind() {
     // Nothing declares where invocations are recorded, so silence has no
     // oracle to be read from — never a Silent inferred from the ledger at large.
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     std::fs::write(rule_dir.join("orphan-rule.md"), "body").unwrap();
@@ -1578,7 +1821,7 @@ fn config_rejects_an_invocation_kind_no_telemetry_kind_declares() {
 
 #[test]
 fn sweep_window_override_changes_silent_horizon() {
-    let tmp = TempDir::new().unwrap();
+    let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
     std::fs::write(rule_dir.join("x.md"), "body").unwrap();
