@@ -59,8 +59,9 @@ reject_unknown_keys = true
 
 # A rule is worth its context only while what it describes is still there, and
 # the drift that makes one actively misleading is the artifact it cites moving
-# or disappearing. `harnex check` reads every `CLAUDE.md` the project owns, its
-# rules, skills and agents, and resolves every marked claim against the tree:
+# or disappearing. `harnex check` reads every `CLAUDE.md` the project owns and
+# every surface it validates for shape — rules, skills, agents, output styles,
+# routines — and resolves every marked claim against the tree:
 #
 #   [file: pyproject.toml]              the file exists
 #   [file: path/to/thing.py:42]         and is at least that long

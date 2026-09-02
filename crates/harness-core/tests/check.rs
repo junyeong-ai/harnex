@@ -526,17 +526,8 @@ fn check_gates_advisory_staleness_by_context() {
     );
 }
 
-#[test]
-fn evidence_reads_every_surface_that_carries_claims_and_only_the_projects_own() {
-    // Each surface the runtime loads as instructions carries a claim into a
-    // file that does not exist, so the finding names the surface that was
-    // read. The vendored one is ignored by the project's own rules, and its
-    // claim resolving against this project would be a Blocker about a file
-    // nobody here wrote.
-    let tmp = project();
-    write(
-        &tmp.path().join("harness.toml"),
-        r#"
+fn evidence_config() -> &'static str {
+    r#"
 [meta]
 harnex_version = ">=0.3, <0.4"
 
@@ -550,26 +541,13 @@ strategy = "file-path-line"
 max_lines = 200
 [validate.skills]
 [validate.agents]
-"#,
-    );
-    write(&tmp.path().join(".gitignore"), "vendor/\n");
-    write(&tmp.path().join("CLAUDE.md"), "Owner: [file: no/such/root.rs:1].\n");
-    write(&tmp.path().join("crates/x/CLAUDE.md"), "Owner: [file: no/such/nested.rs:1].\n");
-    write(&tmp.path().join("vendor/pkg/CLAUDE.md"), "Owner: [file: no/such/vendored.rs:1].\n");
-    write(
-        &tmp.path().join(".claude/rules/r.md"),
-        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
-    );
-    write(
-        &tmp.path().join(".claude/skills/s/SKILL.md"),
-        "---\nname: s\ndescription: d\n---\n\nOwner: [file: no/such/skill.rs:1].\n",
-    );
-    write(
-        &tmp.path().join(".claude/agents/a.md"),
-        "---\nname: a\ndescription: d\n---\n\nOwner: [file: no/such/agent.rs:1].\n",
-    );
-    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
-    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+[validate.output_styles]
+[validate.routines]
+"#
+}
+
+/// The path each `evidence-internal` finding names, after `no/such/`.
+fn cited(outcome: &harness_core::check::CheckOutcome) -> Vec<String> {
     let mut cited: Vec<String> = outcome
         .findings
         .iter()
@@ -582,10 +560,93 @@ max_lines = 200
         })
         .collect();
     cited.sort();
+    cited
+}
+
+#[test]
+fn check_reads_a_claim_from_every_shape_validated_surface() {
+    // Each surface carries a claim into a file that does not exist, so the
+    // finding names the surface that was read. A surface `run` validates for
+    // shape and this list does not read is the silence this test exists for:
+    // add a validator, and its glob has to appear in `run_evidence` too.
+    let tmp = project();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("CLAUDE.md"), "Owner: [file: no/such/root.rs:1].\n");
+    write(&tmp.path().join("crates/x/CLAUDE.md"), "Owner: [file: no/such/nested.rs:1].\n");
+    write(
+        &tmp.path().join(".claude/rules/r.md"),
+        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/skills/s/SKILL.md"),
+        "---\nname: s\ndescription: d\n---\n\nOwner: [file: no/such/skill.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/agents/a.md"),
+        "---\nname: a\ndescription: d\n---\n\nOwner: [file: no/such/agent.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/output-styles/o.md"),
+        "---\nname: o\ndescription: d\n---\n\nOwner: [file: no/such/style.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/routines/t.md"),
+        "---\nname: t\n---\n\nOwner: [file: no/such/routine.rs:1].\n",
+    );
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     assert_eq!(
-        cited.iter().map(String::as_str).collect::<Vec<_>>(),
-        ["agent.rs", "nested.rs", "root.rs", "rule.rs", "skill.rs"],
+        cited(&outcome).iter().map(String::as_str).collect::<Vec<_>>(),
+        ["agent.rs", "nested.rs", "root.rs", "routine.rs", "rule.rs", "skill.rs", "style.rs"],
         "{:#?}",
         outcome.findings
     );
+}
+
+#[test]
+fn a_claude_md_the_project_ignores_is_not_its_own_and_one_it_tracks_is() {
+    // A vendored package ships a CLAUDE.md whose paths mean nothing here; the
+    // project's ignore rules are what say it is not the project's. Committing
+    // one anyway makes it the project's, and its claims resolve like any
+    // other from the project root — that is the boundary, and it is not a
+    // heuristic about directory names.
+    let tmp = project();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join(".gitignore"), "vendor/\n");
+    write(&tmp.path().join("CLAUDE.md"), "root\n");
+    write(&tmp.path().join("vendor/pkg/CLAUDE.md"), "Owner: [file: no/such/ignored.rs:1].\n");
+    write(&tmp.path().join("vendor/kept/CLAUDE.md"), "Owner: [file: no/such/tracked.rs:1].\n");
+    let status = common::git(tmp.path())
+        .args(["add", "-f", "vendor/kept/CLAUDE.md"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert_eq!(cited(&outcome), ["tracked.rs"], "{:#?}", outcome.findings);
+}
+
+#[test]
+fn a_changed_file_named_outside_ascii_is_still_in_the_since_window() {
+    // `git diff --name-only` quotes a path outside ASCII as octal escapes
+    // unless asked not to, so a changed `한글.md` never equalled the candidate
+    // the gate discovered: a windowed run scanned nothing and reported clean.
+    let tmp = project();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("CLAUDE.md"), "root\n");
+    let rule = tmp.path().join(".claude/rules/한글.md");
+    write(&rule, "---\npaths: [\"src/**\"]\n---\n\nbase\n");
+    for args in [
+        vec!["add", "harness.toml", "CLAUDE.md", ".claude"],
+        vec!["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"],
+    ] {
+        assert!(common::git(tmp.path()).args(&args).status().unwrap().success());
+    }
+    write(&rule, "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/korean.rs:1].\n");
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path())
+        .with_since("HEAD")
+        .run()
+        .unwrap();
+    assert_eq!(cited(&outcome), ["korean.rs"], "{:#?}", outcome.findings);
 }
