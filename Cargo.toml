@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/harness-core", "crates/harness-cli"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 # Fully specified so the floor is a single toolchain. `rustup toolchain
 # install 1.98` resolves to the latest 1.98.x, which is the pin — the MSRV job
