@@ -203,8 +203,10 @@ making, and naming them is what turns a floor into this project's harness.
 Suggest them; do not write them unasked.
 
 Verify: `bash -n` on every `.sh` and on every extensionless hook under
-`hooks/`, JSON-parse settings.json. Run `harnex check` / `harnex audit` if the binary oracle is
-available. On a repo that already had artifacts, the scaffolded `harness.toml`
+`hooks/`, JSON-parse settings.json. Probe the oracle with `harnex --version`
+— the grant every harness carries — and run `harnex check` / `harnex audit`
+when it answers. A probe the runtime refused did not run: report that, never
+an absent binary. On a repo that already had artifacts, the scaffolded `harness.toml`
 points validators at them for the first time, so report those findings as part
 of what the scaffold revealed rather than leaving them to be discovered — a
 brownfield harness typically has some, and they are the reason the scaffold was
