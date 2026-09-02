@@ -115,8 +115,8 @@ protected_paths = ["hooks/", ".gitleaks.toml"]
 # describe. Every threshold has a default, so the section is declared empty on
 # purpose: the loop is runnable from the first commit, and the numbers are
 # tuned once the corpus is large enough to have an opinion. Without the
-# section, `harnex lifecycle observe|candidates|retire` — the commands those
-# rules send you to — answer CONFIG_INVALID.
+# section, `harnex lifecycle observe|observations|candidates|retire` — the
+# commands those rules send you to — answer CONFIG_INVALID.
 #
 # The sweep's subjects are `[[kinds]]`, which this scaffold declares none of:
 # what a project retires is its own vocabulary. Give a kind

@@ -85,8 +85,8 @@ kinds — a scaffold that overwrites is the one failure the operator cannot undo
 
 A scaffold must be runnable, not merely well-formed. `harness.toml` is a
 foundation artifact for that reason: without it the generated `governance.md`
-sends its reader to `harnex lifecycle observe|candidates|retire` and
-`harnex telemetry report`, and every one answers CONFIG_NOT_FOUND. The
+sends its reader to `harnex lifecycle observe|observations|candidates|retire`
+and `harnex telemetry report`, and every one answers CONFIG_NOT_FOUND. The
 `workspace` allow floor is one for the same reason a step lower — every command
 those rules name prompts without it. And `harness-curate` is the skill that
 runs the sweep, because a procedure over several commands is what invariant 2

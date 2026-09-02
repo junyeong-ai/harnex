@@ -3,7 +3,7 @@ description: "Spec-driven orchestrator. Runs a change through specify / plan / i
 when_to_use: "Invoke when a change needs a shape approved before it lands, or will outlive one context window and its state has to live somewhere a later session can read. Also for \"resume\" to pick up an in-flight spec, and to run one phase in isolation. Skip when the work lands green in one pass and the commit body carries everything a later reader needs."
 argument-hint: "<what to build> | resume [slug] | <slug> phase=<name>"
 disable-model-invocation: true
-allowed-tools: Read Write Edit Glob Grep Bash(git log *) Bash(git diff *) Bash(git status *) Bash(git rev-parse *) Bash(harnex lifecycle observe *) AskUserQuestion Agent
+allowed-tools: Read Write Edit Glob Grep Bash(git log *) Bash(git diff *) Bash(git status *) Bash(git rev-parse *) Bash(harnex lifecycle observations *) Bash(harnex lifecycle observe *) AskUserQuestion Agent
 ---
 
 # Spec orchestrator

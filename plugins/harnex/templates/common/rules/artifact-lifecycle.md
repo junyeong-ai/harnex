@@ -27,8 +27,10 @@ observation → validated pattern → rule / skill / lens
   <where>` when the oracle is adopted. Never in always-loaded memory. No
   promotion yet.
 - **Validated pattern**: the same observation confirmed across two+
-  independent contexts (surface with `harnex lifecycle candidates`). Propose
-  as a rule via the governance rubric.
+  independent contexts. `harnex lifecycle candidates` surfaces the wordings
+  that recurred on their own; `harnex lifecycle observations` lays every
+  wording out by tag for the reader to cluster what the count could not.
+  Propose as a rule via the governance rubric.
 - **Rule / skill / lens**: accepted by governance; committed; enforced
   or advisory per the enforced-vs-advisory principle.
 

@@ -27,18 +27,20 @@ promotion gate reads; write what happened, not what should have.>
 enforce. Write what this spec saw; whether it has recurred enough to promote
 is the ledger's answer, not this file's.>
 
-Record one observation per proposal before this directory is retired:
+Record one observation per proposal before this directory is retired, in the
+standing wording where the tag already holds one:
 
 ```
+harnex lifecycle observations --tag <topic>
 harnex lifecycle observe --tag <topic> --text "<what recurs>" --source <slug>
 ```
 
 Completing the spec removes this directory, so a proposal left only here is
-one the promotion pass never sees. Reuse a standing observation's tag and
-wording verbatim — `.claude/rules/governance.md` has why, and owns the bar each
-proposal is judged against. Do not write the rule from here.
+one the promotion pass never sees. `.claude/rules/governance.md` has why the
+wording is reused verbatim, and owns the bar each proposal is judged against.
+Do not write the rule from here.
 
-If that command cannot run — no `harnex` on the path, or no `[lifecycle]` in
+If those commands cannot run — no `harnex` on the path, or no `[lifecycle]` in
 `harness.toml` — this spec is not ready to retire. Name what is missing and
 leave the directory standing: a proposal deleted because its destination was
 never installed is the loss this step exists to prevent.

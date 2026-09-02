@@ -22,13 +22,18 @@ const CURATE: &str = "templates/common/skills/harness-curate/SKILL.md";
 const SPEC_SKILL: &str = "templates/patterns/spec-workflow/skill/SKILL.md";
 const SCAFFOLD_CONFIG: &str = "templates/common/harness.toml";
 
+/// The `harnex lifecycle` verbs the wrapup instructs: the read that finds the
+/// standing wording, and the emit.
+const WRAPUP_VERBS: [&str; 2] = ["observations", "observe"];
+
 /// The flags the emit owes, as a set: three distinct options, so a template
 /// that repeats one or drops one fails on the set rather than on a count.
 const EMIT_FLAGS: [&str; 3] = ["tag", "text", "source"];
 
-/// The survey fields the curate skill reads by name. Both directions are
-/// checked against this list: a field the envelope drops while the prose still
-/// names it, and one the prose starts naming unwatched.
+/// The fields the curate skill reads by name, off the survey and the live
+/// layout. Both directions are checked against this list: a field the
+/// envelope drops while the prose still names it, and one the prose starts
+/// naming unwatched.
 const DRAIN_READS: &[&str] = &[
     "observations_read",
     "decisions_read",
@@ -85,26 +90,31 @@ fn data(dir: &Path, args: &[&str]) -> serde_json::Value {
     envelope["data"].clone()
 }
 
-/// The emit the wrapup instructs, as an argv, with each `<placeholder>`
-/// replaced by `fill`.
+/// The `harnex lifecycle <verb>` line the wrapup instructs, as an argv, with
+/// each `<placeholder>` replaced by `fill`.
 ///
 /// Splitting honours the double quotes the template needs around its text
 /// argument; a shell would, and the instruction is written to be pasted into
 /// one.
-fn instructed_emit(fill: &dyn Fn(&str) -> String) -> Vec<String> {
+fn instructed(verb: &str, fill: &dyn Fn(&str) -> String) -> Vec<String> {
     let wrapup = template(WRAPUP);
     let lines: Vec<&str> = wrapup
         .lines()
         .map(str::trim)
-        .filter(|line| line.starts_with("harnex lifecycle observe"))
+        .filter(|line| {
+            let mut words = line.split_whitespace();
+            words.next() == Some("harnex")
+                && words.next() == Some("lifecycle")
+                && words.next() == Some(verb)
+        })
         .collect();
     // Exactly one, so this guard cannot check the first and leave a second
     // unrun — the reader would follow either.
     assert_eq!(
         lines.len(),
         1,
-        "wrapup.md must instruct the emit as exactly one runnable command line, \
-         and it carries {}",
+        "wrapup.md must instruct `harnex lifecycle {verb}` as exactly one runnable \
+         command line, and it carries {}",
         lines.len()
     );
     let line = lines[0];
@@ -191,7 +201,7 @@ fn cited_identifiers(doc: &str, body: &str) -> BTreeSet<String> {
 
 #[test]
 fn the_observation_the_wrapup_instructs_lands_where_the_curate_pass_reads_it() {
-    let flags: BTreeSet<String> = instructed_emit(&|name| format!("<{name}>"))
+    let flags: BTreeSet<String> = instructed("observe", &|name| format!("<{name}>"))
         .iter()
         .filter_map(|a| a.strip_prefix("--").map(str::to_string))
         .collect();
@@ -216,10 +226,28 @@ fn the_observation_the_wrapup_instructs_lands_where_the_curate_pass_reads_it() {
         before["observations_read"], 0,
         "a fresh scaffold has observed nothing until a wrapup does"
     );
+    let read = |topic: &str| {
+        let argv = instructed("observations", &|name| match name {
+            "topic" => topic.to_string(),
+            other => {
+                panic!("the read line carries a placeholder the wrapup does not fill: <{other}>")
+            }
+        });
+        data(
+            project.path(),
+            &argv.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+    };
+    let unwritten = read("naming");
+    assert!(
+        unwritten["tags"].as_array().is_some_and(Vec::is_empty),
+        "before any wrapup, the topic has no standing wording to reuse: {unwritten}"
+    );
+    assert_eq!(unwritten["observations_read"], 0);
 
     let wording = "the same constraint, in the standing wording";
     for slug in ["spec-a", "spec-b"] {
-        let argv = instructed_emit(&|name| match name {
+        let argv = instructed("observe", &|name| match name {
             "slug" => slug.to_string(),
             "topic" => "naming".to_string(),
             _ => wording.to_string(),
@@ -247,35 +275,70 @@ fn the_observation_the_wrapup_instructs_lands_where_the_curate_pass_reads_it() {
         after["groups_considered"], 1,
         "one wording is one group, however many specs saw it"
     );
+
+    // And the read the wrapup puts before the emit answers with the wording
+    // the next spec is told to reuse, credited to the specs that filed it —
+    // and with nothing from another topic, however similar its name.
+    let argv = instructed("observe", &|name| match name {
+        "slug" => "spec-c".to_string(),
+        "topic" => "naming-tests".to_string(),
+        _ => "a wording under another topic".to_string(),
+    });
+    data(
+        project.path(),
+        &argv.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+    let standing = read("naming");
+    assert_eq!(
+        standing["tags"].as_array().map(Vec::len),
+        Some(1),
+        "one topic asked, one tag answered: {standing}"
+    );
+    let tag = &standing["tags"][0];
+    assert_eq!(tag["tag"], "naming");
+    assert_eq!(tag["groups"][0]["normalized_text"], wording);
+    assert_eq!(tag["sources"], serde_json::json!(["spec-a", "spec-b"]));
+    let partial = read("nam");
+    assert!(
+        partial["tags"].as_array().is_some_and(Vec::is_empty),
+        "a topic is matched whole, never as a prefix of another: {partial}"
+    );
+    // The filter narrows the tags and nothing else: a read that answers with
+    // no tag still says the ledger it read them from was written.
+    assert_eq!(standing["observations_read"], 3);
+    assert_eq!(partial["observations_read"], 3);
 }
 
 #[test]
-fn the_spec_skill_may_run_the_emit_its_wrapup_instructs() {
+fn the_spec_skill_may_run_every_command_its_wrapup_instructs() {
     // A skill's `allowed-tools` is the whole tool surface it runs under, so an
     // instruction naming a command the frontmatter does not grant is an
     // instruction that prompts or stops — which is how the emit half came to
-    // never fire.
-    let verb = instructed_emit(&|name| format!("<{name}>"))
-        .iter()
-        .take_while(|arg| !arg.starts_with("--"))
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let grant = format!("Bash(harnex {verb} *)");
+    // never fire. Each verb is granted by name; this guard reads nothing into
+    // how far one grant's prefix might reach.
     let skill = template(SPEC_SKILL);
     let allowed = skill
         .lines()
         .find_map(|l| l.strip_prefix("allowed-tools:"))
         .expect("the spec skill declares allowed-tools");
-    assert!(
-        allowed.contains(&grant),
-        "the wrapup instructs `harnex {verb}` and the spec skill grants {allowed:?} — \
-         it must carry {grant}"
-    );
+    for verb in WRAPUP_VERBS {
+        let spelled = instructed(verb, &|name| format!("<{name}>"))
+            .iter()
+            .take_while(|arg| !arg.starts_with("--"))
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let grant = format!("Bash(harnex {spelled} *)");
+        assert!(
+            allowed.contains(&grant),
+            "the wrapup instructs `harnex {spelled}` and the spec skill grants {allowed:?} — \
+             it must carry {grant}"
+        );
+    }
 }
 
 #[test]
-fn the_drain_prose_is_written_against_fields_the_survey_carries() {
+fn the_drain_prose_is_written_against_fields_the_envelopes_carry() {
     let project = scaffolded();
     let survey = data(project.path(), &["lifecycle", "candidates"]);
     let mut carried: BTreeSet<String> = survey
@@ -287,7 +350,7 @@ fn the_drain_prose_is_written_against_fields_the_survey_carries() {
     // A candidate's own fields are part of what the drain reads, and an empty
     // ledger carries no candidate to read them off.
     carried.extend(
-        serde_json::to_value(harness_core::lifecycle::PromotionCandidate {
+        serde_json::to_value(harness_core::lifecycle::ObservationGroup {
             tag: String::new(),
             normalized_text: String::new(),
             instance_count: 0,
@@ -297,6 +360,28 @@ fn the_drain_prose_is_written_against_fields_the_survey_carries() {
             sources: Vec::new(),
         })
         .expect("a candidate serialises")
+        .as_object()
+        .expect("into an object")
+        .keys()
+        .cloned(),
+    );
+    // The live layout the skill reads beside the survey, and a tag's own
+    // fields — an empty ledger lists no tag to read them off.
+    carried.extend(
+        data(project.path(), &["lifecycle", "observations"])
+            .as_object()
+            .expect("the live layout answers with an object")
+            .keys()
+            .cloned(),
+    );
+    carried.extend(
+        serde_json::to_value(harness_core::lifecycle::TagObservations {
+            tag: String::new(),
+            sources: Vec::new(),
+            groups: Vec::new(),
+            resolved: Vec::new(),
+        })
+        .expect("a tag serialises")
         .as_object()
         .expect("into an object")
         .keys()

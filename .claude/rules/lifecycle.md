@@ -9,10 +9,10 @@ governs:
 
 # lifecycle — promotion / retirement / consumer detection
 
-Observation ledger is append-only JSONL per tag. Promoter groups by
+Observation ledger is append-only JSONL per tag. `LedgerReader` groups by
 `(tag, normalized_text)` where `normalize` lowercases + collapses
 whitespace. Candidates require `instance_count ≥ promotion_min_instances`
-AND `span ≥ promotion_min_days`.
+AND `span_days ≥ promotion_min_days`.
 
 `survey` answers with the candidates AND the corpus they were drawn from —
 `observations_read`, `decisions_read`, `groups_considered`, `groups_resolved`
@@ -24,6 +24,18 @@ in exactly one group, every group is either resolved by a suppressing decision
 or considered against the thresholds. Sort candidates by instance count, then
 `(tag, normalized_text)`: groups arrive in hash order and one ledger owes one
 envelope.
+
+`live` is the survey's complement over the same reading — one `read` of both
+ledgers feeds both, so open groups plus closed equals the survey's considered
+plus resolved. It lays every group out by tag: tags by breadth (distinct
+sources over the tag's open groups) descending then name, open groups by
+instance count then text, closed ones as wording plus the latest suppressing
+decision, by wording. A tag with nothing open is still listed, because its
+closed wordings are what a new sighting is checked against — one recorded
+under a closed wording joins that group and surfaces nowhere.
+`harnex lifecycle observations [--tag T]` emits it; the filter narrows `tags`
+and leaves `observations_read` whole, so an empty `tags` under a written
+ledger is nothing under that tag.
 
 Both ledgers file by tag and scan by the `.jsonl` filename suffix, never
 `Path::extension`, which answers `None` for a leading-dot name. Refuse an
