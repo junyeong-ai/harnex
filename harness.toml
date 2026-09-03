@@ -1,9 +1,13 @@
 # harnex, checked by the oracle harnex ships.
 #
 # Only the validators that have a subject here are enabled: this repo declares
-# rules and settings, and carries no skills, sub-agents, or output styles yet —
-# their sections stay on so the first one added is checked from its first
+# rules, settings, and one skill, and carries no sub-agents or output styles
+# yet — their sections stay on so the first one added is checked from its first
 # commit rather than whenever someone remembers to widen this file.
+#
+# The one skill is deliberately in no `[[kinds]]`: a kind exists so the sweep
+# can classify a corpus, and one manually-invoked artifact is not one. Declare
+# it when there is a second.
 #
 # policy and codegen stay absent: this repo runs neither loop on itself, and
 # `harnex check` reporting them skipped with a reason is the honest answer.

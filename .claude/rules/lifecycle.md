@@ -58,6 +58,13 @@ one as an invocation decides a slug's fate on a coincidence — and not which
 artifacts it speaks for, since a record naming skills can never name a rule,
 which is loaded rather than invoked.
 
+NoConsumers counts citations, not loads. A path-scoped rule enters context
+when the runtime reads a file it governs, and that leaves no citation
+anywhere — so zero consumers on a rule says how often its name is written,
+never whether it is used. Five of this project's rules classify that way and
+none of them is unused. The load question has an owner: `retire.md` answers it
+from `facts.harness.rule_loads`, and states the window that evidence needs.
+
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.
 

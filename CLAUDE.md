@@ -65,6 +65,8 @@ skill composes templates — it never free-generates safety-critical code.
 - `README.md` — the only human-facing surface (the two surfaces, install,
   oracle quickstart, what the oracle covers).
 - `.claude/rules/constitution.md` — always-loaded project laws.
+- `.claude/skills/release/SKILL.md` — the milestone procedure: converged
+  review, the version decision, and the chain out to a proven release.
 - `.claude/rules/<topic>.md` — path-scoped guidance; loaded automatically
   when you read files matching that rule's `paths:` frontmatter.
 - `crates/<crate>/CLAUDE.md` — crate-scoped guidance; loaded when you
