@@ -9,6 +9,13 @@ FILE=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync(0,"utf8"));pro
 
 [[ -z "$FILE" || "$FILE" == *..* || ! -f "$FILE" ]] && exit 0
 
+# Format only where this project declares biome. With no configuration biome
+# applies its own defaults, and its search climbs to the home directory — so an
+# unconfigured project has every edit rewritten against biome's defaults, or
+# against whatever a parent directory happens to hold. Both fight the formatter
+# the project actually runs.
+[[ -f biome.json || -f biome.jsonc || -f .biome.json || -f .biome.jsonc ]] || exit 0
+
 case "$FILE" in
   *.ts|*.tsx|*.js|*.jsx|*.json) npx biome check --write "$FILE" >/dev/null 2>&1 || true ;;
 esac

@@ -103,7 +103,7 @@ with project-fit content, not blank placeholders.
 | Build / test / lint commands **and the runner that drives them** | Makefile, Justfile, `package.json` `scripts`, pyproject.toml `[tool.poe.tasks]`/`[tool.hatch.envs.*.scripts]`/`[tool.pdm.scripts]`/`[project.scripts]`, Taskfile.yml, mise `[tasks]`, CI config | CLAUDE.md `## Build & test` **and** the gate-driver grant (language-matrix) |
 | Directory layout | top-level `ls` + workspace member dirs | CLAUDE.md `## Layout` |
 | Project description | README.md first paragraph, manifest `description` field | CLAUDE.md header |
-| Formatter / linter / type checker | biome.json, .eslintrc, ruff in pyproject.toml, rustfmt.toml, tsconfig.json | CLAUDE.md `## Conventions`, post-format hook config |
+| Formatter / linter / type checker | biome.json, .eslintrc, ruff in pyproject.toml, rustfmt.toml, tsconfig.json | CLAUDE.md `## Conventions`; whether the language tier's formatter hook finds a config to act on |
 | Existing CI pipeline | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile` | hook event selection, gate sequence |
 | Existing test framework | vitest.config, pytest.ini, Cargo test | `<lang>-conventions.md` testing section |
 | Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners (in deps or CI) | suggest `gcp-strict`/`aws-strict` profile; secret-scan recommendation |
