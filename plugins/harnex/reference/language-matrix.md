@@ -24,12 +24,21 @@ meta-failure arriving through the front door.
 
 | Signal | Stack |
 |---|---|
-| `pnpm-lock.yaml` + `package.json` (`pnpm-workspace.yaml`) | TypeScript / pnpm (+ Turborepo if `turbo.json`) |
+| `package.json` + any of `pnpm-lock.yaml` / `package-lock.json` / `yarn.lock` (`pnpm-workspace.yaml`, or `workspaces` in `package.json`) | TypeScript / Node (+ Turborepo if `turbo.json`) |
 | `uv.lock` + `pyproject.toml` (`[tool.uv.workspace]`) | Python / uv (+ Just if `Justfile`, prek if `.pre-commit-config.yaml`) |
 | `Cargo.toml` (`[workspace]`) + `Cargo.lock` | Rust / cargo |
 | `settings.gradle{,.kts}` or `build.gradle{,.kts}` (+ `gradlew`) | JVM / Gradle (+ version catalog if `gradle/libs.versions.toml`) |
 | `pom.xml` (+ `mvnw`) | JVM / Maven |
-| none of the above (e.g. `go.mod`, `*.csproj`, `Gemfile`, `composer.json`) | **no profile** — foundation tier only |
+| none of the above (e.g. `go.mod`, `bun.lock`, `*.csproj`, `Gemfile`, `composer.json`) | **no profile** — foundation tier only |
+
+**A lockfile names the package manager, not the stack.** The Node tier is
+identical under all three: biome runs through `npx`, `tsc` typechecks, and
+`typescript-conventions.md` is scoped by file extension — none of it is
+pnpm's. Fingerprinting the row on one lockfile name withheld that whole tier
+from a Next.js repository on npm: not the honest no-profile below, which
+answers an unrecognized stack, but a recognized one denied on a signal about
+something else. The package manager reaches the harness through
+`typescript-dev`, which grants all three.
 
 Nothing arbitrates between two matched stacks at runtime either: each
 `hooks/post-format-<lang>.sh` dispatches on the file extension and exits 0 on
@@ -80,14 +89,15 @@ guess as the wrong formatter. Two or more signals means two or more grants —
 a repo with a `Justfile` wrapping `poe` prompts on whichever one it types.
 
 A `<lang>-dev` profile is the ecosystem's mainstream toolchain and is not a
-claim about which of it this project uses; `python-dev` carries `ty`, `mypy`
-and `pyright` because a grant for an absent tool never matches while a missing
-one prompts on every invocation. The gate driver is the part that must be
-observed, because no ecosystem default covers it.
+claim about which of it this project uses; `typescript-dev` carries all three
+node package managers and `python-dev` carries `ty`, `mypy` and `pyright`,
+because a grant for an absent tool never matches while a missing one prompts
+on every invocation. The gate driver is the part that must be observed,
+because no ecosystem default covers it.
 
 **The JVM row is one profile for two languages, on purpose.** The axis a
 template directory is keyed on is the toolchain, not the language name:
-`typescript/` is really node+pnpm and `python/` is uv. On the JVM, Gradle and
+`typescript/` is really node and `python/` is uv. On the JVM, Gradle and
 Maven each serve Java and Kotlin, and no build-file fingerprint separates them
 — `build.gradle.kts` names the DSL, not the sources. Mixed Java + Kotlin trees
 are the common case (Android, an in-progress migration), so a `java/`-only
@@ -98,12 +108,12 @@ is what invariant 5 actually asks for: `.java` reaches a Java formatter and
 
 ## Per-language template parameters
 
-| Axis | TypeScript (pnpm) | Python (uv) | Rust (cargo) | JVM (Gradle / Maven) |
+| Axis | TypeScript (Node) | Python (uv) | Rust (cargo) | JVM (Gradle / Maven) |
 |---|---|---|---|---|
 | Formatter (PostToolUse) | `biome check --write` | `ruff format` + `ruff check --fix` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
 | Typecheck | `tsc` (via `turbo run type-check`) | `ty` / `mypy` / `pyright` — whichever the project configures | `cargo check` | `./gradlew compileJava compileKotlin` / `./mvnw -o compile` |
 | Verifier forms the runner dispatches | `.sh` + `.ts` via `node` | `.sh` + `.py` via `uv run --frozen` | `.sh` only (no per-hook `.rs` build); JSON parsed with `jq` | `.sh` only (no per-hook JVM start); JSON parsed with `jq` |
-| Gate runner (when the project declares none) | `pnpm` (+ `turbo`) | `uv run` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
+| Gate runner (when the project declares none) | the package manager its lockfile names (+ `turbo`) | `uv run` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
 | Secret scan | gitleaks | gitleaks | gitleaks | gitleaks |
 | PreToolUse default | non-blocking (advisory) | project choice (blocking convention-gate is valid) | non-blocking | non-blocking |
 
