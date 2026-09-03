@@ -42,11 +42,14 @@ wrapper captured a gate in a command substitution, the suite went red, and the
 substitution returned its output rather than its status — the chain continued
 over a failure the suite had already found.
 
-Every CI job has a local twin, and `.github/workflows/ci.yml` is the list of
-jobs that must pass. This has failed once too: v0.6.0 was tagged before CI
-found a schema drift that no local guard held, because a job existed with no
-local counterpart. Before tagging, check that list against what runs here; a
-job with no twin is the next one to find something after a tag.
+Every CI job needs a local counterpart before a tag, and
+`.github/workflows/ci.yml` is the list to check that against. Two kinds of gap,
+and only one of them is a hole. A job whose twin was never written is a hole:
+v0.6.0 was tagged over a schema drift for exactly that, and `schema_sync.rs` is
+the twin that was missing. A job that exists *because* it cannot run here — the
+second operating system in the test matrix, which is there for filesystem
+behaviour this machine does not have — is not a hole, and is why the run still
+has to be watched rather than predicted.
 
 The pins are not a manual sweep. A stale `harnex_version` fails the suite in
 eight targets, the shipped examples among them — a red suite is the answer,
