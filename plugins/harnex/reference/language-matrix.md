@@ -29,16 +29,23 @@ meta-failure arriving through the front door.
 | `Cargo.toml` (`[workspace]`) + `Cargo.lock` | Rust / cargo |
 | `settings.gradle{,.kts}` or `build.gradle{,.kts}` (+ `gradlew`) | JVM / Gradle (+ version catalog if `gradle/libs.versions.toml`) |
 | `pom.xml` (+ `mvnw`) | JVM / Maven |
-| none of the above (e.g. `go.mod`, `bun.lock`, `*.csproj`, `Gemfile`, `composer.json`) | **no profile** — foundation tier only |
+| none of the above (e.g. `go.mod`, `bun.lock` / `bun.lockb`, `*.csproj`, `Gemfile`, `composer.json`) | **no profile** — foundation tier only |
 
 **A lockfile names the package manager, not the stack.** The Node tier is
-identical under all three: biome runs through `npx`, `tsc` typechecks, and
-`typescript-conventions.md` is scoped by file extension — none of it is
-pnpm's. Fingerprinting the row on one lockfile name withheld that whole tier
-from a Next.js repository on npm: not the honest no-profile below, which
-answers an unrecognized stack, but a recognized one denied on a signal about
-something else. The package manager reaches the harness through
+identical under all three: the formatter resolves the biome the project
+installed, `tsc` typechecks, and `typescript-conventions.md` is scoped by file
+extension — none of it is pnpm's. Fingerprinting the row on one lockfile name
+withheld that whole tier from a Next.js repository on npm: not the honest
+no-profile below, which answers an unrecognized stack, but a recognized one
+denied on a signal about something else. The package manager reaches the harness through
 `typescript-dev`, which grants all three.
+
+Bun is the boundary, not an oversight. Its lockfiles — `bun.lock`, and
+`bun.lockb` before Bun 1.2 — name a stack whose formatter and conventions rule
+would fit unchanged, but the tier's hook reads its input with `node`, and a
+bun-only project need not have node installed at all. Admitting bun means
+making that hook runtime-agnostic first, which is a change to the hook and not
+to this table.
 
 Nothing arbitrates between two matched stacks at runtime either: each
 `hooks/post-format-<lang>.sh` dispatches on the file extension and exits 0 on
@@ -190,8 +197,12 @@ repo is never penalised for the tool it does not install.
   directory, so an unconfigured project would have every edit rewritten
   against biome's defaults or a parent directory's. The hook reads the four
   names biome resolves and stands down when none is there — a project that
-  formats with prettier keeps formatting with prettier. Check the same
-  property before wiring any new language's formatter.
+  formats with prettier keeps formatting with prettier. It then runs the biome
+  the project installed rather than one fetched at edit time: Yarn Plug'n'Play
+  writes no `node_modules/.bin`, so `npx` reaches no workspace binary there,
+  and a registry fetch inside a per-edit hook is a network round trip against
+  the hook timeout and an unpinned version besides. Check the same property
+  before wiring any new language's formatter.
 - Hook config `timeout` in SECONDS (10–30 typical), `type: "command"`.
 - Sentinel-block codegen source may be toml/json/yaml (`source_format`) — point
   at the project's existing SSoT, never hand-maintain a duplicate.
