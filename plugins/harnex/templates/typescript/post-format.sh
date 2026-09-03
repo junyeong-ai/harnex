@@ -16,7 +16,21 @@ FILE=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync(0,"utf8"));pro
 # the project actually runs.
 [[ -f biome.json || -f biome.jsonc || -f .biome.json || -f .biome.jsonc ]] || exit 0
 
+# Run the biome this project installed, never one fetched at edit time. Yarn
+# Plug'n'Play generates no node_modules/.bin and gives `yarn <bin>` as the form
+# to reach a workspace binary; a registry fetch inside a per-edit hook is a
+# network round trip against the hook timeout, and an unpinned version besides.
+if [[ -x node_modules/.bin/biome ]]; then
+  BIOME=(node_modules/.bin/biome)
+elif [[ -f .pnp.cjs ]] && command -v yarn >/dev/null 2>&1; then
+  BIOME=(yarn biome)
+elif command -v biome >/dev/null 2>&1; then
+  BIOME=(biome)
+else
+  exit 0
+fi
+
 case "$FILE" in
-  *.ts|*.tsx|*.js|*.jsx|*.json) npx biome check --write "$FILE" >/dev/null 2>&1 || true ;;
+  *.ts|*.tsx|*.js|*.jsx|*.json) "${BIOME[@]}" check --write "$FILE" >/dev/null 2>&1 || true ;;
 esac
 exit 0
