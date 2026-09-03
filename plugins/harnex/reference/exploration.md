@@ -19,11 +19,12 @@ window limit — so exploration is a graph traversal, not a sweep.
 
 Read only these, in order, and extract structural facts:
 
-1. **Lockfile + manifest** → language + package manager (per language-matrix):
-   `pnpm-lock.yaml`+`package.json` ⇒ TS/pnpm · `uv.lock`+`pyproject.toml` ⇒
-   Python/uv · `Cargo.lock`+`Cargo.toml` ⇒ Rust/cargo.
-2. **Workspace config** → monorepo? module globs: `pnpm-workspace.yaml`,
-   `[tool.uv.workspace].members`, `[workspace].members`, `turbo.json`.
+1. **Manifest + lockfile** → the stack set, one row per match. The
+   language-matrix fingerprint table owns which signal names which stack;
+   re-listing it here is how the two drift apart.
+2. **Workspace config** → monorepo? module globs: `pnpm-workspace.yaml` or
+   `workspaces` in `package.json`, `[tool.uv.workspace].members`,
+   `[workspace].members`, `turbo.json`.
 3. **Toolchain config** → formatter / typecheck / gate runner: `biome.json`,
    `ruff`/`ty` in `pyproject.toml`, `Justfile`, `.pre-commit-config.yaml`.
 4. **Existing harness** (brownfield signal) → `.claude/settings.json`

@@ -335,16 +335,23 @@ fn python_dev() -> PermissionProfile {
     }
 }
 
-/// TypeScript development toolchain: pnpm, node, tsx, tsc, biome. `node -e`
-/// stays denied by `baseline`. The broad `npx *` is deliberately excluded —
-/// env-runners execute arbitrary inner commands, so the spec advises a
-/// specific `Bash(npx <tool> *)` rule, which the skill adds per project rather
-/// than granting wholesale here.
+/// TypeScript development toolchain: pnpm, npm and yarn, plus node, tsx, tsc,
+/// biome. `node -e` stays denied by `baseline`. The broad `npx *` is
+/// deliberately excluded — env-runners execute arbitrary inner commands, so
+/// the spec advises a specific `Bash(npx <tool> *)` rule, which the skill adds
+/// per project rather than granting wholesale here.
+///
+/// Which package manager a project runs is a lockfile fact, not a language
+/// one, and this profile is not where it is decided: an allow for an
+/// uninstalled manager never matches, while a missing one prompts on every
+/// install and every script.
 fn typescript_dev() -> PermissionProfile {
     PermissionProfile {
         name: "typescript-dev",
         allow: vec![
             "Bash(pnpm *)",
+            "Bash(npm *)",
+            "Bash(yarn *)",
             "Bash(node *)",
             "Bash(tsx *)",
             "Bash(tsc *)",
@@ -623,6 +630,8 @@ mod tests {
                 "typescript-dev",
                 &[
                     "Bash(pnpm *)",
+                    "Bash(npm *)",
+                    "Bash(yarn *)",
                     "Bash(node *)",
                     "Bash(tsx *)",
                     "Bash(tsc *)",

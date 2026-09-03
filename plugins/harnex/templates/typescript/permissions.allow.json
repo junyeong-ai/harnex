@@ -1,7 +1,9 @@
 [
   "Bash(biome *)",
   "Bash(node *)",
+  "Bash(npm *)",
   "Bash(pnpm *)",
   "Bash(tsc *)",
-  "Bash(tsx *)"
+  "Bash(tsx *)",
+  "Bash(yarn *)"
 ]
