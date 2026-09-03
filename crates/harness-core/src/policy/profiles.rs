@@ -336,7 +336,7 @@ fn python_dev() -> PermissionProfile {
 }
 
 /// TypeScript development toolchain: pnpm, npm and yarn, plus node, tsx, tsc,
-/// biome. `node -e` stays denied by `baseline`. The broad `npx *` is
+/// biome. A bare `node -e` stays denied by `baseline`. The broad `npx *` is
 /// deliberately excluded — env-runners execute arbitrary inner commands, so
 /// the spec advises a specific `Bash(npx <tool> *)` rule, which the skill adds
 /// per project rather than granting wholesale here.
@@ -348,10 +348,12 @@ fn python_dev() -> PermissionProfile {
 ///
 /// Excluding `npx` narrows a spelling and not the capability. Each granted
 /// manager carries its own env-runner — `npm exec`, `pnpm dlx`, `yarn dlx` —
-/// and a wildcard spans arguments, so the grant reaches them. Narrowing that
-/// means not granting a manager wholesale, which is a decision about every
-/// project this profile serves; it is in the observation ledger rather than
-/// patched here with flag patterns the next flag spelling walks past.
+/// and each also runs node, so `yarn node -e` and `npm exec -- node -e` reach
+/// the script form `baseline` denies: a deny matches the command as written,
+/// and the written command begins with the manager. Narrowing that means not
+/// granting a manager wholesale, which is a decision about every project this
+/// profile serves; it is in the observation ledger rather than patched here
+/// with flag patterns the next flag spelling walks past.
 fn typescript_dev() -> PermissionProfile {
     PermissionProfile {
         name: "typescript-dev",
