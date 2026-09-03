@@ -43,7 +43,9 @@ is adopted; otherwise verify them by hand at a retro):
   (Silent / Stale signals).
 - Not listed as a foundation artifact (constitution, governance, this file).
 - No active consumer (NoConsumers — grep the codebase for the slug; check
-  backlinks).
+  backlinks). For a rule the runtime loads through `paths:`, this counts
+  citations and not loads: a rule read on every file it governs still shows
+  none. Read `harnex session facts` `harness.rule_loads` before retiring one.
 
 ## Retirement procedure
 

@@ -110,10 +110,10 @@ is what invariant 5 actually asks for: `.java` reaches a Java formatter and
 
 | Axis | TypeScript (Node) | Python (uv) | Rust (cargo) | JVM (Gradle / Maven) |
 |---|---|---|---|---|
-| Formatter (PostToolUse) | `biome check --write` | `ruff format` + `ruff check --fix` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
+| Formatter (PostToolUse) | `biome check --write`, only where the project declares biome | `ruff format` + `ruff check --fix` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
 | Typecheck | `tsc` (via `turbo run type-check`) | `ty` / `mypy` / `pyright` — whichever the project configures | `cargo check` | `./gradlew compileJava compileKotlin` / `./mvnw -o compile` |
 | Verifier forms the runner dispatches | `.sh` + `.ts` via `node` | `.sh` + `.py` via `uv run --frozen` | `.sh` only (no per-hook `.rs` build); JSON parsed with `jq` | `.sh` only (no per-hook JVM start); JSON parsed with `jq` |
-| Gate runner (when the project declares none) | the package manager its lockfile names (+ `turbo`) | `uv run` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
+| Gate runner (when the project declares none) | the package manager the project's own scripts and CI invoke (+ `turbo`) | `uv run` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
 | Secret scan | gitleaks | gitleaks | gitleaks | gitleaks |
 | PreToolUse default | non-blocking (advisory) | project choice (blocking convention-gate is valid) | non-blocking | non-blocking |
 
@@ -185,8 +185,13 @@ repo is never penalised for the tool it does not install.
   gate requires and the loop is invisible until CI reds. Rust is the live
   case: `rustfmt <file>` never sees `Cargo.toml` and defaults to edition
   2015, so a Rust scaffold emits `rustfmt.toml` carrying the edition read
-  from the project's manifest. Check the same property before wiring any new
-  language's formatter.
+  from the project's manifest. Node is the second: biome applies its own
+  defaults when it finds no configuration, and its search climbs to the home
+  directory, so an unconfigured project would have every edit rewritten
+  against biome's defaults or a parent directory's. The hook reads the four
+  names biome resolves and stands down when none is there — a project that
+  formats with prettier keeps formatting with prettier. Check the same
+  property before wiring any new language's formatter.
 - Hook config `timeout` in SECONDS (10–30 typical), `type: "command"`.
 - Sentinel-block codegen source may be toml/json/yaml (`source_format`) — point
   at the project's existing SSoT, never hand-maintain a duplicate.

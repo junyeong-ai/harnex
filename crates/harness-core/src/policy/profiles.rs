@@ -345,6 +345,13 @@ fn python_dev() -> PermissionProfile {
 /// one, and this profile is not where it is decided: an allow for an
 /// uninstalled manager never matches, while a missing one prompts on every
 /// install and every script.
+///
+/// Excluding `npx` narrows a spelling and not the capability. Each granted
+/// manager carries its own env-runner — `npm exec`, `pnpm dlx`, `yarn dlx` —
+/// and a wildcard spans arguments, so the grant reaches them. Narrowing that
+/// means not granting a manager wholesale, which is a decision about every
+/// project this profile serves; it is in the observation ledger rather than
+/// patched here with flag patterns the next flag spelling walks past.
 fn typescript_dev() -> PermissionProfile {
     PermissionProfile {
         name: "typescript-dev",
