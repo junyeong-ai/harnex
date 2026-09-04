@@ -68,15 +68,17 @@ impl PermissionProfile {
 /// typed directly; it does not make the capability unreachable. The reach is
 /// enumerated in the observation ledger. Narrowing it means not granting tools
 /// whose surface cannot be enumerated — a decision about every project a
-/// profile serves, and not a longer list of spellings, which is why none was
-/// added when this was measured.
+/// profile serves, rather than a longer list of spellings. The two `harnex
+/// guard` denies spliced in below are the exception that shows where the line
+/// falls: that surface is ours and closed, so it can be denied completely. No
+/// third-party spelling was added, because for those none can be.
 ///
 /// Rule grammar follows the Claude Code permission spec: Bash uses the
 /// canonical space-then-`*` wildcard (`Bash(cmd *)`); Read/Edit use
 /// gitignore-style globs where a bare pattern matches at any depth
 /// (`Read(.env)` ≡ `Read(**/.env)`). Which rules a permission check actually
 /// reads is [`super::rule`]'s to say, and `every_profile_rule_is_consulted`
-/// holds every rule below to it. Two redundancy rules the spec lets us
+/// holds every rule this profile carries to it, the spliced ones included. Two redundancy rules the spec lets us
 /// drop: Read deny rules already cover `cat`/`head`/`tail`/`sed` of the same
 /// path, so no `Bash(cat .env *)` mirror is needed; and built-in read-only
 /// commands (`ls`, `grep`, `find`, read-only `git`, …) never prompt, so they
