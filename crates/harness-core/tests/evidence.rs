@@ -388,11 +388,26 @@ fn a_citation_reads_inside_a_longer_construct_and_the_shortest_has_no_spelling()
         "the boundary cannot see that the name continues"
     );
 
+    // Neither end of the longer name: the citation reads between its hyphens.
+    let tmp = TempDir::new().unwrap();
+    assert!(
+        resolves(&tmp, "ci.yml", "jobs:\n  check-types-and-lint:\n", "types").is_empty(),
+        "nor that the name it read is a piece of one"
+    );
+
     // A suffix, where the longer selector begins before the dot.
     let tmp = TempDir::new().unwrap();
     assert!(
         resolves(&tmp, "s.css", "table.rows { color: red; }\n", ".rows {").is_empty(),
         "nor that it began earlier"
+    );
+
+    // A combining mark is no identifier character either, so the citation
+    // answers to a different name rather than a longer one.
+    let tmp = TempDir::new().unwrap();
+    assert!(
+        resolves(&tmp, "menu.ts", "const cafe\u{301}_total = 1;\n", "cafe").is_empty(),
+        "nor that the name it read is not the name the file spells"
     );
 
     // Both present: the shorter has no spelling of its own.

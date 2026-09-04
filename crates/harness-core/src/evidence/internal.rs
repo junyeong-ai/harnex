@@ -171,14 +171,14 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
 /// needs the language, which a citation does not carry.
 ///
 /// A match is refused only where an identifier character abuts an identifier
-/// edge of the citation, so any other neighbour lets a citation read inside a
-/// longer construct. That cuts three ways, and the third has no repair: a
-/// prefix resolves against a longer name, `check-types` against a file
-/// spelling only `check-types-and-lint`; a suffix does the same, `.rows {`
-/// against `table.rows {`; and where a name and its extension are both
-/// present the shorter one has no spelling at all — beside a `save!`, both
-/// `save` and `def save` read twice. The escape is the anchor rather than the
-/// spelling: a line, or the file.
+/// edge of the citation, so any other neighbour lets the citation read inside
+/// a longer construct: against a file spelling only `check-types-and-lint`,
+/// each of `check-types`, `types` and `and-lint` answers; `.rows {` answers to
+/// `table.rows {`; a combining mark is no identifier character either, so
+/// `cafe` answers to a `café` the file wrote decomposed. Where a
+/// name and its extension are both present the shorter has no spelling at all
+/// — beside a `save!`, both `save` and `def save` read twice — and there the
+/// escape is the anchor rather than the spelling: a line, or the file.
 fn is_name_character(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
