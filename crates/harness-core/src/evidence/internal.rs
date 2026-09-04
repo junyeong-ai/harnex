@@ -120,7 +120,8 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
 /// a declaration name that is the prefix of another is ordinary, so a
 /// substring match would resolve a claim against a definition nobody cited.
 /// It applies only where the needle's own edge is one of those characters, so
-/// a needle ending in a delimiter still resolves.
+/// a needle ending in a delimiter still resolves — which is what lets a name
+/// the C family cannot spell be cited in full.
 ///
 /// Two occurrences are a violation rather than a pass on the first, for the
 /// reason a section's are: an anchor that names two places names neither, and
@@ -151,23 +152,32 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
     }
 }
 
-/// The characters a name can be spelled with, across the languages a claim
-/// may cite.
+/// The characters that continue a name, which is the C family's identifier
+/// rule and not one language's whole alphabet.
 ///
-/// Wider than any one language on purpose. The file being cited has a language
-/// this module does not know, and the two mistakes it can make are not equal: a
-/// character missing here lets a prefix of a longer name resolve as though it
-/// were the name, and the gate says nothing. A character wrongly here fails a
-/// correct citation loudly, with the hint that names the longer spelling. So
-/// the set holds every character that spells part of a name somewhere — `-` in
-/// a YAML key, a CSS custom property, a Lisp or shell name; `?` and `!` closing
-/// a Ruby predicate or a Rust macro; `$` opening a shell or PHP variable.
+/// A wider set was tried and withdrawn. Adding a character can only lower the
+/// count, never raise it, so it produces two transitions and not one: a lone
+/// occurrence falls to none, which is loud, and two occurrences fall to one,
+/// which resolves a citation that names two places as though it named one.
 ///
-/// `.` and `:` are the line, and are left out: they join names that are each
-/// complete on their own, so counting them here would reject a citation of the
-/// left one.
+/// The rule is read on both edges of a match while the characters that would
+/// join it are one-sided: `!` never begins a name, `$` in a shell is a sigil on
+/// a reference rather than part of the name, and `?` only ever ends one. So
+/// `!READY` and `$REPO_URL` stopped counting as uses of `READY` and `REPO_URL`.
+/// Making the rule side-aware does not rescue it either, because the same
+/// character on the same side belongs to a name in one language and to an
+/// operator in the next — a trailing `?` spells a Ruby predicate and a Rust try,
+/// a `-` spells a CSS custom property and C subtraction. Deciding between them
+/// needs the language, which a citation does not carry.
+///
+/// What the narrow rule costs is stated rather than traded away: a name spelled
+/// with anything outside it has a proper prefix that resolves against it, so
+/// `check-types` answers to a file spelling only `check-types-and-lint`. The
+/// answer is the one the unresolved hint already gives — cite the declaration
+/// as the file spells it. `check-types-and-lint:` and `def valid?` name one
+/// place each; their prefixes name a guess.
 fn is_name_character(c: char) -> bool {
-    c.is_alphanumeric() || matches!(c, '_' | '-' | '?' | '!' | '$')
+    c.is_alphanumeric() || c == '_'
 }
 
 /// Every position `needle` reads at, counted once each.
