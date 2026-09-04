@@ -100,7 +100,7 @@ fn rejects_line_out_of_range() {
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1);
     assert_eq!(
-        findings[0].message, "line 99 out of range ('src/lib.rs' has 1 lines)",
+        findings[0].message, "line 99 out of range ('src/lib.rs' has 1 line)",
         "the range a claim missed is what tells the author where to point instead"
     );
 }

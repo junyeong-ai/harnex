@@ -102,13 +102,14 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
                     .into(),
             ),
         },
-        None => VerifyOutcome::Violation {
-            message: format!(
-                "line {line} out of range ('{path}' has {} lines)",
-                crate::markdown::line_count(content)
-            ),
-            hint: Some("update the line number".into()),
-        },
+        None => {
+            let lines = crate::markdown::line_count(content);
+            let plural = if lines == 1 { "line" } else { "lines" };
+            VerifyOutcome::Violation {
+                message: format!("line {line} out of range ('{path}' has {lines} {plural})"),
+                hint: Some("update the line number".into()),
+            }
+        }
     }
 }
 
