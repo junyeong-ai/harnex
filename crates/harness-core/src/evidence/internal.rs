@@ -83,16 +83,17 @@ fn unreadable(path: &str) -> VerifyOutcome {
     }
 }
 
+/// A line anchor resolves when the file reaches that line and the line carries
+/// text.
+///
+/// That is all a position can prove: a blank line names nothing, and any other
+/// line answers with whatever the edits above it left there. The reader owns
+/// which lines exist, so absence here is the line being out of range rather
+/// than a second way to be blank.
 fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
-    let total = crate::markdown::line_count(content);
-    if line == 0 || line > total {
-        return VerifyOutcome::Violation {
-            message: format!("line {line} out of range ('{path}' has {total} lines)"),
-            hint: Some("update the line number".into()),
-        };
-    }
-    if crate::markdown::line_at(content, line).is_none_or(|text| text.trim().is_empty()) {
-        return VerifyOutcome::Violation {
+    match crate::markdown::line_at(content, line) {
+        Some(text) if !text.trim().is_empty() => VerifyOutcome::Ok,
+        Some(_) => VerifyOutcome::Violation {
             message: format!("line {line} of '{path}' is blank"),
             hint: Some(
                 "a line anchor is verified for the file being that long and the line \
@@ -100,16 +101,22 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
                  anchor the claim on what the file spells instead"
                     .into(),
             ),
-        };
+        },
+        None => VerifyOutcome::Violation {
+            message: format!(
+                "line {line} out of range ('{path}' has {} lines)",
+                crate::markdown::line_count(content)
+            ),
+            hint: Some("update the line number".into()),
+        },
     }
-    VerifyOutcome::Ok
 }
 
 /// A symbol anchor resolves when the file spells it exactly once, abutted by
 /// no identifier character.
 ///
-/// The boundary is what separates `fn from_str` from `fn from_str_rejects` —
-/// 612 declaration names in this workspace are the prefix of another, so a
+/// The boundary is what separates `fn from_str` from `fn from_str_rejects`:
+/// a declaration name that is the prefix of another is ordinary, so a
 /// substring match would resolve a claim against a definition nobody cited.
 /// It applies only where the needle's own edge is an identifier character, so
 /// a needle ending in a delimiter still resolves.

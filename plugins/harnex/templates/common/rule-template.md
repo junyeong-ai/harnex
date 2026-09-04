@@ -21,7 +21,8 @@ governs:
      document's section, `[file: path/to/file.ext]` where the whole file is
      the owner. Each of those fails on the rename that invalidates it.
      `[file: path/to/file.ext:42]` is for a place inside a body that no name
-     identifies — it only ever proved the file was that long.
+     identifies — it proves only that the file is that long and that the line
+     is not blank.
      The pointer is the point: it is what a reader checks, what `harnex check`
      resolves, and what makes this a rule rather than an opinion.
 

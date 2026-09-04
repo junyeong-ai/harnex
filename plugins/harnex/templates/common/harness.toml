@@ -66,14 +66,15 @@ reject_unknown_keys = true
 #   [file: pyproject.toml]                the file exists
 #   [file: path/to/thing.py :: def load]  and spells that, exactly once
 #   [file: docs/design.md § Storage]      and spells that heading, exactly once
-#   [file: path/to/thing.py:42]           and is at least that long
+#   [file: path/to/thing.py:42]           and that line carries text
 #
 # Pick the anchor for what it proves. A symbol and a heading are matched
-# against what the file spells, so each fails on the rename that invalidated
-# the claim, and one that answers to two places fails as well, because a
-# pointer resolving to both names neither. A line only ever asked how long the
-# file is, so it survives the edit that moved its subject: reserve it for a
-# place inside a body that no name identifies.
+# against what the file spells, so each fails on the rename that removes the
+# spelling, and one that answers to two places fails as well, because a
+# pointer resolving to both names neither. A line asks only how long the file
+# is and whether that line is blank, so it survives the edit that moved its
+# subject onto another line: reserve it for a place inside a body that no name
+# identifies.
 #
 # Marked rather than inferred, which is what keeps the check out of prose. A
 # bare backtick path is documentation and stays documentation; `api/gateway.io:8443`

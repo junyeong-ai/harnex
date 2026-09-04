@@ -99,7 +99,10 @@ fn rejects_line_out_of_range() {
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1);
-    assert!(findings[0].message.contains("out of range"));
+    assert_eq!(
+        findings[0].message, "line 99 out of range ('src/lib.rs' has 1 lines)",
+        "the range a claim missed is what tells the author where to point instead"
+    );
 }
 
 #[test]
@@ -252,8 +255,7 @@ fn a_symbol_anchor_resolves_against_what_the_file_spells_and_not_against_a_longe
     );
     assert!(
         !resolves("Stated in [file: src/lib.rs :: pub fn write_atom]."),
-        "a prefix of a longer name must not resolve — 612 declaration names in \
-         this workspace are the prefix of another"
+        "a prefix of a longer name must not resolve"
     );
     assert!(
         !resolves("Stated in [file: src/lib.rs :: pub fn renamed_away]."),
