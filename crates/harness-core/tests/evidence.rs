@@ -410,7 +410,30 @@ fn a_citation_reads_inside_a_longer_construct_and_the_shortest_has_no_spelling()
         "nor that the name it read is not the name the file spells"
     );
 
-    // Both present: the shorter has no spelling of its own.
+    // The mark at the citation's own edge, which is the other half failing.
+    let tmp = TempDir::new().unwrap();
+    assert!(
+        resolves(
+            &tmp,
+            "menu.ts",
+            "const cafe\u{301}_total = 1;\n",
+            "cafe\u{301}"
+        )
+        .is_empty(),
+        "an edge that is no identifier character is unguarded too"
+    );
+
+    // The extension opens on an identifier character, so the boundary holds.
+    let tmp = TempDir::new().unwrap();
+    let found = resolves(
+        &tmp,
+        "guard.rs",
+        "pub fn write_atomic() {}\npub fn write_atomic_rejects() {}\n",
+        "pub fn write_atomic",
+    );
+    assert!(found.is_empty(), "the underscore separates them: {found:?}");
+
+    // Both present and the extension opens on anything else: no spelling.
     let body = "class Record\n  def save\n  end\n\n  def save!\n  end\nend\n";
     for symbol in ["save", "def save"] {
         let tmp = TempDir::new().unwrap();

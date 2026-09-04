@@ -156,29 +156,22 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
 /// rule and not one language's whole alphabet.
 ///
 /// A wider set was tried and withdrawn. Adding a character can only lower the
-/// count, never raise it, so it produces two transitions and not one: a lone
-/// occurrence falls to none, which is loud, and two occurrences fall to one,
-/// which resolves a citation that names two places as though it named one.
-///
-/// The rule is read on both edges of a match while the characters that would
-/// join it are one-sided: `!` never begins a name, `$` in a shell is a sigil on
-/// a reference rather than part of the name, and `?` only ever ends one. So
-/// `!READY` and `$REPO_URL` stopped counting as uses of `READY` and `REPO_URL`.
-/// Making the rule side-aware does not rescue it either, because the same
-/// character on the same side belongs to a name in one language and to an
-/// operator in the next — a trailing `?` spells a Ruby predicate and a Rust try,
-/// a `-` spells a CSS custom property and C subtraction. Deciding between them
-/// needs the language, which a citation does not carry.
+/// count, so it makes two transitions and not one: a lone occurrence falls to
+/// none, which is loud, and two fall to one, which resolves a citation that
+/// names two places as though it named one. Making the rule side-aware does not
+/// rescue it either, because the same character on the same side belongs to a
+/// name in one language and to an operator in the next — a trailing `?` spells
+/// a Ruby predicate and a Rust try, a `-` spells a CSS custom property and C
+/// subtraction. Deciding between them needs the language, which a citation does
+/// not carry.
 ///
 /// A match is refused only where an identifier character abuts an identifier
-/// edge of the citation, so any other neighbour lets the citation read inside
-/// a longer construct: against a file spelling only `check-types-and-lint`,
-/// each of `check-types`, `types` and `and-lint` answers; `.rows {` answers to
-/// `table.rows {`; a combining mark is no identifier character either, so
-/// `cafe` answers to a `café` the file wrote decomposed. Where a
-/// name and its extension are both present the shorter has no spelling at all
-/// — beside a `save!`, both `save` and `def save` read twice — and there the
-/// escape is the anchor rather than the spelling: a line, or the file.
+/// edge of the citation, so a citation reads inside a longer construct wherever
+/// either half fails — the neighbour is not one, or the citation's own edge is
+/// not. The cases that follow are held by
+/// `a_citation_reads_inside_a_longer_construct_and_the_shortest_has_no_spelling`,
+/// and the escape from all of them is the anchor rather than the spelling: a
+/// line, or the file.
 fn is_name_character(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
