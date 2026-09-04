@@ -154,7 +154,7 @@ impl<'a> RuleValidator<'a> {
                 Ok(parsed) => {
                     let declares_governs =
                         match crate::governs::GovernsDecl::from_yaml(&fm.yaml_text) {
-                            Ok(decl) => decl.is_some(),
+                            Ok(decls) => !decls.is_empty(),
                             Err(shape) => {
                                 findings.push(Finding {
                                     slug: "rule-governs-invalid".into(),
@@ -164,7 +164,8 @@ impl<'a> RuleValidator<'a> {
                                     hint: Some(
                                         "a declaration is `concept:` plus `live_truth:` (literal \
                                      project-relative paths, no globs) plus an optional \
-                                     `decision_record:` — a malformed one governs nothing"
+                                     `decision_record:`, and a rule carries one or a list of \
+                                     them — a malformed one governs nothing"
                                             .into(),
                                     ),
                                     auto_fixable: false,

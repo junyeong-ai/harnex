@@ -3,15 +3,18 @@
 //! A rule's `paths:` frontmatter says when it LOADS; its `governs:` block
 //! says what it is truth ABOUT. The two diverge exactly where the mechanism
 //! earns its place: a naming rule loads beside the scaffold scripts it is
-//! read with and governs the manifest those scripts write. One declaration,
+//! read with and governs the manifest those scripts write. One mechanism,
 //! three consumers — review scope resolution ([`resolve`]: file → the rules
 //! that govern it), staleness ([`GovernsAuditor`]: a declared truth that no
 //! longer exists), and the completeness gate
 //! ([`crate::validate::rules`], which consumes [`GovernsDecl::from_rule`]).
 //!
-//! The declaration is a closed mapping (`concept` + `live_truth` +
-//! optional `decision_record`); `live_truth` entries are literal
-//! project-relative paths, where a directory covers its subtree.
+//! A declaration is a closed mapping (`concept` + `live_truth` + optional
+//! `decision_record`); `live_truth` entries are literal project-relative
+//! paths, where a directory covers its subtree. A rule carries one
+//! declaration or a list of them, because a document can be truth about
+//! several concepts that anchor in different places and rest on different
+//! decisions, and one per rule would keep the first and lose the rest.
 //!
 //! ## What this module refuses to do
 //!
@@ -49,7 +52,7 @@ pub struct GovernsDecl {
 #[derive(Deserialize)]
 struct GovernsFrontmatter {
     #[serde(default)]
-    governs: Option<RawDecl>,
+    governs: Option<yaml_serde::Value>,
 }
 
 #[derive(Deserialize)]
@@ -59,6 +62,24 @@ struct RawDecl {
     live_truth: yaml_serde::Value,
     #[serde(default)]
     decision_record: Option<String>,
+}
+
+/// The `governs:` block as declarations, one mapping or a list of them.
+/// Shape is stated in the diagnostic for the same reason [`truth_entries`]
+/// states it.
+fn decl_entries(value: yaml_serde::Value) -> std::result::Result<Vec<RawDecl>, ShapeError> {
+    const SHAPE: &str = "`governs:` must be a declaration or a list of declarations";
+    let raw = match value {
+        yaml_serde::Value::Sequence(seq) => seq,
+        mapping @ yaml_serde::Value::Mapping(_) => vec![mapping],
+        _ => return Err(ShapeError::Malformed(SHAPE.into())),
+    };
+    if raw.is_empty() {
+        return Err(ShapeError::NoDeclarations);
+    }
+    raw.into_iter()
+        .map(|v| yaml_serde::from_value(v).map_err(|e| ShapeError::Malformed(e.to_string())))
+        .collect()
 }
 
 /// `live_truth` as entries, with the shape stated in the diagnostic — a
@@ -90,6 +111,8 @@ pub enum ShapeError {
     EmptyConcept,
     /// `live_truth` carries no entries.
     EmptyLiveTruth,
+    /// The block is an empty list, which declares nothing while claiming to.
+    NoDeclarations,
     /// An entry is not a literal project-relative path: empty, absolute,
     /// traversing (`.`/`..`), or carrying glob metacharacters.
     BadPath(String),
@@ -101,6 +124,7 @@ impl std::fmt::Display for ShapeError {
             Self::Malformed(msg) => write!(f, "`governs:` does not parse: {msg}"),
             Self::EmptyConcept => write!(f, "`governs.concept` is empty"),
             Self::EmptyLiveTruth => write!(f, "`governs.live_truth` declares no paths"),
+            Self::NoDeclarations => write!(f, "`governs:` declares nothing"),
             Self::BadPath(p) => write!(
                 f,
                 "`governs` path '{p}' is not a literal project-relative path"
@@ -137,14 +161,21 @@ fn normalize(path: &str) -> &str {
 impl GovernsDecl {
     /// The `governs:` declaration in a rule's frontmatter YAML, when present.
     ///
-    /// `Ok(None)` is a rule that declares nothing — a fact for the caller,
-    /// never an error here. Every other deviation is a [`ShapeError`].
-    pub fn from_yaml(yaml_text: &str) -> std::result::Result<Option<Self>, ShapeError> {
+    /// An empty result is a rule that declares nothing — a fact for the
+    /// caller, never an error here. Every other deviation is a
+    /// [`ShapeError`], so a non-empty result is every declaration the rule
+    /// carries, each well-shaped.
+    pub fn from_yaml(yaml_text: &str) -> std::result::Result<Vec<Self>, ShapeError> {
         let parsed: GovernsFrontmatter =
             yaml_serde::from_str(yaml_text).map_err(|e| ShapeError::Malformed(e.to_string()))?;
-        let Some(raw) = parsed.governs else {
-            return Ok(None);
+        let Some(block) = parsed.governs else {
+            return Ok(Vec::new());
         };
+        decl_entries(block)?.into_iter().map(Self::build).collect()
+    }
+
+    /// One well-shaped declaration out of one deserialized mapping.
+    fn build(raw: RawDecl) -> std::result::Result<Self, ShapeError> {
         if raw.concept.trim().is_empty() {
             return Err(ShapeError::EmptyConcept);
         }
@@ -165,11 +196,11 @@ impl GovernsDecl {
         {
             return Err(ShapeError::BadPath(record.clone()));
         }
-        Ok(Some(Self {
+        Ok(Self {
             concept: raw.concept.trim().to_string(),
             live_truth,
             decision_record: raw.decision_record.map(|r| normalize(&r).to_string()),
-        }))
+        })
     }
 
     /// The declaration in a whole rule file's text. A file with no
@@ -177,10 +208,10 @@ impl GovernsDecl {
     /// malformed declaration are each their own error, because a caller with
     /// no validator beside it (the resolver) must be able to say which rules
     /// it could not read rather than fold them into silence.
-    pub fn from_rule(content: &str, source: &Path) -> std::result::Result<Option<Self>, DeclError> {
+    pub fn from_rule(content: &str, source: &Path) -> std::result::Result<Vec<Self>, DeclError> {
         match frontmatter::parse(content, source) {
             Ok(Some(fm)) => Self::from_yaml(&fm.yaml_text).map_err(DeclError::Shape),
-            Ok(None) => Ok(None),
+            Ok(None) => Ok(Vec::new()),
             Err(e) => Err(DeclError::Frontmatter(e.to_string())),
         }
     }
@@ -246,7 +277,7 @@ pub fn normalize_query(root: &Path, query: &str) -> Result<String> {
 pub struct RuleGoverns {
     /// The rule file, project-relative.
     pub rule: String,
-    pub governs: GovernsDecl,
+    pub governs: Vec<GovernsDecl>,
 }
 
 /// A rule whose declaration could not be read, and why — carried beside the
@@ -307,8 +338,8 @@ pub fn load(root: &Path) -> Result<LoadOutcome> {
             .to_string_lossy()
             .into_owned();
         match GovernsDecl::from_rule(&content, &path) {
-            Ok(Some(governs)) => outcome.rules.push(RuleGoverns { rule, governs }),
-            Ok(None) => {}
+            Ok(governs) if !governs.is_empty() => outcome.rules.push(RuleGoverns { rule, governs }),
+            Ok(_) => {}
             Err(e) => outcome.defects.push(LoadDefect {
                 rule,
                 error: e.to_string(),
@@ -338,7 +369,7 @@ pub fn resolve(rules: &[RuleGoverns], paths: &[String]) -> Vec<Resolution> {
             path: path.clone(),
             rules: rules
                 .iter()
-                .filter(|r| r.governs.covers(path))
+                .filter(|r| r.governs.iter().any(|decl| decl.covers(path)))
                 .map(|r| r.rule.clone())
                 .collect(),
         })
@@ -361,28 +392,33 @@ impl<'a> GovernsAuditor<'a> {
 
     pub fn audit_rule(&self, content: &str, path: &Path) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let Ok(Some(governs)) = GovernsDecl::from_rule(content, path) else {
+        let Ok(declarations) = GovernsDecl::from_rule(content, path) else {
             return findings;
         };
-        let mut declared: Vec<&String> = governs.live_truth.iter().collect();
-        if let Some(record) = &governs.decision_record {
-            declared.push(record);
-        }
-        for entry in declared {
-            if !self.root.join(entry).exists() {
-                findings.push(Finding {
-                    slug: "governs-truth-missing".into(),
-                    severity: Severity::Major,
-                    location: Location::file(path.to_path_buf()),
-                    message: format!("`governs` declares '{entry}', which does not exist"),
-                    hint: Some(
-                        "the declared truth moved or was deleted — re-point the declaration, \
-                         or retire the rule that described it"
-                            .into(),
-                    ),
-                    auto_fixable: false,
-                    fix_command: None,
-                });
+        // Every declaration, not the first: a rule's later concepts anchor
+        // in places of their own, and stopping early is the staleness this
+        // auditor exists to catch going unreported.
+        for governs in &declarations {
+            let mut declared: Vec<&String> = governs.live_truth.iter().collect();
+            if let Some(record) = &governs.decision_record {
+                declared.push(record);
+            }
+            for entry in declared {
+                if !self.root.join(entry).exists() {
+                    findings.push(Finding {
+                        slug: "governs-truth-missing".into(),
+                        severity: Severity::Major,
+                        location: Location::file(path.to_path_buf()),
+                        message: format!("`governs` declares '{entry}', which does not exist"),
+                        hint: Some(
+                            "the declared truth moved or was deleted — re-point the declaration, \
+                             or retire the rule that described it"
+                                .into(),
+                        ),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                }
             }
         }
         findings
@@ -393,30 +429,70 @@ impl<'a> GovernsAuditor<'a> {
 mod tests {
     use super::*;
 
-    fn decl(yaml: &str) -> std::result::Result<Option<GovernsDecl>, ShapeError> {
+    fn decls(yaml: &str) -> std::result::Result<Vec<GovernsDecl>, ShapeError> {
         GovernsDecl::from_yaml(yaml)
+    }
+
+    /// The one declaration a single-mapping fixture carries.
+    fn decl(yaml: &str) -> std::result::Result<GovernsDecl, ShapeError> {
+        decls(yaml).map(|mut read| {
+            assert_eq!(read.len(), 1, "fixture is not a single declaration");
+            read.remove(0)
+        })
     }
 
     #[test]
     fn a_full_declaration_parses_with_string_or_list_truth() {
-        let one = decl("governs:\n  concept: naming\n  live_truth: pyproject.toml\n")
-            .unwrap()
-            .unwrap();
+        let one = decl("governs:\n  concept: naming\n  live_truth: pyproject.toml\n").unwrap();
         assert_eq!(one.live_truth, vec!["pyproject.toml"]);
         let many = decl(
             "governs:\n  concept: naming\n  live_truth:\n    - src/\n    - pyproject.toml\n  \
              decision_record: docs/adr/001.md\n",
         )
-        .unwrap()
         .unwrap();
         assert_eq!(many.live_truth, vec!["src", "pyproject.toml"]);
         assert_eq!(many.decision_record.as_deref(), Some("docs/adr/001.md"));
     }
 
     #[test]
-    fn absence_is_none_not_an_error() {
-        assert!(decl("paths:\n  - src/**\n").unwrap().is_none());
-        assert!(decl("").unwrap().is_none());
+    fn absence_declares_nothing_and_is_not_an_error() {
+        assert!(decls("paths:\n  - src/**\n").unwrap().is_empty());
+        assert!(decls("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_rule_declares_one_concept_or_a_list_of_them() {
+        let read = decls(
+            "governs:\n- concept: serving\n  live_truth: src/serve.rs\n  decision_record: \
+             docs/adr/serve.md\n- concept: naming\n  live_truth:\n    - src/name.rs\n    - \
+             pyproject.toml\n",
+        )
+        .unwrap();
+        assert_eq!(read.len(), 2);
+        assert_eq!(read[0].concept, "serving");
+        assert_eq!(
+            read[0].decision_record.as_deref(),
+            Some("docs/adr/serve.md")
+        );
+        assert_eq!(read[1].live_truth, vec!["src/name.rs", "pyproject.toml"]);
+        assert!(read[1].decision_record.is_none());
+    }
+
+    #[test]
+    fn one_malformed_member_defeats_the_whole_block() {
+        assert_eq!(
+            decls("governs:\n- concept: ok\n  live_truth: src\n- concept: x\n  live_truth: /abs\n")
+                .unwrap_err(),
+            ShapeError::BadPath("/abs".into())
+        );
+        assert_eq!(
+            decls("governs: []\n").unwrap_err(),
+            ShapeError::NoDeclarations
+        );
+        assert!(matches!(
+            decls("governs:\n- src/a.rs\n").unwrap_err(),
+            ShapeError::Malformed(_)
+        ));
     }
 
     #[test]
@@ -450,9 +526,7 @@ mod tests {
 
     #[test]
     fn covers_is_equality_or_ancestry_never_prefix() {
-        let g = decl("governs:\n  concept: x\n  live_truth: src/foo\n")
-            .unwrap()
-            .unwrap();
+        let g = decl("governs:\n  concept: x\n  live_truth: src/foo\n").unwrap();
         assert!(g.covers("src/foo"));
         assert!(g.covers("src/foo/deep/file.rs"));
         assert!(g.covers("src/foo/"));
@@ -464,13 +538,30 @@ mod tests {
     fn resolve_answers_empty_for_an_ungoverned_path() {
         let rules = vec![RuleGoverns {
             rule: ".claude/rules/naming.md".into(),
-            governs: decl("governs:\n  concept: x\n  live_truth: src\n")
-                .unwrap()
-                .unwrap(),
+            governs: decls("governs:\n  concept: x\n  live_truth: src\n").unwrap(),
         }];
         let out = resolve(&rules, &["src/a.rs".into(), "docs/x.md".into()]);
         assert_eq!(out[0].rules, vec![".claude/rules/naming.md"]);
         assert!(out[1].rules.is_empty());
+    }
+
+    #[test]
+    fn a_rule_governs_a_path_through_any_of_its_declarations() {
+        let rules = vec![RuleGoverns {
+            rule: ".claude/rules/many.md".into(),
+            governs: decls(
+                "governs:\n- concept: a\n  live_truth: src/a\n- concept: b\n  live_truth: \
+                 src/b\n- concept: c\n  live_truth: src/c\n",
+            )
+            .unwrap(),
+        }];
+        // One query per declaration: a resolver reading only the first
+        // answers the first and denies the rest.
+        for path in ["src/a/x.rs", "src/b/x.rs", "src/c/x.rs"] {
+            let out = resolve(&rules, &[path.into()]);
+            assert_eq!(out[0].rules, vec![".claude/rules/many.md"], "{path}");
+        }
+        assert!(resolve(&rules, &["src/d/x.rs".into()])[0].rules.is_empty());
     }
 
     #[test]
@@ -569,5 +660,40 @@ mod tests {
                 .audit_rule("---\npaths: [\"src/**\"]\n---\n", Path::new("r.md"))
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn every_declaration_is_audited_and_not_only_the_first() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        for name in ["a.rs", "b.rs", "c.rs"] {
+            std::fs::write(root.path().join("src").join(name), "").unwrap();
+        }
+        let auditor = GovernsAuditor::new(root.path());
+        let declared = ["src/a.rs", "src/b.rs", "src/c.rs"];
+        let rule = |truths: [&str; 3]| {
+            let body: String = truths
+                .iter()
+                .enumerate()
+                .map(|(i, t)| format!("- concept: c{i}\n  live_truth: {t}\n"))
+                .collect();
+            format!("---\ngoverns:\n{body}---\n")
+        };
+        assert!(
+            auditor
+                .audit_rule(&rule(declared), Path::new("r.md"))
+                .is_empty(),
+            "every declared truth exists"
+        );
+        // One member at a time: a whole-set mutant is killed by an auditor
+        // that reads only the first declaration, and says nothing about the
+        // rest.
+        for i in 0..declared.len() {
+            let mut mutated = declared;
+            mutated[i] = "src/gone.rs";
+            let findings = auditor.audit_rule(&rule(mutated), Path::new("r.md"));
+            assert_eq!(findings.len(), 1, "declaration {i} unaudited");
+            assert!(findings[0].message.contains("src/gone.rs"));
+        }
     }
 }
