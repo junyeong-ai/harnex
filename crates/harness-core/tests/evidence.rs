@@ -335,6 +335,41 @@ fn the_leftmost_reserved_separator_decides_which_anchor_a_body_names() {
 }
 
 #[test]
+fn a_body_with_nothing_after_its_separator_never_named_an_anchor() {
+    // A claim carries the trimmed interior of its marker, and each separator
+    // is spaced, so a body with whitespace on either side of one never matches
+    // it. The path the verifier reports is what proves both: an untrimmed body
+    // would split here and hand the anchor nothing to resolve.
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(tmp.path().join("t.rs"), "pub fn a() {}\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    for (body, path) in [
+        ("t.rs :: ", "t.rs ::"),
+        ("t.rs ::   ", "t.rs ::"),
+        (" :: sym", ":: sym"),
+        ("t.md § ", "t.md §"),
+        (" § Head", "§ Head"),
+    ] {
+        let findings =
+            verifier.verify_text(&format!("[file: {body}]"), Path::new("test.md"), tmp.path());
+        assert_eq!(findings.len(), 1, "`{body}` must raise one finding");
+        assert_eq!(
+            findings[0].message,
+            format!("file '{path}' does not exist"),
+            "`{body}` must reach the verifier as that path, not as an empty anchor"
+        );
+    }
+
+    assert!(
+        verifier
+            .verify_text("[file: ]", Path::new("test.md"), tmp.path())
+            .is_empty(),
+        "an empty body says nothing to check and is not a claim"
+    );
+}
+
+#[test]
 fn a_sample_is_a_sample_wherever_its_container_indents_it() {
     // Each of these was a Blocker against a path the author wrote as an
     // example: the fence opens at a column a line-at-a-time reader reads as

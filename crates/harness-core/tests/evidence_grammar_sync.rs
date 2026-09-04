@@ -22,13 +22,25 @@ use harness_core::evidence::{AnchorKind, ClaimKind, EvidenceVerifier, parse_clai
 
 /// Every anchor an author can write, and the documents that teach it.
 ///
-/// Three documents spell the grammar and each spells it whole: `harness.toml`
-/// beside the section that turns the check on, `rule-template.md` in the
-/// skeleton every generated rule starts from, and README as the oracle's
-/// public surface. Nothing else respells it — a fourth site is a fourth
-/// chance to teach a form the parser does not read, and `SKILL.md` names the
-/// concept and points at the template instead.
+/// Four sites spell the grammar and each spells it whole. Three are read
+/// before writing a claim: `harness.toml` beside the section that turns the
+/// check on, `rule-template.md` in the skeleton every generated rule starts
+/// from, and README as the oracle's public surface. The fourth is handed to an
+/// author who got it wrong — the hint on the violation a malformed claim
+/// raises, which is a teaching site whether or not it was built as one, and so
+/// is held here rather than left to drift. Nothing else respells it: `SKILL.md`
+/// names the concept and points at the template, and the parser's own module
+/// points at the enumerations beside it.
 const GRAMMAR: &[(&str, &[AnchorKind])] = &[
+    (
+        "crates/harness-core/src/evidence/internal.rs",
+        &[
+            AnchorKind::Whole,
+            AnchorKind::Line,
+            AnchorKind::Section,
+            AnchorKind::Symbol,
+        ],
+    ),
     (
         "README.md",
         &[

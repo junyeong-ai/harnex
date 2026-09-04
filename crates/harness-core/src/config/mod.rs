@@ -2058,7 +2058,8 @@ mod tests {
         .unwrap_err();
         assert!(
             err.to_string().contains("unattendedRemeasure"),
-            "a key the schema does not know must fail loudly, never default the              declared behavior away: {err}"
+            "a key the schema does not know must fail loudly, never default \
+             the declared behavior away: {err}"
         );
     }
 
