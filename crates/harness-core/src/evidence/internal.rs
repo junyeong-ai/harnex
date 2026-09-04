@@ -113,12 +113,12 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
 }
 
 /// A symbol anchor resolves when the file spells it exactly once, abutted by
-/// no identifier character.
+/// no character a name could continue with.
 ///
 /// The boundary is what separates `fn from_str` from `fn from_str_rejects`:
 /// a declaration name that is the prefix of another is ordinary, so a
 /// substring match would resolve a claim against a definition nobody cited.
-/// It applies only where the needle's own edge is an identifier character, so
+/// It applies only where the needle's own edge is one of those characters, so
 /// a needle ending in a delimiter still resolves.
 ///
 /// Two occurrences are a violation rather than a pass on the first, for the
@@ -150,8 +150,23 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
     }
 }
 
-fn is_identifier(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
+/// The characters a name can be spelled with, across the languages a claim
+/// may cite.
+///
+/// Wider than any one language on purpose. The file being cited has a language
+/// this module does not know, and the two mistakes it can make are not equal: a
+/// character missing here lets a prefix of a longer name resolve as though it
+/// were the name, and the gate says nothing. A character wrongly here fails a
+/// correct citation loudly, with the hint that names the longer spelling. So
+/// the set holds every character that spells part of a name somewhere — `-` in
+/// a YAML key, a CSS custom property, a Lisp or shell name; `?` and `!` closing
+/// a Ruby predicate or a Rust macro; `$` opening a shell or PHP variable.
+///
+/// `.` and `:` are the line, and are left out: they join names that are each
+/// complete on their own, so counting them here would reject a citation of the
+/// left one.
+fn is_name_character(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '-' | '?' | '!' | '$')
 }
 
 /// Every position `needle` reads at, counted once each.
@@ -162,8 +177,8 @@ fn is_identifier(c: char) -> bool {
 /// scan sees one of them, and a symbol naming two places would then resolve
 /// as though it named one.
 fn bounded_occurrences(haystack: &str, needle: &str) -> usize {
-    let opens = needle.chars().next().is_some_and(is_identifier);
-    let closes = needle.chars().next_back().is_some_and(is_identifier);
+    let opens = needle.chars().next().is_some_and(is_name_character);
+    let closes = needle.chars().next_back().is_some_and(is_name_character);
     haystack
         .char_indices()
         .filter(|(at, _)| haystack[*at..].starts_with(needle))
@@ -172,12 +187,12 @@ fn bounded_occurrences(haystack: &str, needle: &str) -> usize {
                 || !haystack[..*at]
                     .chars()
                     .next_back()
-                    .is_some_and(is_identifier);
+                    .is_some_and(is_name_character);
             let after = !closes
                 || !haystack[at + needle.len()..]
                     .chars()
                     .next()
-                    .is_some_and(is_identifier);
+                    .is_some_and(is_name_character);
             before && after
         })
         .count()
