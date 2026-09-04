@@ -69,6 +69,8 @@ until then — a pin on a negative, a guard whose own error path swallows the
 finding, an arm no fixture reaches. A test asserting a result has that result
 as its evidence and is not this case. Put one well-formed change through the
 same harness too: a harness that misreports is grading itself, not the guard.
+Where the guard is over a set, mutate a member at a time: a whole-set mutant
+that kills what one member's mutant kills has said nothing about the rest.
 
 ## Commits
 
