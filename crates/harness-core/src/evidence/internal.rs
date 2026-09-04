@@ -170,12 +170,15 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
 /// a `-` spells a CSS custom property and C subtraction. Deciding between them
 /// needs the language, which a citation does not carry.
 ///
-/// What the narrow rule costs is stated rather than traded away: a name spelled
-/// with anything outside it has a proper prefix that resolves against it, so
-/// `check-types` answers to a file spelling only `check-types-and-lint`. The
-/// answer is the one the unresolved hint already gives — cite the declaration
-/// as the file spells it. `check-types-and-lint:` and `def valid?` name one
-/// place each; their prefixes name a guess.
+/// A match is refused only where an identifier character abuts an identifier
+/// edge of the citation, so any other neighbour lets a citation read inside a
+/// longer construct. That cuts three ways, and the third has no repair: a
+/// prefix resolves against a longer name, `check-types` against a file
+/// spelling only `check-types-and-lint`; a suffix does the same, `.rows {`
+/// against `table.rows {`; and where a name and its extension are both
+/// present the shorter one has no spelling at all — beside a `save!`, both
+/// `save` and `def save` read twice. The escape is the anchor rather than the
+/// spelling: a line, or the file.
 fn is_name_character(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
@@ -188,9 +191,9 @@ fn is_name_character(c: char) -> bool {
 /// length sees one of them, and a symbol naming two places would then resolve
 /// as though it named one.
 ///
-/// The search itself stays `str::find`, which is what keeps a cited file's size
-/// off the critical path — asking `starts_with` at every character instead
-/// costs a factor of fifteen on a file of a few megabytes.
+/// The search stays `str::find`, which is what keeps a cited file's size off
+/// the critical path; asking `starts_with` at every character instead gives
+/// that up.
 fn bounded_occurrences(haystack: &str, needle: &str) -> usize {
     let opens = needle.chars().next().is_some_and(is_name_character);
     let closes = needle.chars().next_back().is_some_and(is_name_character);
