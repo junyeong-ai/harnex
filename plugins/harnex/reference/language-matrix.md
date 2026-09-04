@@ -183,7 +183,11 @@ repo is never penalised for the tool it does not install.
   actually prompt. Read-only built-ins
   (`ls`, `grep`, `cat`, read-only `git`) never prompt, so an allow rule for them
   is a no-op — never emit one. Broad env-runners (`npx *`) are excluded; scope
-  them per project (`npx <tool> *`).
+  them per project (`npx <tool> *`). That excludes a spelling rather than the
+  capability: the package managers this matrix grants each carry their own
+  env-runner, so the exclusion narrows what is typed casually and not what is
+  reachable. `typescript-dev`'s doc comment states the reach; the observation
+  ledger enumerates it across every profile.
 - `constitution.md` is the one `.claude/rules/*.md` that omits `paths:`
   (foundation, always-loaded). Every other rule carries `paths:`.
 - **The per-file formatter must resolve the same config the gate does.**
@@ -195,10 +199,11 @@ repo is never penalised for the tool it does not install.
   from the project's manifest. Node is the second: biome applies its own
   defaults when it finds no configuration, and its search climbs to the home
   directory, so an unconfigured project would have every edit rewritten
-  against biome's defaults or a parent directory's. The hook reads the four
-  names biome resolves and stands down when none is there — a project that
-  formats with prettier keeps formatting with prettier. It then runs the biome
-  the project installed rather than one fetched at edit time: Yarn Plug'n'Play
+  against biome's defaults or a parent directory's. The hook reads the names
+  biome resolves — the dotted pair among them is Biome 2 and later — and stands
+  down when none is there — a project that
+  formats with prettier keeps formatting with prettier. It then reaches the biome
+  the project can already run rather than fetching one at edit time: Yarn Plug'n'Play
   writes no `node_modules/.bin`, so `npx` reaches no workspace binary there,
   and a registry fetch inside a per-edit hook is a network round trip against
   the hook timeout and an unpinned version besides. Check the same property
