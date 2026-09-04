@@ -182,31 +182,43 @@ fn is_name_character(c: char) -> bool {
 
 /// Every position `needle` reads at, counted once each.
 ///
-/// The scan asks at each character rather than resuming past the last match,
-/// because two occurrences may share characters: `::b::` reads twice in
-/// `crate::a::b::b::c`, on either side of the middle `b`. A non-overlapping
-/// scan sees one of them, and a symbol naming two places would then resolve
+/// The scan resumes one character past a match rather than past its whole
+/// length, because two occurrences may share characters: `::b::` reads twice in
+/// `crate::a::b::b::c`, on either side of the middle `b`. Resuming past the
+/// length sees one of them, and a symbol naming two places would then resolve
 /// as though it named one.
+///
+/// The search itself stays `str::find`, which is what keeps a cited file's size
+/// off the critical path — asking `starts_with` at every character instead
+/// costs a factor of fifteen on a file of a few megabytes.
 fn bounded_occurrences(haystack: &str, needle: &str) -> usize {
     let opens = needle.chars().next().is_some_and(is_name_character);
     let closes = needle.chars().next_back().is_some_and(is_name_character);
-    haystack
-        .char_indices()
-        .filter(|(at, _)| haystack[*at..].starts_with(needle))
-        .filter(|(at, _)| {
-            let before = !opens
-                || !haystack[..*at]
-                    .chars()
-                    .next_back()
-                    .is_some_and(is_name_character);
-            let after = !closes
-                || !haystack[at + needle.len()..]
-                    .chars()
-                    .next()
-                    .is_some_and(is_name_character);
-            before && after
-        })
-        .count()
+    let mut count = 0;
+    let mut from = 0;
+    while let Some(found) = haystack[from..].find(needle) {
+        let at = from + found;
+        let before = !opens
+            || !haystack[..at]
+                .chars()
+                .next_back()
+                .is_some_and(is_name_character);
+        let after = !closes
+            || !haystack[at + needle.len()..]
+                .chars()
+                .next()
+                .is_some_and(is_name_character);
+        if before && after {
+            count += 1;
+        }
+        // One character, never one byte: `from` indexes the next slice and has
+        // to stay on a boundary.
+        let Some(step) = haystack[at..].chars().next().map(char::len_utf8) else {
+            break;
+        };
+        from = at + step;
+    }
+    count
 }
 
 /// A section anchor resolves when the file spells that heading exactly once.
