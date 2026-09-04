@@ -27,8 +27,11 @@ impl Verifier for InternalFileVerifier {
                 return VerifyOutcome::Violation {
                     message: format!("provenance '{}' expects a file claim", self.provenance),
                     hint: Some(
-                        "mark it as an internal claim: a `file:` marker in square brackets around a \
-                         project-relative path, with an optional `:line` or ` § Heading`"
+                        "mark it as an internal claim — a project-relative path in a file marker: \
+                         [file: path/to/file.ext] for the whole file, \
+                         [file: path/to/file.ext :: fn name] for what it spells, \
+                         [file: path/to/doc.md § Heading] for a section, \
+                         [file: path/to/file.ext:42] for a line"
                             .into(),
                     ),
                 };
@@ -92,7 +95,9 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
         return VerifyOutcome::Violation {
             message: format!("line {line} of '{path}' is blank"),
             hint: Some(
-                "a line anchor is verified for the file being that long, so it survives the edit                  that moved its subject — anchor the claim on what the file spells instead"
+                "a line anchor is verified for the file being that long and the line \
+                 carrying text, so it survives the edit that moved its subject — \
+                 anchor the claim on what the file spells instead"
                     .into(),
             ),
         };
@@ -119,16 +124,19 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
             message: format!("no symbol '{symbol}' in '{path}'"),
             hint: Some(match content.contains(symbol) {
                 true => format!(
-                    "'{symbol}' occurs in the file only inside a longer name — cite the                      declaration as the file spells it"
+                    "'{symbol}' occurs in the file only inside a longer name — cite \
+                     the declaration as the file spells it"
                 ),
-                false => "cite the declaration exactly as the file spells it, or point at the                           file alone"
+                false => "cite the declaration exactly as the file spells it, or point \
+                          at the file alone"
                     .into(),
             }),
         },
         found => VerifyOutcome::Violation {
             message: format!("'{symbol}' occurs {found} times in '{path}'"),
             hint: Some(
-                "an anchor names one place — extend the spelling until it does, or point at the                  file alone"
+                "an anchor names one place — extend the spelling until it does, or \
+                 point at the file alone"
                     .into(),
             ),
         },

@@ -1,14 +1,11 @@
 //! # Claim parser
 //!
-//! Extracts provenance-marked claims from markdown. Recognised syntaxes
-//! (all whitespace-tolerant):
-//!
-//! - `[file: path/to/file.ext]` → the whole file is the owner
-//! - `[file: path/to/file.ext:42]` → that line
-//! - `[file: path/to/file.md § Heading]` → that section
-//! - `[fetched: YYYY-MM-DD] https://...` → fetched-url claim
-//! - `[context7: <library-id>]` → context7 claim
-//! - `[memory]` → unverified memory claim
+//! Extracts provenance-marked claims from markdown, whitespace-tolerant. What
+//! it recognises is enumerated in this file rather than listed here: [`ClaimKind`]
+//! is the claim shapes and [`RESERVED`] the anchors a file claim may name. The
+//! documents that teach an author are held to `AnchorKind::ALL` by
+//! `evidence_grammar_sync`, and a list here would be one more place to teach a
+//! form the parser does not read.
 //!
 //! Lines are 1-indexed (matches editor convention).
 
@@ -48,10 +45,12 @@ pub enum ClaimKind {
 /// The anchor decides whether the check still means anything a year later. A
 /// section and a symbol are matched against what the file spells, so each
 /// survives the edit that only moves its subject and fails on the rename that
-/// invalidates the claim. A line names a position instead, and a position
-/// proves only that the file is that long and the line is not blank — it is
-/// the anchor for a place inside a body that no name identifies, and it holds
-/// through the edit that moves its subject.
+/// removes the spelling — which is narrower than the rename that invalidates
+/// the claim, because a rename leaving the old name in a comment leaves the
+/// anchor something to resolve against. A line names a position instead, and a
+/// position proves only that the file is that long and the line is not blank —
+/// it is the anchor for a place inside a body that no name identifies, and it
+/// holds through the edit that moves its subject.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Anchor {
     Whole,
@@ -175,6 +174,11 @@ fn file_claim_bodies(line: &str) -> Vec<&str> {
 /// the verifier as that anchor and fails as a missing file, loudly and in one
 /// place.
 ///
+/// Each separator is spaced and the body arrives trimmed, so neither half can
+/// be empty once one matches: a body with nothing but whitespace on either
+/// side of its separator never matched one, and reaches the verifier as a path
+/// that does not exist.
+///
 /// Otherwise a trailing `:<digits>` is the line, which leaves a path free to
 /// hold a colon — a Windows drive letter reaches the verifier intact. An
 /// empty path is not a claim: `[file: ]` says nothing to check.
@@ -186,7 +190,7 @@ fn split_file_claim(body: &str) -> Option<(&str, Anchor)> {
     {
         let path = body[..at].trim_end();
         let inner = body[at + separator.len()..].trim();
-        return (!path.is_empty() && !inner.is_empty()).then(|| (path, anchor(inner.to_string())));
+        return Some((path, anchor(inner.to_string())));
     }
     if let Some((path, tail)) = body.rsplit_once(':')
         && !tail.is_empty()
