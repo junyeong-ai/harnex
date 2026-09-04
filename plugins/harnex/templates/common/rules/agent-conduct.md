@@ -49,6 +49,12 @@ make an assertion pass, and never route around a test with a helper script.
 Tests verify a solution; they do not define it. A test that is itself wrong is
 worth saying so about — say it rather than satisfying it.
 
+A test that cannot fail verifies nothing. Where the claim is that something
+does not happen, make it happen once: remove what the guard catches, watch it
+fail, restore. A pin on a negative, a guard its own error path swallows, and a
+branch no fixture reaches are all green. A test asserting a result has that
+result as its evidence and is not this case.
+
 ## Match the blast radius
 
 Local and reversible — editing, running the suite, committing to a working

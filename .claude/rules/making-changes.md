@@ -63,6 +63,13 @@ A surface symptom, an issue, or a subagent's report is a hypothesis to verify,
 never a conclusion to ship. Claim completion with the commands already run and
 their output, not with another pass.
 
+A guard claiming that something does not happen is proven by making it happen:
+remove what it catches, watch it fail, restore. Green and absent read alike
+until then — a pin on a negative, a guard whose own error path swallows the
+finding, an arm no fixture reaches. A test asserting a result has that result
+as its evidence and is not this case. Put one well-formed change through the
+same harness too: a harness that misreports is grading itself, not the guard.
+
 ## Commits
 
 One commit, one decision, in a revertible unit. Implement as though it had
