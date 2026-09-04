@@ -70,7 +70,7 @@ impl PermissionProfile {
 /// commands (`ls`, `grep`, `find`, read-only `git`, …) never prompt, so they
 /// never appear in an allow list.
 fn baseline() -> PermissionProfile {
-    PermissionProfile {
+    let mut profile = PermissionProfile {
         name: "baseline",
         allow: vec![],
         ask: vec![],
@@ -166,7 +166,14 @@ fn baseline() -> PermissionProfile {
             "Bash(find * -exec *)",
             "Bash(find * -delete)",
         ],
-    }
+    };
+    // harnex's own hook wrappers spawn the program their caller names, and
+    // `workspace` grants `Bash(harnex *)` to every harness — without these the
+    // allow floor reaches every rule above. `hook_runner` owns the list.
+    profile
+        .deny
+        .extend_from_slice(crate::guard::hook_runner::SPAWNING_GUARD_DENIES);
+    profile
 }
 
 fn git_strict() -> PermissionProfile {
@@ -580,6 +587,21 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_program_spawning_guard_verb_is_denied() {
+        // `workspace` grants `Bash(harnex *)`, so a guard verb that spawns a
+        // caller-named program is an env-runner inside the allow floor. The
+        // verb list owns the set; this holds the deny floor to it.
+        let deny = baseline().deny;
+        for rule in crate::guard::hook_runner::SPAWNING_GUARD_DENIES {
+            assert!(
+                deny.contains(rule),
+                "baseline stopped splicing the guard-verb denies — the \
+                 workspace floor's `Bash(harnex *)` reaches `{rule}` again"
+            );
         }
     }
 

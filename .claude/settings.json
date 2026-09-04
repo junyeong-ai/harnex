@@ -85,6 +85,8 @@
       "Bash(git restore .)",
       "Bash(git stash clear *)",
       "Bash(git stash drop *)",
+      "Bash(harnex guard hook-run *)",
+      "Bash(harnex guard hook-stop *)",
       "Bash(node --eval *)",
       "Bash(node -e *)",
       "Bash(python -c *)",

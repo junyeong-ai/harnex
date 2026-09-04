@@ -35,6 +35,18 @@ pub enum HookRunOutcome {
     },
 }
 
+/// Deny rules for the `harnex guard` verbs that spawn a program their caller
+/// names. The `workspace` allow floor grants `Bash(harnex *)` to every harness,
+/// so each of these verbs reaches any binary the deny floor refuses unless the
+/// floor refuses the verb itself. `policy::profiles::baseline` splices this in
+/// — one list, so a verb added here cannot be added without its deny. A new
+/// subcommand that spawns a caller-named program belongs here in the same
+/// change.
+pub(crate) const SPAWNING_GUARD_DENIES: &[&str] = &[
+    "Bash(harnex guard hook-run *)",
+    "Bash(harnex guard hook-stop *)",
+];
+
 pub struct HookRunner;
 
 impl HookRunner {
