@@ -15,12 +15,13 @@ governs:
      touched. -->
 
 <!-- harnex-fill: one bullet per invariant the code under these paths ALREADY
-     enforces, each naming the file that enforces it as a marked claim:
-     `[file: path/to/file.ext:42]`, or `[file: path/to/file.ext]` where the
-     whole file is the owner. Where the owner is another document, name the
-     section — `[file: .claude/rules/other.md § Escape hatch]` — which fails
-     on the rename that invalidates it, where a line only ever proved the file
-     was that long.
+     enforces, each naming the file that enforces it as a marked claim.
+     Name what the file spells: `[file: path/to/file.ext :: def load]` for a
+     definition, `[file: .claude/rules/other.md § Escape hatch]` for a
+     document's section, `[file: path/to/file.ext]` where the whole file is
+     the owner. Each of those fails on the rename that invalidates it.
+     `[file: path/to/file.ext:42]` is for a place inside a body that no name
+     identifies — it only ever proved the file was that long.
      The pointer is the point: it is what a reader checks, what `harnex check`
      resolves, and what makes this a rule rather than an opinion.
 

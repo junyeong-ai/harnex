@@ -12,7 +12,7 @@
 # this file.
 
 [meta]
-harnex_version = ">=0.7, <0.8"
+harnex_version = ">=0.8, <0.9"
 
 [validate.rules]
 # The Claude Code memory budget applies to what loads every turn — a rule
@@ -63,15 +63,17 @@ reject_unknown_keys = true
 # every surface it validates for shape — rules, skills, agents, output styles,
 # routines — and resolves every marked claim against the tree:
 #
-#   [file: pyproject.toml]              the file exists
-#   [file: path/to/thing.py:42]         and is at least that long
-#   [file: docs/design.md § Storage]    and spells that heading, exactly once
+#   [file: pyproject.toml]                the file exists
+#   [file: path/to/thing.py :: def load]  and spells that, exactly once
+#   [file: docs/design.md § Storage]      and spells that heading, exactly once
+#   [file: path/to/thing.py:42]           and is at least that long
 #
-# Pick the anchor for what it proves. A line survives the edit that moves its
-# subject — the check only ever asked how long the file is — so a heading is
-# the stronger anchor wherever the target has one: it fails on the rename that
-# invalidated the claim, and a heading two sections answer to fails as well,
-# because a pointer resolving to both names neither.
+# Pick the anchor for what it proves. A symbol and a heading are matched
+# against what the file spells, so each fails on the rename that invalidated
+# the claim, and one that answers to two places fails as well, because a
+# pointer resolving to both names neither. A line only ever asked how long the
+# file is, so it survives the edit that moved its subject: reserve it for a
+# place inside a body that no name identifies.
 #
 # Marked rather than inferred, which is what keeps the check out of prose. A
 # bare backtick path is documentation and stays documentation; `api/gateway.io:8443`
