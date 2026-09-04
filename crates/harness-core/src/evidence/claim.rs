@@ -122,8 +122,12 @@ const SYMBOL_SEPARATOR: &str = " :: ";
 /// Each is spelled with spaces, which is what keeps it out of the text it
 /// separates: a path holds neither, an ordinary `§` in prose is not one, and
 /// `Foo::bar` in a symbol carries no spaces around its own colons. The
-/// leftmost decides, so an anchor may carry the other. Adding a reserved
-/// anchor is a row here.
+/// leftmost decides, so an anchor may carry the other.
+///
+/// Adding a reserved anchor is a row here, and two properties make the
+/// leftmost rule mean what it says: a separator is spaced on both sides, and
+/// none contains another. `reserved_separators_are_spaced_and_disjoint` holds
+/// a new row to both.
 type Reserved = (&'static str, fn(String) -> Anchor);
 
 const RESERVED: [Reserved; 2] = [
@@ -177,7 +181,9 @@ fn file_claim_bodies(line: &str) -> Vec<&str> {
 /// Each separator is spaced and the body arrives trimmed, so neither half can
 /// be empty once one matches: a body with nothing but whitespace on either
 /// side of its separator never matched one, and reaches the verifier as a path
-/// that does not exist.
+/// that does not exist. Keep it that way — a dangling separator names a file,
+/// and refusing it here would drop the claim rather than report it, which is
+/// a marker on a real path passing a clean gate.
 ///
 /// Otherwise a trailing `:<digits>` is the line, which leaves a path free to
 /// hold a colon — a Windows drive letter reaches the verifier intact. An
@@ -274,6 +280,26 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reserved_separators_are_spaced_and_disjoint() {
+        for (separator, _) in RESERVED {
+            assert!(
+                separator.starts_with(' ') && separator.ends_with(' '),
+                "`{separator}` must be spaced on both sides, or it reads out of the text it \
+                 separates — `Foo::bar` in a symbol, an ordinary section sign in prose"
+            );
+        }
+        for (outer, _) in RESERVED {
+            for (inner, _) in RESERVED {
+                assert!(
+                    outer == inner || !outer.contains(inner),
+                    "`{outer}` contains `{inner}`, so the leftmost match no longer decides which \
+                     anchor a body names"
+                );
+            }
+        }
+    }
 
     fn file_claims(md: &str) -> Vec<(String, Anchor)> {
         parse_claims(md)
