@@ -43,11 +43,11 @@ floor, named for that, and carries the coverage it was measured at.
 
 - **A transcript's own order is authoritative; its timestamps are not.** A
   session's files are interleaved by `interleave_by_time`
-  ([file: crates/harness-core/src/session/mod.rs]), which never reorders within
+  ([file: crates/harness-core/src/session/mod.rs :: fn interleave_by_time]), which never reorders within
   one — 2.27% of adjacent records are stamped behind the record before them.
   Sorting the concatenation is the shape that looks equivalent and is not.
 - **One rule decides whether a rate can be compared.** `Measurement::supports`
-  ([file: crates/harness-core/src/session/baseline.rs]) is what `diff` withholds
+  ([file: crates/harness-core/src/session/baseline.rs :: pub fn supports]) is what `diff` withholds
   on and what `baseline save` discloses; a second copy of the floor check in
   either place drifts silently, because both still return plausible answers.
 - **Coverage counts the window, not the file.** `read_transcript` applies
@@ -63,14 +63,14 @@ floor, named for that, and carries the coverage it was measured at.
   plainly.
 - **`serde_json` is `preserve_order` here**, pulled in by `schemars`, so a
   `Value` serialises in insertion order. Canonicalise before using one as a
-  map key — `canonical` ([file: crates/harness-core/src/session/harness.rs]) does,
+  map key — `canonical` ([file: crates/harness-core/src/session/harness.rs :: fn canonical]) does,
   and its test asserts the ordering it exists for.
 - **A commit is a floor, not a count.** The runtime attaches `gitOperation` to
   some commits and not others — 29 of git's 42 over this project. Anything
   denominated in commits reads high, and `repository.authored_in_span` reports
   what the floor is a floor against so a consumer can see the gap.
 - **Never pipe stdin to a subprocess that also writes stdout.** The repository
-  survey ([file: crates/harness-core/src/session/repository.rs]) passes its
+  survey ([file: crates/harness-core/src/session/repository.rs :: pub fn survey]) passes its
   query as a file; a piped write deadlocks once the child's output fills the
   kernel buffer, measured between six and eight thousand commits.
 
@@ -81,7 +81,7 @@ baseline written by one build is read by another, and a report is written
 against the names. Add one line to the `wire_enum!` block (it writes `ALL`, `from_str` and
 `as_str`, and the exhaustive match forces the rest). Where a shipped document
 depends on the new name, add it to the `CONTRACTS` table
-([file: crates/harness-core/tests/plugin_prose_sync.rs]) as `Type.field` **and
+([file: crates/harness-core/tests/plugin_prose_sync.rs :: const CONTRACTS]) as `Type.field` **and
 move that document's declared citation count**: the count is the guard's
 denominator, so a document that gains a citation fails the build until the
 citation is either watched or the count is moved deliberately.
