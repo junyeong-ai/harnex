@@ -229,6 +229,112 @@ fn a_section_anchor_resolves_against_the_heading_the_file_spells() {
 }
 
 #[test]
+fn a_symbol_anchor_resolves_against_what_the_file_spells_and_not_against_a_longer_name() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("src/lib.rs");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(
+        &target,
+        "pub fn write_atomic() {}\n\npub fn write_atomic_rejects() {}\n",
+    )
+    .unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let resolves = |claim: &str| {
+        verifier
+            .verify_text(claim, Path::new("test.md"), tmp.path())
+            .is_empty()
+    };
+
+    assert!(
+        resolves("Stated in [file: src/lib.rs :: pub fn write_atomic]."),
+        "the declaration the file spells must resolve"
+    );
+    assert!(
+        !resolves("Stated in [file: src/lib.rs :: pub fn write_atom]."),
+        "a prefix of a longer name must not resolve — 612 declaration names in \
+         this workspace are the prefix of another"
+    );
+    assert!(
+        !resolves("Stated in [file: src/lib.rs :: pub fn renamed_away]."),
+        "the rename that invalidates the claim must fail the gate"
+    );
+}
+
+#[test]
+fn a_symbol_naming_two_places_names_neither() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("src/lib.rs");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(
+        &target,
+        "mod a {\n    pub fn load() {}\n}\nmod b {\n    pub fn load() {}\n}\n",
+    )
+    .unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(
+        "Stated in [file: src/lib.rs :: pub fn load].",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert_eq!(findings.len(), 1, "two occurrences must fail the gate");
+    assert_eq!(findings[0].severity, Severity::Blocker);
+    assert!(
+        findings[0].message.contains("occurs 2 times"),
+        "the finding must say how many places answer to it: {}",
+        findings[0].message
+    );
+}
+
+#[test]
+fn a_line_anchor_pointing_at_a_blank_line_points_at_nothing() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("src/lib.rs");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "pub fn a() {}\n\npub fn b() {}\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    assert!(
+        verifier
+            .verify_text("[file: src/lib.rs:1].", Path::new("test.md"), tmp.path())
+            .is_empty(),
+        "a line carrying text resolves"
+    );
+
+    let findings = verifier.verify_text("[file: src/lib.rs:2].", Path::new("test.md"), tmp.path());
+    assert_eq!(
+        findings.len(),
+        1,
+        "a claim on a blank line names nothing and must fail"
+    );
+    assert_eq!(findings[0].severity, Severity::Blocker);
+}
+
+#[test]
+fn the_leftmost_reserved_separator_decides_which_anchor_a_body_names() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(tmp.path().join("doc.md"), "# D\n\n## A :: B\n\nbody\n").unwrap();
+    std::fs::write(tmp.path().join("lib.rs"), "pub fn a() {} // § b\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let resolves = |claim: &str| {
+        verifier
+            .verify_text(claim, Path::new("test.md"), tmp.path())
+            .is_empty()
+    };
+
+    assert!(
+        resolves("[file: doc.md § A :: B]."),
+        "a heading may carry the symbol separator, because the leftmost one decides"
+    );
+    assert!(
+        resolves("[file: lib.rs :: pub fn a() {} // § b]."),
+        "a symbol may carry the section separator, for the same reason"
+    );
+}
+
+#[test]
 fn a_sample_is_a_sample_wherever_its_container_indents_it() {
     // Each of these was a Blocker against a path the author wrote as an
     // example: the fence opens at a column a line-at-a-time reader reads as

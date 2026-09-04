@@ -332,6 +332,13 @@ pub(crate) fn line_count(source: &str) -> u32 {
     u32::try_from(normalize(source).lines().count()).unwrap_or(u32::MAX)
 }
 
+/// The text of the 1-indexed `line`, terminators normalised as [`line_count`]
+/// counts them, or `None` past the end.
+pub(crate) fn line_at(source: &str, line: u32) -> Option<String> {
+    let index = usize::try_from(line.checked_sub(1)?).ok()?;
+    normalize(source).lines().nth(index).map(str::to_string)
+}
+
 /// The 1-indexed line an offset falls on.
 fn line_of(text: &str, offset: usize) -> u32 {
     let count = text[..offset].bytes().filter(|&b| b == b'\n').count() + 1;

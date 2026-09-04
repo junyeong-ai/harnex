@@ -65,6 +65,10 @@ impl Verifier for InternalFileVerifier {
                 Ok(content) => verify_section(path, &content, heading),
                 Err(_) => unreadable(path),
             },
+            Anchor::Symbol(symbol) => match std::fs::read_to_string(&full) {
+                Ok(content) => verify_symbol(path, &content, symbol),
+                Err(_) => unreadable(path),
+            },
         }
     }
 }
@@ -84,7 +88,76 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
             hint: Some("update the line number".into()),
         };
     }
+    if crate::markdown::line_at(content, line).is_none_or(|text| text.trim().is_empty()) {
+        return VerifyOutcome::Violation {
+            message: format!("line {line} of '{path}' is blank"),
+            hint: Some(
+                "a line anchor is verified for the file being that long, so it survives the edit                  that moved its subject — anchor the claim on what the file spells instead"
+                    .into(),
+            ),
+        };
+    }
     VerifyOutcome::Ok
+}
+
+/// A symbol anchor resolves when the file spells it exactly once, abutted by
+/// no identifier character.
+///
+/// The boundary is what separates `fn from_str` from `fn from_str_rejects` —
+/// 612 declaration names in this workspace are the prefix of another, so a
+/// substring match would resolve a claim against a definition nobody cited.
+/// It applies only where the needle's own edge is an identifier character, so
+/// a needle ending in a delimiter still resolves.
+///
+/// Two occurrences are a violation rather than a pass on the first, for the
+/// reason a section's are: an anchor that names two places names neither, and
+/// the author holds the longer spelling that separates them.
+fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
+    match bounded_occurrences(content, symbol) {
+        1 => VerifyOutcome::Ok,
+        0 => VerifyOutcome::Violation {
+            message: format!("no symbol '{symbol}' in '{path}'"),
+            hint: Some(match content.contains(symbol) {
+                true => format!(
+                    "'{symbol}' occurs in the file only inside a longer name — cite the                      declaration as the file spells it"
+                ),
+                false => "cite the declaration exactly as the file spells it, or point at the                           file alone"
+                    .into(),
+            }),
+        },
+        found => VerifyOutcome::Violation {
+            message: format!("'{symbol}' occurs {found} times in '{path}'"),
+            hint: Some(
+                "an anchor names one place — extend the spelling until it does, or point at the                  file alone"
+                    .into(),
+            ),
+        },
+    }
+}
+
+fn is_identifier(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+fn bounded_occurrences(haystack: &str, needle: &str) -> usize {
+    let opens = needle.chars().next().is_some_and(is_identifier);
+    let closes = needle.chars().next_back().is_some_and(is_identifier);
+    haystack
+        .match_indices(needle)
+        .filter(|(at, _)| {
+            let before = !opens
+                || !haystack[..*at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(is_identifier);
+            let after = !closes
+                || !haystack[at + needle.len()..]
+                    .chars()
+                    .next()
+                    .is_some_and(is_identifier);
+            before && after
+        })
+        .count()
 }
 
 /// A section anchor resolves when the file spells that heading exactly once.

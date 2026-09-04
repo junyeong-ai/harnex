@@ -31,15 +31,30 @@ use harness_core::evidence::{AnchorKind, ClaimKind, EvidenceVerifier, parse_clai
 const GRAMMAR: &[(&str, &[AnchorKind])] = &[
     (
         "README.md",
-        &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section],
+        &[
+            AnchorKind::Whole,
+            AnchorKind::Line,
+            AnchorKind::Section,
+            AnchorKind::Symbol,
+        ],
     ),
     (
         "plugins/harnex/templates/common/harness.toml",
-        &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section],
+        &[
+            AnchorKind::Whole,
+            AnchorKind::Line,
+            AnchorKind::Section,
+            AnchorKind::Symbol,
+        ],
     ),
     (
         "plugins/harnex/templates/common/rule-template.md",
-        &[AnchorKind::Whole, AnchorKind::Line, AnchorKind::Section],
+        &[
+            AnchorKind::Whole,
+            AnchorKind::Line,
+            AnchorKind::Section,
+            AnchorKind::Symbol,
+        ],
     ),
 ];
 
@@ -155,10 +170,15 @@ fn readmes_examples_resolve_through_the_gate_they_describe() {
         .lines()
         .filter(|line| line.contains("[file:"))
         .collect();
+    let declared = GRAMMAR
+        .iter()
+        .find_map(|(document, kinds)| (*document == "README.md").then_some(kinds.len()))
+        .expect("README is a grammar document");
     assert_eq!(
         shown.len(),
-        3,
-        "README shows {} examples and this guard resolves each",
+        declared,
+        "README is declared to teach {declared} anchors and shows {} examples — one each is \
+         what makes every taught form a demonstrated one",
         shown.len()
     );
     for line in shown {

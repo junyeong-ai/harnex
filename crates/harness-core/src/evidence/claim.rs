@@ -45,16 +45,19 @@ pub enum ClaimKind {
 
 /// What inside a file an internal claim points at.
 ///
-/// The anchor is what decides whether the check still means anything a year
-/// later: a line is verified only for the file being that long, so it holds
-/// through the edit that moves its subject, while a section is matched
-/// against what the file spells and fails on the rename that invalidates the
-/// claim.
+/// The anchor decides whether the check still means anything a year later. A
+/// section and a symbol are matched against what the file spells, so each
+/// survives the edit that only moves its subject and fails on the rename that
+/// invalidates the claim. A line names a position instead, and a position
+/// proves only that the file is that long and the line is not blank — it is
+/// the anchor for a place inside a body that no name identifies, and it holds
+/// through the edit that moves its subject.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Anchor {
     Whole,
     Line(u32),
     Section(String),
+    Symbol(String),
 }
 
 wire_enum! {
@@ -71,6 +74,7 @@ wire_enum! {
         Whole => "the whole file",
         Line => "a line",
         Section => "a section",
+        Symbol => "a symbol",
     }
 }
 
@@ -80,6 +84,7 @@ impl Anchor {
             Anchor::Whole => AnchorKind::Whole,
             Anchor::Line(_) => AnchorKind::Line,
             Anchor::Section(_) => AnchorKind::Section,
+            Anchor::Symbol(_) => AnchorKind::Symbol,
         }
     }
 }
@@ -110,10 +115,22 @@ static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expe
 // backtick path says nothing.
 const FILE_MARKER: &str = "[file:";
 
-/// The separator between a path and the heading it points at. Spelled with
-/// spaces so it cannot be read out of an ordinary `§` in prose, and matched
-/// leftmost so a heading may carry one of its own.
 const SECTION_SEPARATOR: &str = " § ";
+const SYMBOL_SEPARATOR: &str = " :: ";
+
+/// The separators reserved inside a marker, and the anchor each one names.
+///
+/// Each is spelled with spaces, which is what keeps it out of the text it
+/// separates: a path holds neither, an ordinary `§` in prose is not one, and
+/// `Foo::bar` in a symbol carries no spaces around its own colons. The
+/// leftmost decides, so an anchor may carry the other. Adding a reserved
+/// anchor is a row here.
+type Reserved = (&'static str, fn(String) -> Anchor);
+
+const RESERVED: [Reserved; 2] = [
+    (SECTION_SEPARATOR, Anchor::Section),
+    (SYMBOL_SEPARATOR, Anchor::Symbol),
+];
 
 /// The interior of each `[file: …]` on `line`, brackets balanced.
 ///
@@ -151,20 +168,25 @@ fn file_claim_bodies(line: &str) -> Vec<&str> {
 
 /// Split a claim body into its path and the anchor it names.
 ///
-/// [`SECTION_SEPARATOR`] is reserved inside a marker the way `[file:` and `]`
-/// are: a body holding one names a section, leftmost, and the heading is
-/// everything after it — which is why a heading may carry a separator of its
-/// own and a path may not. A path spelled with one reaches the verifier as a
-/// section claim and fails as a missing file, loudly and in one place.
+/// A [`RESERVED`] separator is reserved inside a marker the way `[file:` and
+/// `]` are: the leftmost one decides which anchor the body names, and what
+/// follows it is the anchor whole — which is why an anchor may carry a
+/// separator of its own and a path may not. A path spelled with one reaches
+/// the verifier as that anchor and fails as a missing file, loudly and in one
+/// place.
 ///
 /// Otherwise a trailing `:<digits>` is the line, which leaves a path free to
 /// hold a colon — a Windows drive letter reaches the verifier intact. An
 /// empty path is not a claim: `[file: ]` says nothing to check.
 fn split_file_claim(body: &str) -> Option<(&str, Anchor)> {
-    if let Some((path, heading)) = body.split_once(SECTION_SEPARATOR) {
-        let (path, heading) = (path.trim_end(), heading.trim());
-        return (!path.is_empty() && !heading.is_empty())
-            .then(|| (path, Anchor::Section(heading.to_string())));
+    if let Some((at, separator, anchor)) = RESERVED
+        .iter()
+        .filter_map(|(separator, anchor)| body.find(separator).map(|at| (at, *separator, *anchor)))
+        .min_by_key(|(at, ..)| *at)
+    {
+        let path = body[..at].trim_end();
+        let inner = body[at + separator.len()..].trim();
+        return (!path.is_empty() && !inner.is_empty()).then(|| (path, anchor(inner.to_string())));
     }
     if let Some((path, tail)) = body.rsplit_once(':')
         && !tail.is_empty()
