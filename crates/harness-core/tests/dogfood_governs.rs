@@ -19,11 +19,12 @@ fn live_truth_of(rule: &str) -> BTreeSet<String> {
     let path = repo_root().join(".claude/rules").join(rule);
     let content =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    GovernsDecl::from_rule(&content, &path)
-        .unwrap_or_else(|e| panic!("{rule}: {e}"))
-        .unwrap_or_else(|| panic!("{rule} declares no governs"))
-        .live_truth
+    let declarations =
+        GovernsDecl::from_rule(&content, &path).unwrap_or_else(|e| panic!("{rule}: {e}"));
+    assert!(!declarations.is_empty(), "{rule} declares no governs");
+    declarations
         .into_iter()
+        .flat_map(|decl| decl.live_truth)
         .collect()
 }
 
