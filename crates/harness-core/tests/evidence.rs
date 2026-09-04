@@ -290,6 +290,43 @@ fn a_symbol_naming_two_places_names_neither() {
 }
 
 #[test]
+fn a_kebab_name_is_a_longer_name_the_same_way_an_underscore_one_is() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("ci.yml");
+    std::fs::write(&target, "jobs:\n  check-types-and-lint:\n    runs-on: x\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(
+        "Stated in [file: ci.yml :: check-types].",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert_eq!(
+        findings.len(),
+        1,
+        "'check-types' is a prefix of 'check-types-and-lint', not a name the file spells"
+    );
+}
+
+#[test]
+fn the_kebab_name_the_file_does_spell_still_resolves() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("ci.yml");
+    std::fs::write(&target, "jobs:\n  check-types:\n  check-types-and-lint:\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(
+        "Stated in [file: ci.yml :: check-types].",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert!(
+        findings.is_empty(),
+        "the longer name is a second name, not a second reading of this one: {findings:?}"
+    );
+}
+
+#[test]
 fn two_places_that_share_a_character_are_still_two_places() {
     let tmp = TempDir::new().unwrap();
     let target = tmp.path().join("src/lib.rs");

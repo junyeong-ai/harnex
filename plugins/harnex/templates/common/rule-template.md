@@ -19,7 +19,8 @@ governs:
      Name what the file spells: `[file: path/to/file.ext :: def load]` for a
      definition, `[file: .claude/rules/other.md § Escape hatch]` for a
      document's section, `[file: path/to/file.ext]` where the whole file is
-     the owner. Each of those fails on the rename that invalidates it.
+     the owner. Each is checked against what the file spells, so each fails
+     on the rename that removes the spelling.
      `[file: path/to/file.ext:42]` is for a place inside a body that no name
      identifies — it proves only that the file is that long and that the line
      is not blank.

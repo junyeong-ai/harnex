@@ -1,8 +1,10 @@
 //! # Claim parser
 //!
 //! Extracts provenance-marked claims from markdown, whitespace-tolerant. What
-//! it recognises is enumerated in this file rather than listed here: [`ClaimKind`]
-//! is the claim shapes and [`RESERVED`] the anchors a file claim may name. The
+//! it recognises is enumerated in this file rather than listed here:
+//! [`ClaimKind`] is the claim shapes, [`AnchorKind`] the anchors a file claim
+//! may name, and [`RESERVED`] the two of those a separator spells — the other
+//! two are where a body carrying no separator falls through to. The
 //! documents that teach an author are held to `AnchorKind::ALL` by
 //! `evidence_grammar_sync`, and a list here would be one more place to teach a
 //! form the parser does not read.
@@ -289,13 +291,18 @@ mod tests {
                 "`{separator}` must be spaced on both sides, or it reads out of the text it \
                  separates — `Foo::bar` in a symbol, an ordinary section sign in prose"
             );
+            assert!(
+                !separator.trim().is_empty(),
+                "`{separator}` is only spacing, so it would split at the first space of any body"
+            );
         }
-        for (outer, _) in RESERVED {
-            for (inner, _) in RESERVED {
+        for (i, (outer, _)) in RESERVED.iter().enumerate() {
+            for (j, (inner, _)) in RESERVED.iter().enumerate() {
                 assert!(
-                    outer == inner || !outer.contains(inner),
+                    i == j || !outer.contains(inner),
                     "`{outer}` contains `{inner}`, so the leftmost match no longer decides which \
-                     anchor a body names"
+                     anchor a body names — a row repeating another spelling is the same fault, \
+                     and leaves the second row unreachable"
                 );
             }
         }
