@@ -35,10 +35,13 @@ break. Decide which this is before bumping, and say why in the release commit.
 Gate output on unmodified input is on that list, and it is the surface a
 release here moves most often. A finding newly reported because it was always
 true is the gate catching up rather than a break. Everything else is a break, a
-withdrawal included — and a withdrawal is the break worth shipping as a patch
-anyway, since the minor announcing it puts a pin edit between an operator and
-the repair of a regression. Say which it is and why. A second withdrawal of the
-same behaviour is a design being litigated in releases rather than decided.
+withdrawal included — and one withdrawal is worth shipping as a patch anyway:
+the one repairing a regression the pinned range already shipped, where the
+minor announcing it would put a pin edit between an operator and that repair.
+A withdrawal taken for cost repairs nothing and findings only stop, and one of
+behaviour operators have held for minors is no different; both are breaks like
+the rest. Say which it is and why. A second withdrawal of the same behaviour is
+a design being litigated in releases rather than decided.
 
 Diff the gate over a corpus before and after, and over one that can produce the
 change — 0.8.1 shipped a silent false pass because six of its 13,711 citations
