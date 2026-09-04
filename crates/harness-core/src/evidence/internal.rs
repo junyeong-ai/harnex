@@ -154,11 +154,19 @@ fn is_identifier(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+/// Every position `needle` reads at, counted once each.
+///
+/// The scan asks at each character rather than resuming past the last match,
+/// because two occurrences may share characters: `::b::` reads twice in
+/// `crate::a::b::b::c`, on either side of the middle `b`. A non-overlapping
+/// scan sees one of them, and a symbol naming two places would then resolve
+/// as though it named one.
 fn bounded_occurrences(haystack: &str, needle: &str) -> usize {
     let opens = needle.chars().next().is_some_and(is_identifier);
     let closes = needle.chars().next_back().is_some_and(is_identifier);
     haystack
-        .match_indices(needle)
+        .char_indices()
+        .filter(|(at, _)| haystack[*at..].starts_with(needle))
         .filter(|(at, _)| {
             let before = !opens
                 || !haystack[..*at]

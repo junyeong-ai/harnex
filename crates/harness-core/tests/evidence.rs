@@ -290,6 +290,56 @@ fn a_symbol_naming_two_places_names_neither() {
 }
 
 #[test]
+fn two_places_that_share_a_character_are_still_two_places() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("src/lib.rs");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "use crate::a::b::b::c;\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(
+        "Stated in [file: src/lib.rs :: ::b::].",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert_eq!(
+        findings.len(),
+        1,
+        "'::b::' reads at two offsets here, sharing the '::' between them"
+    );
+    assert!(
+        findings[0].message.contains("occurs 2 times"),
+        "an overlap is two places, not one: {}",
+        findings[0].message
+    );
+}
+
+#[test]
+fn the_scan_steps_by_characters_and_not_by_bytes() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("src/lib.rs");
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, "\u{ac00}::b::b::\u{b098}\n").unwrap();
+
+    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
+    let findings = verifier.verify_text(
+        "Stated in [file: src/lib.rs :: ::b::].",
+        Path::new("test.md"),
+        tmp.path(),
+    );
+    assert_eq!(
+        findings.len(),
+        1,
+        "a multi-byte neighbour must not move where an occurrence starts"
+    );
+    assert!(
+        findings[0].message.contains("occurs 2 times"),
+        "the count is the same one the ASCII file gives: {}",
+        findings[0].message
+    );
+}
+
+#[test]
 fn a_line_anchor_pointing_at_a_blank_line_points_at_nothing() {
     let tmp = TempDir::new().unwrap();
     let target = tmp.path().join("src/lib.rs");
