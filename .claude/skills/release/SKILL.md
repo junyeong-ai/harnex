@@ -19,9 +19,9 @@ Then, for every claim either returns:
 - **Reproduce it against the built binary before fixing it.** A reviewer's
   finding is a hypothesis. A fix landed on an unreproduced claim is a change
   with no defect behind it.
-- **Mutation-test every guard the change adds or touches.** Remove what the
-  guard is supposed to catch, confirm it fails, restore. A guard that passes
-  its own mutation is watching nothing, and the suite still reports green.
+- **Mutation-test every guard the change adds or touches**, to the discipline
+  `making-changes.md § Verification` states. A guard that passes its own
+  mutation is watching nothing, and the suite still reports green.
 
 Do not start §3 while a claim is open. An unresolved finding after a tag is a
 finding that ships.
@@ -36,13 +36,16 @@ break. Decide which this is before bumping, and say why in the release commit.
 range makes the gate state a compatibility that does not hold.
 
 A release that moves what a gate reports about unmodified input is deciding
-this, whether or not one of those surfaces moved. Direction is the whole
-question: a true finding newly reported is the gate catching up, and a true
-finding that stops being reported — or a false one that starts — is the break.
-Answer it by running the gate over a corpus before and after and diffing the
-findings, and answer it over a corpus that can produce the change. 0.8.1
-shipped a silent false pass because its corpus could not: six of its 13,711
-citations reached the changed code path.
+this, whether or not one of those surfaces moved. The break is a verdict no
+version in the pinned range has given, which leaves two that read like one and
+are not: a finding newly reported because it was always true, and a withdrawal
+returning a verdict an earlier member already gave. The second still changes
+what whoever took the withdrawn version sees, and the release says so.
+
+Diff the gate over a corpus before and after, and over one that can produce the
+change — 0.8.1 shipped a silent false pass because six of its 13,711 citations
+reached the code it changed. The diff is mechanical; reading each flip as a
+true or a false finding is not, and that reading is the decision.
 
 ## 3 — Run the chain
 
