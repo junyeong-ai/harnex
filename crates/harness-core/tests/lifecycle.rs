@@ -1344,7 +1344,7 @@ fn telemetry_cfg(dir: PathBuf) -> TelemetryConfig {
 fn build_sweep_config(tmp_path: &std::path::Path, extra_kinds: Vec<KindDecl>) -> Config {
     let cfg = harness_core::config::Config {
         meta: harness_core::config::MetaConfig {
-            harnex_version: ">=0.6, <0.7".into(),
+            harnex_version: ">=0.7, <0.8".into(),
         },
         kinds: extra_kinds,
         evidence: None,
@@ -1789,7 +1789,7 @@ fn config_rejects_an_unknown_key_on_a_kind() {
     // kind's whole silence measurement with no error (Article V).
     let toml = r#"
         [meta]
-        harnex_version = ">=0.6, <0.7"
+        harnex_version = ">=0.7, <0.8"
         [[kinds]]
         name = "skill"
         glob = ".claude/skills/*"
