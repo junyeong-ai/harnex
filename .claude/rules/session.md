@@ -69,10 +69,12 @@ floor, named for that, and carries the coverage it was measured at.
   some commits and not others — 29 of git's 42 over this project. Anything
   denominated in commits reads high, and `repository.authored_in_span` reports
   what the floor is a floor against so a consumer can see the gap.
-- **Never pipe stdin to a subprocess that also writes stdout.** The repository
-  survey ([file: crates/harness-core/src/session/repository.rs :: pub fn survey]) passes its
-  query as a file; a piped write deadlocks once the child's output fills the
-  kernel buffer, measured between six and eight thousand commits.
+- **Never pipe stdin to a subprocess that also writes stdout.** A piped write
+  deadlocks once the child's output fills the kernel buffer and it blocks
+  writing while this blocks writing. The one query here that needs stdin
+  passes it as a file
+  ([file: crates/harness-core/src/session/repository.rs :: fn stdin_query]),
+  and the scale it was measured at is stated there.
 
 ## Adding to a closed set
 
