@@ -355,34 +355,63 @@ fn an_operator_beside_a_name_does_not_take_the_name_with_it() {
 }
 
 #[test]
-fn a_name_the_c_family_cannot_spell_is_cited_in_full() {
-    for (file, body, whole, prefix) in [
+fn the_spelling_a_file_carries_names_one_place() {
+    for (file, body, whole) in [
         (
             "ci.yml",
             "jobs:\n  check-types-and-lint:\n    runs-on: x\n",
             "check-types-and-lint:",
-            "check-types",
         ),
-        (
-            "m.rb",
-            "class C\n  def valid?\n  end\nend\n",
-            "def valid?",
-            "def valid",
-        ),
+        ("m.rb", "class C\n  def valid?\n  end\nend\n", "def valid?"),
     ] {
         let tmp = TempDir::new().unwrap();
+        let found = resolves(&tmp, file, body, whole);
         assert!(
-            resolves(&tmp, file, body, whole).is_empty(),
-            "the spelling {file} carries names one place"
-        );
-        let tmp = TempDir::new().unwrap();
-        assert!(
-            resolves(&tmp, file, body, prefix).is_empty(),
-            "the stated limit: a prefix ending where the C family's identifier stops \
-             resolves too, and the hint on an unresolved symbol is where an author is \
-             told to spell the whole name"
+            found.is_empty(),
+            "{whole} names one place in {file}: {found:?}"
         );
     }
+}
+
+#[test]
+fn a_citation_reads_inside_a_longer_construct_and_the_shortest_has_no_spelling() {
+    // A prefix, where the longer name continues past a hyphen.
+    let tmp = TempDir::new().unwrap();
+    assert!(
+        resolves(
+            &tmp,
+            "ci.yml",
+            "jobs:\n  check-types-and-lint:\n",
+            "check-types"
+        )
+        .is_empty(),
+        "the boundary cannot see that the name continues"
+    );
+
+    // A suffix, where the longer selector begins before the dot.
+    let tmp = TempDir::new().unwrap();
+    assert!(
+        resolves(&tmp, "s.css", "table.rows { color: red; }\n", ".rows {").is_empty(),
+        "nor that it began earlier"
+    );
+
+    // Both present: the shorter has no spelling of its own.
+    let body = "class Record\n  def save\n  end\n\n  def save!\n  end\nend\n";
+    for symbol in ["save", "def save"] {
+        let tmp = TempDir::new().unwrap();
+        let found = resolves(&tmp, "record.rb", body, symbol);
+        assert_eq!(
+            found.len(),
+            1,
+            "'{symbol}' reads twice beside a `save!`, and no longer spelling of it exists"
+        );
+        assert!(found[0].contains("occurs 2 times"), "{found:?}");
+    }
+    let tmp = TempDir::new().unwrap();
+    assert!(
+        resolves(&tmp, "record.rb", body, "def save!").is_empty(),
+        "only the extension itself is citable"
+    );
 }
 
 #[test]
