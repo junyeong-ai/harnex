@@ -78,11 +78,12 @@ One commit, one decision, in a revertible unit. Implement as though it had
 always been this way: delete what was replaced in the same change, update every
 consumer, and leave no compatibility shim, dead branch, or "used to be" note.
 Announce before changing a contract outside this repository — a public API,
-schema, config key, or CLI surface. The minor version is that announcement, and
-it is the only one an installed harness can act on: `[meta] harnex_version`
-pins a range and `Config::validate` enforces it, so a break shipped inside the
-pinned range makes the gate state a compatibility that does not hold. Break
-freely, and bump the minor in the same release. Supersede a decision record
+schema, config key, CLI surface, or what a gate reports about unmodified input.
+The minor version is that announcement, and it is the only one an installed
+harness can act on: `[meta] harnex_version` pins a range and `Config::validate`
+enforces it, so a break shipped inside the pinned range makes the gate state a
+compatibility that does not hold. Break freely, and bump the minor in the same
+release. Supersede a decision record
 rather than deleting it.
 
 Record depth follows blast radius: one line for a self-contained reversible
