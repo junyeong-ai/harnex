@@ -79,12 +79,14 @@ always been this way: delete what was replaced in the same change, update every
 consumer, and leave no compatibility shim, dead branch, or "used to be" note.
 Announce before changing a contract outside this repository — a public API,
 schema, config key, CLI surface, or what a gate reports about unmodified input.
-The minor version is that announcement, and it is the only one an installed
-harness can act on: `[meta] harnex_version` pins a range and `Config::validate`
-enforces it, so a break shipped inside the pinned range makes the gate state a
-compatibility that does not hold. Break freely, and bump the minor in the same
-release. Supersede a decision record
-rather than deleting it.
+A finding the gate newly reports because it was always true is it catching up,
+and not that. The minor version is that announcement, and it is the only one an
+installed harness can act on: `[meta] harnex_version` pins a range and
+`Config::validate` enforces it, so a break shipped inside the pinned range makes
+the gate state a compatibility that does not hold. Break freely, and bump the
+minor in the same release — except where a release withdraws one instead, which
+`.claude/skills/release/SKILL.md` decides and states. Supersede a decision
+record rather than deleting it.
 
 Record depth follows blast radius: one line for a self-contained reversible
 change, and root cause, scope, invariant and verification only where a change
