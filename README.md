@@ -254,17 +254,17 @@ patterns covered out of the box:
   leaving a rule that points nowhere:
 
   ```
-  [file: Cargo.toml]                                             the file exists
+  [file: Cargo.toml]                                                the file exists
   [file: crates/harness-core/src/path_guard.rs :: fn write_atomic]  and spells that, once
-  [file: .claude/rules/making-changes.md § Verification]          and spells that heading, once
-  [file: crates/harness-core/src/path_guard.rs:81]                and is at least that long
+  [file: .claude/rules/making-changes.md § Verification]            and spells that heading, once
+  [file: crates/harness-core/src/path_guard.rs:81]                  and that line carries text
   ```
 
   The anchor is chosen for what it proves. A symbol and a heading are matched
-  against what the file spells, so each fails on the rename that invalidated
-  the claim. A line only ever proved the file was that long, so it survives
-  the edit that moved its subject — reserve it for a place inside a body that
-  no name identifies.
+  against what the file spells, so each fails on the rename that removes the
+  spelling. A line proves only that the file is that long and the line is not
+  blank, so it survives the edit that moved its subject onto another line —
+  reserve it for a place inside a body that no name identifies.
 
 - Append-only telemetry with a closed payload schema
 - Sentinel-block enum codegen across many files
