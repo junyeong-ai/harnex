@@ -35,6 +35,15 @@ break. Decide which this is before bumping, and say why in the release commit.
 `[meta] harnex_version` pins a range, so a break shipped inside the pinned
 range makes the gate state a compatibility that does not hold.
 
+A release that moves what a gate reports about unmodified input is deciding
+this, whether or not one of those surfaces moved. Direction is the whole
+question: a true finding newly reported is the gate catching up, and a true
+finding that stops being reported — or a false one that starts — is the break.
+Answer it by running the gate over a corpus before and after and diffing the
+findings, and answer it over a corpus that can produce the change. 0.8.1
+shipped a silent false pass because its corpus could not: six of its 13,711
+citations reached the changed code path.
+
 ## 3 — Run the chain
 
 Run the gates so **their exit status is the run's**. This has failed once: a
