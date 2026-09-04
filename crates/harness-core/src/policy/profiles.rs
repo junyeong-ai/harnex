@@ -59,6 +59,18 @@ impl PermissionProfile {
 /// destructive git, filesystem destruction. Every project should include
 /// this profile.
 ///
+/// It is a floor, not a boundary, and the difference is worth stating before
+/// anyone extends it. A deny matches a command as written: `python -c'code'`
+/// without the space misses `Bash(python -c *)`, `python -` reads the same
+/// code from stdin, and any granted tool that takes an inner command — a
+/// package manager's `exec`, `uv run`, `cargo run`, a Gradle task — reaches
+/// every rule here at once. What the floor buys is that a hazard cannot be
+/// typed directly; it does not make the capability unreachable. The reach is
+/// enumerated in the observation ledger. Narrowing it means not granting tools
+/// whose surface cannot be enumerated — a decision about every project a
+/// profile serves, and not a longer list of spellings, which is why none was
+/// added when this was measured.
+///
 /// Rule grammar follows the Claude Code permission spec: Bash uses the
 /// canonical space-then-`*` wildcard (`Bash(cmd *)`); Read/Edit use
 /// gitignore-style globs where a bare pattern matches at any depth
