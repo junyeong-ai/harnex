@@ -32,15 +32,13 @@ finding that ships.
 outside this repository is announced, and it ships in the same release as the
 break. Decide which this is before bumping, and say why in the release commit.
 
-`[meta] harnex_version` pins a range, so a break shipped inside the pinned
-range makes the gate state a compatibility that does not hold.
-
-A release that moves what a gate reports about unmodified input is deciding
-this, whether or not one of those surfaces moved. The break is a verdict no
-version in the pinned range has given, which leaves two that read like one and
-are not: a finding newly reported because it was always true, and a withdrawal
-returning a verdict an earlier member already gave. The second still changes
-what whoever took the withdrawn version sees, and the release says so.
+Gate output on unmodified input is on that list, and it is the surface a
+release here moves most often. A finding newly reported because it was always
+true is the gate catching up rather than a break. Everything else is a break, a
+withdrawal included — and a withdrawal is the break worth shipping as a patch
+anyway, since the minor announcing it puts a pin edit between an operator and
+the repair of a regression. Say which it is and why. A second withdrawal of the
+same behaviour is a design being litigated in releases rather than decided.
 
 Diff the gate over a corpus before and after, and over one that can produce the
 change — 0.8.1 shipped a silent false pass because six of its 13,711 citations
