@@ -289,41 +289,100 @@ fn a_symbol_naming_two_places_names_neither() {
     );
 }
 
-#[test]
-fn a_kebab_name_is_a_longer_name_the_same_way_an_underscore_one_is() {
-    let tmp = TempDir::new().unwrap();
-    let target = tmp.path().join("ci.yml");
-    std::fs::write(&target, "jobs:\n  check-types-and-lint:\n    runs-on: x\n").unwrap();
-
+fn resolves(dir: &TempDir, file: &str, body: &str, symbol: &str) -> Vec<String> {
+    let target = dir.path().join(file);
+    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+    std::fs::write(&target, body).unwrap();
     let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(
-        "Stated in [file: ci.yml :: check-types].",
-        Path::new("test.md"),
-        tmp.path(),
-    );
-    assert_eq!(
-        findings.len(),
-        1,
-        "'check-types' is a prefix of 'check-types-and-lint', not a name the file spells"
-    );
+    verifier
+        .verify_text(
+            &format!("Stated in [file: {file} :: {symbol}]."),
+            Path::new("test.md"),
+            dir.path(),
+        )
+        .into_iter()
+        .map(|f| f.message)
+        .collect()
 }
 
 #[test]
-fn the_kebab_name_the_file_does_spell_still_resolves() {
-    let tmp = TempDir::new().unwrap();
-    let target = tmp.path().join("ci.yml");
-    std::fs::write(&target, "jobs:\n  check-types:\n  check-types-and-lint:\n").unwrap();
+fn a_use_written_beside_an_operator_is_still_a_use() {
+    for (file, body, symbol) in [
+        (
+            "try.rs",
+            "struct S { cached: Option<i32> }\nfn only(s: &S) -> Option<i32> {\n    s.cached?\n}\n",
+            "cached",
+        ),
+        (
+            "neg.rs",
+            "static READY: bool = false;\nfn check() -> bool { !READY }\n",
+            "READY",
+        ),
+        ("arith.c", "int x = foo;\nint y = foo-1;\n", "foo"),
+        (
+            "install.sh",
+            "REPO_URL=https://example.invalid\ncurl -fsSL \"$REPO_URL/x\"\n",
+            "REPO_URL",
+        ),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let found = resolves(&tmp, file, body, symbol);
+        assert_eq!(
+            found.len(),
+            1,
+            "'{symbol}' reads twice in {file}; an operator beside one of them does not \
+             spend it: {found:?}"
+        );
+        assert!(found[0].contains("occurs 2 times"), "{found:?}");
+    }
+}
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(
-        "Stated in [file: ci.yml :: check-types].",
-        Path::new("test.md"),
-        tmp.path(),
-    );
-    assert!(
-        findings.is_empty(),
-        "the longer name is a second name, not a second reading of this one: {findings:?}"
-    );
+#[test]
+fn an_operator_beside_a_name_does_not_take_the_name_with_it() {
+    for (file, body, symbol) in [
+        ("sized.rs", "fn only<T: ?Sized>(_: &T) {}\n", "Sized"),
+        ("mac.rs", "fn m() { println!(\"hi\"); }\n", "println"),
+        ("arith.c", "int x = foo-1;\n", "foo"),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        let found = resolves(&tmp, file, body, symbol);
+        assert!(
+            found.is_empty(),
+            "'{symbol}' is the name {file} spells; the operator beside it is not part \
+             of it: {found:?}"
+        );
+    }
+}
+
+#[test]
+fn a_name_the_c_family_cannot_spell_is_cited_in_full() {
+    for (file, body, whole, prefix) in [
+        (
+            "ci.yml",
+            "jobs:\n  check-types-and-lint:\n    runs-on: x\n",
+            "check-types-and-lint:",
+            "check-types",
+        ),
+        (
+            "m.rb",
+            "class C\n  def valid?\n  end\nend\n",
+            "def valid?",
+            "def valid",
+        ),
+    ] {
+        let tmp = TempDir::new().unwrap();
+        assert!(
+            resolves(&tmp, file, body, whole).is_empty(),
+            "the spelling {file} carries names one place"
+        );
+        let tmp = TempDir::new().unwrap();
+        assert!(
+            resolves(&tmp, file, body, prefix).is_empty(),
+            "the stated limit: a prefix ending where the C family's identifier stops \
+             resolves too, and the hint on an unresolved symbol is where an author is \
+             told to spell the whole name"
+        );
+    }
 }
 
 #[test]
