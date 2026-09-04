@@ -78,7 +78,16 @@ fn decl_entries(value: yaml_serde::Value) -> std::result::Result<Vec<RawDecl>, S
         return Err(ShapeError::NoDeclarations);
     }
     raw.into_iter()
-        .map(|v| yaml_serde::from_value(v).map_err(|e| ShapeError::Malformed(e.to_string())))
+        .map(|v| match v {
+            // A member is a mapping at every nesting level. `from_value`
+            // reads through a tagged node without seeing the tag, so
+            // admitting one here would accept inside a list what the block
+            // itself refuses.
+            yaml_serde::Value::Mapping(_) => {
+                yaml_serde::from_value(v).map_err(|e| ShapeError::Malformed(e.to_string()))
+            }
+            _ => Err(ShapeError::Malformed(SHAPE.into())),
+        })
         .collect()
 }
 
@@ -476,6 +485,65 @@ mod tests {
         );
         assert_eq!(read[1].live_truth, vec!["src/name.rs", "pyproject.toml"]);
         assert!(read[1].decision_record.is_none());
+    }
+
+    #[test]
+    fn a_scalar_that_is_not_a_string_is_refused_rather_than_spelled() {
+        // A YAML null, number or boolean has a text form, and reading a
+        // concept out of it names one the author never wrote. Rejecting is
+        // constitution V: the shape is closed at the boundary.
+        for scalar in ["null", "123", "true"] {
+            assert!(
+                matches!(
+                    decls(&format!(
+                        "governs:\n  concept: {scalar}\n  live_truth: src\n"
+                    ))
+                    .unwrap_err(),
+                    ShapeError::Malformed(_)
+                ),
+                "concept: {scalar} accepted"
+            );
+        }
+        for scalar in ["123", "true"] {
+            assert!(
+                matches!(
+                    decls(&format!(
+                        "governs:\n  concept: x\n  live_truth: src\n  decision_record: \
+                         {scalar}\n"
+                    ))
+                    .unwrap_err(),
+                    ShapeError::Malformed(_)
+                ),
+                "decision_record: {scalar} accepted"
+            );
+        }
+        // A null on the optional field is absence, which is what it says.
+        assert!(
+            decl("governs:\n  concept: x\n  live_truth: src\n  decision_record: null\n")
+                .unwrap()
+                .decision_record
+                .is_none()
+        );
+        // A tag is not part of the grammar, at either nesting level.
+        for block in [
+            "!Decl {concept: x, live_truth: src}",
+            "[!Decl {concept: x, live_truth: src}]",
+        ] {
+            assert!(
+                matches!(
+                    decls(&format!("governs: {block}\n")).unwrap_err(),
+                    ShapeError::Malformed(_)
+                ),
+                "tagged {block} accepted"
+            );
+        }
+        // Quoted, each is the string the author did write.
+        assert_eq!(
+            decl("governs:\n  concept: '123'\n  live_truth: src\n")
+                .unwrap()
+                .concept,
+            "123"
+        );
     }
 
     #[test]
