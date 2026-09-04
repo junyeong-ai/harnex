@@ -16,7 +16,7 @@
 # own friction has to be findable here, on the corpus that builds it.
 
 [meta]
-harnex_version = ">=0.8, <0.9"
+harnex_version = ">=0.9, <0.10"
 
 # What the retirement sweep walks. Without a declared kind the sweep runs
 # over nothing and answers success — an enabled loop that processes nothing
