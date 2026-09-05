@@ -256,11 +256,14 @@ appendix, not a report about the operator. `files_discovered` is the corpus the 
 which is what it cost and not what it measured — a scoped window is routinely
 a handful of files out of thousands.
 **`method_change`, then `harness_change`, then the delta.** `method_change`
-says whether the two windows were measured the same way — the same oracle build
-and the same paragraph floor. A metric can become wrong without its definition
-moving, so a delta across `changed` is a reading about the ruler before it is
-one about the work, and the two rates are still worth reporting where the
-difference between them is not. `harness_change` then says whether the thing
+says whether the two windows were measured the same way — the same oracle build,
+the same paragraph floor, and the same coverage floor, which decides whether the
+metrics over the operator's own text were recorded at all. A metric can become
+wrong without its definition moving, so a delta across `changed` is a reading
+about the ruler before it is one about the work, and the two rates are still
+worth reporting where the difference between them is not. `unknown` is a window
+that recorded no coverage floor: the question was not answered, and reading it
+as agreement is the error the value exists to prevent. `harness_change` then says whether the thing
 being tested moved: `unchanged` means whatever moved, a harness
 change is not why; `changed` means one moved and the operator can ask git
 which; `unknown` means a window did not record what it ran under. A delta
