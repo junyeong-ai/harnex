@@ -128,6 +128,15 @@ already contradicted both a page and the binary's own schema.
   operator grant must therefore read the FILE, not the process env: the env
   var is a copy of the entry, not a second witness, and only the file read
   makes revocation immediate (`guard::floor` is built on this).
+- **The only deterministic bounds on subagent fan-out are two env entries.**
+  `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` bounds nesting and
+  `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` bounds how many run at once; each
+  refuses with its own message, so reaching one is visible rather than silent.
+  Measured from the binary (2.1.261) — no page in the sources above states
+  them, and neither default is a constant there: the depth cap reads a
+  remotely served value, so an operator who has not written the entry has no
+  bound they can name. Prose asking an agent to delegate sparingly is not one
+  either; it is the advisory tier, and this is the enforced one.
 - **A session whose cwd is a linked git worktree resolves project/local
   settings from the MAIN checkout**, following `.git` → `commondir`
   (measured at 2.1.220: a worktree session applied the main checkout's `env`
