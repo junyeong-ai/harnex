@@ -144,6 +144,15 @@ rather than badly delegated.
 same constraint has to be supplied by hand across sessions, its home is
 `CLAUDE.md` or a path-scoped rule, and `/harnex extend` is how it gets there.
 
+**Open a citation before prescribing a rule for a paragraph.** Where the
+operator runs an output style, an appended system prompt, or a hook that
+rewrites their input, that text arrives inside the turn the runtime records as
+typed — so it counts as them repeating themselves, and neither a field nor a
+ratio separates the two (`session::prompt` refuses both, and says what was
+measured). Prescribing a rule for one of those installs what is installed.
+Reading the citation is what tells them apart, and it is cheap on exactly the
+widest paragraphs, which is where the prescription would land.
+
 **Look at consecutive instructions, not only at each one.** Two shapes, and the
 second is easy to miss. Where an instruction has `steered_away`, the operator
 stopped the agent mid-run and said the next thing. Where one has `agent_turns:
