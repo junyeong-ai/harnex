@@ -135,3 +135,9 @@ disagreeing reads as progress in whichever order their reports land.
 
 Each reviewer is spawned once, reports, and is done. A reviewer asked to judge a
 second round is no longer the fresh context that was its whole value.
+
+Every axis above multiplies what a round spends, and the cap bounds iterations
+rather than agents. The bound on agents is the runtime's, written in the
+settings `env` block as `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` and
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` (spec-facts, settings). Scaling along
+more than one axis without them states a fan-out nothing bounds.
