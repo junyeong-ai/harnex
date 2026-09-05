@@ -6,6 +6,13 @@ surface evolves and freezing it is the failure mode harnex exists to prevent.
 Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
 /en/plugins.
 
+Re-verifying is reading every bullet of a surface, not re-deriving its
+mirrored sets: the stamp's digest vouches for the sets and its date is the
+only thing that speaks for the prose (`spec::SpecSurface`). Where a bullet
+says what the runtime does rather than what a page lists, ask the corpus —
+`harnex session facts` reads transcripts of the runtime doing it, and it has
+already contradicted both a page and the binary's own schema.
+
 ## Hooks (/en/hooks)
 
 - **Event surface is a permissive superset, not a fixed count.** Treat the
