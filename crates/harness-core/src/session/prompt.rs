@@ -29,6 +29,16 @@
 //!   are its always-loaded rule file in translation. The counts are the
 //!   finding; the reason is a reading, and it belongs to whoever opens the
 //!   citations.
+//! - **Never separate what the operator typed from what their harness
+//!   prepended to it.** An output style, an appended system prompt, and a
+//!   UserPromptSubmit hook rewriting the input all arrive inside the turn the
+//!   runtime records as typed, in one string, with no field marking the seam.
+//!   A share does not rescue it either: measured against a corpus carrying
+//!   one, the preamble took 9% of the submissions in its own sessions and the
+//!   operator's own restated constraints took 13%. The distinction is worth
+//!   naming because the prescription turns on it — a paragraph the harness
+//!   supplies is already installed — and the citations are where a reader
+//!   settles it.
 //! - Never lowercase or stem. Normalisation is whitespace only; anything more
 //!   merges paragraphs that differ, which is the false positive this design
 //!   exists to avoid.
