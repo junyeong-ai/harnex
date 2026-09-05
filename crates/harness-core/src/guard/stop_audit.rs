@@ -12,15 +12,14 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde::Serialize;
-
 use crate::config::StopAuditConfig;
 use crate::envelope::Severity;
 use crate::error::{Error, Result};
 use crate::path_guard;
 
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-#[serde(tag = "decision", rename_all = "kebab-case")]
+/// One stop, judged. The CLI matches on this to speak the Stop hook contract
+/// directly, so it is never serialised — no wire derives.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StopDecision {
     Allow,
     /// The audit could not reach a verdict, and says why. Never a Block: on
