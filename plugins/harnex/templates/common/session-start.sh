@@ -12,3 +12,27 @@ commits=$(git log --oneline -3 2>/dev/null || echo "no commits")
 
 printf 'Branch: %s\nUncommitted files: %s\nRecent commits:\n%s\n' \
   "$branch" "$changes" "$commits"
+
+# Whether the versioned git hooks beside this one will run. `core.hooksPath`
+# lives in the clone's own config and is never cloned, so a fresh checkout
+# commits past every gate they hold and nothing else reads that — the shape a
+# harness cannot afford, because armed and absent read alike. Reported by
+# exception, and here rather than in `harnex check`: the answer is a property
+# of this machine, and a gate whose verdict moves without the tree fails a
+# tree nothing changed. `git rev-parse` resolves the setting rather than this
+# reading it, so a relative path answers per worktree exactly as git will.
+hooks=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P) || hooks=
+if [[ -n "$hooks" && -e "${hooks}/pre-commit" ]] &&
+  active=$(git rev-parse --path-format=absolute --git-path hooks 2>/dev/null); then
+  # An absent directory keeps its raw path: it is where git looks, and it holds
+  # no hook, which is the state worth naming rather than resolving away.
+  armed=$(CDPATH='' cd -- "$active" 2>/dev/null && pwd -P) || armed="$active"
+  if [[ "$armed" != "$hooks" ]]; then
+    root=$(git rev-parse --show-toplevel 2>/dev/null) &&
+      root=$(CDPATH='' cd -- "$root" 2>/dev/null && pwd -P) || root=
+    value="$hooks"
+    [[ -n "$root" && "$hooks" == "$root"/* ]] && value="${hooks#"${root}"/}"
+    printf 'Versioned git hooks are not armed: git runs hooks from %s.\nThis clone arms them with `git config core.hooksPath %s`.\n' \
+      "$armed" "$value"
+  fi
+fi
