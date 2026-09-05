@@ -34,6 +34,13 @@ observation → validated pattern → rule / skill / lens
 - **Rule / skill / lens**: accepted by governance; committed; enforced
   or advisory per the enforced-vs-advisory principle.
 
+Declare which language the record is written in. Where that differs from the
+language the rules are in, an observation is a translation deferred to whoever
+promotes it. An observation carrying the operator's own words is the exception
+— the wording is the evidence there, so keep it verbatim, which is why
+`harnex:session-judge` writes its own fields in the language the person wrote
+in. No gate separates the two cases; the text does not say which it is.
+
 ## Retirement criteria
 
 An artifact is a retirement candidate when ALL of the following hold
