@@ -49,14 +49,24 @@ pub const MAX_AGE_DAYS: i64 = 90;
 /// consumer filters on it.
 pub const STALE_WARNING_CODE: &str = "spec-stamp-stale";
 
-/// One Claude Code documentation surface and the vocabulary read from it.
+/// One Claude Code documentation surface and everything harnex carries from it.
 #[derive(Debug, Clone, Copy)]
 pub struct SpecSurface {
     /// Stable identifier, reported in findings.
     pub name: &'static str,
-    /// Documentation page the vocabulary was read from.
+    /// Documentation page the surface was read from.
     pub doc: &'static str,
-    /// ISO date the vocabulary was last checked against that page.
+    /// ISO date this surface was last read whole — every fact harnex carries
+    /// from it, the mirrored sets and the prose bullets in `spec-facts.md`
+    /// alike. The digest can only vouch for what it hashes, so this date is
+    /// the sole thing that speaks for the prose, and advancing it after
+    /// re-deriving the sets alone states a re-reading that did not happen.
+    ///
+    /// Where a bullet says what the runtime *does* rather than what the page
+    /// lists, the page is the weaker witness: `harnex session facts` reads
+    /// transcripts of the runtime doing it. A claim that Stop discards
+    /// `additionalContext` survived a re-measure of this surface while 59
+    /// records already on disk showed the opposite channel arriving.
     pub measured: &'static str,
     /// Digest of the vocabulary as measured. Held equal to the live constants
     /// by a test, so editing a set without re-measuring fails the build.
