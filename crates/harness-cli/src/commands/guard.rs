@@ -191,18 +191,26 @@ fn hook_stop<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<Ex
     Ok(ExitCode::SUCCESS)
 }
 
+/// The Stop event's hook contract, not the envelope: exit 2 is reserved for a
+/// Blocker the audit reached, whose reason feeds back on stderr; every other
+/// outcome exits 0, and an allowed stop says nothing at all.
+///
+/// A skip rides `hookSpecificOutput.additionalContext` because it is the only
+/// Stop channel that arrives — a `systemMessage` written here would reach the
+/// transcript's raw stdout and no reader — and carrying it there does not
+/// prevent the stop, which `decision` and exit 2 are alone in doing.
 fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode> {
-    // Exit 2 here is the Block, so it is spelled only for a verdict. Every
-    // reason the audit cannot reach one — an unloadable config, an undeclared
-    // section, hook input it cannot read — allows the stop and says why on the
-    // Stop event's advisory channel. Propagating those as errors would exit 2
-    // through the generic path, which the runtime reads as "keep going": the
-    // same failure at every Stop, past the retry counter, with the reason on a
-    // stdout the Stop event ignores.
+    // Exit 2 is spelled only for a verdict. Every reason the audit cannot
+    // reach one — an unloadable config, an undeclared section, hook input it
+    // cannot read — allows the stop and says why. Propagating those as errors
+    // would exit 2 through the generic path, which the runtime reads as "keep
+    // going": the same failure at every Stop, past the retry counter.
     fn skip<W: Write>(out: &mut W, reason: &str) -> Result<ExitCode> {
         let body = serde_json::json!({
-            "systemMessage": format!("[stop-audit skipped: {reason}]"),
-            "suppressOutput": true,
+            "hookSpecificOutput": {
+                "hookEventName": "Stop",
+                "additionalContext": format!("[stop-audit skipped: {reason}]"),
+            }
         });
         writeln!(out, "{body}").map_err(|e| Error::IoFailure {
             path: PathBuf::from("(stdout)"),
@@ -246,15 +254,12 @@ fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode
     };
     match decision {
         StopDecision::Skip { reason } => skip(out, &reason),
-        StopDecision::Allow => {
-            write_envelope_success(out, decision)?;
-            Ok(ExitCode::SUCCESS)
-        }
-        // Stop-hook contract: exit 2 prevents the stop and forces continuation;
-        // exit 1 would be non-blocking (the Block would have no effect). The
-        // bounded retry counter inside StopAuditor keeps this from looping.
-        StopDecision::Block { .. } => {
-            write_envelope_success(out, decision)?;
+        StopDecision::Allow => Ok(ExitCode::SUCCESS),
+        // Exit 2 prevents the stop and forces continuation; exit 1 would be
+        // non-blocking, and the Block would have no effect. The bounded retry
+        // counter inside StopAuditor keeps this from looping.
+        StopDecision::Block { reason } => {
+            eprintln!("✗ stop-audit: {reason}");
             Ok(ExitCode::from(2))
         }
     }

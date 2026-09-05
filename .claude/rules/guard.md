@@ -81,15 +81,18 @@ self-grade inflation. Never bypass — bounded retries are the cure.
 sole sanctioned exception to Article II (where exit 2 = runtime failure).
 Per the Claude Code Stop-hook contract, exit 2 prevents the stop and
 forces continuation; exit 1 would be non-blocking. This is intentional;
-do not "normalize" it to exit 1. The envelope is still emitted on stdout.
+do not "normalize" it to exit 1. The reason rides stderr, which is where
+the runtime reads a blocked stop's reason from; stdout is ignored there,
+so an envelope written beside it is a reason discarded.
 
 Because exit 2 is that verdict, nothing else may reach it. Every reason the
 audit cannot produce one — an unloadable config, an undeclared section, hook
-input it cannot read, a probe that did not answer — is a `Skip`: exit 0 with
-the reason on `systemMessage`, the same direction the floor auditor takes.
-Propagating them as errors exits 2 through the generic path, which the
-runtime reads as a Block that no retry counter bounds, holding the session
-open at every Stop with its reason on a stdout the Stop event ignores.
+input it cannot read, a probe that did not answer — is a `Skip`: exit 0
+carrying the reason on `hookSpecificOutput.additionalContext`, which is the
+Stop event's only delivered channel and does not prevent the stop. An allowed
+stop emits nothing. Propagating a failure as an error exits 2 through the
+generic path, which the runtime reads as a Block that no retry counter bounds,
+holding the session open at every Stop.
 
 FloorAuditor (`guard::floor`, gated on `[guard.floor]`) handles PreToolUse
 for Bash and Edit|Write|MultiEdit: the enforcement-surface freeze plus the
