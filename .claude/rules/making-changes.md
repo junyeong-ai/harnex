@@ -31,7 +31,9 @@ next change, not decoration:
 - **Enforceability.** A convention that repeats becomes a type, a schema, a
   lint, or a test. Prose erodes and gates do not — Article IX is the same rule
   applied to duplicated facts. Before writing a rule down again, check whether
-  it can be enforced instead.
+  it can be enforced instead. Where what a rule produces has no closed form,
+  state the rule and let a test carry the instances: a list that cannot close
+  is incomplete at every reading, so review of it has no end.
 
 "Still right in six months" means the reader can reconstruct the intent then,
 not that an extension point was built for it now.
