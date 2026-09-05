@@ -261,25 +261,34 @@ wire_enum! {
     ///
     /// A metric can become wrong without its definition moving: a build that
     /// counted a record twice reported an honest name over a dishonest set.
-    /// Renaming catches a definition that changed on purpose; this catches a
-    /// ruler that changed at all, and it is the first thing a delta has to
-    /// survive.
+    /// Renaming catches a definition that changed on purpose; this catches
+    /// the build and the two `[session]` values that decide what a metric
+    /// counts and whether it is recorded, and it is the first thing a delta
+    /// has to survive.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum MethodChange {
-        /// Both windows name the same oracle build and the same paragraph floor.
+        /// Both windows name the same oracle build, paragraph floor and
+        /// coverage floor.
         Unchanged => "unchanged",
-        /// One of the two moved, so a delta is a reading about the method as
+        /// One of the three moved, so a delta is a reading about the method as
         /// much as about the work.
         Changed => "changed",
+        /// A window recorded no coverage floor, so whether the two agree is
+        /// not answered. Read as neither, for the reason
+        /// [`HarnessChange::Unknown`] is read as neither.
+        Unknown => "unknown",
     }
 }
 
 impl MethodChange {
     fn between(from: &Baseline, to: &Baseline) -> Self {
-        match from.oracle_version == to.oracle_version && from.min_block_chars == to.min_block_chars
-        {
-            true => Self::Unchanged,
-            false => Self::Changed,
+        if from.oracle_version != to.oracle_version || from.min_block_chars != to.min_block_chars {
+            return Self::Changed;
+        }
+        match (from.coverage_floor, to.coverage_floor) {
+            (Some(from), Some(to)) if from == to => Self::Unchanged,
+            (Some(_), Some(_)) => Self::Changed,
+            _ => Self::Unknown,
         }
     }
 }
@@ -329,6 +338,14 @@ pub struct Baseline {
     /// different either side of a change to it — the operator's half of what
     /// `oracle_version` says about the build.
     pub min_block_chars: usize,
+    /// `[session] coverage_floor` as this window was measured. It decides
+    /// whether the metrics taken over the operator's own text were recorded
+    /// at all, so an absence either side of a change to it is a different
+    /// fact — the same reason [`Baseline::min_block_chars`] rides along.
+    /// Absent on a baseline written before the field existed, where the
+    /// question cannot be answered rather than answered with a default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage_floor: Option<f64>,
     /// The harness the window ran under. Absent where the window was not
     /// scoped to a project, or that project is not a git work tree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -347,6 +364,7 @@ impl Baseline {
             coverage: facts.coverage.clone(),
             oracle_version: env!("CARGO_PKG_VERSION").to_string(),
             min_block_chars: measured.min_block_chars,
+            coverage_floor: Some(measured.coverage_floor),
             harness: measured.harness,
             measurements: SessionMetric::ALL
                 .iter()
@@ -458,6 +476,11 @@ pub struct BaselineWindow {
     /// The paragraph floor this window was measured under, for the reason
     /// [`Baseline::min_block_chars`] gives.
     pub min_block_chars: usize,
+    /// The coverage floor this window was measured under, for the reason
+    /// [`Baseline::coverage_floor`] gives. Read beside `authorship_ratio`,
+    /// which is the value it was judged against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage_floor: Option<f64>,
     /// The harness this window ran under, for the reason
     /// [`Baseline::harness`] gives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -481,6 +504,7 @@ impl BaselineWindow {
             project: baseline.project.clone(),
             oracle_version: baseline.oracle_version.clone(),
             min_block_chars: baseline.min_block_chars,
+            coverage_floor: baseline.coverage_floor,
             harness: baseline.harness.clone(),
             runtime_versions: baseline.coverage.runtime_versions.clone(),
             models: baseline.coverage.models.clone(),

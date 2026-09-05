@@ -1141,6 +1141,30 @@ fn a_comparison_says_whether_the_two_windows_were_measured_the_same_way() {
         "changed",
         "the paragraph floor decides what the repetition metrics counted"
     );
+
+    let mut other_coverage = after.clone();
+    other_coverage.coverage_floor = Some(config.coverage_floor / 2.0);
+    assert_eq!(
+        change(&before, &other_coverage),
+        "changed",
+        "the coverage floor decides whether the operator-text metrics exist"
+    );
+
+    let mut unrecorded = after.clone();
+    unrecorded.coverage_floor = None;
+    assert_eq!(
+        change(&before, &unrecorded),
+        "unknown",
+        "a window that did not record its coverage floor answers neither way"
+    );
+
+    let mut unrecorded_and_rebuilt = unrecorded.clone();
+    unrecorded_and_rebuilt.oracle_version = "0.0.1-other".into();
+    assert_eq!(
+        change(&before, &unrecorded_and_rebuilt),
+        "changed",
+        "a build that moved is answered even where the floor is unrecorded"
+    );
 }
 
 /// A ledger written before a window recorded what measured it holds numbers no
