@@ -1158,6 +1158,8 @@ fn a_comparison_says_whether_the_two_windows_were_measured_the_same_way() {
         "a window that did not record its coverage floor answers neither way"
     );
 
+    // Both halves of what is known, one at a time: a mismatch either side of
+    // the pair answers before the unrecorded floor is reached.
     let mut unrecorded_and_rebuilt = unrecorded.clone();
     unrecorded_and_rebuilt.oracle_version = "0.0.1-other".into();
     assert_eq!(
@@ -1165,6 +1167,21 @@ fn a_comparison_says_whether_the_two_windows_were_measured_the_same_way() {
         "changed",
         "a build that moved is answered even where the floor is unrecorded"
     );
+
+    let mut unrecorded_and_refloored = unrecorded.clone();
+    unrecorded_and_refloored.min_block_chars = config.min_block_chars + 1;
+    assert_eq!(
+        change(&before, &unrecorded_and_refloored),
+        "changed",
+        "a paragraph floor that moved is answered even where the floor is unrecorded"
+    );
+
+    // A verdict a reader cannot open is one they have to take on trust, so
+    // each side reports the floor it was measured under beside the ratio that
+    // was judged against it.
+    let reported = session::baseline::diff(&before, &unrecorded, config.min_support).unwrap();
+    assert_eq!(reported.from.coverage_floor, Some(config.coverage_floor));
+    assert_eq!(reported.to.coverage_floor, None);
 }
 
 /// A ledger written before a window recorded what measured it holds numbers no
