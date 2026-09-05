@@ -1,7 +1,14 @@
 # Keep / soften / cut (avoiding valueless constraints)
 
-Modern models (Opus 4.x-class) make many traditional harness heuristics
-valueless or harmful. A generated harness must not impose them.
+Every capability a model gains turns some traditional harness heuristic from
+useful into valueless or harmful, and the prose written against the old
+shortcoming outlives it. A generated harness must not impose them.
+
+The lists below are judgments about what a model does without being told, and
+no stamp dates them — `spec::SpecSurface` covers the documented vocabularies
+and not this. So they carry no model generation in their wording: a name here
+would be re-dated rather than re-decided, which is the fossil this file exists
+to keep out of a harness.
 
 ## Governing principle
 
