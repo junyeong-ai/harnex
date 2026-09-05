@@ -52,6 +52,12 @@ it.
 **Evidence:** the hook's row in `facts.harness.hooks` — `runs`, `total_ms`, and
 `stops_with_prevention` with the caveat above.
 
+A large `total_ms` is not always the hook's own work. A child it started with
+`&` is charged to it until that child closes the stdout it inherited
+(spec-facts, hooks), and where the cost is that, redirecting the child returns
+it — the number reads the same either way, so check the command before
+offering a removal.
+
 **Window (invariant 2):** the hook appears in `facts.harness.hooks` at all; a
 hook the window never saw run has no row.
 

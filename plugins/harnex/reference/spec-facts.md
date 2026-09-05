@@ -65,11 +65,19 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   switching rather than degrading quietly. The
   Bash *tool's* `tool_input.timeout` in PreToolUse stdin is milliseconds — a
   different field, opposite unit. Never emit a 4-digit "ms" timeout.
-- **Matcher syntax is content-dependent.** `*` / `""` / omitted = match all.
-  Only `[A-Za-z0-9_|]` = exact string or `|`-separated list (`Edit|Write` is
-  literal-OR, not regex). Any other character makes it a JS regex. An MCP
-  server wildcard MUST be `mcp__<server>__.*` — bare `mcp__<server>` matches
-  nothing.
+- **A hook ends when its stdout closes, not when its command returns.** The
+  runtime reads that stream to EOF to parse the control JSON, so a child
+  started with `&` that inherits stdout holds the hook open for as long as the
+  child lives: `&` does not detach. Reproduced — a verifier running `sleep 2 &`
+  costs 2067 ms, and 32 ms once the child's stdout is redirected. Not a
+  rounding error in practice: a backgrounded notification sound was the single
+  largest hook cost in both repositories measured over a fourteen-day window.
+  Redirect the child (`>/dev/null 2>&1 &`), or declare the handler `async`.
+- **`*` / `""` / an omitted matcher all match everything.** What the other
+  spellings mean is the measured grammar above, whose tiers are owned by
+  `KNOWN_MATCHER_EVENTS` — a second statement of the charset here is what
+  made `startup, resume` read as a regex. An MCP server wildcard MUST be
+  `mcp__<server>__.*` — bare `mcp__<server>` matches nothing.
 - **Config shape:** `hooks → <EventName>[] → { matcher?, hooks[] → { type,
   command, args?, timeout?, ... } }`. Five `type`s: command, http, mcp_tool,
   prompt, agent. `command` is the safe deterministic default for a no-network
