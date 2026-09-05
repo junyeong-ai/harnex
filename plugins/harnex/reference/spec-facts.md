@@ -89,11 +89,19 @@ Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
   hook_event_name, effort (PreToolUse adds tool_name, tool_input,
   tool_use_id). Inside subagents: also agent_id, agent_type.
 - **`additionalContext`** injects context on SessionStart, Setup,
-  SubagentStart, UserPromptSubmit, UserPromptExpansion, and the tool events
-  (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch) — on tool events
-  via `hookSpecificOutput.additionalContext`. It is NOT honored on Stop (use
-  `systemMessage` there). Write it as factual statements, not imperatives
-  (imperative phrasing trips prompt-injection defenses).
+  SubagentStart, UserPromptSubmit, UserPromptExpansion, the tool events
+  (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch), and **Stop**,
+  where it is the only channel that arrives: a Stop hook's `systemMessage`
+  reaches the transcript's raw stdout and no reader. It does not prevent the
+  stop — blocking is `decision`/exit 2 and nothing else — so a Stop verifier
+  reports through it without holding the session. Write it as factual
+  statements, not imperatives (imperative phrasing trips prompt-injection
+  defenses).
+  Which events honor it is measured from the transcript, not read off the
+  binary's schema or the page: the schema accepts the field on events that
+  discard it, and the page's own not-honored list names events that deliver
+  it. A `hook_success` record carrying empty `content` is a channel that went
+  nowhere; `hook_additional_context` carrying content is one that arrived.
 
 ## Settings (/en/settings)
 
