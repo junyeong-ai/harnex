@@ -41,7 +41,14 @@ thing that survives a confused, careless, or adversarial agent turn.
    rule. The measured failure shape: a review gate whose "stop when the
    count does not fall" lived in prose while no round count was recorded —
    it ran eleven rounds, and clearing findings was indistinguishable from
-   narrating them away. The spec-workflow's own controls name theirs:
+   narrating them away. One notch deeper, and measured beside it: the count
+   was recorded and the criterion did compute it, while the findings it
+   counted were never filed with a location — so closing one was again
+   indistinguishable from rewording it, and thirteen rounds ran under a
+   working computer. Where a control's input is supplied by a procedure step
+   nothing enforces, the computer is disabled upstream of itself; name the
+   enforcer for the input as well as for the control. The spec-workflow's own
+   controls name theirs:
    `harnex plan audit` computes the counts comparison, the disposition
    floor, and the append-only row contract, and the shipped pre-commit arm
    holds them at the commit.
