@@ -13,44 +13,57 @@ commits=$(git log --oneline -3 2>/dev/null || echo "no commits")
 printf 'Branch: %s\nUncommitted files: %s\nRecent commits:\n%s\n' \
   "$branch" "$changes" "$commits"
 
-# Whether the versioned git hooks beside this one will run. `core.hooksPath`
-# lives in the clone's own config and is never cloned, so a fresh checkout
-# commits past every gate they hold and nothing else reads that — the shape a
-# harness cannot afford, because armed and absent read alike. Reported by
-# exception, and here rather than in `harnex check`: the answer is a property
-# of this machine, and a gate whose verdict moves without the tree fails a
-# tree nothing changed. `git rev-parse` resolves the setting rather than this
-# reading it, so a relative path answers per worktree exactly as git will.
-# The sentinel is the git-hook pair the scaffold ships, not one of them: a
-# project that kept only the commit-msg hook holds a gate that would never run,
-# and asking after its partner alone answers about the wrong file.
+# Whether the versioned git hooks beside this one will run. Two things decide
+# that and each fails silently: `core.hooksPath` lives in the clone's own
+# config and is never cloned, and git skips a hook carrying no executable bit,
+# saying so only on the stderr of whichever git command was run. A fresh
+# checkout, or a copy that dropped the mode, then commits past every gate they
+# hold — armed and absent reading alike, which is the shape a harness cannot
+# afford. Both are reported by exception, and here rather than in `harnex
+# check`: the answer is a property of this machine, and a gate whose verdict
+# moves without the tree fails a tree nothing changed.
+#
+# The git hooks the scaffold ships are named rather than the directory
+# scanned, and `scaffold_git_hooks_match_the_probe` holds the pair to the
+# manifest — a third one shipping fails the build instead of going unwatched.
 hooks=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P) || hooks=
-if [[ -n "$hooks" ]] && [[ -e "${hooks}/pre-commit" || -e "${hooks}/commit-msg" ]] &&
+present=()
+for hook in pre-commit commit-msg; do
+  [[ -n "$hooks" && -e "${hooks}/${hook}" ]] && present+=("$hook")
+done
+if [[ ${#present[@]} -gt 0 ]] &&
   active=$(git rev-parse --git-path hooks 2>/dev/null) &&
   [[ -n "$active" && "$active" != *$'\n'* ]]; then
   # `rev-parse` echoes a flag it does not know onto stdout and still exits 0,
-  # so a version predating one would be read as a directory named after it and
-  # every session would open on a false report about its own floor. The answer
-  # is held to the one line the contract promises, and `--git-path` alone is
-  # asked: it predates `core.hooksPath` itself, so a repository that can be in
-  # this state has a git that knows it.
+  # so the answer is held to the one line the contract promises before it is
+  # read as a path: a version predating one would otherwise be taken for a
+  # directory named after it. `--git-path` alone is asked because it predates
+  # `core.hooksPath` itself, so a repository that can be in this state has a
+  # git that knows it. Its answer is relative to the working directory.
   [[ "$active" == /* ]] || active="${PWD}/${active}"
   # An absent directory keeps its raw path: it is where git looks, and it holds
   # no hook, which is the state worth naming rather than resolving away.
   armed=$(CDPATH='' cd -- "$active" 2>/dev/null && pwd -P) || armed="$active"
+  root=$(git rev-parse --show-toplevel 2>/dev/null) &&
+    root=$(CDPATH='' cd -- "$root" 2>/dev/null && pwd -P) || root=
+  here="$hooks"
+  [[ -n "$root" && "$hooks" == "$root"/* ]] && here="${hooks#"${root}"/}"
   if [[ "$armed" != "$hooks" ]]; then
-    root=$(git rev-parse --show-toplevel 2>/dev/null) &&
-      root=$(CDPATH='' cd -- "$root" 2>/dev/null && pwd -P) || root=
-    value="$hooks"
-    [[ -n "$root" && "$hooks" == "$root"/* ]] && value="${hooks#"${root}"/}"
     # Which scope holds the setting decides which scope can change it: a
-    # worktree-scoped value shadows the shared one, so the command naming the
+    # worktree-scoped value shadows the shared one, so a command naming the
     # shared scope would run, report success, and leave this reading the same.
-    # Advice that silently does nothing is the shape this probe exists against,
-    # so git is asked where the value lives rather than the common case assumed.
     scope=""
     git config --worktree --get core.hooksPath >/dev/null 2>&1 && scope=" --worktree"
     printf 'Versioned git hooks are not armed: git runs hooks from %s.\nThis clone arms them with `git config%s core.hooksPath %s`.\n' \
-      "$armed" "$scope" "$value"
+      "$armed" "$scope" "$here"
+  else
+    inert=()
+    for hook in "${present[@]}"; do
+      [[ -x "${hooks}/${hook}" ]] || inert+=("${here}/${hook}")
+    done
+    if [[ ${#inert[@]} -gt 0 ]]; then
+      printf 'git runs hooks from here, and %s carry no executable bit, which git requires before it runs one.\nThis clone sets it with `chmod +x %s`.\n' \
+        "${inert[*]}" "${inert[*]}"
+    fi
   fi
 fi
