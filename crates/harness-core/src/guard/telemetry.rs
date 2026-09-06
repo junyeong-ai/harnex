@@ -160,7 +160,7 @@ mod tests {
 
     const SCAFFOLD_TELEMETRY: &str = r#"
         [meta]
-        harnex_version = ">=0.10, <0.11"
+        harnex_version = ">=0.11, <0.12"
         [telemetry]
         storage_dir = ".harness/telemetry"
         [[telemetry.kinds]]
