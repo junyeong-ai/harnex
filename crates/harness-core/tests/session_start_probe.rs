@@ -51,10 +51,10 @@ fn config(root: &Path, args: &[&str]) {
     assert!(status.success(), "git config {args:?} failed");
 }
 
-/// What a session would be given, standing in the repository root.
-fn probe(root: &Path) -> String {
+/// What a session would be given, standing in `root`, from a probe at `script`.
+fn probe_from(root: &Path, script: &Path) -> String {
     let output = Command::new("bash")
-        .arg(root.join("hooks/session-start.sh"))
+        .arg(script)
         .current_dir(root)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_SYSTEM", "/dev/null")
@@ -65,6 +65,11 @@ fn probe(root: &Path) -> String {
         "the probe must never fail a session"
     );
     String::from_utf8(output.stdout).expect("probe output is UTF-8")
+}
+
+/// The common case: the probe sits in `root/hooks`.
+fn probe(root: &Path) -> String {
+    probe_from(root, &root.join("hooks/session-start.sh"))
 }
 
 #[test]
@@ -170,5 +175,56 @@ fn the_scope_it_names_is_the_scope_that_holds_the_setting() {
     assert!(
         probe(scoped.path()).contains("--worktree"),
         "a worktree-scoped value shadows anything written to the shared scope"
+    );
+}
+
+#[test]
+fn the_chmod_it_prints_runs_where_the_path_carries_a_space() {
+    // A path relative to the work tree carries no space the scaffold made, so
+    // this reaches the branch that does: hooks kept outside the work tree, whose
+    // report falls back to the absolute form. An unquoted join hands the
+    // operator a command that chmods two paths that do not exist.
+    let dir = tempfile::TempDir::with_prefix("probe").expect("tempdir");
+    let hooks_dir = dir.path().join("my hooks");
+    let work_tree = dir.path().join("repo");
+    std::fs::create_dir_all(&hooks_dir).expect("hooks dir");
+    std::fs::create_dir_all(&work_tree).expect("work tree");
+    std::fs::copy(template(), hooks_dir.join("session-start.sh")).expect("copy probe");
+    for hook in ["pre-commit", "commit-msg"] {
+        let path = hooks_dir.join(hook);
+        std::fs::write(&path, "#!/bin/sh\nexit 1\n").expect("write hook");
+        set_mode(&path, 0o644);
+    }
+    assert!(
+        common::git(&work_tree)
+            .args(["init", "-q", "."])
+            .status()
+            .expect("git init runs")
+            .success()
+    );
+    config(
+        &work_tree,
+        &["core.hooksPath", &hooks_dir.display().to_string()],
+    );
+
+    let said = probe_from(&work_tree, &hooks_dir.join("session-start.sh"));
+    assert!(
+        said.contains("my hooks"),
+        "this case exists to exercise the absolute fallback: {said}"
+    );
+    let command = said
+        .lines()
+        .find_map(|line| line.split('`').nth(1))
+        .unwrap_or_else(|| panic!("the report names a command: {said}"));
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(&work_tree)
+        .status()
+        .expect("the printed command runs");
+    assert!(status.success(), "`{command}` did not run");
+    assert!(
+        !probe_from(&work_tree, &hooks_dir.join("session-start.sh")).contains("executable bit"),
+        "`{command}` was printed as the repair and left the bit unset"
     );
 }
