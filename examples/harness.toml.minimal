@@ -2,7 +2,7 @@
 # stays small (1MB rotation).
 
 [meta]
-harnex_version = ">=0.11, <0.12"
+harnex_version = ">=0.12, <0.13"
 
 [evidence]
 default_provenance = "memory-only"
