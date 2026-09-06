@@ -1,7 +1,9 @@
 # harness-cli
 
 Thin clap binary over `harness-core`. Every command produces exactly one
-JSON envelope on stdout and exits with a documented code.
+JSON envelope on stdout and exits with a documented code, except the
+`guard` commands that speak a hook contract instead — `.claude/rules/envelope.md`
+enumerates them, and a copy of that list here is the one that goes stale.
 
 ## The envelope contract
 
@@ -14,9 +16,9 @@ JSON envelope on stdout and exits with a documented code.
   ErrorCode to `{"ok":false,"error":{...}}`. Invalid CLI arguments are
   caught via `Cli::try_parse()` and mapped to an error envelope (exit 2);
   `--help` / `--version` stay clap-native (exit 0).
-- The sanctioned non-envelope stdout exceptions (`--raw`, `guard hook-run`
-  passthrough, `guard stop-audit` exit 2) are enumerated in
-  `.claude/rules/envelope.md` — do not add others.
+- The sanctioned non-envelope stdout exceptions are enumerated in
+  `.claude/rules/envelope.md`, each with the contract it speaks instead — do
+  not add others, and do not restate that list.
 
 ## Exit codes
 

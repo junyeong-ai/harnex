@@ -23,7 +23,15 @@ printf 'Branch: %s\nUncommitted files: %s\nRecent commits:\n%s\n' \
 # reading it, so a relative path answers per worktree exactly as git will.
 hooks=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P) || hooks=
 if [[ -n "$hooks" && -e "${hooks}/pre-commit" ]] &&
-  active=$(git rev-parse --path-format=absolute --git-path hooks 2>/dev/null); then
+  active=$(git rev-parse --git-path hooks 2>/dev/null) &&
+  [[ -n "$active" && "$active" != *$'\n'* ]]; then
+  # `rev-parse` echoes a flag it does not know onto stdout and still exits 0,
+  # so a version predating one would be read as a directory named after it and
+  # every session would open on a false report about its own floor. The answer
+  # is held to the one line the contract promises, and `--git-path` alone is
+  # asked: it predates `core.hooksPath` itself, so a repository that can be in
+  # this state has a git that knows it.
+  [[ "$active" == /* ]] || active="${PWD}/${active}"
   # An absent directory keeps its raw path: it is where git looks, and it holds
   # no hook, which is the state worth naming rather than resolving away.
   armed=$(CDPATH='' cd -- "$active" 2>/dev/null && pwd -P) || armed="$active"
