@@ -32,7 +32,14 @@ if [[ -n "$hooks" && -e "${hooks}/pre-commit" ]] &&
       root=$(CDPATH='' cd -- "$root" 2>/dev/null && pwd -P) || root=
     value="$hooks"
     [[ -n "$root" && "$hooks" == "$root"/* ]] && value="${hooks#"${root}"/}"
-    printf 'Versioned git hooks are not armed: git runs hooks from %s.\nThis clone arms them with `git config core.hooksPath %s`.\n' \
-      "$armed" "$value"
+    # Which scope holds the setting decides which scope can change it: a
+    # worktree-scoped value shadows the shared one, so the command naming the
+    # shared scope would run, report success, and leave this reading the same.
+    # Advice that silently does nothing is the shape this probe exists against,
+    # so git is asked where the value lives rather than the common case assumed.
+    scope=""
+    git config --worktree --get core.hooksPath >/dev/null 2>&1 && scope=" --worktree"
+    printf 'Versioned git hooks are not armed: git runs hooks from %s.\nThis clone arms them with `git config%s core.hooksPath %s`.\n' \
+      "$armed" "$scope" "$value"
   fi
 fi
