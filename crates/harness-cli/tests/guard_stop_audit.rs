@@ -9,7 +9,8 @@
 //!
 //! Every case reaches its outcome before the critique spawn, so no model call
 //! is made: an unanswerable probe skips, a probe answering "no work" allows,
-//! and a retry counter already past its ceiling blocks.
+//! and a retry counter already past its ceiling blocks. That is computed
+//! rather than promised — see [`stop_audit_in`].
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -26,11 +27,29 @@ fn harness_toml(stop_audit: &str) -> String {
     )
 }
 
+/// The probe's program, resolved here so the child needs no `PATH`.
+fn resolved(program: &str) -> String {
+    std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .map(|d| Path::new(d).join(program))
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| panic!("no {program} on PATH"))
+        .display()
+        .to_string()
+}
+
+/// Runs with an empty `PATH`, which is what makes the no-model-call promise a
+/// computed one: every case here reaches its outcome before `spawn_critique`,
+/// and a case that stopped doing so would look for `claude`, fail to find it,
+/// and take the skip branch — failing this file's assertions rather than
+/// quietly paying for a turn.
 fn stop_audit_in(dir: &Path, config: &str) -> Output {
     std::fs::write(dir.join("harness.toml"), config).expect("write harness.toml");
     Command::new(env!("CARGO_BIN_EXE_harnex"))
         .args(["guard", "stop-audit", "--session", "contract"])
         .current_dir(dir)
+        .env("PATH", "")
         .output()
         .expect("run harnex")
 }
@@ -66,10 +85,11 @@ fn an_allowed_stop_says_nothing() {
     let dir = tempfile::tempdir().expect("tempdir");
     let output = stop_audit_in(
         dir.path(),
-        &harness_toml(
+        &harness_toml(&format!(
             "[guard.stop_audit]\ncritique_skill = \"/unreachable\"\n\
-             has_changes_check = [\"true\"]\n",
-        ),
+             retry_ledger_dir = \"retry\"\nhas_changes_check = [\"{}\"]\n",
+            resolved("true")
+        )),
     );
 
     assert_eq!(output.status.code(), Some(0), "nothing to critique allows");
@@ -85,17 +105,21 @@ fn an_allowed_stop_says_nothing() {
 fn a_block_feeds_back_where_exit_two_is_read() {
     let dir = tempfile::tempdir().expect("tempdir");
     // The ceiling is already reached, so the escalation lands before the
-    // critique is spawned — the only branch that reaches a Blocker without
-    // paying for a model call.
-    let ledger = dir.path().join(".harness/_audit_retry");
+    // critique is spawned. The ledger directory is declared rather than left to
+    // its default: a seed written to a path the binary no longer reads would
+    // start the counter at one, fall through to the spawn, and pay for the turn
+    // this case exists to avoid.
+    let ledger = dir.path().join("retry");
     std::fs::create_dir_all(&ledger).expect("retry ledger dir");
     std::fs::write(ledger.join("contract.count"), "1").expect("seed the counter");
     let output = stop_audit_in(
         dir.path(),
-        &harness_toml(
+        &harness_toml(&format!(
             "[guard.stop_audit]\ncritique_skill = \"/unreachable\"\n\
-             max_retries = 1\nhas_changes_check = [\"false\"]\n",
-        ),
+             retry_ledger_dir = \"retry\"\nmax_retries = 1\n\
+             has_changes_check = [\"{}\"]\n",
+            resolved("false")
+        )),
     );
 
     assert_eq!(
