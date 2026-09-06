@@ -1,10 +1,11 @@
 //! What `harnex guard stop-audit` puts on each of the Stop event's channels.
 //!
-//! The shape is the whole contract: a Stop hook's `systemMessage` reaches the
-//! transcript's raw stdout and no reader, so an advisory written there is
-//! indistinguishable from one never written. Only the channel each outcome
-//! lands on is asserted here — the decision behind it is `guard::stop_audit`'s
-//! own subject, and its runner seam covers it without spawning anything.
+//! The channel is the contract, because the event has three and they differ by
+//! reader: `systemMessage` for the operator, `hookSpecificOutput` for the
+//! model, and stderr for the reason a blocked stop is given. Only which one
+//! each outcome lands on is asserted here — the decision behind it is
+//! `guard::stop_audit`'s own subject, and its runner seam covers it without
+//! spawning anything.
 //!
 //! Every case reaches its outcome before the critique spawn, so no model call
 //! is made: an unanswerable probe skips, a probe answering "no work" allows,
@@ -39,27 +40,24 @@ fn stdout_of(output: &Output) -> String {
 }
 
 #[test]
-fn a_skip_rides_the_stop_channel_that_arrives() {
+fn a_skip_reaches_the_operator_who_has_to_fix_it() {
     let dir = tempfile::tempdir().expect("tempdir");
     let output = stop_audit_in(dir.path(), &harness_toml(""));
 
     assert_eq!(output.status.code(), Some(0), "a skip allows the stop");
     let body: serde_json::Value =
         serde_json::from_str(stdout_of(&output).trim()).expect("stdout is one JSON object");
-    assert_eq!(
-        body["hookSpecificOutput"]["hookEventName"], "Stop",
-        "the event names itself, which the runtime requires to route the field"
-    );
-    let context = body["hookSpecificOutput"]["additionalContext"]
+    let message = body["systemMessage"]
         .as_str()
-        .expect("additionalContext carries the reason");
+        .expect("the operator's channel carries the reason");
     assert!(
-        context.contains("no [guard.stop_audit] section"),
-        "the skip says why it could not judge: {context}"
+        message.contains("no [guard.stop_audit] section"),
+        "the skip says why it could not judge: {message}"
     );
     assert!(
-        body.get("systemMessage").is_none(),
-        "a Stop systemMessage reaches no reader, so writing one would be silence"
+        body.get("hookSpecificOutput").is_none(),
+        "a section this binary cannot load is not something the model can act on, \
+         so it does not reach the model's channel"
     );
 }
 

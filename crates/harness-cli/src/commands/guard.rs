@@ -195,10 +195,11 @@ fn hook_stop<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<Ex
 /// Blocker the audit reached, whose reason feeds back on stderr; every other
 /// outcome exits 0, and an allowed stop says nothing at all.
 ///
-/// A skip rides `hookSpecificOutput.additionalContext` because it is the only
-/// Stop channel that arrives — a `systemMessage` written here would reach the
-/// transcript's raw stdout and no reader — and carrying it there does not
-/// prevent the stop, which `decision` and exit 2 are alone in doing.
+/// A skip names a configuration the operator has to fix, so it takes their
+/// channel — `systemMessage`, the same one the floor auditor skips on. The
+/// Stop event delivers `hookSpecificOutput.additionalContext` too, and it is
+/// the model's; a section this binary cannot load is not something the model
+/// can act on.
 fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode> {
     // Exit 2 is spelled only for a verdict. Every reason the audit cannot
     // reach one — an unloadable config, an undeclared section, hook input it
@@ -207,10 +208,8 @@ fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode
     // going": the same failure at every Stop, past the retry counter.
     fn skip<W: Write>(out: &mut W, reason: &str) -> Result<ExitCode> {
         let body = serde_json::json!({
-            "hookSpecificOutput": {
-                "hookEventName": "Stop",
-                "additionalContext": format!("[stop-audit skipped: {reason}]"),
-            }
+            "systemMessage": format!("[stop-audit skipped: {reason}]"),
+            "suppressOutput": true,
         });
         writeln!(out, "{body}").map_err(|e| Error::IoFailure {
             path: PathBuf::from("(stdout)"),

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Stop verifier: surface uncommitted work as a non-blocking advisory. Never
-# blocks — `hookSpecificOutput.additionalContext` is delivered without
-# preventing the stop, which `decision` and exit 2 are the only things that do.
-# A `systemMessage` written here would reach the transcript's raw stdout and no
-# reader. Pure bash — the only interpolated value is an integer count, so no
+# blocks — only `decision` and exit 2 do that. The Stop event delivers two
+# channels and they differ by reader: `systemMessage` becomes a
+# `hook_system_message` record and `hookSpecificOutput.additionalContext` a
+# `hook_additional_context` one, which the stop summary also keeps a field for
+# as the model's feedback channel. This is a nudge to the person, so it takes
+# theirs. Pure bash — the only interpolated value is an integer count, so no
 # JSON escaping (and no language runtime) is needed.
 set -uo pipefail
 
 CHANGES=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
 if [[ "${CHANGES:-0}" -gt 0 ]]; then
-  printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s file(s) in the work tree are uncommitted."}}\n' \
-    "$CHANGES"
+  echo "{\"systemMessage\": \"${CHANGES} uncommitted file(s). Consider committing before ending the session.\"}"
 fi
 exit 0

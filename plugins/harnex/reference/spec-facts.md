@@ -106,17 +106,23 @@ already contradicted both a page and the binary's own schema.
 - **`additionalContext`** injects context on SessionStart, Setup,
   SubagentStart, UserPromptSubmit, UserPromptExpansion, the tool events
   (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch), and **Stop**,
-  where it is the only channel that arrives: a Stop hook's `systemMessage`
-  reaches the transcript's raw stdout and no reader. It does not prevent the
-  stop — blocking is `decision`/exit 2 and nothing else — so a Stop verifier
-  reports through it without holding the session. Write it as factual
-  statements, not imperatives (imperative phrasing trips prompt-injection
-  defenses).
-  Which events honor it is measured from the transcript, not read off the
-  binary's schema or the page: the schema accepts the field on events that
-  discard it, and the page's own not-honored list names events that deliver
-  it. A `hook_success` record carrying empty `content` is a channel that went
-  nowhere; `hook_additional_context` carrying content is one that arrived.
+  where the stop summary keeps a `hookAdditionalContext` field for it. It does
+  not prevent the stop — blocking is `decision`/exit 2 and nothing else. Write
+  it as factual statements, not imperatives (imperative phrasing trips
+  prompt-injection defenses).
+- **A hook's channels differ by reader, and Stop carries both.**
+  `systemMessage` is the operator's and `hookSpecificOutput.additionalContext`
+  is the model's; on Stop each arrives, measured at 69–447 and 258–301
+  characters of delivered content respectively. Pick by who must act: a
+  configuration the operator has to repair is theirs, a finding the model can
+  act on is the model's.
+  Read that from the transcript rather than from the binary's schema or the
+  page — the schema accepts the field on events that discard it, and the
+  page's not-honored list names SubagentStart, which delivers 560 characters
+  of it. Read it by the attachment **type**: the runtime moves each field into
+  its own record (`hook_system_message`, `hook_additional_context`), so the
+  `hook_success` record for the same hook carries empty `content` whichever
+  channel was used, and reading that one alone reports every channel dead.
 
 ## Settings (/en/settings)
 

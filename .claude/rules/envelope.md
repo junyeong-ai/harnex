@@ -42,10 +42,10 @@ without extending this list:
 - `guard stop-audit`: speaks the Stop hook contract instead of the envelope —
   a Block exits 2 with its reason on stderr (the sole exception to Article II's
   exit-code set, and the only channel a blocked stop's reason is read from), a
-  skip emits one `{hookSpecificOutput}` object and exits 0, and an allowed stop
-  emits nothing. Exit 2 is spelled only for that verdict, because the runtime
-  reads the error path's exit 2 as a Block the retry counter never bounds.
-  See guard.md.
+  skip emits one `{systemMessage, suppressOutput}` object and exits 0, and an
+  allowed stop emits nothing. Exit 2 is spelled only for that verdict, because
+  the runtime reads the error path's exit 2 as a Block the retry counter never
+  bounds. See guard.md.
 - `guard floor`: speaks the PreToolUse hook contract instead of the envelope —
   a Block exits 2 with its reason on stderr (the documented feedback channel),
   a skip or grant emits one `{systemMessage, suppressOutput}` object, and a
