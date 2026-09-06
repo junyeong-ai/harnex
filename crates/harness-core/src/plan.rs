@@ -40,7 +40,7 @@
 //!   pre-commit arm and the skill — because a project-wide walk would need
 //!   the layout this module refuses to guess.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::markdown::{Document, Unterminated, strip_code_spans};
@@ -903,12 +903,18 @@ impl<'a> PlanAuditor<'a> {
             .collect();
 
         let mut last_blocking: BTreeMap<String, u64> = BTreeMap::new();
+        // A bullet no gate can read is any gate's firing as far as this knows,
+        // so no gate's previous survives it. Dropping the comparison silently
+        // would take a finding with it — the gate that rose across an
+        // unrelated gate's slip — so each gate's first firing after one says
+        // that its convergence is the thing that cannot be read.
+        let mut gap_at: Option<u32> = None;
+        let mut resumed: BTreeSet<String> = BTreeSet::new();
         for (line_no, decision) in &decisions {
-            // A bullet no gate can read is any gate's firing as far as this
-            // knows, so no gate's previous survives it: comparing past one
-            // reads a round that is not the one before.
             let Some(decision) = decision else {
                 last_blocking.clear();
+                gap_at = Some(*line_no);
+                resumed.clear();
                 continue;
             };
             let gate = decision.gate.as_str();
@@ -965,6 +971,26 @@ impl<'a> PlanAuditor<'a> {
             match decision.decision {
                 GateDecision::NeedsRevision => {
                     if let Some(counts) = decision.counts {
+                        if let Some(gap) = gap_at
+                            && resumed.insert(gate_key.clone())
+                        {
+                            findings.push(Finding {
+                                slug: "plan-log-convergence-unreadable".into(),
+                                severity: Severity::Blocker,
+                                location: Location::line(spec_path, *line_no),
+                                message: format!(
+                                    "`{gate}` re-fired after the bullet at line {gap}, which no \
+                                     gate can read — whether this firing fell is unknown"
+                                ),
+                                hint: Some(format!(
+                                    "repair line {gap}: until it reads, the firing before this \
+                                     one cannot be named, and a count is only low against a \
+                                     round that is known"
+                                )),
+                                auto_fixable: false,
+                                fix_command: None,
+                            });
+                        }
                         if let Some(&previous) = last_blocking.get(&gate_key)
                             && counts.blocking() >= previous
                             && !decision.rationale.starts_with(ACKNOWLEDGED_PREFIX)
@@ -1598,6 +1624,48 @@ mod tests {
     }
 
     #[test]
+    fn a_slip_in_one_gate_does_not_quietly_settle_another() {
+        // The unreadable bullet belongs to `design_review`, and `review` rose
+        // across it. Dropping every gate's previous is right — the bullet
+        // could have been any gate's firing — but dropping it in silence
+        // takes `review`'s finding with it and reports a formatting slip in
+        // its place.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
+                   - 2026-01-16 \u{2022} design_review \u{2022} needs_revision \u{2022} 0C/1B/0M/0m \u{2022} other\n\
+                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three";
+        let findings = audit_with_spec(&plan(""), &spec(log));
+        assert_eq!(
+            slugs(&findings),
+            ["plan-log-unparseable", "plan-log-convergence-unreadable"]
+        );
+        assert!(findings.iter().all(|f| f.severity == Severity::Blocker));
+        assert_eq!(
+            findings[1].location.line,
+            Some(7),
+            "at the firing it cannot judge"
+        );
+    }
+
+    #[test]
+    fn convergence_resumes_from_the_first_firing_a_gate_can_be_read_at() {
+        // The gate says so once, at the firing whose previous is unreadable,
+        // and holds the ones after it to the round before them as usual.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
+                   - 2026-01-16 \u{2022} review \u{2022} needs_revision \u{2022} 0C/9B/0M/0m \u{2022} nine\n\
+                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three\n\
+                   - 2026-01-18 \u{b7} review \u{b7} needs_revision \u{b7} 0C/4B/0M/0m \u{b7} four";
+        let findings = audit_with_spec(&plan(""), &spec(log));
+        assert_eq!(
+            slugs(&findings),
+            [
+                "plan-log-unparseable",
+                "plan-log-convergence-unreadable",
+                "plan-log-not-falling"
+            ]
+        );
+    }
+
+    #[test]
     fn a_round_no_gate_can_read_is_not_compared_across() {
         // The middle bullet separates on `\u{2022}`, which a CJK IME and a
         // prettifier both reach for. Read past it, the last firing is held to
@@ -1608,8 +1676,15 @@ mod tests {
                    - 2026-01-16 \u{2022} review \u{2022} needs_revision \u{2022} 0C/9B/0M/0m \u{2022} nine\n\
                    - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three";
         let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(slugs(&findings), ["plan-log-unparseable"]);
-        assert_eq!(findings[0].severity, Severity::Blocker);
+        assert_eq!(
+            slugs(&findings),
+            ["plan-log-unparseable", "plan-log-convergence-unreadable"]
+        );
+        assert!(findings.iter().all(|f| f.severity == Severity::Blocker));
+        assert!(
+            !slugs(&findings).contains(&"plan-log-not-falling"),
+            "3 against 2 is a comparison with the round before the one before: {findings:?}"
+        );
     }
 
     #[test]
