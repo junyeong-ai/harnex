@@ -864,14 +864,15 @@ impl<'a> PlanAuditor<'a> {
         let mut decisions = Vec::new();
         for item in items {
             match parse_decision(&item.text) {
-                Some(line) if item.canonical_marker => decisions.push((item.line, line)),
+                Some(line) if item.canonical_marker => decisions.push((item.line, Some(line))),
                 // Decision-shaped is the grammar's own separator, or a bullet
                 // opening on a date — a lookalike dot (`•` for `·`) must not
                 // drop a line out of every accounting check in silence.
                 _ if item.text.contains('·') || item.text.get(..10).is_some_and(is_iso_date) => {
+                    decisions.push((item.line, None));
                     findings.push(Finding {
                         slug: "plan-log-unparseable".into(),
-                        severity: Severity::Major,
+                        severity: Severity::Blocker,
                         location: Location::line(spec_path, item.line),
                         message: format!(
                             "decision bullet no gate can read: {}",
@@ -896,8 +897,20 @@ impl<'a> PlanAuditor<'a> {
         // Keyed case-folded: `Review` and `review` are one gate to a reader,
         // and letting them track separately reset the comparison a case-typo
         // was enough to escape.
+        let readable: Vec<(u32, &DecisionLine)> = decisions
+            .iter()
+            .filter_map(|(line_no, decision)| decision.as_ref().map(|d| (*line_no, d)))
+            .collect();
+
         let mut last_blocking: BTreeMap<String, u64> = BTreeMap::new();
         for (line_no, decision) in &decisions {
+            // A bullet no gate can read is any gate's firing as far as this
+            // knows, so no gate's previous survives it: comparing past one
+            // reads a round that is not the one before.
+            let Some(decision) = decision else {
+                last_blocking.clear();
+                continue;
+            };
             let gate = decision.gate.as_str();
             let gate_key = gate.to_ascii_lowercase();
             let class = gate_class(gate);
@@ -933,7 +946,7 @@ impl<'a> PlanAuditor<'a> {
                 if owes_counts && decision.counts.is_none() {
                     findings.push(Finding {
                         slug: "plan-log-counts-missing".into(),
-                        severity: Severity::Major,
+                        severity: Severity::Blocker,
                         location: Location::line(spec_path, *line_no),
                         message: format!(
                             "`{gate}` recorded `{}` without counts",
@@ -976,6 +989,12 @@ impl<'a> PlanAuditor<'a> {
                             });
                         }
                         last_blocking.insert(gate_key.clone(), counts.blocking());
+                    } else {
+                        // The firing before the next one recorded nothing to
+                        // fall below. Holding that one to the round before it
+                        // would name a previous firing that is not the
+                        // previous firing; the missing count is the finding.
+                        last_blocking.remove(&gate_key);
                     }
                 }
                 GateDecision::Approved | GateDecision::Rejected | GateDecision::Deferred => {
@@ -1018,7 +1037,7 @@ impl<'a> PlanAuditor<'a> {
         // counted a list that may since have changed. Without this the token
         // is unbound — `0P/0F/0U` would approve a spec whose criteria nothing
         // ever looked at, which is the omission the third state exists to name.
-        if let Some((line_no, decision)) = decisions
+        if let Some((line_no, decision)) = readable
             .iter()
             .rev()
             .find(|(_, d)| gate_class(&d.gate) == Some(GateClass::Acceptance))
@@ -1068,7 +1087,7 @@ impl<'a> PlanAuditor<'a> {
         }
 
         if let Some(rows) = rows
-            && let Some((line_no, decision)) = decisions
+            && let Some((line_no, decision)) = readable
                 .iter()
                 .rev()
                 .find(|(_, d)| gate_class(&d.gate) == Some(GateClass::Review))
@@ -1579,15 +1598,28 @@ mod tests {
     }
 
     #[test]
+    fn a_round_no_gate_can_read_is_not_compared_across() {
+        // The middle bullet separates on `\u{2022}`, which a CJK IME and a
+        // prettifier both reach for. Read past it, the last firing is held to
+        // the round before the one before it: 3 against 2 fires a convergence
+        // finding naming a firing that is not the previous one, and the
+        // reverse arrangement passes a round that rose.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
+                   - 2026-01-16 \u{2022} review \u{2022} needs_revision \u{2022} 0C/9B/0M/0m \u{2022} nine\n\
+                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three";
+        let findings = audit_with_spec(&plan(""), &spec(log));
+        assert_eq!(slugs(&findings), ["plan-log-unparseable"]);
+        assert_eq!(findings[0].severity, Severity::Blocker);
+    }
+
+    #[test]
     fn a_missing_count_does_not_launder_the_comparison() {
         let log = "- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · two\n\
                    - 2026-01-16 · review · needs_revision · forgot the counts\n\
                    - 2026-01-17 · review · needs_revision · 0C/2B/0M/0m · still two";
         let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(
-            slugs(&findings),
-            ["plan-log-counts-missing", "plan-log-not-falling"]
-        );
+        assert_eq!(slugs(&findings), ["plan-log-counts-missing"]);
+        assert_eq!(findings[0].severity, Severity::Blocker);
     }
 
     #[test]
