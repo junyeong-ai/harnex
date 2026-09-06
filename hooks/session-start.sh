@@ -68,8 +68,15 @@ if [[ ${#present[@]} -gt 0 ]] &&
       [[ -x "${hooks}/${hook}" ]] || inert+=("${here}/${hook}")
     done
     if [[ ${#inert[@]} -gt 0 ]]; then
-      printf 'git runs hooks from here, and %s carry no executable bit, which git requires before it runs one.\nThis clone sets it with `chmod +x %s`.\n' \
-        "${inert[*]}" "${inert[*]}"
+      # Each path is quoted in the command it names: these are relative to the
+      # work tree only while the hooks live under it, and the absolute form a
+      # detached directory falls back to can carry a space.
+      quoted=""
+      for path in "${inert[@]}"; do
+        quoted+=" '${path}'"
+      done
+      printf 'git runs hooks from here, and the executable bit is missing from %s, which git requires before it runs a hook.\nThis clone sets it with `chmod +x%s`.\n' \
+        "${inert[*]}" "$quoted"
     fi
   fi
 fi

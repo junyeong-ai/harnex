@@ -444,10 +444,21 @@ fn scaffold_git_hooks_match_the_probe() {
          would be asserted against nothing"
     );
 
-    let named: BTreeSet<String> = body
+    // The probe loops over these names once to find them and again to judge
+    // them, so the line is chosen by what it holds rather than by coming
+    // first: only the declaration spells the names literally.
+    let declarations: Vec<&str> = body
         .lines()
-        .find_map(|l| l.trim().strip_prefix("for hook in ")?.strip_suffix("; do"))
-        .expect("the probe names its git hooks in one `for hook in ...; do`")
+        .filter_map(|l| l.trim().strip_prefix("for hook in ")?.strip_suffix("; do"))
+        .filter(|names| !names.contains('$'))
+        .collect();
+    assert_eq!(
+        declarations.len(),
+        1,
+        "the probe declares its git hooks in exactly one `for hook in <names>; do`, and \
+         this found {declarations:?}"
+    );
+    let named: BTreeSet<String> = declarations[0]
         .split_whitespace()
         .map(str::to_string)
         .collect();

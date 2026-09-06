@@ -114,15 +114,14 @@ already contradicted both a page and the binary's own schema.
   prompt-injection defenses).
 - **A hook's channels differ by reader, and Stop carries both.**
   `systemMessage` is the operator's and `hookSpecificOutput.additionalContext`
-  is the model's; on Stop each arrives, measured at 69–447 and 258–301
-  characters of delivered content respectively. Pick by who must act: a
+  is the model's, and on Stop each arrives. Pick by who must act: a
   configuration the operator has to repair is theirs, a finding the model can
   act on is the model's.
   Read that from the transcript rather than from the binary's schema or the
   page — the schema accepts the field on events that discard it, and the
-  page's not-honored list names SubagentStart, which delivers 560 characters
-  of it. Read it by the attachment **type**: the runtime moves each field into
-  its own record (`hook_system_message`, `hook_additional_context`), so the
+  page's not-honored list names SubagentStart, which delivers it. Read it by
+  the attachment **type**: the runtime moves each field into its own record
+  (`hook_system_message`, `hook_additional_context`), so the
   `hook_success` record for the same hook carries empty `content` whichever
   channel was used, and reading that one alone reports every channel dead.
 
