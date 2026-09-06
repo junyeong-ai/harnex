@@ -52,8 +52,14 @@ if [[ ${#present[@]} -gt 0 ]] &&
     # Which scope holds the setting decides which scope can change it: a
     # worktree-scoped value shadows the shared one, so a command naming the
     # shared scope would run, report success, and leave this reading the same.
+    # `--worktree` is `--local` wearing another name until `worktreeConfig` is
+    # enabled, so asking it alone reads any ordinary local value — the shape
+    # every hook manager leaves behind — as worktree-scoped. Both are asked.
     scope=""
-    git config --worktree --get core.hooksPath >/dev/null 2>&1 && scope=" --worktree"
+    if [[ "$(git config --bool --get extensions.worktreeConfig 2>/dev/null)" == "true" ]] &&
+      git config --worktree --get core.hooksPath >/dev/null 2>&1; then
+      scope=" --worktree"
+    fi
     printf 'Versioned git hooks are not armed: git runs hooks from %s.\nThis clone arms them with `git config%s core.hooksPath %s`.\n' \
       "$armed" "$scope" "$here"
   else
