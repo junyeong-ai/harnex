@@ -43,7 +43,10 @@ token:
 One rule governs both: a re-fire whose blocking total did not fall below the
 previous firing's escalates to the operator instead of firing, and firing on
 anyway takes the operator's own recorded acknowledgement in the line — a
-rationale beginning `acknowledged:`, naming why another round is justified.
+rationale beginning `acknowledged:`, naming the ground on which the next
+firing falls. The round after it is held to that ground, so a second
+acknowledgement in a row is the first one answered, and it is the operator's
+to settle rather than the loop's to write again.
 The rule is computed from the log's own lines by `harnex plan audit`, never
 recalled — a convergence floor nothing computes is prose, and the measured
 failure of that shape is a gate that recorded eleven firings while its rule

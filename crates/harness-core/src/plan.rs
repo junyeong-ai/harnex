@@ -910,12 +910,13 @@ impl<'a> PlanAuditor<'a> {
         // that its convergence is the thing that cannot be read.
         let mut gap_at: Option<u32> = None;
         let mut resumed: BTreeSet<String> = BTreeSet::new();
-        // An acknowledgement is a prediction: these findings are a class the
-        // round's answer closes, so the next firing falls. A second one in a
-        // row is that prediction tested and failed, which is the first round
-        // at which riding on is a scope the operator owns rather than a
-        // rationale the loop can write for itself. Counted per gate, because
-        // that is what the comparison it overrides is keyed by.
+        // The acknowledgement names the ground on which the next firing falls,
+        // so a second one in a row is the first one answered — the earliest
+        // round at which riding on is a scope the operator settles rather than
+        // a rationale the loop writes again. Counted per gate, because that is
+        // what the comparison it overrides is keyed by. A count is what this
+        // is: a cycle closed and reopened starts a new run, so what it bounds
+        // is how far one can go unremarked, not how long the loop can run.
         let mut rode_on: BTreeMap<String, u32> = BTreeMap::new();
         for (line_no, decision) in &decisions {
             let Some(decision) = decision else {
@@ -1043,7 +1044,8 @@ impl<'a> PlanAuditor<'a> {
                                 hint: Some(format!(
                                     "escalate to the operator instead of firing again; riding on \
                                      takes their recorded acknowledgement — a rationale beginning \
-                                     `{ACKNOWLEDGED_PREFIX}` naming why another round is justified"
+                                     `{ACKNOWLEDGED_PREFIX}` naming the ground on which the next \
+                                     firing falls, which the round after this one is held to"
                                 )),
                                 auto_fixable: false,
                                 fix_command: None,
