@@ -40,6 +40,11 @@ if [[ ${#present[@]} -gt 0 ]] &&
   # directory named after it. `--git-path` alone is asked because it predates
   # `core.hooksPath` itself, so a repository that can be in this state has a
   # git that knows it. Its answer is relative to the working directory.
+  #
+  # The one-line rule is reachable by a path as well as by a git version: a
+  # repository whose own path holds a newline goes unreported either way. That
+  # is the side to fail on, since the alternative reads an echoed flag as a
+  # directory and tells every session something false about its floor.
   [[ "$active" == /* ]] || active="${PWD}/${active}"
   # An absent directory keeps its raw path: it is where git looks, and it holds
   # no hook, which is the state worth naming rather than resolving away.
