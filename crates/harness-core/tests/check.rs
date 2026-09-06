@@ -30,7 +30,7 @@ fn project() -> TempDir {
 fn minimal_config_toml() -> String {
     r#"
 [meta]
-harnex_version = ">=0.13, <0.14"
+harnex_version = ">=0.14, <0.15"
 
 [evidence]
 default_provenance = "memory-only"
@@ -121,7 +121,7 @@ fn check_skips_validators_with_no_config_section() {
     let tmp = project();
     let minimal = r#"
 [meta]
-harnex_version = ">=0.13, <0.14"
+harnex_version = ">=0.14, <0.15"
 "#;
     let cfg = load_cfg(&tmp, minimal);
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
@@ -156,7 +156,7 @@ fn check_emits_codegen_drift_as_blocker() {
 
     let toml_body = r##"
 [meta]
-harnex_version = ">=0.13, <0.14"
+harnex_version = ">=0.14, <0.15"
 
 [[codegen.groups]]
 name = "g"
@@ -271,7 +271,7 @@ fn fix_resolves_codegen_drift_and_re_check_clean() {
     .unwrap();
     let toml_body = r##"
 [meta]
-harnex_version = ">=0.13, <0.14"
+harnex_version = ">=0.14, <0.15"
 
 [[codegen.groups]]
 name = "g"
@@ -532,7 +532,7 @@ fn check_gates_advisory_staleness_by_context() {
 fn evidence_config() -> &'static str {
     r#"
 [meta]
-harnex_version = ">=0.13, <0.14"
+harnex_version = ">=0.14, <0.15"
 
 [evidence]
 default_provenance = "internal"
@@ -974,7 +974,7 @@ fn an_unreadable_file_is_reported_where_its_own_validator_is_disabled() {
         &tmp,
         r#"
 [meta]
-harnex_version = ">=0.13, <0.14"
+harnex_version = ">=0.14, <0.15"
 
 [evidence]
 default_provenance = "memory-only"
