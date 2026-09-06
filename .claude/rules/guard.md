@@ -87,12 +87,12 @@ so an envelope written beside it is a reason discarded.
 
 Because exit 2 is that verdict, nothing else may reach it. Every reason the
 audit cannot produce one — an unloadable config, an undeclared section, hook
-input it cannot read, a probe that did not answer — is a `Skip`: exit 0
-carrying the reason on `hookSpecificOutput.additionalContext`, which is the
-Stop event's only delivered channel and does not prevent the stop. An allowed
-stop emits nothing. Propagating a failure as an error exits 2 through the
-generic path, which the runtime reads as a Block that no retry counter bounds,
-holding the session open at every Stop.
+input it cannot read, a probe that did not answer — is a `Skip`: exit 0 with
+the reason on `systemMessage`, the same direction the floor auditor takes,
+because what it names is a configuration the operator repairs. An allowed stop
+emits nothing. Propagating a failure as an error exits 2 through the generic
+path, which the runtime reads as a Block that no retry counter bounds, holding
+the session open at every Stop.
 
 FloorAuditor (`guard::floor`, gated on `[guard.floor]`) handles PreToolUse
 for Bash and Edit|Write|MultiEdit: the enforcement-surface freeze plus the
