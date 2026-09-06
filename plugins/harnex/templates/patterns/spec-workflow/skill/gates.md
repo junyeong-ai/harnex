@@ -44,9 +44,13 @@ One rule governs both: a re-fire whose blocking total did not fall below the
 previous firing's escalates to the operator instead of firing, and firing on
 anyway takes the operator's own recorded acknowledgement in the line — a
 rationale beginning `acknowledged:`, naming the ground on which the next
-firing falls. The round after it is held to that ground, so a second
-acknowledgement in a row is the first one answered, and it is the operator's
-to settle rather than the loop's to write again.
+firing falls.
+
+A comparison between two rounds cannot say whether the unit under review is
+one a review can finish, and that is what a cycle still firing after many
+rounds is asking. The shipped pre-commit arm passes a budget of firings per
+cycle; reaching it is a report, not a verdict on the round. Answer it by
+settling the scope — split what is under review, or close the cycle.
 The rule is computed from the log's own lines by `harnex plan audit`, never
 recalled — a convergence floor nothing computes is prose, and the measured
 failure of that shape is a gate that recorded eleven firings while its rule

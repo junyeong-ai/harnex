@@ -660,6 +660,7 @@ pub struct PlanAuditor<'a> {
     /// append-only contract — without it, editing an earlier bullet's counts
     /// launders the convergence comparison the log exists to compute.
     baseline_spec: Option<&'a str>,
+    round_cap: Option<u32>,
 }
 
 impl<'a> PlanAuditor<'a> {
@@ -676,7 +677,19 @@ impl<'a> PlanAuditor<'a> {
             spec,
             baseline,
             baseline_spec,
+            round_cap: None,
         }
+    }
+
+    /// The firings one gate may record in a cycle before reaching the number
+    /// is a report. A comparison between two rounds answers whether one
+    /// improved on the other; it cannot answer whether the unit under review
+    /// is too large to finish, which is the question a loop still running
+    /// after many rounds is asking. The number is the caller's — nothing in a
+    /// log decides a budget.
+    pub fn with_round_cap(mut self, rounds: u32) -> Self {
+        self.round_cap = Some(rounds);
+        self
     }
 
     pub fn audit(&self) -> Vec<Finding> {
@@ -910,18 +923,13 @@ impl<'a> PlanAuditor<'a> {
         // that its convergence is the thing that cannot be read.
         let mut gap_at: Option<u32> = None;
         let mut resumed: BTreeSet<String> = BTreeSet::new();
-        // The acknowledgement names the ground on which the next firing falls,
-        // so a second one in a row is the first one answered — the earliest
-        // round at which riding on is a scope the operator settles rather than
-        // a rationale the loop writes again. Counted per gate, because that is
-        // what the comparison it overrides is keyed by. A count is what this
-        // is: a cycle closed and reopened starts a new run, so what it bounds
-        // is how far one can go unremarked, not how long the loop can run.
-        let mut rode_on: BTreeMap<String, u32> = BTreeMap::new();
+        // A cycle's firings, for the budget: what a comparison between two
+        // rounds cannot answer is whether the unit under review is too large
+        // to finish, and a loop still running after many rounds is asking that.
+        let mut rounds: BTreeMap<String, u32> = BTreeMap::new();
         for (line_no, decision) in &decisions {
             let Some(decision) = decision else {
                 last_blocking.clear();
-                rode_on.clear();
                 gap_at = Some(*line_no);
                 resumed.clear();
                 continue;
@@ -979,6 +987,31 @@ impl<'a> PlanAuditor<'a> {
             }
             match decision.decision {
                 GateDecision::NeedsRevision => {
+                    let fired = rounds
+                        .entry(gate_key.clone())
+                        .and_modify(|n| *n += 1)
+                        .or_insert(1);
+                    if let Some(cap) = self.round_cap
+                        && *fired == cap + 1
+                    {
+                        findings.push(Finding {
+                            slug: "plan-log-round-cap".into(),
+                            severity: Severity::Blocker,
+                            location: Location::line(spec_path, *line_no),
+                            message: format!(
+                                "`{gate}` fired {fired} times in this cycle, past a cap of {cap}"
+                            ),
+                            hint: Some(
+                                "reaching the cap is a report, not a verdict on the round: a \
+                                 review that needs this many is naming a unit too large to \
+                                 finish. Settle the scope — split what is under review, or close \
+                                 the cycle with `approved`, `deferred` or `rejected`"
+                                    .into(),
+                            ),
+                            auto_fixable: false,
+                            fix_command: None,
+                        });
+                    }
                     if let Some(counts) = decision.counts {
                         if let Some(gap) = gap_at
                             && resumed.insert(gate_key.clone())
@@ -1000,38 +1033,11 @@ impl<'a> PlanAuditor<'a> {
                                 fix_command: None,
                             });
                         }
-                        if let Some(&previous) = last_blocking.get(&gate_key) {
-                            if counts.blocking() < previous {
-                                rode_on.remove(&gate_key);
-                            } else if decision.rationale.starts_with(ACKNOWLEDGED_PREFIX) {
-                                let rounds = rode_on
-                                    .entry(gate_key.clone())
-                                    .and_modify(|n| *n += 1)
-                                    .or_insert(1);
-                                if *rounds > 1 {
-                                    findings.push(Finding {
-                                        slug: "plan-log-riding-on".into(),
-                                        severity: Severity::Blocker,
-                                        location: Location::line(spec_path, *line_no),
-                                        message: format!(
-                                            "`{gate}` rode on an acknowledgement {rounds} rounds \
-                                             running — the one before this said the round it \
-                                             justified would fall"
-                                        ),
-                                        hint: Some(
-                                            "the scope is the operator's to settle, not the next \
-                                             round's to justify: bring the count below the \
-                                             previous firing, or close the cycle with `approved`, \
-                                             `deferred` or `rejected` and record what the spec \
-                                             now covers"
-                                                .into(),
-                                        ),
-                                        auto_fixable: false,
-                                        fix_command: None,
-                                    });
-                                }
-                            } else {
-                                findings.push(Finding {
+                        if let Some(&previous) = last_blocking.get(&gate_key)
+                            && counts.blocking() >= previous
+                            && !decision.rationale.starts_with(ACKNOWLEDGED_PREFIX)
+                        {
+                            findings.push(Finding {
                                 slug: "plan-log-not-falling".into(),
                                 severity: Severity::Blocker,
                                 location: Location::line(spec_path, *line_no),
@@ -1050,11 +1056,9 @@ impl<'a> PlanAuditor<'a> {
                                 auto_fixable: false,
                                 fix_command: None,
                             });
-                            }
                         }
                         last_blocking.insert(gate_key.clone(), counts.blocking());
                     } else {
-                        rode_on.remove(&gate_key);
                         // The firing before the next one recorded nothing to
                         // fall below. Holding that one to the round before it
                         // would name a previous firing that is not the
@@ -1064,7 +1068,7 @@ impl<'a> PlanAuditor<'a> {
                 }
                 GateDecision::Approved | GateDecision::Rejected | GateDecision::Deferred => {
                     last_blocking.remove(&gate_key);
-                    rode_on.remove(&gate_key);
+                    rounds.remove(&gate_key);
                 }
             }
             if decision.decision == GateDecision::Approved
@@ -1728,51 +1732,85 @@ mod tests {
     }
 
     #[test]
-    fn the_hatch_is_open_once_and_the_round_after_it_is_the_operator_s() {
-        // The first acknowledgement predicts that the class it names is closed
-        // by the answer the round carries. The second is that prediction
-        // tested and failed, and it is not suppressible: the prefix is what
-        // reaches it, not what excuses it.
-        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} five\n\
-                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
-                   acknowledged: a class the r1 answer never covered\n\
-                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
-                   acknowledged: another class again";
-        let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(slugs(&findings), ["plan-log-riding-on"]);
-        assert_eq!(findings[0].severity, Severity::Blocker);
-        assert_eq!(
-            findings[0].location.line,
-            Some(7),
-            "at the second, not the first"
+    fn a_cycle_reaching_its_budget_is_reported_once_where_it_crossed() {
+        // The budget answers what a comparison between two rounds cannot: not
+        // whether this round improved, but whether the unit under review is
+        // one a review can finish. Reported at the round that crossed it, so a
+        // log read again names the same line.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} one\n\
+                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
+                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three";
+        let spec_text = spec(log);
+        let plan_text = plan("");
+        let audit = |cap: Option<u32>| {
+            let a = PlanAuditor::new(
+                Path::new("specs/t/plan.md"),
+                Some(&plan_text),
+                Some((Path::new("specs/t/spec.md"), &spec_text)),
+                None,
+                None,
+            );
+            match cap {
+                Some(c) => a.with_round_cap(c),
+                None => a,
+            }
+            .audit()
+        };
+        assert!(audit(None).is_empty(), "no budget, no verdict on the count");
+        assert!(audit(Some(3)).is_empty(), "three firings is not past three");
+        let over = audit(Some(2));
+        assert_eq!(slugs(&over), ["plan-log-round-cap"]);
+        assert_eq!(over[0].severity, Severity::Blocker);
+        assert_eq!(over[0].location.line, Some(7), "the round that crossed it");
+    }
+
+    #[test]
+    fn a_closed_cycle_starts_its_budget_over() {
+        // The budget is a cycle's, and an approval ends the cycle: a spec that
+        // converges twice has not spent one budget twice.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} one\n\
+                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two\n\
+                   - 2026-01-17 \u{b7} review \u{b7} approved \u{b7} 0C/0B/0M/0m \u{b7} clean\n\
+                   - 2026-02-01 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} new cycle\n\
+                   - 2026-02-02 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} falling";
+        let spec_text = spec(log);
+        let plan_text = plan("");
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan_text),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(2)
+        .audit();
+        assert!(
+            findings.is_empty(),
+            "two cycles of two, not one of four: {findings:?}"
         );
     }
 
     #[test]
-    fn a_round_that_falls_opens_the_hatch_again() {
-        // Riding on is counted in a row, not in a spec: a round that fell is
-        // the prediction holding, and the count owed after it starts over.
-        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} five\n\
-                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
-                   acknowledged: a new class\n\
-                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three\n\
-                   - 2026-01-18 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} \
-                   acknowledged: one more class";
-        assert!(audit_with_spec(&plan(""), &spec(log)).is_empty());
-    }
-
-    #[test]
-    fn closing_the_cycle_opens_the_hatch_again() {
-        // An approval ends the cycle the comparison was walking, and what the
-        // next cycle owes is its own.
-        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} five\n\
-                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
-                   acknowledged: a new class\n\
-                   - 2026-01-17 \u{b7} review \u{b7} approved \u{b7} 0C/0B/2M/1m \u{b7} clean\n\
-                   - 2026-02-01 \u{b7} review \u{b7} needs_revision \u{b7} 0C/4B/0M/0m \u{b7} new cycle\n\
-                   - 2026-02-02 \u{b7} review \u{b7} needs_revision \u{b7} 0C/4B/0M/0m \u{b7} \
-                   acknowledged: a class the new cycle exposed";
-        assert!(audit_with_spec(&plan(""), &spec(log)).is_empty());
+    fn each_gate_spends_its_own_budget() {
+        let log = "- 2026-01-15 \u{b7} design_review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} a\n\
+                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} b\n\
+                   - 2026-01-17 \u{b7} design_review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} c\n\
+                   - 2026-01-18 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} d";
+        let spec_text = spec(log);
+        let plan_text = plan("");
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan_text),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(2)
+        .audit();
+        assert!(
+            findings.is_empty(),
+            "two firings each, not four of one: {findings:?}"
+        );
     }
 
     #[test]
