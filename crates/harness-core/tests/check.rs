@@ -963,3 +963,72 @@ fn the_covered_surfaces_are_every_surface_a_validator_declares() {
         "a validator declares a surface the unreadable-file case does not plant a file under"
     );
 }
+
+#[test]
+fn an_unreadable_file_is_reported_where_its_own_validator_is_disabled() {
+    // Which arms a project enables is its own choice, and the evidence arm
+    // reads the union of the surface globs whatever that choice was. Leaving
+    // the file to "the validator that covers it" leaves it to nobody here.
+    let tmp = project();
+    let cfg = load_cfg(
+        &tmp,
+        r#"
+[meta]
+harnex_version = ">=0.12, <0.13"
+
+[evidence]
+default_provenance = "memory-only"
+[[evidence.verifiers]]
+provenance = "memory-only"
+strategy = "memory-only"
+"#,
+    );
+    let skill = tmp.path().join(".claude/skills/deploy/SKILL.md");
+    write(&skill, "---\nname: deploy\ndescription: d\n---\nbody\n");
+    write_unreadable(&skill);
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert!(
+        outcome
+            .skipped
+            .iter()
+            .any(|s| s.slug == "validate.skills" && s.reason.contains("no [validate.skills]")),
+        "this case is only the case while the covering validator is off: {:?}",
+        outcome.skipped
+    );
+    assert_eq!(
+        outcome
+            .findings
+            .iter()
+            .filter(|f| f.slug == "file-unreadable" && f.location.path == skill)
+            .count(),
+        1,
+        "an unreadable file reached no reporter: {:?}",
+        outcome.findings
+    );
+}
+
+#[test]
+fn a_path_that_is_not_a_regular_file_is_named_rather_than_opened() {
+    // What the path names is settled before it is opened, because opening the
+    // wrong kind of thing does not fail — reading a fifo waits for a writer
+    // and the gate never returns. A directory reaches the same branch without
+    // a case that hangs when the branch is gone.
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    let path = tmp.path().join(".claude/rules/a-directory.md");
+    fs::create_dir_all(&path).unwrap();
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    let finding = outcome
+        .findings
+        .iter()
+        .find(|f| f.location.path == path)
+        .unwrap_or_else(|| panic!("nothing reported: {:?}", outcome.findings));
+    assert_eq!(finding.slug, "file-unreadable");
+    assert!(
+        finding.message.contains("not a regular file"),
+        "the kind is what was wrong, and the message says so: {}",
+        finding.message
+    );
+}
