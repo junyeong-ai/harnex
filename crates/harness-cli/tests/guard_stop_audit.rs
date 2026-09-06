@@ -44,6 +44,11 @@ fn resolved(program: &str) -> String {
 /// and a case that stopped doing so would look for `claude`, fail to find it,
 /// and take the skip branch — failing this file's assertions rather than
 /// quietly paying for a turn.
+///
+/// An empty `PATH` still searches the working directory on some platforms, so
+/// the run happens in a fresh temporary one holding only what a case wrote.
+/// Pointing this at a populated directory would put whatever it holds back on
+/// the search path.
 fn stop_audit_in(dir: &Path, config: &str) -> Output {
     std::fs::write(dir.join("harness.toml"), config).expect("write harness.toml");
     Command::new(env!("CARGO_BIN_EXE_harnex"))
