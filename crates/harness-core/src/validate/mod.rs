@@ -33,8 +33,7 @@ pub mod skills;
 use std::path::Path;
 
 use crate::config::Config;
-use crate::envelope::Finding;
-use crate::error::Result;
+use crate::envelope::{Finding, Location, Severity};
 
 /// A validator over one glob of Claude Code surface files.
 ///
@@ -55,6 +54,28 @@ const GLOB_MATCH: glob::MatchOptions = glob::MatchOptions {
     require_literal_separator: true,
     require_literal_leading_dot: false,
 };
+
+/// The text of a surface file, or the finding its unreadability is.
+///
+/// A file the gate enumerated and cannot read is a fact about the project, not
+/// a failure of the run: raising it as an error would abandon every other
+/// verdict the run had left to reach, and one unreadable file would blank the
+/// gate. Every validator reads through here so that stays true of all of them.
+pub fn read_text(path: &Path) -> std::result::Result<String, Finding> {
+    std::fs::read_to_string(path).map_err(|e| Finding {
+        slug: "file-unreadable".into(),
+        severity: Severity::Blocker,
+        location: Location::file(path),
+        message: format!("cannot be read: {e}"),
+        hint: Some(
+            "the gate reads every file its section covers — repair the file, or move it out of \
+             the covered path"
+                .into(),
+        ),
+        auto_fixable: false,
+        fix_command: None,
+    })
+}
 
 pub trait SurfaceValidator<'p>: Sized {
     /// The `[validate.<section>]` policy that enables this validator.
@@ -88,7 +109,7 @@ pub trait SurfaceValidator<'p>: Sized {
 
     fn build(policy: &'p Self::Policy) -> Self;
 
-    fn validate_path(&self, path: &Path) -> Result<Vec<Finding>>;
+    fn validate_path(&self, path: &Path) -> Vec<Finding>;
 }
 
 pub use agents::{AgentValidator, KNOWN_AGENT_KEYS};

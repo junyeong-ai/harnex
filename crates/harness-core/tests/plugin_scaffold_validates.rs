@@ -301,9 +301,8 @@ fn run_scaffold_validation(lang: &str) {
 
     // --- Settings validation (project scope: the scaffolded file is the
     //     committed `.claude/settings.json`) ---
-    let settings_findings = SettingsValidator::new()
-        .validate_file(&settings_path, SettingsScope::Project)
-        .unwrap();
+    let settings_findings =
+        SettingsValidator::new().validate_file(&settings_path, SettingsScope::Project);
     assert_no_findings(lang, "validate.settings", &settings_findings);
 
     // --- Audit (spec drift + managed-region drift): on a fresh scaffold the
@@ -359,7 +358,7 @@ fn run_scaffold_validation(lang: &str) {
         .unwrap_or_else(|| panic!("[{lang}] the scaffold's harness.toml declares no rule policy"));
     let rv = RuleValidator::new(&rule_policy);
     for rule_path in glob_under(&proj_root.join(".claude/rules"), "*.md") {
-        let findings = rv.validate_file(&rule_path).unwrap();
+        let findings = rv.validate_file(&rule_path);
         assert_no_findings(
             lang,
             &format!("validate.rules({})", rule_path.display()),
@@ -400,9 +399,7 @@ fn run_scaffold_validation(lang: &str) {
          the loop `governance.md` describes would have no entry point"
     );
     for skill in &emitted {
-        let findings = SkillValidator::new(&skill_policy)
-            .validate_file(skill)
-            .unwrap();
+        let findings = SkillValidator::new(&skill_policy).validate_file(skill);
         assert_no_findings(
             lang,
             &format!("validate.skills({})", skill.display()),
@@ -426,7 +423,7 @@ fn run_scaffold_validation(lang: &str) {
             ..skill_policy.clone()
         };
         let sv = SkillValidator::new(&lenient);
-        let findings = sv.validate_file(&dst).unwrap();
+        let findings = sv.validate_file(&dst);
         assert_no_findings(lang, "validate.skills(harnex SKILL.md)", &findings);
     }
 
@@ -451,7 +448,7 @@ fn run_scaffold_validation(lang: &str) {
                 .join(".claude/agents")
                 .join(src.file_name().unwrap());
             copy_file(&src, &dst);
-            let findings = av.validate_file(&dst).unwrap();
+            let findings = av.validate_file(&dst);
             assert_no_findings(
                 lang,
                 &format!("validate.agents({})", src.display()),
@@ -471,15 +468,13 @@ fn run_scaffold_validation(lang: &str) {
     let rule_template = plugin_templates().join("common/rule-template.md");
     let dst = proj_root.join(".claude/rules/example-derived.md");
     copy_file(&rule_template, &dst);
-    let findings = rv.validate_file(&dst).unwrap();
+    let findings = rv.validate_file(&dst);
     assert_no_findings(lang, "validate.rules(rule-template.md)", &findings);
 
     let skill_template = plugin_templates().join("common/skill-template.md");
     let dst = proj_root.join(".claude/skills/example-skill/SKILL.md");
     copy_file(&skill_template, &dst);
-    let findings = SkillValidator::new(&skill_policy)
-        .validate_file(&dst)
-        .unwrap();
+    let findings = SkillValidator::new(&skill_policy).validate_file(&dst);
     assert_no_findings(lang, "validate.skills(skill-template.md)", &findings);
 }
 
@@ -582,9 +577,7 @@ fn foundation_only_scaffold_is_coherent_without_a_language() {
     )
     .unwrap();
 
-    let findings = SettingsValidator::new()
-        .validate_file(&settings_path, SettingsScope::Project)
-        .unwrap();
+    let findings = SettingsValidator::new().validate_file(&settings_path, SettingsScope::Project);
     assert_no_findings("foundation", "validate.settings", &findings);
 
     let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex");
@@ -864,9 +857,7 @@ fn a_two_stack_repo_gets_both_language_tiers() {
         serde_json::to_string_pretty(&settings).unwrap(),
     )
     .unwrap();
-    let findings = SettingsValidator::new()
-        .validate_file(&settings_path, SettingsScope::Project)
-        .unwrap();
+    let findings = SettingsValidator::new().validate_file(&settings_path, SettingsScope::Project);
     assert_no_findings("python+typescript", "validate.settings", &findings);
 
     let plugin_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex");
