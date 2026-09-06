@@ -212,6 +212,12 @@ fn the_chmod_it_prints_runs_where_the_path_carries_a_space() {
         said.contains("my hooks"),
         "this case exists to exercise the absolute fallback: {said}"
     );
+    assert_eq!(
+        said.matches("my hooks/pre-commit'").count(),
+        2,
+        "the sentence names the paths as well as the command, and a space-joined \
+         pair reads there as one path: {said}"
+    );
     let command = said
         .lines()
         .find_map(|line| line.split('`').nth(1))
