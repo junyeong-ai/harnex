@@ -5,7 +5,8 @@ use std::process::ExitCode;
 use clap::Subcommand;
 use harness_core::error::{Error, Result};
 use harness_core::guard::{
-    FloorAuditor, FloorDecision, HookEvent, HookRunOutcome, HookRunner, StopAuditor, StopDecision,
+    FloorAuditor, FloorDecision, HookEvent, HookRunOutcome, HookRunner, OPERATOR_CHANNEL_KEY,
+    SUPPRESS_OUTPUT_KEY, StopAuditor, StopDecision,
 };
 
 use super::{config_dir, load_config, write_envelope_success};
@@ -99,7 +100,10 @@ fn floor<W: Write>(out: &mut W) -> Result<ExitCode> {
     }
 
     fn notice<W: Write>(out: &mut W, message: &str) -> Result<ExitCode> {
-        let body = serde_json::json!({ "systemMessage": message, "suppressOutput": true });
+        let body = serde_json::json!({
+            OPERATOR_CHANNEL_KEY: message,
+            SUPPRESS_OUTPUT_KEY: true,
+        });
         writeln!(out, "{body}").map_err(|e| Error::IoFailure {
             path: PathBuf::from("(stdout)"),
             source: e,
@@ -208,8 +212,8 @@ fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode
     // going": the same failure at every Stop, past the retry counter.
     fn skip<W: Write>(out: &mut W, reason: &str) -> Result<ExitCode> {
         let body = serde_json::json!({
-            "systemMessage": format!("[stop-audit skipped: {reason}]"),
-            "suppressOutput": true,
+            OPERATOR_CHANNEL_KEY: format!("[stop-audit skipped: {reason}]"),
+            SUPPRESS_OUTPUT_KEY: true,
         });
         writeln!(out, "{body}").map_err(|e| Error::IoFailure {
             path: PathBuf::from("(stdout)"),

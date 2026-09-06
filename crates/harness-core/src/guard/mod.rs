@@ -30,6 +30,17 @@
 //!   the root cause of premature-termination defects; bounded retries are
 //!   the cure.
 
+/// The two keys a guard writes when it allows the event and still has
+/// something to say. `systemMessage` reaches the operator; `suppressOutput`
+/// keeps the same line out of the transcript the model reads.
+///
+/// Both `guard floor` and `guard stop-audit` speak this pair instead of the
+/// envelope, which `.claude/rules/envelope.md` records as its exception and
+/// `.claude/rules/guard.md` explains. `guard_channel_prose_sync` holds those
+/// two documents to these names.
+pub const OPERATOR_CHANNEL_KEY: &str = "systemMessage";
+pub const SUPPRESS_OUTPUT_KEY: &str = "suppressOutput";
+
 pub mod floor;
 pub mod hook_event;
 pub mod hook_runner;
