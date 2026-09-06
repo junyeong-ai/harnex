@@ -31,6 +31,12 @@ pub enum PlanCommand {
         /// stand verbatim as a prefix of `--spec`'s
         #[arg(long)]
         baseline_spec: Option<PathBuf>,
+        /// Firings one gate may record in a cycle before reaching the number
+        /// is reported. Omitted, no budget is held: a comparison between two
+        /// rounds cannot answer whether the unit under review is too large to
+        /// finish, and that number is the project's to choose
+        #[arg(long)]
+        max_rounds: Option<u32>,
     },
 }
 
@@ -43,6 +49,7 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         spec,
         baseline,
         baseline_spec,
+        max_rounds,
     } = cmd;
 
     // An absent plan is a judged state when anything else anchors the audit —
@@ -78,13 +85,17 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
     let baseline_spec_text = baseline_spec.as_deref().map(read_lossy).transpose()?;
 
     let spec_input = spec.as_deref().zip(spec_text.as_deref());
-    let findings = PlanAuditor::new(
+    let auditor = PlanAuditor::new(
         &plan,
         plan_text.as_deref(),
         spec_input,
         baseline_text.as_deref(),
         baseline_spec_text.as_deref(),
-    )
+    );
+    let findings = match max_rounds {
+        Some(cap) => auditor.with_round_cap(cap),
+        None => auditor,
+    }
     .audit();
 
     let has_gating_finding = findings.iter().any(|f| f.severity.fails_gate());
