@@ -413,3 +413,48 @@ fn every_scaffolded_artifact_is_inside_the_default_harness() {
         }
     }
 }
+
+/// The session-start probe reports whether git will run the scaffold's git
+/// hooks, and names them rather than scanning the directory — an exact set has
+/// no false positive, where "every extensionless file" would answer about
+/// whatever else a project keeps there. Naming them puts the set in two places,
+/// so this is the test Article IX asks for: a third git hook shipping fails
+/// here instead of going unwatched by the probe that exists to watch them.
+///
+/// Git hooks are the extensionless `hooks/` destinations. The split is total
+/// across the manifest — every other entry there is a `.sh` verifier — and
+/// `SKILL.md § Step 3` already uses that discriminator to set their mode.
+#[test]
+fn scaffold_git_hooks_match_the_probe() {
+    let probe = templates_root().join("common/session-start.sh");
+    let body = std::fs::read_to_string(&probe).expect("session-start.sh reads");
+
+    let shipped: BTreeSet<String> = manifest()
+        .artifacts()
+        .iter()
+        .filter_map(|a| a.destination_for(None))
+        .filter_map(|d| {
+            let name = d.file_name()?.to_string_lossy().to_string();
+            (d.parent()?.to_string_lossy() == "hooks" && !name.contains('.')).then_some(name)
+        })
+        .collect();
+    assert!(
+        !shipped.is_empty(),
+        "no extensionless hooks/ destination in the manifest, so the probe's sentinel \
+         would be asserted against nothing"
+    );
+
+    let named: BTreeSet<String> = body
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("for hook in ")?.strip_suffix("; do"))
+        .expect("the probe names its git hooks in one `for hook in ...; do`")
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+
+    assert_eq!(
+        named, shipped,
+        "the probe watches {named:?} while the manifest ships {shipped:?}; a git hook the \
+         probe does not name is one whose absence from git's reach it cannot report"
+    );
+}
