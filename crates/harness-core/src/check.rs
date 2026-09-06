@@ -252,6 +252,21 @@ impl<'a> ProjectChecker<'a> {
                 .then(a.slug.cmp(&b.slug))
                 .then(a.location.path.as_path().cmp(b.location.path.as_path()))
         });
+        // Arms overlap: the evidence arm reads the union of the surface globs
+        // and the governs arm re-reads the rules. Each names what it could not
+        // read, because which arms a project enables is its own choice and a
+        // file nobody reports is the silence this gate exists to break. The
+        // same defect at the same place is still one defect.
+        let mut seen = HashSet::new();
+        findings.retain(|f| {
+            seen.insert((
+                f.slug.clone(),
+                f.location.path.clone(),
+                f.location.line,
+                f.message.clone(),
+            ))
+        });
+
         run.sort();
         skipped.sort_by(|a, b| a.slug.cmp(&b.slug));
 
@@ -498,11 +513,12 @@ impl<'a> ProjectChecker<'a> {
                 continue;
             }
             *files_scanned += 1;
-            // One defect, one reporter: this arm reads the union of the
-            // surface globs, and the validator covering a path is where its
-            // unreadability is reported.
-            let Ok(text) = crate::validate::read_text(path) else {
-                continue;
+            let text = match crate::validate::read_text(path) {
+                Ok(text) => text,
+                Err(finding) => {
+                    findings.push(finding);
+                    continue;
+                }
             };
             findings.extend(verifier.verify_text(&text, path, self.working_dir));
         }
@@ -541,11 +557,12 @@ impl<'a> ProjectChecker<'a> {
         }
         let auditor = crate::governs::GovernsAuditor::new(self.working_dir);
         for path in &self.discover_glob(<RuleValidator as SurfaceValidator>::GLOB)? {
-            // A rule this cannot read carries no declaration to audit, and the
-            // rules arm reports it: both arms cover this glob and both are
-            // gated on the same section, so they run together or not at all.
-            let Ok(content) = crate::validate::read_text(path) else {
-                continue;
+            let content = match crate::validate::read_text(path) {
+                Ok(content) => content,
+                Err(finding) => {
+                    findings.push(finding);
+                    continue;
+                }
             };
             findings.extend(auditor.audit_rule(&content, path));
         }

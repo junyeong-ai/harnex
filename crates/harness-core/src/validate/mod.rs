@@ -62,11 +62,11 @@ const GLOB_MATCH: glob::MatchOptions = glob::MatchOptions {
 /// verdict the run had left to reach, and one unreadable file would blank the
 /// gate. Every validator reads through here so that stays true of all of them.
 pub fn read_text(path: &Path) -> std::result::Result<String, Finding> {
-    std::fs::read_to_string(path).map_err(|e| Finding {
+    let unreadable = |reason: String| Finding {
         slug: "file-unreadable".into(),
         severity: Severity::Blocker,
         location: Location::file(path),
-        message: format!("cannot be read: {e}"),
+        message: format!("cannot be read: {reason}"),
         hint: Some(
             "the gate reads every file its section covers — repair the file, or move it out of \
              the covered path"
@@ -74,7 +74,18 @@ pub fn read_text(path: &Path) -> std::result::Result<String, Finding> {
         ),
         auto_fixable: false,
         fix_command: None,
-    })
+    };
+    // What the path names is settled before it is opened. Reading a fifo waits
+    // for a writer that a covered directory has no reason to hold, and the
+    // gate would hang rather than report — the one outcome worse than the
+    // error this replaces.
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_file() => {
+            std::fs::read_to_string(path).map_err(|e| unreadable(e.to_string()))
+        }
+        Ok(_) => Err(unreadable("not a regular file".into())),
+        Err(e) => Err(unreadable(e.to_string())),
+    }
 }
 
 pub trait SurfaceValidator<'p>: Sized {
