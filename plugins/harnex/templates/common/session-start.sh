@@ -21,8 +21,11 @@ printf 'Branch: %s\nUncommitted files: %s\nRecent commits:\n%s\n' \
 # of this machine, and a gate whose verdict moves without the tree fails a
 # tree nothing changed. `git rev-parse` resolves the setting rather than this
 # reading it, so a relative path answers per worktree exactly as git will.
+# The sentinel is the git-hook pair the scaffold ships, not one of them: a
+# project that kept only the commit-msg hook holds a gate that would never run,
+# and asking after its partner alone answers about the wrong file.
 hooks=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P) || hooks=
-if [[ -n "$hooks" && -e "${hooks}/pre-commit" ]] &&
+if [[ -n "$hooks" ]] && [[ -e "${hooks}/pre-commit" || -e "${hooks}/commit-msg" ]] &&
   active=$(git rev-parse --git-path hooks 2>/dev/null) &&
   [[ -n "$active" && "$active" != *$'\n'* ]]; then
   # `rev-parse` echoes a flag it does not know onto stdout and still exits 0,

@@ -65,8 +65,9 @@ pub struct SpecSurface {
     /// Where a bullet says what the runtime *does* rather than what the page
     /// lists, the page is the weaker witness: `harnex session facts` reads
     /// transcripts of the runtime doing it. A claim that Stop discards
-    /// `additionalContext` survived a re-measure of this surface while 59
-    /// records already on disk showed the opposite channel arriving.
+    /// `additionalContext` survived a re-measure of this surface while the
+    /// transcripts already on disk held both of that event's channels
+    /// delivering.
     pub measured: &'static str,
     /// Digest of the vocabulary as measured. Held equal to the live constants
     /// by a test, so editing a set without re-measuring fails the build.
