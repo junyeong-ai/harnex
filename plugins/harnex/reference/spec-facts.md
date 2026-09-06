@@ -62,9 +62,11 @@ already contradicted both a page and the binary's own schema.
   non-blocking.
 - **Stop / SubagentStop exit 2 FORCES continuation** (prevents stopping → a
   re-stop loop). A Stop-class wrapper that only wants to surface findings must
-  exit 0 and use JSON `decision`/`systemMessage`, never a non-zero exit as a
-  generic "found something" signal. Events where exit 2 is genuinely ignored:
-  StopFailure, PostToolUse, PostToolUseFailure, PermissionDenied.
+  exit 0 and write to one of the reader channels below, never a non-zero exit
+  as a generic "found something" signal — and never `decision`, whose two
+  values on this event are a no-op and a block, so it can say nothing without
+  holding the session. Events where exit 2 is genuinely ignored: StopFailure,
+  PostToolUse, PostToolUseFailure, PermissionDenied.
 - **`timeout` is in SECONDS.** Defaults: 600 (command/http/mcp_tool), 30
   (prompt), 60 (agent); UserPromptSubmit, PreModelSwitch and PostModelSwitch
   lower the command default to 30 — and a PreModelSwitch hook cancelled at its
