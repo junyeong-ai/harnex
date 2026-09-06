@@ -73,13 +73,22 @@ fn files_naming_a_key() -> BTreeSet<String> {
             .current_dir(root())
             .output()
             .expect("git grep runs");
-        assert!(out.status.success(), "no tracked file names `{key}`");
-        found.extend(
-            String::from_utf8(out.stdout)
-                .expect("paths are UTF-8")
-                .lines()
-                .map(str::to_string),
-        );
+        // `git grep` exits 1 on no match and 128 when it cannot answer at all,
+        // and only the second is this test failing to run. Read as one, a
+        // tree with no `.git` reports every file as classified.
+        match out.status.code() {
+            Some(0) => found.extend(
+                String::from_utf8(out.stdout)
+                    .expect("paths are UTF-8")
+                    .lines()
+                    .map(str::to_string),
+            ),
+            Some(1) => panic!("no tracked file names `{key}` — the source that owns it must"),
+            _ => panic!(
+                "git grep could not answer for `{key}`: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+        }
     }
     found
 }
