@@ -379,7 +379,7 @@ impl<'a> ProjectChecker<'a> {
                 continue;
             }
             *files_scanned += 1;
-            findings.extend(validator.validate_path(path)?);
+            findings.extend(validator.validate_path(path));
         }
         run.push(V::SLUG.into());
         Ok(())
@@ -404,7 +404,7 @@ impl<'a> ProjectChecker<'a> {
             considered = true;
             if self.passes_filter(&project, changed) {
                 findings.extend(
-                    SettingsValidator::new().validate_file(&project, SettingsScope::Project)?,
+                    SettingsValidator::new().validate_file(&project, SettingsScope::Project),
                 );
                 *files_scanned += 1;
             }
@@ -413,7 +413,7 @@ impl<'a> ProjectChecker<'a> {
             considered = true;
             if self.passes_filter(&local, changed) {
                 findings
-                    .extend(SettingsValidator::new().validate_file(&local, SettingsScope::Local)?);
+                    .extend(SettingsValidator::new().validate_file(&local, SettingsScope::Local));
                 *files_scanned += 1;
             }
         }
@@ -498,7 +498,13 @@ impl<'a> ProjectChecker<'a> {
                 continue;
             }
             *files_scanned += 1;
-            findings.extend(verifier.verify_file(path, self.working_dir)?);
+            // One defect, one reporter: this arm reads the union of the
+            // surface globs, and the validator covering a path is where its
+            // unreadability is reported.
+            let Ok(text) = crate::validate::read_text(path) else {
+                continue;
+            };
+            findings.extend(verifier.verify_text(&text, path, self.working_dir));
         }
         run.push("evidence".into());
         Ok(())
@@ -535,10 +541,12 @@ impl<'a> ProjectChecker<'a> {
         }
         let auditor = crate::governs::GovernsAuditor::new(self.working_dir);
         for path in &self.discover_glob(<RuleValidator as SurfaceValidator>::GLOB)? {
-            let content = std::fs::read_to_string(path).map_err(|e| Error::IoFailure {
-                path: path.clone(),
-                source: e,
-            })?;
+            // A rule this cannot read carries no declaration to audit, and the
+            // rules arm reports it: both arms cover this glob and both are
+            // gated on the same section, so they run together or not at all.
+            let Ok(content) = crate::validate::read_text(path) else {
+                continue;
+            };
             findings.extend(auditor.audit_rule(&content, path));
         }
         run.push("governs".into());
@@ -643,15 +651,20 @@ impl<'a> ProjectChecker<'a> {
             run.push("policy.permissions".into());
             return Ok(());
         }
-        let raw = std::fs::read_to_string(&settings_path).map_err(|e| Error::IoFailure {
-            path: settings_path.clone(),
-            source: e,
-        })?;
-        let v: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|e| Error::ConfigInvalid {
-                message: format!("settings.json parse: {e}"),
-                location: None,
-            })?;
+        // Settings this cannot read as JSON are `validate.settings`' finding,
+        // not a reason for this arm to guess at a permission set — and not a
+        // reason to abandon the arms that have not run yet. What it could not
+        // judge is recorded where a reader looks for it.
+        let Some(v) = std::fs::read_to_string(&settings_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        else {
+            skipped.push(SkippedRule {
+                slug: "policy.permissions".into(),
+                reason: ".claude/settings.json is not readable JSON".into(),
+            });
+            return Ok(());
+        };
         let allow: Vec<String> = v
             .pointer("/permissions/allow")
             .and_then(|x| x.as_array())

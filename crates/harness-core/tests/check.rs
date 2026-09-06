@@ -863,3 +863,103 @@ fn without_git_the_nested_set_is_declared_unmeasured_and_the_rest_is_read() {
         outcome.skipped
     );
 }
+
+/// Every glob `check` enumerates, with a path under it. A file the gate
+/// discovers and cannot read is a fact about the project, so the run reports
+/// it and reaches the arms behind it — the alternative is one bad file
+/// deciding what every other arm was allowed to say.
+const GLOB_SURFACES: [(&str, &str); 5] = [
+    (".claude/rules/**/*.md", ".claude/rules/unreadable.md"),
+    (
+        ".claude/skills/*/SKILL.md",
+        ".claude/skills/unreadable/SKILL.md",
+    ),
+    (".claude/agents/**/*.md", ".claude/agents/unreadable.md"),
+    (
+        ".claude/output-styles/*.md",
+        ".claude/output-styles/unreadable.md",
+    ),
+    (".claude/routines/*.md", ".claude/routines/unreadable.md"),
+];
+
+/// Not discovered by a glob, and read by two arms rather than one.
+const SETTINGS: &str = ".claude/settings.json";
+
+fn write_unreadable(path: &Path) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, b"\xff\xfe\x00not utf-8\n").unwrap();
+}
+
+#[test]
+fn an_unreadable_file_is_reported_and_the_run_continues_past_it() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+
+    // The control: a readable defect behind every unreadable file. Its absence
+    // from the findings is what a run that gave up looks like.
+    write(
+        &tmp.path().join(".claude/rules/api.md"),
+        "# Rule without paths frontmatter\n",
+    );
+    let planted: Vec<std::path::PathBuf> = GLOB_SURFACES
+        .iter()
+        .map(|(_, path)| *path)
+        .chain(std::iter::once(SETTINGS))
+        .map(|rel| tmp.path().join(rel))
+        .collect();
+    for path in &planted {
+        write_unreadable(path);
+    }
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+
+    let slugs: Vec<&str> = outcome.findings.iter().map(|f| f.slug.as_str()).collect();
+    assert!(
+        slugs.contains(&"rule-missing-paths-frontmatter"),
+        "the run stopped at an unreadable file instead of reporting it: {slugs:?}"
+    );
+    for path in &planted {
+        let named = outcome
+            .findings
+            .iter()
+            .filter(|f| f.slug == "file-unreadable" && f.location.path == *path)
+            .count();
+        assert_eq!(named, 1, "{} reported {named} times", path.display());
+    }
+    assert_eq!(
+        outcome
+            .skipped
+            .iter()
+            .filter(|s| s.slug == "policy.permissions")
+            .count(),
+        1,
+        "an arm that could not read its input says so where a reader looks: {:?}",
+        outcome.skipped
+    );
+}
+
+#[test]
+fn the_covered_surfaces_are_every_surface_a_validator_declares() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/validate");
+    let mut declared: Vec<String> = Vec::new();
+    for entry in fs::read_dir(&dir).unwrap() {
+        let body = fs::read_to_string(entry.unwrap().path()).unwrap();
+        for line in body.lines() {
+            if let Some(rest) = line.trim().strip_prefix("const GLOB: &'static str = ")
+                && let Some(glob) = rest.trim_end_matches(';').trim().strip_prefix('"')
+            {
+                declared.push(glob.trim_end_matches('"').to_string());
+            }
+        }
+    }
+    declared.sort();
+    let mut covered: Vec<String> = GLOB_SURFACES
+        .iter()
+        .map(|(glob, _)| (*glob).to_string())
+        .collect();
+    covered.sort();
+    assert_eq!(
+        declared, covered,
+        "a validator declares a surface the unreadable-file case does not plant a file under"
+    );
+}

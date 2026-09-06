@@ -26,7 +26,6 @@ use serde::Deserialize;
 
 use crate::config::OutputStylesPolicy;
 use crate::envelope::{Finding, Location, Severity};
-use crate::error::{Error, Result};
 use crate::validate::frontmatter;
 
 /// Complete output-style frontmatter key surface (wire names).
@@ -57,12 +56,12 @@ impl<'a> OutputStyleValidator<'a> {
         Self { policy }
     }
 
-    pub fn validate_file(&self, path: &Path) -> Result<Vec<Finding>> {
-        let contents = std::fs::read_to_string(path).map_err(|e| Error::IoFailure {
-            path: path.to_path_buf(),
-            source: e,
-        })?;
-        Ok(self.validate_text(&contents, path))
+    pub fn validate_file(&self, path: &Path) -> Vec<Finding> {
+        let contents = match super::read_text(path) {
+            Ok(contents) => contents,
+            Err(finding) => return vec![finding],
+        };
+        self.validate_text(&contents, path)
     }
 
     pub fn validate_text(&self, content: &str, path: &Path) -> Vec<Finding> {
@@ -193,7 +192,7 @@ impl<'p> crate::validate::SurfaceValidator<'p> for OutputStyleValidator<'p> {
         Self::new(policy)
     }
 
-    fn validate_path(&self, path: &Path) -> Result<Vec<Finding>> {
+    fn validate_path(&self, path: &Path) -> Vec<Finding> {
         self.validate_file(path)
     }
 }

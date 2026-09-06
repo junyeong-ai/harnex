@@ -337,15 +337,21 @@ pub fn load(root: &Path) -> Result<LoadOutcome> {
         defects: Vec::new(),
     };
     for path in paths {
-        let content = std::fs::read_to_string(&path).map_err(|e| Error::IoFailure {
-            path: path.clone(),
-            source: e,
-        })?;
         let rule = path
             .strip_prefix(root)
             .unwrap_or(&path)
             .to_string_lossy()
             .into_owned();
+        let content = match std::fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(e) => {
+                outcome.defects.push(LoadDefect {
+                    rule,
+                    error: e.to_string(),
+                });
+                continue;
+            }
+        };
         match GovernsDecl::from_rule(&content, &path) {
             Ok(governs) if !governs.is_empty() => outcome.rules.push(RuleGoverns { rule, governs }),
             Ok(_) => {}

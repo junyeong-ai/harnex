@@ -76,7 +76,7 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                 })?;
             let v = RuleValidator::new(policy);
             for p in paths {
-                findings.extend(v.validate_file(&p)?);
+                findings.extend(v.validate_file(&p));
             }
         }
         ValidateCommand::Skills { paths } => {
@@ -90,7 +90,7 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                 })?;
             let v = SkillValidator::new(policy);
             for p in paths {
-                findings.extend(v.validate_file(&p)?);
+                findings.extend(v.validate_file(&p));
             }
         }
         ValidateCommand::Agents { paths } => {
@@ -104,7 +104,7 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                 })?;
             let v = AgentValidator::new(policy);
             for p in paths {
-                findings.extend(v.validate_file(&p)?);
+                findings.extend(v.validate_file(&p));
             }
         }
         ValidateCommand::OutputStyles { paths } => {
@@ -118,7 +118,7 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                 })?;
             let v = OutputStyleValidator::new(policy);
             for p in paths {
-                findings.extend(v.validate_file(&p)?);
+                findings.extend(v.validate_file(&p));
             }
         }
         ValidateCommand::Settings { path, scope } => {
@@ -134,7 +134,7 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                 location: None,
             })?;
             let v = SettingsValidator::new();
-            findings.extend(v.validate_file(&path, scope)?);
+            findings.extend(v.validate_file(&path, scope));
         }
         ValidateCommand::CommitMsg { path } => {
             let policy = config

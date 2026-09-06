@@ -24,7 +24,6 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::envelope::{Finding, Location, Severity};
-use crate::error::{Error, Result};
 use crate::policy::{PermissionRule, RuleDirection, RuleEffect};
 use crate::wire_enum::wire_enum;
 
@@ -277,12 +276,12 @@ impl SettingsValidator {
         Self
     }
 
-    pub fn validate_file(&self, path: &Path, scope: SettingsScope) -> Result<Vec<Finding>> {
-        let contents = std::fs::read_to_string(path).map_err(|e| Error::IoFailure {
-            path: path.to_path_buf(),
-            source: e,
-        })?;
-        Ok(self.validate_text(&contents, path, scope))
+    pub fn validate_file(&self, path: &Path, scope: SettingsScope) -> Vec<Finding> {
+        let contents = match super::read_text(path) {
+            Ok(contents) => contents,
+            Err(finding) => return vec![finding],
+        };
+        self.validate_text(&contents, path, scope)
     }
 
     pub fn validate_text(&self, content: &str, path: &Path, scope: SettingsScope) -> Vec<Finding> {
