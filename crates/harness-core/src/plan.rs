@@ -910,9 +910,17 @@ impl<'a> PlanAuditor<'a> {
         // that its convergence is the thing that cannot be read.
         let mut gap_at: Option<u32> = None;
         let mut resumed: BTreeSet<String> = BTreeSet::new();
+        // An acknowledgement is a prediction: these findings are a class the
+        // round's answer closes, so the next firing falls. A second one in a
+        // row is that prediction tested and failed, which is the first round
+        // at which riding on is a scope the operator owns rather than a
+        // rationale the loop can write for itself. Counted per gate, because
+        // that is what the comparison it overrides is keyed by.
+        let mut rode_on: BTreeMap<String, u32> = BTreeMap::new();
         for (line_no, decision) in &decisions {
             let Some(decision) = decision else {
                 last_blocking.clear();
+                rode_on.clear();
                 gap_at = Some(*line_no);
                 resumed.clear();
                 continue;
@@ -991,11 +999,38 @@ impl<'a> PlanAuditor<'a> {
                                 fix_command: None,
                             });
                         }
-                        if let Some(&previous) = last_blocking.get(&gate_key)
-                            && counts.blocking() >= previous
-                            && !decision.rationale.starts_with(ACKNOWLEDGED_PREFIX)
-                        {
-                            findings.push(Finding {
+                        if let Some(&previous) = last_blocking.get(&gate_key) {
+                            if counts.blocking() < previous {
+                                rode_on.remove(&gate_key);
+                            } else if decision.rationale.starts_with(ACKNOWLEDGED_PREFIX) {
+                                let rounds = rode_on
+                                    .entry(gate_key.clone())
+                                    .and_modify(|n| *n += 1)
+                                    .or_insert(1);
+                                if *rounds > 1 {
+                                    findings.push(Finding {
+                                        slug: "plan-log-riding-on".into(),
+                                        severity: Severity::Blocker,
+                                        location: Location::line(spec_path, *line_no),
+                                        message: format!(
+                                            "`{gate}` rode on an acknowledgement {rounds} rounds \
+                                             running — the one before this said the round it \
+                                             justified would fall"
+                                        ),
+                                        hint: Some(
+                                            "the scope is the operator's to settle, not the next \
+                                             round's to justify: bring the count below the \
+                                             previous firing, or close the cycle with `approved`, \
+                                             `deferred` or `rejected` and record what the spec \
+                                             now covers"
+                                                .into(),
+                                        ),
+                                        auto_fixable: false,
+                                        fix_command: None,
+                                    });
+                                }
+                            } else {
+                                findings.push(Finding {
                                 slug: "plan-log-not-falling".into(),
                                 severity: Severity::Blocker,
                                 location: Location::line(spec_path, *line_no),
@@ -1013,9 +1048,11 @@ impl<'a> PlanAuditor<'a> {
                                 auto_fixable: false,
                                 fix_command: None,
                             });
+                            }
                         }
                         last_blocking.insert(gate_key.clone(), counts.blocking());
                     } else {
+                        rode_on.remove(&gate_key);
                         // The firing before the next one recorded nothing to
                         // fall below. Holding that one to the round before it
                         // would name a previous firing that is not the
@@ -1025,6 +1062,7 @@ impl<'a> PlanAuditor<'a> {
                 }
                 GateDecision::Approved | GateDecision::Rejected | GateDecision::Deferred => {
                     last_blocking.remove(&gate_key);
+                    rode_on.remove(&gate_key);
                 }
             }
             if decision.decision == GateDecision::Approved
@@ -1685,6 +1723,54 @@ mod tests {
             !slugs(&findings).contains(&"plan-log-not-falling"),
             "3 against 2 is a comparison with the round before the one before: {findings:?}"
         );
+    }
+
+    #[test]
+    fn the_hatch_is_open_once_and_the_round_after_it_is_the_operator_s() {
+        // The first acknowledgement predicts that the class it names is closed
+        // by the answer the round carries. The second is that prediction
+        // tested and failed, and it is not suppressible: the prefix is what
+        // reaches it, not what excuses it.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} five\n\
+                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
+                   acknowledged: a class the r1 answer never covered\n\
+                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
+                   acknowledged: another class again";
+        let findings = audit_with_spec(&plan(""), &spec(log));
+        assert_eq!(slugs(&findings), ["plan-log-riding-on"]);
+        assert_eq!(findings[0].severity, Severity::Blocker);
+        assert_eq!(
+            findings[0].location.line,
+            Some(7),
+            "at the second, not the first"
+        );
+    }
+
+    #[test]
+    fn a_round_that_falls_opens_the_hatch_again() {
+        // Riding on is counted in a row, not in a spec: a round that fell is
+        // the prediction holding, and the count owed after it starts over.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} five\n\
+                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
+                   acknowledged: a new class\n\
+                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three\n\
+                   - 2026-01-18 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} \
+                   acknowledged: one more class";
+        assert!(audit_with_spec(&plan(""), &spec(log)).is_empty());
+    }
+
+    #[test]
+    fn closing_the_cycle_opens_the_hatch_again() {
+        // An approval ends the cycle the comparison was walking, and what the
+        // next cycle owes is its own.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} five\n\
+                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/5B/0M/0m \u{b7} \
+                   acknowledged: a new class\n\
+                   - 2026-01-17 \u{b7} review \u{b7} approved \u{b7} 0C/0B/2M/1m \u{b7} clean\n\
+                   - 2026-02-01 \u{b7} review \u{b7} needs_revision \u{b7} 0C/4B/0M/0m \u{b7} new cycle\n\
+                   - 2026-02-02 \u{b7} review \u{b7} needs_revision \u{b7} 0C/4B/0M/0m \u{b7} \
+                   acknowledged: a class the new cycle exposed";
+        assert!(audit_with_spec(&plan(""), &spec(log)).is_empty());
     }
 
     #[test]
