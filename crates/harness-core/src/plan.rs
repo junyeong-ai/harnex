@@ -41,6 +41,7 @@
 //!   the layout this module refuses to guess.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroU32;
 use std::path::Path;
 
 use crate::markdown::{Document, Unterminated, strip_code_spans};
@@ -99,6 +100,29 @@ wire_enum! {
         Rejected => "rejected",
         NeedsRevision => "needs_revision",
         Deferred => "deferred",
+    }
+}
+
+impl GateDecision {
+    /// Whether the firing closes the cycle, so the next firing of the same
+    /// gate opens a new one. A deferral does not: it holds the spec in
+    /// flight until the gate re-fires, which is what the shipped `gates.md`
+    /// and `wrapup.md` tell the operator.
+    pub fn settles(self) -> bool {
+        match self {
+            Self::Approved | Self::Rejected => true,
+            Self::NeedsRevision | Self::Deferred => false,
+        }
+    }
+
+    /// The decisions that close a cycle, as a hint names them.
+    fn settling() -> String {
+        Self::ALL
+            .iter()
+            .filter(|d| d.settles())
+            .map(|d| format!("`{}`", d.as_str()))
+            .collect::<Vec<_>>()
+            .join(" or ")
     }
 }
 
@@ -660,7 +684,7 @@ pub struct PlanAuditor<'a> {
     /// append-only contract — without it, editing an earlier bullet's counts
     /// launders the convergence comparison the log exists to compute.
     baseline_spec: Option<&'a str>,
-    round_cap: Option<u32>,
+    round_cap: Option<NonZeroU32>,
 }
 
 impl<'a> PlanAuditor<'a> {
@@ -687,7 +711,7 @@ impl<'a> PlanAuditor<'a> {
     /// is too large to finish, which is the question a loop still running
     /// after many rounds is asking. The number is the caller's — nothing in a
     /// log decides a budget.
-    pub fn with_round_cap(mut self, rounds: u32) -> Self {
+    pub fn with_round_cap(mut self, rounds: NonZeroU32) -> Self {
         self.round_cap = Some(rounds);
         self
     }
@@ -992,22 +1016,23 @@ impl<'a> PlanAuditor<'a> {
                         .and_modify(|n| *n += 1)
                         .or_insert(1);
                     if let Some(cap) = self.round_cap
-                        && *fired == cap + 1
+                        && fired.checked_sub(cap.get()) == Some(1)
                     {
                         findings.push(Finding {
                             slug: "plan-log-round-cap".into(),
                             severity: Severity::Blocker,
                             location: Location::line(spec_path, *line_no),
                             message: format!(
-                                "`{gate}` fired {fired} times in this cycle, past a cap of {cap}"
+                                "`{gate}` fired {fired} times in this cycle, past a cap of {}",
+                                cap.get()
                             ),
-                            hint: Some(
+                            hint: Some(format!(
                                 "reaching the cap is a report, not a verdict on the round: a \
                                  review that needs this many is naming a unit too large to \
                                  finish. Settle the scope — split what is under review, or close \
-                                 the cycle with `approved`, `deferred` or `rejected`"
-                                    .into(),
-                            ),
+                                 the cycle with {}",
+                                GateDecision::settling()
+                            )),
                             auto_fixable: false,
                             fix_command: None,
                         });
@@ -1066,7 +1091,11 @@ impl<'a> PlanAuditor<'a> {
                         last_blocking.remove(&gate_key);
                     }
                 }
-                GateDecision::Approved | GateDecision::Rejected | GateDecision::Deferred => {
+                // Neither the budget nor the round the next firing must fall
+                // below is reset by a pause: the cycle a deferral leaves in
+                // flight is the one that resumes.
+                GateDecision::Deferred => {}
+                GateDecision::Approved | GateDecision::Rejected => {
                     last_blocking.remove(&gate_key);
                     rounds.remove(&gate_key);
                 }
@@ -1323,6 +1352,10 @@ mod tests {
 
     fn slugs(findings: &[Finding]) -> Vec<&str> {
         findings.iter().map(|f| f.slug.as_str()).collect()
+    }
+
+    fn cap_of(n: u32) -> NonZeroU32 {
+        NonZeroU32::new(n).expect("a budget is a positive count")
     }
 
     fn plan(rows: &str) -> String {
@@ -1751,7 +1784,7 @@ mod tests {
                 None,
             );
             match cap {
-                Some(c) => a.with_round_cap(c),
+                Some(c) => a.with_round_cap(cap_of(c)),
                 None => a,
             }
             .audit()
@@ -1762,6 +1795,92 @@ mod tests {
         assert_eq!(slugs(&over), ["plan-log-round-cap"]);
         assert_eq!(over[0].severity, Severity::Blocker);
         assert_eq!(over[0].location.line, Some(7), "the round that crossed it");
+        let hint = over[0].hint.as_deref().expect("the cap names the way out");
+        for decision in GateDecision::ALL {
+            assert_eq!(
+                hint.contains(&format!("`{}`", decision.as_str())),
+                decision.settles(),
+                "the way out of a cap is a settlement, and `{}` is not one",
+                decision.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_budget_no_run_reaches_is_not_an_overflow() {
+        let spec_text = spec("- 2026-01-15 · review · needs_revision · 0C/1B/0M/0m · one");
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan("")),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(cap_of(u32::MAX))
+        .audit();
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    fn only_a_settlement_starts_the_budget_over() {
+        // Four revision rounds against a cap of two, with one firing of each
+        // decision interposed between the second and the third. A settlement
+        // opens a new cycle, so the rounds after it are the first two of it;
+        // anything else leaves the budget where the pause found it.
+        for interposed in GateDecision::ALL {
+            let log = format!(
+                "- 2026-01-01 · review · needs_revision · 0C/4B/0M/0m · r1\n\
+                 - 2026-01-02 · review · needs_revision · 0C/3B/0M/0m · r2\n\
+                 - 2026-01-03 · review · {} · 0C/0B/0M/0m · interposed\n\
+                 - 2026-01-04 · review · needs_revision · 0C/2B/0M/0m · r3\n\
+                 - 2026-01-05 · review · needs_revision · 0C/1B/0M/0m · r4",
+                interposed.as_str()
+            );
+            let spec_text = spec(&log);
+            let plan_text = plan("");
+            let findings = PlanAuditor::new(
+                Path::new("specs/t/plan.md"),
+                Some(&plan_text),
+                Some((Path::new("specs/t/spec.md"), &spec_text)),
+                None,
+                None,
+            )
+            .with_round_cap(cap_of(2))
+            .audit();
+            assert_eq!(
+                findings.iter().any(|f| f.slug == "plan-log-round-cap"),
+                !interposed.settles(),
+                "`{}` interposed: {findings:?}",
+                interposed.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_pause_leaves_the_round_the_next_firing_falls_below() {
+        // The firing before the one that resumes is the firing before it. A
+        // deferral that cleared the comparison would let the round after a
+        // pause stand at the count the round before it stood at.
+        let paused = spec(
+            "- 2026-01-01 · review · needs_revision · 0C/2B/0M/0m · r1\n\
+             - 2026-01-02 · review · deferred · 0C/2B/0M/0m · waits on staging\n\
+             - 2026-01-03 · review · needs_revision · 0C/2B/0M/0m · r2",
+        );
+        assert_eq!(
+            slugs(&audit_with_spec(&plan(""), &paused)),
+            ["plan-log-not-falling"],
+            "a pause is not a round, and the round before it still stands"
+        );
+
+        let settled = spec(
+            "- 2026-01-01 · review · needs_revision · 0C/2B/0M/0m · r1\n\
+             - 2026-01-02 · review · approved · 0C/0B/0M/0m · clean\n\
+             - 2026-01-03 · review · needs_revision · 0C/2B/0M/0m · a new cycle",
+        );
+        assert!(
+            audit_with_spec(&plan(""), &settled).is_empty(),
+            "a settled cycle leaves nothing for the next one to fall below"
+        );
     }
 
     #[test]
@@ -1782,7 +1901,7 @@ mod tests {
             None,
             None,
         )
-        .with_round_cap(2)
+        .with_round_cap(cap_of(2))
         .audit();
         assert!(
             findings.is_empty(),
@@ -1805,7 +1924,7 @@ mod tests {
             None,
             None,
         )
-        .with_round_cap(2)
+        .with_round_cap(cap_of(2))
         .audit();
         assert!(
             findings.is_empty(),
