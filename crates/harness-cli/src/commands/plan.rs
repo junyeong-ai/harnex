@@ -1,4 +1,5 @@
 use std::io::{Read, Write};
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -36,7 +37,7 @@ pub enum PlanCommand {
         /// rounds cannot answer whether the unit under review is too large to
         /// finish, and that number is the project's to choose
         #[arg(long)]
-        max_rounds: Option<u32>,
+        max_rounds: Option<NonZeroU32>,
     },
 }
 
