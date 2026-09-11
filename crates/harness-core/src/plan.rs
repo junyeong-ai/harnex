@@ -1999,6 +1999,10 @@ mod tests {
                 "quoted",
                 "\n> - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two",
             ),
+            (
+                "quoted with no marker",
+                "\n> 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two",
+            ),
         ] {
             let findings = audit_with_spec(&plan(""), &spec(&format!("{head}\n{off_margin}")));
             assert_eq!(slugs(&findings), ["plan-log-off-margin"], "{shape}");
@@ -2032,6 +2036,18 @@ mod tests {
                 "a nested note",
                 "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} one\n    \
                  - see the plan's rows for the two blockers"
+                    .to_string(),
+            ),
+            (
+                "a paragraph, which opens no entry",
+                "Rounds 1 \u{b7} 2 \u{b7} 3 stand below.\n\n\
+                 - 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} one"
+                    .to_string(),
+            ),
+            (
+                "a bullet at the margin that states no firing",
+                "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} one\n\
+                 - the plan's rows carry what this round found"
                     .to_string(),
             ),
         ] {
