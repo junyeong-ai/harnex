@@ -18,10 +18,12 @@ harnex_version = ">=0.15, <0.16"
 # The Claude Code memory budget applies to what loads every turn — a rule
 # carrying no `paths:`. Path-scoped rules cost context only on the files they
 # govern, so `max_scoped_lines` stays unset: a cohesive long rule is not a
-# defect. `constitution.md` is the one artifact the scaffold emits that is
-# meant to load unconditionally.
+# defect. The slugs below are the artifacts the scaffold emits that are meant
+# to load unconditionally — the laws, the conduct a session is held to, and
+# what a review judges by, none of which is truth about a file that could
+# scope it.
 max_lines = 200
-always_loaded_slugs = ["constitution", "agent-conduct"]
+always_loaded_slugs = ["constitution", "agent-conduct", "review-lenses"]
 # Every path-scoped rule declares what it is truth ABOUT (`governs:` —
 # concept + live_truth), which is a different question from when it loads
 # (`paths:`). `harnex governs resolve` inverts the declarations into review
