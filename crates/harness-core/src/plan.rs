@@ -47,6 +47,11 @@
 //!   severity that does not parse is a finding, not a row — the measured
 //!   alternative is a grammar whose variants are invisible to every gate
 //!   reading it.
+//! - Never reads a deleted spec's baseline as a rewritten log. Retiring a
+//!   finished spec and splitting one too large to finish both remove the
+//!   file, and the second is the budget's own way out; what a deletion must
+//!   not abandon is an open row, which the vanish check answers from the
+//!   plan's baseline.
 //! - Never joins `check`. The gate runs where the files are named — the
 //!   pre-commit arm and the skill — because a project-wide walk would need
 //!   the layout this module refuses to guess.
@@ -369,16 +374,13 @@ pub fn parse_decision(text: &str) -> Option<DecisionLine> {
     })
 }
 
-/// Whether a rationale carries a second decision — what a nested or indented
-/// bullet becomes once lazy continuation joins it to the row above it. A reader
-/// sees two records where the log parses one, so the round the second states is
-/// counted by nobody. Recognised by parsing, not by shape: the rationale keeps
-/// its own separators, and only a suffix the grammar accepts whole is a record.
-fn buried_decision(rationale: &str) -> bool {
-    rationale.char_indices().any(|(at, _)| {
-        rationale.get(at..at + 10).is_some_and(is_iso_date)
-            && parse_decision(&rationale[at..]).is_some()
-    })
+/// Whether a line reads as a decision to someone scanning the log: it carries
+/// the grammar's own separator, or opens on a date. Wider than
+/// [`parse_decision`] on purpose — a lookalike dot (`•` for `·`) or a bolded
+/// token is a record to a reader and nothing to the parser, and silence about
+/// it drops a round out of every accounting check.
+fn decision_shaped(text: &str) -> bool {
+    text.contains('·') || text.get(..10).is_some_and(is_iso_date)
 }
 
 /// `YYYY-MM-DD` by shape first, then by calendar. The shape check is not
@@ -519,6 +521,11 @@ struct Item {
     line: u32,
     canonical_marker: bool,
     text: String,
+    /// Continuation lines that are list items of their own — a nested bullet
+    /// a reader sees as one more entry, which the join above folds into this
+    /// item's text. Kept by line, with the marker stripped, so a section
+    /// whose entries must stand at the margin can say which ones do not.
+    nested: Vec<(u32, String)>,
 }
 
 /// Extract the items under `## <heading>`.
@@ -660,15 +667,32 @@ fn collect(
             line: line_no,
             canonical_marker: unindented.starts_with("- "),
             text: text.to_string(),
+            nested: Vec::new(),
         });
         return;
     }
     if let Some(item) = open_item.as_mut() {
+        if let Some(text) = own_entry(line) {
+            item.nested.push((line_no, text.to_string()));
+        }
         item.text.push(' ');
         item.text.push_str(line.trim());
         return;
     }
     loose.push((line_no, line.trim().to_string()));
+}
+
+/// The text of a line that opens an entry of its own to a reader — a list
+/// item or a quotation, at any indentation — or `None` for a line that
+/// continues the paragraph above it.
+fn own_entry(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let unquoted = trimmed.trim_start_matches(['>', ' ', '\t']);
+    match item_text(unquoted) {
+        Some(text) => Some(text),
+        None if trimmed.starts_with('>') => Some(unquoted),
+        None => None,
+    }
 }
 
 /// The text after a list marker, for any CommonMark marker.
@@ -903,7 +927,7 @@ impl<'a> PlanAuditor<'a> {
         rows: Option<&[FindingRow]>,
         findings: &mut Vec<Finding>,
     ) {
-        let items = match section_of(spec_text, DECISION_LOG_HEADING) {
+        let (items, loose) = match section_of(spec_text, DECISION_LOG_HEADING) {
             Section::Missing { stray_spelling } => {
                 findings.push(Finding {
                     slug: "plan-log-missing".into(),
@@ -930,38 +954,48 @@ impl<'a> PlanAuditor<'a> {
                 findings.push(unreadable(spec_path, line, &reason));
                 return;
             }
-            Section::Found { items, .. } => items,
+            Section::Found { items, loose } => (items, loose),
         };
+
+        // An entry the log opens off its margin — nested under the bullet
+        // above it, indented past it, or quoted. A reader counts it and the
+        // parser reaches none of them, so the round it states is spent by
+        // nobody. Decided by the line an entry opens on, never by what a
+        // rationale mentions: a bullet quoting the grammar is one entry.
+        for (line, text) in items
+            .iter()
+            .flat_map(|item| item.nested.iter().cloned())
+            .chain(
+                loose
+                    .iter()
+                    .filter_map(|(line, text)| Some((*line, own_entry(text)?.to_string()))),
+            )
+            .filter(|(_, text)| decision_shaped(text))
+        {
+            findings.push(Finding {
+                slug: "plan-log-off-margin".into(),
+                severity: Severity::Blocker,
+                location: Location::line(spec_path, line),
+                message: format!(
+                    "a decision no gate counts, off the log's margin: {}",
+                    normalize(&text)
+                ),
+                hint: Some(
+                    "every firing is a bullet of its own at the margin — nested, indented or \
+                     quoted, it is a round a reader sees and the budget does not. Move it out \
+                     to the margin"
+                        .into(),
+                ),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
 
         let mut decisions = Vec::new();
         for item in items {
             match parse_decision(&item.text) {
-                Some(line) if item.canonical_marker => {
-                    if buried_decision(&line.rationale) {
-                        findings.push(Finding {
-                            slug: "plan-log-buried-decision".into(),
-                            severity: Severity::Blocker,
-                            location: Location::line(spec_path, item.line),
-                            message: format!(
-                                "a second decision is buried in this bullet: {}",
-                                normalize(&item.text)
-                            ),
-                            hint: Some(
-                                "every record is a bullet of its own at the margin — an \
-                                 indented one joins the record above it, and the round it \
-                                 states is counted by nobody. Unindent it"
-                                    .into(),
-                            ),
-                            auto_fixable: false,
-                            fix_command: None,
-                        });
-                    }
-                    decisions.push((item.line, Some(line)));
-                }
-                // Decision-shaped is the grammar's own separator, or a bullet
-                // opening on a date — a lookalike dot (`•` for `·`) must not
-                // drop a line out of every accounting check in silence.
-                _ if item.text.contains('·') || item.text.get(..10).is_some_and(is_iso_date) => {
+                Some(line) if item.canonical_marker => decisions.push((item.line, Some(line))),
+                _ if decision_shaped(&item.text) => {
                     decisions.push((item.line, None));
                     findings.push(Finding {
                         slug: "plan-log-unparseable".into(),
@@ -1939,24 +1973,71 @@ mod tests {
     }
 
     #[test]
-    fn a_record_indented_under_the_one_above_it_is_still_a_round() {
-        // Lazy continuation joins it to the record above, where it renders as
-        // a bullet a reader counts and the log parses as rationale.
-        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} one\n\
-                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two\n    \
-                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three";
-        assert_eq!(
-            slugs(&audit_with_spec(&plan(""), &spec(log))),
-            ["plan-log-buried-decision"]
-        );
-        // A date a rationale merely names is not a record: only a suffix the
-        // grammar accepts whole is one.
-        let mentions = spec(
-            "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} \
-             the 2026-01-10 branch point is where this began",
-        );
-        let findings = audit_with_spec(&plan(""), &mentions);
-        assert!(findings.is_empty(), "{findings:?}");
+    fn a_record_off_the_margin_is_still_a_round() {
+        // Each renders as an entry a reader counts and reads to the log as the
+        // rationale above it or as nothing, so the round it states would be
+        // spent by nobody. Reported at its own line, whatever it is spelled.
+        let head = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} one";
+        for (shape, off_margin) in [
+            (
+                "nested",
+                "    - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two",
+            ),
+            (
+                "indented after a blank line",
+                "\n    - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two",
+            ),
+            (
+                "nested, token bolded",
+                "    - 2026-01-16 \u{b7} review \u{b7} **needs_revision** \u{b7} 0C/1B/0M/0m \u{b7} two",
+            ),
+            (
+                "nested, lookalike dots",
+                "    - 2026-01-16 \u{2022} review \u{2022} needs_revision \u{2022} 0C/1B/0M/0m two",
+            ),
+            (
+                "quoted",
+                "\n> - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two",
+            ),
+        ] {
+            let findings = audit_with_spec(&plan(""), &spec(&format!("{head}\n{off_margin}")));
+            assert_eq!(slugs(&findings), ["plan-log-off-margin"], "{shape}");
+            let line = findings[0].location.line.expect("reported at a line");
+            assert!(
+                line > 5,
+                "{shape}: reported at the off-margin line, not the head"
+            );
+        }
+    }
+
+    #[test]
+    fn what_a_bullet_says_is_not_a_record_it_holds() {
+        // A rationale naming a date, quoting the grammar, or carrying a nested
+        // note is one entry — the detector reads lines, not mentions.
+        for (shape, log) in [
+            (
+                "a date in the rationale",
+                "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} \
+                 the 2026-01-10 branch point is where this began"
+                    .to_string(),
+            ),
+            (
+                "the grammar quoted in a code span",
+                "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} \
+                 reproduced using `2026-01-01 \u{b7} review \u{b7} needs_revision \u{b7} \
+                 0C/1B/0M/0m \u{b7} example`"
+                    .to_string(),
+            ),
+            (
+                "a nested note",
+                "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} one\n    \
+                 - see the plan's rows for the two blockers"
+                    .to_string(),
+            ),
+        ] {
+            let findings = audit_with_spec(&plan(""), &spec(&log));
+            assert!(findings.is_empty(), "{shape}: {findings:?}");
+        }
     }
 
     #[test]

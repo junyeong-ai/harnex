@@ -30,10 +30,10 @@ the section `specs/_template/spec.md` ships for exactly this:
 Append-only, at the margin, under the gate's own name. A gate that fires three
 times leaves three bullets in order — the history of a decision is the
 interesting part, and overwriting keeps only the last one. `git log
-specs/<slug>/` is the timeline this rides on. The two ways a record stops
-being one are both reported: indented under the bullet above it, it renders as
-a record and parses as that one's rationale; under a name this workflow never
-defined, it is a gate of its own and carries a round budget of its own.
+specs/<slug>/` is the timeline this rides on. The two ways a record stops being
+one are both reported: off the margin — nested, indented or quoted — it renders
+as a firing and no gate counts it; under a name this workflow never defined, it
+is a gate of its own and carries a round budget of its own.
 
 A counted firing writes its counts into the line: the log is where what each
 round found is read back. Two gate classes count different things and each
