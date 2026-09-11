@@ -39,8 +39,11 @@ while IFS= read -r -d '' f; do
   mkdir -p "$tmp/$(dirname "$f")"
   # Firings one gate may record in a cycle before reaching the number is a
   # report. Raise it for a genuinely large scope; a review that needs many
-  # more is naming a unit too large to finish as one.
-  args=(--plan "$f" --max-rounds 5)
+  # more is naming a unit too large to finish as one. The gate list is this
+  # workflow's own: the budget is per gate, so a firing under a name nothing
+  # declares carries a budget of its own. Add a gate here when the workflow
+  # gains one.
+  args=(--plan "$f" --max-rounds 5 --gates clarify,design_review,review,acceptance,resume)
   git show ":$f" >"$tmp/$f" 2>/dev/null || rm -f "$tmp/$f"
   spec="${f%plan.md}spec.md"
   if git show ":$spec" >"$tmp/$spec" 2>/dev/null; then

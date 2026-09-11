@@ -37,6 +37,11 @@ pub enum PlanCommand {
         /// review is one a review can finish is the project's to choose
         #[arg(long)]
         max_rounds: Option<NonZeroU32>,
+        /// The gates this project's workflow defines, comma-separated. Every
+        /// firing in the log must name one of them. Omitted, any name is a
+        /// gate — and the round budget it carries is its own
+        #[arg(long, value_delimiter = ',')]
+        gates: Option<Vec<String>>,
     },
 }
 
@@ -50,6 +55,7 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         baseline,
         baseline_spec,
         max_rounds,
+        gates,
     } = cmd;
 
     // An absent plan is a judged state when anything else anchors the audit —
@@ -92,8 +98,12 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         baseline_text.as_deref(),
         baseline_spec_text.as_deref(),
     );
-    let findings = match max_rounds {
+    let auditor = match max_rounds {
         Some(cap) => auditor.with_round_cap(cap),
+        None => auditor,
+    };
+    let findings = match gates.as_deref() {
+        Some(gates) => auditor.with_gates(gates),
         None => auditor,
     }
     .audit();

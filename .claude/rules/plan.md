@@ -26,7 +26,11 @@ every prose site.
 - No git in the module: the baseline is text the caller supplies. The shipped
   `check-plan.sh` arm pipes `git show` into it, and `plan_template_sync`
   (harness-cli) holds the flags that arm spells to the clap surface.
-- Gate names stay open. Only `COUNTED_GATES` owe counts, each in its declared
+- Gate names stay open, and the caller declares the set its workflow has: the
+  budget is keyed by the name on the line, so a firing under a name nothing
+  declares is a budget of its own and `plan-log-gate-undeclared` blocks it.
+  Undeclared, no name is held — the flag is opt-in like the budget it guards.
+  Only `COUNTED_GATES` owe counts, each in its declared
   `GateClass`: review gates count findings by rank, `acceptance` counts
   criteria by outcome. The approval rule reads `GateCounts::blocking` and
   never the class — unmeasured blocks an acceptance approval exactly as a
@@ -37,10 +41,15 @@ every prose site.
   firings per gate per cycle, only `GateDecision::settles` starts a new cycle,
   and nothing in a decision line lifts it — the loop the budget bounds writes
   every word of that line. Never add a round-to-round comparison or a
-  rationale hatch.
+  rationale hatch. The crossing report belongs to the cycle that crossed, and
+  a settlement withdraws it: held against the log's history it would outlive
+  the approval its own hint asks for, which an append-only log cannot undo.
 - A finding-shaped list item that does not parse is a Major finding, never a
   silently skipped row. Keep the detector wider than the parser on every axis
-  (marker, case, decoration) — narrowing it restores the silence.
+  (marker, case, decoration) — narrowing it restores the silence. The same
+  holds in the log: a record indented under the record above it renders as a
+  bullet and parses as that record's rationale, so `plan-log-buried-decision`
+  reports the round it would otherwise hide.
 - Unreadable is never empty. A duplicate heading or an unclosed fence is its
   own Blocker; a missing section is a Major, not a pass.
 - Vanish semantics: every open baseline row survives verbatim (whitespace

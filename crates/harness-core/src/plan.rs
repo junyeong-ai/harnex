@@ -21,9 +21,9 @@
 //! review writes for itself. For the same reason only an approval opens a new
 //! cycle — the one decision the auditor holds to the plan's open rows — while
 //! a rejection ends the work and a deferral pauses it. What the budget binds
-//! is one gate's name: gate names stay open by design, so a firing recorded
-//! under a second spelling is a second gate, and the log's own honesty is
-//! what the append-only baseline and the review hold.
+//! is one gate's name, so a firing under a second spelling is a second budget
+//! — which is why the caller declares the gates its workflow has and every
+//! firing answers to one of them.
 //!
 //! The grammar is harness vocabulary — harnex's own templates emit every
 //! token here, the same standing the sentinel grammars have. Gate NAMES stay
@@ -369,6 +369,18 @@ pub fn parse_decision(text: &str) -> Option<DecisionLine> {
     })
 }
 
+/// Whether a rationale carries a second decision — what a nested or indented
+/// bullet becomes once lazy continuation joins it to the row above it. A reader
+/// sees two records where the log parses one, so the round the second states is
+/// counted by nobody. Recognised by parsing, not by shape: the rationale keeps
+/// its own separators, and only a suffix the grammar accepts whole is a record.
+fn buried_decision(rationale: &str) -> bool {
+    rationale.char_indices().any(|(at, _)| {
+        rationale.get(at..at + 10).is_some_and(is_iso_date)
+            && parse_decision(&rationale[at..]).is_some()
+    })
+}
+
 /// `YYYY-MM-DD` by shape first, then by calendar. The shape check is not
 /// redundant: `strptime` accepts an unpadded month, and a date only mostly in
 /// the grammar is a line only mostly in the log.
@@ -696,6 +708,10 @@ pub struct PlanAuditor<'a> {
     /// bullet launders the round budget the log exists to compute.
     baseline_spec: Option<&'a str>,
     round_cap: Option<NonZeroU32>,
+    /// The gates this project's workflow defines. `None` holds nothing: a
+    /// project that has not named its gates has not said which names are
+    /// its own.
+    gates: Option<&'a [String]>,
 }
 
 impl<'a> PlanAuditor<'a> {
@@ -713,6 +729,7 @@ impl<'a> PlanAuditor<'a> {
             baseline,
             baseline_spec,
             round_cap: None,
+            gates: None,
         }
     }
 
@@ -722,6 +739,15 @@ impl<'a> PlanAuditor<'a> {
     /// caller's — nothing in a log decides a budget.
     pub fn with_round_cap(mut self, rounds: NonZeroU32) -> Self {
         self.round_cap = Some(rounds);
+        self
+    }
+
+    /// The gates the project's workflow defines, holding every firing to one
+    /// of them. The list is the caller's for the same reason the files are:
+    /// which gates a workflow has is project vocabulary (Constitution VII),
+    /// and a budget keyed by a name nothing declares is a budget per spelling.
+    pub fn with_gates(mut self, gates: &'a [String]) -> Self {
+        self.gates = Some(gates);
         self
     }
 
@@ -910,7 +936,28 @@ impl<'a> PlanAuditor<'a> {
         let mut decisions = Vec::new();
         for item in items {
             match parse_decision(&item.text) {
-                Some(line) if item.canonical_marker => decisions.push((item.line, Some(line))),
+                Some(line) if item.canonical_marker => {
+                    if buried_decision(&line.rationale) {
+                        findings.push(Finding {
+                            slug: "plan-log-buried-decision".into(),
+                            severity: Severity::Blocker,
+                            location: Location::line(spec_path, item.line),
+                            message: format!(
+                                "a second decision is buried in this bullet: {}",
+                                normalize(&item.text)
+                            ),
+                            hint: Some(
+                                "every record is a bullet of its own at the margin — an \
+                                 indented one joins the record above it, and the round it \
+                                 states is counted by nobody. Unindent it"
+                                    .into(),
+                            ),
+                            auto_fixable: false,
+                            fix_command: None,
+                        });
+                    }
+                    decisions.push((item.line, Some(line)));
+                }
                 // Decision-shaped is the grammar's own separator, or a bullet
                 // opening on a date — a lookalike dot (`•` for `·`) must not
                 // drop a line out of every accounting check in silence.
@@ -953,6 +1000,11 @@ impl<'a> PlanAuditor<'a> {
         // rounds is asking. A bullet no gate can read spends nothing here; its
         // own finding blocks until it is repaired, and then it counts.
         let mut rounds: BTreeMap<String, u32> = BTreeMap::new();
+        // Crossing the budget is a fact about the cycle that crossed it, held
+        // until that cycle closes. Reported from the log's history instead, the
+        // finding outlives the approval its own hint asks for, and an
+        // append-only log has no way to unsay it.
+        let mut over_budget: BTreeMap<String, Finding> = BTreeMap::new();
         for (line_no, decision) in &decisions {
             let Some(decision) = decision else {
                 continue;
@@ -1008,6 +1060,34 @@ impl<'a> PlanAuditor<'a> {
                     });
                 }
             }
+            // The budget is keyed by the name on the line, so a name outside
+            // the project's workflow is a second budget under a new spelling —
+            // and, spelled by accident, an orphan gate whose records answer to
+            // nothing. Held only where the caller declared the set: which
+            // gates a workflow has is the project's vocabulary, not this
+            // module's.
+            if let Some(declared) = self.gates
+                && !declared.iter().any(|d| d.eq_ignore_ascii_case(gate))
+            {
+                findings.push(Finding {
+                    slug: "plan-log-gate-undeclared".into(),
+                    severity: Severity::Blocker,
+                    location: Location::line(spec_path, *line_no),
+                    message: format!("`{gate}` is not one of this project's gates"),
+                    hint: Some(format!(
+                        "the declared gates are {} — record the firing under the gate that \
+                         ran, or declare this one alongside them; a gate the audit does not \
+                         know carries its own round budget",
+                        declared
+                            .iter()
+                            .map(|d| format!("`{d}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                    auto_fixable: false,
+                    fix_command: None,
+                });
+            }
             match decision.decision {
                 GateDecision::NeedsRevision => {
                     let fired = rounds
@@ -1017,24 +1097,27 @@ impl<'a> PlanAuditor<'a> {
                     if let Some(cap) = self.round_cap
                         && fired.checked_sub(cap.get()) == Some(1)
                     {
-                        findings.push(Finding {
-                            slug: "plan-log-round-cap".into(),
-                            severity: Severity::Blocker,
-                            location: Location::line(spec_path, *line_no),
-                            message: format!(
-                                "`{gate}` fired {fired} times in this cycle, past a cap of {}",
-                                cap.get()
-                            ),
-                            hint: Some(format!(
-                                "reaching the cap is a report, not a verdict on the round: a \
-                                 review that needs this many is naming a unit too large to \
-                                 finish. Settle the scope — split what is under review, or close \
-                                 the cycle with {} once no blocking row stands",
-                                GateDecision::settling()
-                            )),
-                            auto_fixable: false,
-                            fix_command: None,
-                        });
+                        over_budget.insert(
+                            gate_key.clone(),
+                            Finding {
+                                slug: "plan-log-round-cap".into(),
+                                severity: Severity::Blocker,
+                                location: Location::line(spec_path, *line_no),
+                                message: format!(
+                                    "`{gate}` fired {fired} times in this cycle, past a cap of {}",
+                                    cap.get()
+                                ),
+                                hint: Some(format!(
+                                    "reaching the cap is a report, not a verdict on the round: \
+                                     a review that needs this many is naming a unit too large \
+                                     to finish. Settle the scope — split what is under review, \
+                                     or close the cycle with {} once no blocking row stands",
+                                    GateDecision::settling()
+                                )),
+                                auto_fixable: false,
+                                fix_command: None,
+                            },
+                        );
                     }
                 }
                 // Neither a pause nor a rejection resets the budget: the
@@ -1043,6 +1126,7 @@ impl<'a> PlanAuditor<'a> {
                 GateDecision::Deferred | GateDecision::Rejected => {}
                 GateDecision::Approved => {
                     rounds.remove(&gate_key);
+                    over_budget.remove(&gate_key);
                 }
             }
             if decision.decision == GateDecision::Approved
@@ -1074,6 +1158,8 @@ impl<'a> PlanAuditor<'a> {
                 });
             }
         }
+
+        findings.extend(over_budget.into_values());
 
         // The live acceptance claim must account for every criterion the spec
         // now carries. Only the last firing is held to it: the log is
@@ -1813,6 +1899,108 @@ mod tests {
             findings.is_empty(),
             "two cycles of two, not one of four: {findings:?}"
         );
+    }
+
+    #[test]
+    fn a_settlement_withdraws_the_budget_report_it_answers() {
+        // The cap names its way out, and the way out is an approval. Reported
+        // from the log's history rather than from the open cycle, the finding
+        // outlives the approval it asked for — and an append-only log has no
+        // way to unsay the crossing, so nothing clears it again.
+        let crossed = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} one\n\
+                       - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
+                       - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three";
+        let settled = format!(
+            "{crossed}\n- 2026-01-20 \u{b7} review \u{b7} approved \u{b7} 0C/0B/0M/0m \u{b7} split, \
+             and every row disposed"
+        );
+        let plan_text = plan("");
+        let audit = |log: &str| {
+            let spec_text = spec(log);
+            PlanAuditor::new(
+                Path::new("specs/t/plan.md"),
+                Some(&plan_text),
+                Some((Path::new("specs/t/spec.md"), &spec_text)),
+                None,
+                None,
+            )
+            .with_round_cap(cap_of(2))
+            .audit()
+        };
+        assert_eq!(
+            slugs(&audit(crossed)),
+            ["plan-log-round-cap"],
+            "the cycle that crossed the budget is still open"
+        );
+        assert!(
+            audit(&settled).is_empty(),
+            "the cycle closed, and the report went with it"
+        );
+    }
+
+    #[test]
+    fn a_record_indented_under_the_one_above_it_is_still_a_round() {
+        // Lazy continuation joins it to the record above, where it renders as
+        // a bullet a reader counts and the log parses as rationale.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} one\n\
+                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two\n    \
+                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three";
+        assert_eq!(
+            slugs(&audit_with_spec(&plan(""), &spec(log))),
+            ["plan-log-buried-decision"]
+        );
+        // A date a rationale merely names is not a record: only a suffix the
+        // grammar accepts whole is one.
+        let mentions = spec(
+            "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} \
+             the 2026-01-10 branch point is where this began",
+        );
+        let findings = audit_with_spec(&plan(""), &mentions);
+        assert!(findings.is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    fn a_gate_outside_the_declared_set_carries_a_budget_of_its_own() {
+        // The budget is keyed by the name on the line, and no computer can tell
+        // a workflow's own gate from one spelled for a fresh budget. What the
+        // project declares is what tells it.
+        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} one\n\
+                   - 2026-01-16 \u{b7} Review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two\n\
+                   - 2026-01-17 \u{b7} review-2 \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three\n\
+                   - 2026-01-18 \u{b7} review-2 \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} four";
+        let spec_text = spec(log);
+        let plan_text = plan("");
+        let audit = |gates: Option<&[String]>| {
+            let auditor = PlanAuditor::new(
+                Path::new("specs/t/plan.md"),
+                Some(&plan_text),
+                Some((Path::new("specs/t/spec.md"), &spec_text)),
+                None,
+                None,
+            )
+            .with_round_cap(cap_of(2));
+            match gates {
+                Some(gates) => auditor.with_gates(gates),
+                None => auditor,
+            }
+            .audit()
+        };
+        assert!(
+            audit(None).is_empty(),
+            "undeclared, there is no name to hold a firing to"
+        );
+        let workflow = ["design_review".to_string(), "review".to_string()];
+        assert_eq!(
+            slugs(&audit(Some(&workflow))),
+            ["plan-log-gate-undeclared", "plan-log-gate-undeclared"],
+            "`Review` is the declared gate in another case; `review-2` is not it"
+        );
+        // The set is the project's and not this module's: a gate harnex counts
+        // nothing for is this workflow's own once declared, and then its
+        // firings are where they belong.
+        let wider = ["review".to_string(), "review-2".to_string()];
+        let findings = audit(Some(&wider));
+        assert!(findings.is_empty(), "{findings:?}");
     }
 
     #[test]
