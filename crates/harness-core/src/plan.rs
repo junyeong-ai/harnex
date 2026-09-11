@@ -14,11 +14,16 @@
 //! of the prose-only version of this floor is a gate that recorded eleven
 //! firings while its own rule said stop at the second.
 //!
-//! The budget is the only convergence control, and nothing written in the log
-//! lifts it. There is no round-to-round comparison: a round's count is a
-//! sample of what one reviewer found, a rule demanding it fall fires on the
-//! flat stretches every noisy descent has, and any token that let a round
-//! past such a rule would be one the loop under review writes for itself.
+//! The budget is the only convergence control. There is no round-to-round
+//! comparison: a round's count is a sample of what one reviewer found, a rule
+//! demanding it fall fires on the flat stretches every noisy descent has, and
+//! any token that let a round past such a rule would be one the loop under
+//! review writes for itself. For the same reason only an approval opens a new
+//! cycle — the one decision the auditor holds to the plan's open rows — while
+//! a rejection ends the work and a deferral pauses it. What the budget binds
+//! is one gate's name: gate names stay open by design, so a firing recorded
+//! under a second spelling is a second gate, and the log's own honesty is
+//! what the append-only baseline and the review hold.
 //!
 //! The grammar is harness vocabulary — harnex's own templates emit every
 //! token here, the same standing the sentinel grammars have. Gate NAMES stay
@@ -111,13 +116,17 @@ wire_enum! {
 
 impl GateDecision {
     /// Whether the firing closes the cycle, so the next firing of the same
-    /// gate opens a new one. A deferral does not: it holds the spec in
+    /// gate opens a new one. Only an approval does, and the approval rules
+    /// below hold it to what the plan carries. A deferral holds the spec in
     /// flight until the gate re-fires, which is what the shipped `gates.md`
-    /// and `wrapup.md` tell the operator.
+    /// and `wrapup.md` tell the operator, and a rejection ends the work
+    /// rather than measuring it — both are lines the loop under review writes
+    /// for itself, so a budget either one reopened would be the rationale
+    /// hatch under another name.
     pub fn settles(self) -> bool {
         match self {
-            Self::Approved | Self::Rejected => true,
-            Self::NeedsRevision | Self::Deferred => false,
+            Self::Approved => true,
+            Self::Rejected | Self::NeedsRevision | Self::Deferred => false,
         }
     }
 
@@ -183,9 +192,9 @@ pub struct DecisionLine {
 
 /// The counts token a firing carries, in whichever class its gate owes.
 ///
-/// Both classes answer one question — what must fall between consecutive
-/// `needs_revision` firings and be zero at `approved` — so the convergence
-/// rules read [`GateCounts::blocking`] and never the class.
+/// Both classes answer one question — what a firing found, and what must be
+/// zero at `approved` — so the approval rule reads [`GateCounts::blocking`]
+/// and never the class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GateCounts {
     Review(Counts),
@@ -290,8 +299,8 @@ impl AcceptanceCounts {
 }
 
 impl Counts {
-    /// The convergence total: Critical + Blocker. What must fall between
-    /// consecutive `needs_revision` firings, and be zero on `approved`.
+    /// The blocking total: Critical + Blocker. What must be zero on
+    /// `approved`, and what a `needs_revision` line records of its round.
     pub fn blocking(self) -> u64 {
         self.critical as u64 + self.blocker as u64
     }
@@ -1020,7 +1029,7 @@ impl<'a> PlanAuditor<'a> {
                                 "reaching the cap is a report, not a verdict on the round: a \
                                  review that needs this many is naming a unit too large to \
                                  finish. Settle the scope — split what is under review, or close \
-                                 the cycle with {}",
+                                 the cycle with {} once no blocking row stands",
                                 GateDecision::settling()
                             )),
                             auto_fixable: false,
@@ -1028,10 +1037,11 @@ impl<'a> PlanAuditor<'a> {
                         });
                     }
                 }
-                // A pause does not reset the budget: the cycle a deferral
-                // leaves in flight is the one that resumes.
-                GateDecision::Deferred => {}
-                GateDecision::Approved | GateDecision::Rejected => {
+                // Neither a pause nor a rejection resets the budget: the
+                // cycle a deferral leaves in flight is the one that resumes,
+                // and a rejection ends the work rather than closing the count.
+                GateDecision::Deferred | GateDecision::Rejected => {}
+                GateDecision::Approved => {
                     rounds.remove(&gate_key);
                 }
             }
@@ -1659,7 +1669,7 @@ mod tests {
     }
 
     #[test]
-    fn a_slip_in_one_gate_does_not_quietly_settle_another() {
+    fn a_slip_that_looks_like_a_settlement_settles_nothing() {
         // The unreadable bullet reads like `review` settling its cycle. Taken
         // as one, it would reset the budget the round after it crossed; the
         // slip is its own finding and settles nothing.

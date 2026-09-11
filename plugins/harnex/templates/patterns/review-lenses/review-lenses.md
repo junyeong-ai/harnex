@@ -58,7 +58,9 @@ or set out to fix it. A defect the change did not touch is pre-existing:
 report it after the change's own findings under a `Pre-existing` heading, at
 its severity, as follow-up. The loop never fixes it and never counts it
 toward convergence — folding it in widens the change, and the wider change is
-the next round's larger scope.
+the next round's larger scope. Spec-bound, it lands in the plan's `## Risks`
+in prose rather than as a finding row, so the next session reads it where the
+plan keeps what it is leaving standing.
 
 ## Authorities
 
@@ -102,9 +104,11 @@ What differs by subject is which direction of error costs more:
   error is the false pass — a wrong decision discovered after it is built is
   the costliest correction there is. **Default-refute**: a decision that
   cannot be ground-truthed as sound is a finding, and uncertainty resolves
-  toward the finding, never the pass. A refutation that cannot cite an
-  authority carries `judgment` and is surfaced for the operator — the valve
-  that stops a reviewer from coercing a design toward its own preferences.
+  toward filing it, never toward the silence of a pass — what an unsettled
+  doubt does not do is block, which the witness rule below settles. A
+  refutation that cannot cite an authority carries `judgment` and is surfaced
+  for the operator — the valve that stops a reviewer from coercing a design
+  toward its own preferences.
 
 Under both regimes a Critical or Blocker rests on a **witness**: something
 read or run that shows the defect — the line a decision contradicts, an input

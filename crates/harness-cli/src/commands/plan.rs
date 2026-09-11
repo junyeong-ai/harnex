@@ -33,9 +33,8 @@ pub enum PlanCommand {
         #[arg(long)]
         baseline_spec: Option<PathBuf>,
         /// Firings one gate may record in a cycle before reaching the number
-        /// is reported. Omitted, no budget is held: a comparison between two
-        /// rounds cannot answer whether the unit under review is too large to
-        /// finish, and that number is the project's to choose
+        /// is reported. Omitted, no budget is held: whether the unit under
+        /// review is one a review can finish is the project's to choose
         #[arg(long)]
         max_rounds: Option<NonZeroU32>,
     },

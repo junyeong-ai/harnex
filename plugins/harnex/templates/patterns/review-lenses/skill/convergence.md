@@ -31,7 +31,11 @@ is why no count comparison decides it.
 Where a finding lands does. When a pass's Critical or Blocker sits in lines
 the previous pass's fix wrote, undo or simplify that fix rather than adding a
 condition to it: the answer to a fix that introduced a defect is a smaller
-fix, never a second one layered over the first. If no simpler form holds,
+fix, never a second one layered over the first. Undoing is an edit, so it
+answers to the same citation boundary as any fix — a judgment-cited finding in
+the last fix escalates with the fix named instead — and the undone fix is
+recorded on its finding's row the way a gate-broken one is (§ A fix is pinned
+or it is surfaced), so no later pass re-derives it. If no simpler form holds,
 escalate with both findings side by side. A finding outside the last fix is
 the loop reaching what was already there, and the pass proceeds.
 
