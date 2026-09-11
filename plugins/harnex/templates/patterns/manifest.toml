@@ -14,6 +14,7 @@ slug = "review-lenses"
 analyze = ["existing .claude/rules/ for anchors", "file types present for applies_to", "authorities a finding may cite — lint codes, named CI gates, schema checks", "blast-radius signals for the bookend trigger", "the fast gate command the loop's verify step runs"]
 files = [
   { template = "review-lenses.md", destination = ".claude/rules/review-lenses.md" },
+  { template = "review-lens-files.md", destination = ".claude/rules/review-lens-files.md" },
   { template = "skill/SKILL.md", destination = ".claude/skills/review/SKILL.md" },
   { template = "skill/convergence.md", destination = ".claude/skills/review/convergence.md" },
   { template = "critique/SKILL.md", destination = ".claude/skills/critique/SKILL.md" },

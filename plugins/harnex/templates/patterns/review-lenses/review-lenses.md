@@ -1,15 +1,8 @@
 ---
-paths:
-  - ".claude/lenses/**"
-  - ".claude/skills/**"
 governs:
-  concept: the review vocabulary and the skills that judge by it
+  concept: what a review judges by
   live_truth:
     - .claude/lenses
-    - .claude/skills/review
-    - .claude/skills/critique
-    - .claude/skills/design-review
-    - .claude/agents/reviewer.md
 ---
 
 # Review lens framework
@@ -20,19 +13,12 @@ grown scope until convergence. Around it, forked passes restore the one thing
 an in-session loop structurally lacks: a context that did not watch the work
 form its opinion.
 
-## Where each procedure lives
-
-- `.claude/skills/review/SKILL.md` — the mutating loop. Edits files, closes
-  with its own fresh-context terminal pass.
-- `.claude/skills/critique/SKILL.md` — one forked, read-only lens walk over a
-  change set. Findings are its only output.
-- `.claude/skills/design-review/SKILL.md` — forked refutation of a design
-  document before code exists, self-gated on the trigger below.
-- `.claude/agents/reviewer.md` — the fresh context every forked pass runs as.
-
-This file is the vocabulary all of them judge by — the severities, what a
-finding blocks, the authorities, the two refutation regimes and the witness
-both require, the trigger, and the lens contract.
+This rule carries no `paths:`, so it loads in every session. What it governs is
+an activity, not a set of files: a review-and-fix pass a session runs on its own
+touches whatever it is reviewing and leaves no artifact a gate can read, and a
+loop outlives the one skill invocation that started it. Scoped to the files a
+procedure lives in, the discipline reaches every review except the ones with
+nothing else holding them.
 
 ## Severity is priority. The citation decides what gets fixed.
 
@@ -196,40 +182,3 @@ priorities.
 | **logic** | Is behavior correct on the paths tests did not exercise? |
 | **naming** | Do new names match the project's recorded vocabulary? |
 | **root-cause** | Does the fix remove the cause, or hide the symptom? |
-
-## Lens file contract
-
-Each `.claude/lenses/<id>.md` carries frontmatter:
-
-```yaml
----
-id: <kebab-case>
-applies_to: [code, prose]
-anchors:
-  - rule:constitution   # authorities this lens cites, as <source>:<id> per
-                        # the column above. Add project rules during install.
----
-```
-
-`applies_to` is a closed vocabulary, and the loop skips a lens on a file the
-lens does not claim — so a token nobody defines silently scopes a lens to
-nothing:
-
-| Token | The files it covers |
-|---|---|
-| `code` | source and its tests — whatever this project's formatter and type checker run over |
-| `prose` | the documentation beside code: `CLAUDE.md`, `.claude/rules/*.md`, package docs. The loop pulls these in as a code file's sibling, so a lens that omits `prose` cannot see the stale-paragraph finding that pairing exists to surface |
-| `spec` | a spec or design document under `specs/` or an ADR directory |
-| `plan` | the implementation plan of a spec, where one exists |
-
-<!-- harnex-fill: any file class this project reviews that these four do not
-     name — a schema, a migration, an infrastructure definition -->
-
-A lens claiming every token is not thereby thorough; it is unscoped, and the
-loop will walk it somewhere it has nothing to say.
-
-Body: a high-signal question, optionally with a few clarifying facets —
-never a linter-style exhaustive checklist. Findings reference an anchor's
-bare `<id>` (an authority id per the column above, never a file path) — no
-finding without a citation. On install, re-point or add anchors to the
-project's actual rules where they exist.
