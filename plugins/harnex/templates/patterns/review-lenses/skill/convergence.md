@@ -124,9 +124,14 @@ an engine's unavailability never gates the default:
   itself; a same-provider second model does not. A Critical or Blocker either
   engine raises and the other cannot refute enters the fix path.
 
-Under more than one reviewer the compared total is the union after
-cross-refutation — one number per round, never one per engine, or two engines
-disagreeing reads as progress in whichever order their reports land.
+Every engine gets the same charge: the scope, `.claude/rules/review-lenses.md`
+with its witness rule, and the close `.claude/agents/reviewer.md` mandates. An
+engine outside the reviewer agent reads those files rather than a paraphrase,
+and none is told what an earlier round filed — an engine charged with
+refuting its own previous findings is running that round again.
+
+Under more than one reviewer the round's count is the union after
+cross-refutation — one number per round, never one per engine.
 
 Each reviewer is spawned once, reports, and is done. A reviewer asked to judge a
 second round is no longer the fresh context that was its whole value.

@@ -28,8 +28,10 @@ does not exist yet and the false pass is the expensive direction. Ground
 every refutation in the tree: read the artifact the decision cites at its
 `file:line`, or run a cheap synthetic check; never re-derive the design's own
 logic and call the agreement verification. A decision you cannot ground-truth
-as sound is a finding. Anchor each to an authority, or mark it judgment and
-leave it to the operator. Use the lenses as questions to sharpen refutations
+as sound is a finding — Major at most until a witness shows it wrong
+([file: .claude/rules/review-lenses.md § Two refutation regimes, chosen by subject]).
+Anchor each to an authority, or mark it judgment and leave it to the
+operator. Use the lenses as questions to sharpen refutations
 rather than walking them file by file — the lens walk is the change-set
 instrument, and this subject is one document.
 
@@ -41,8 +43,9 @@ never a stall, whatever the record holds. Otherwise, a round whose Critical
 and Blocker set is a subset of what is already recorded is a stall: report
 the stall rather than the subset, because re-surfacing the recorded is churn
 while a genuinely new class is the pass earning its cost — and the round
-that finds the deepest defect is often a late one, which is why the guard is
-a set comparison and never a round count.
+that finds the deepest defect is often a late one, which is why this guard
+compares sets. The gate's round budget, not this report, bounds how many
+rounds run.
 
 After the coverage, findings, and close the agent contract mandates, end
 with one line a pipeline can read: `Design review: proceed` when no Critical

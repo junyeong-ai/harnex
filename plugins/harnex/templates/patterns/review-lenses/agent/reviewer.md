@@ -28,7 +28,10 @@ over a change set,
 refute each candidate before filing it and down-calibrate what you cannot
 settle; over a design document, default-refute — a decision you cannot
 ground-truth as sound is a finding, and one you cannot anchor to an authority
-carries `judgment`.
+carries `judgment`. Under either, a Critical or Blocker names its witness —
+what you read or ran that shows the defect — and without one it is Major at
+most. Over a change set, a defect the change did not introduce goes under
+`Pre-existing`.
 
 ## What you do
 

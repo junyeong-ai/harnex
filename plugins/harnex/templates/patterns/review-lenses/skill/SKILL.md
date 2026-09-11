@@ -55,12 +55,14 @@ no lens can reach if the file is not open.
    defines: ground truth that contradicts a finding drops it; an attempt that
    settles nothing down-calibrates it to Major with a note naming what blocked
    the check.
-4. **Fix only what an authority confirms.** The severity table in
-   `.claude/rules/review-lenses.md` decides, and its authorities column is the
-   definition — including the sources this project added at install.
-   Re-listing them here would be the copy that refuses a finding citing an
-   authority the project declared. A finding citing judgment is reported,
-   never edited: that citation is the author's own opt-out.
+4. **Fix only what an authority confirms, in what the change owns.** The
+   severity table in `.claude/rules/review-lenses.md` decides, and its
+   authorities column is the definition — including the sources this project
+   added at install. Re-listing them here would be the copy that refuses a
+   finding citing an authority the project declared. A finding citing
+   judgment is reported, never edited: that citation is the author's own
+   opt-out. A pre-existing finding is reported, never edited
+   ([file: .claude/rules/review-lenses.md § What a finding blocks]).
 5. **Run the project's fast gate over the pass's fixes.** A failure is triaged
    to the offending fix, which is undone by applying the inverse of the edit
    that produced it — the loop knows exactly what it changed, and no git
@@ -79,13 +81,14 @@ no lens can reach if the file is not open.
 
 ## Termination
 
-Stop when a full pass leaves no Critical and no Blocker the loop may fix. A
+Stop when a full pass leaves no Critical and no Blocker the loop may fix —
+that is what converged means, however the request phrased it. A
 Critical or Blocker the loop may not fix — judgment-cited, or citing an
 authority the rule's column does not know — is resolved by escalation rather
 than edit: surface it with the convergence report for the operator's
 disposition, because re-walking cannot close what the loop is forbidden to
 fix, and counting it as failure makes convergence unreachable by
-construction. Major and Minor remain as signal and do not block.
+construction. Major and Minor remain as signal and never extend the loop.
 
 Also stop when the pass makes no progress, or at the iteration cap
 (default 5 — a circuit breaker, not the control). On either, report the reason,
