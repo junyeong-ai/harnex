@@ -75,9 +75,12 @@ below every signal skips it — the gate exists for decisions that are expensive
 to reverse, and firing it on all of them teaches everyone to click through.
 
 Spawn a reviewer with fresh context over `plan.md`'s decisions. Tell it to
-refute, not to approve. On a Critical or Blocker: record `needs_revision`,
-revise, re-fire. On a clean report: transcribe what remains into
-`## Outstanding issues`, record `approved`, proceed.
+refute, not to approve, and charge it with the document alone — never with
+what earlier rounds filed or which revisions to look at, because a reviewer
+steered by the last round's verdicts is that round again. On a Critical or
+Blocker: record `needs_revision`, revise, re-fire. On a clean report:
+transcribe what remains into `## Outstanding issues`, record `approved`,
+proceed.
 
 Revise by the smallest change that removes the finding. A Critical or Blocker
 that sits in what the previous revision wrote says that revision failed:

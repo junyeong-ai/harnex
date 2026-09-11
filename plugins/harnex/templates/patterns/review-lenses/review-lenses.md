@@ -30,8 +30,9 @@ form its opinion.
   document before code exists, self-gated on the trigger below.
 - `.claude/agents/reviewer.md` — the fresh context every forked pass runs as.
 
-This file is the vocabulary all of them judge by — the severities, the
-authorities, the two refutation regimes, the trigger, and the lens contract.
+This file is the vocabulary all of them judge by — the severities, what a
+finding blocks, the authorities, the two refutation regimes and the witness
+both require, the trigger, and the lens contract.
 
 ## Severity is priority. The citation decides what gets fixed.
 
@@ -49,6 +50,15 @@ second axis decides authority:
 
 `judgment` is the author's own opt-out into the right column, and using it is
 never a weaker finding — it is an honest one.
+
+## What a finding blocks
+
+A finding blocks the change under review only where that change introduced it
+or set out to fix it. A defect the change did not touch is pre-existing:
+report it after the change's own findings under a `Pre-existing` heading, at
+its severity, as follow-up. The loop never fixes it and never counts it
+toward convergence — folding it in widens the change, and the wider change is
+the next round's larger scope.
 
 ## Authorities
 
@@ -95,6 +105,15 @@ What differs by subject is which direction of error costs more:
   toward the finding, never the pass. A refutation that cannot cite an
   authority carries `judgment` and is surfaced for the operator — the valve
   that stops a reviewer from coercing a design toward its own preferences.
+
+Under both regimes a Critical or Blocker rests on a **witness**: something
+read or run that shows the defect — the line a decision contradicts, an input
+and the wrong result it produces, a failing command. A path reasoned to exist
+that no input the reviewer can construct or observe reaches is not a witness.
+The regime decides only what happens to a candidate without one: the code
+regime down-calibrates it, the design regime files it, and both at Major at
+most. The blocking tier stops a gate and starts a fix, and a finding that has
+not shown its defect can justify neither.
 
 The subject is the question asked, not the file extension: a change set under
 review takes the first regime even for the spec and prose files inside it,
@@ -153,7 +172,8 @@ second one.
 ```
 
 The citation is a bare id from the authorities column — any source, its
-prefix left to lens anchors — or `judgment`.
+prefix left to lens anchors — or `judgment`. For a Critical or Blocker,
+`<what is wrong>` names its witness.
 
 ## Default lenses
 
