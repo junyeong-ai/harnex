@@ -1032,3 +1032,41 @@ fn a_path_that_is_not_a_regular_file_is_named_rather_than_opened() {
         finding.message
     );
 }
+
+/// When a rule loads is declared in two places, and the costly direction is the
+/// one a number does not show: a rule the project pinned as always-loaded that
+/// scopes itself stops reaching the sessions everything else was written for.
+#[test]
+fn a_rule_both_pinned_always_loaded_and_scoped_is_a_contradiction() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    let rule = tmp.path().join(".claude/rules/constitution.md");
+
+    write(&rule, "---\npaths:\n- src/**\n---\n# Constitution\n");
+    let scoped: Vec<String> = ProjectChecker::new(&cfg, tmp.path())
+        .run()
+        .unwrap()
+        .findings
+        .iter()
+        .map(|f| f.slug.clone())
+        .collect();
+    assert!(
+        scoped.iter().any(|s| s == "rule-always-loaded-but-scoped"),
+        "a pinned rule that scoped itself passed: {scoped:?}"
+    );
+
+    write(&rule, "# Constitution\n");
+    let unscoped: Vec<String> = ProjectChecker::new(&cfg, tmp.path())
+        .run()
+        .unwrap()
+        .findings
+        .iter()
+        .map(|f| f.slug.clone())
+        .collect();
+    assert!(
+        !unscoped
+            .iter()
+            .any(|s| s == "rule-always-loaded-but-scoped" || s == "rule-missing-paths-frontmatter"),
+        "the pin is what makes an unscoped rule correct: {unscoped:?}"
+    );
+}
