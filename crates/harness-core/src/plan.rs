@@ -10,9 +10,15 @@
 //! rows, rows that vanished instead of gaining a terminal disposition,
 //! decision lines whose counts contradict their token, an acceptance token
 //! that does not add up to the criteria it claims to have walked, and a
-//! blocking total that will not fall. The measured failure of the prose-only
-//! version of this floor is a gate that recorded eleven firings while its own
-//! rule said stop at the second.
+//! cycle still revising past the budget its caller sets. The measured failure
+//! of the prose-only version of this floor is a gate that recorded eleven
+//! firings while its own rule said stop at the second.
+//!
+//! The budget is the only convergence control, and nothing written in the log
+//! lifts it. There is no round-to-round comparison: a round's count is a
+//! sample of what one reviewer found, a rule demanding it fall fires on the
+//! flat stretches every noisy descent has, and any token that let a round
+//! past such a rule would be one the loop under review writes for itself.
 //!
 //! The grammar is harness vocabulary — harnex's own templates emit every
 //! token here, the same standing the sentinel grammars have. Gate NAMES stay
@@ -40,7 +46,7 @@
 //!   pre-commit arm and the skill — because a project-wide walk would need
 //!   the layout this module refuses to guess.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::path::Path;
 
@@ -164,10 +170,6 @@ pub const DECISION_LOG_HEADING: &str = "Decision log";
 /// Section heading the numbered acceptance criteria live under, in the spec.
 /// The `acceptance` gate's counts are held to how many it carries.
 pub const CRITERIA_HEADING: &str = "Acceptance criteria";
-
-/// Rationale prefix that records the operator's acknowledgement of a
-/// non-falling Critical+Blocker count, authorizing another round.
-pub const ACKNOWLEDGED_PREFIX: &str = "acknowledged:";
 
 /// One decision bullet from `## Decision log`, as
 /// `<date> · <gate> · <token> [· <counts>] · <rationale>`.
@@ -681,8 +683,8 @@ pub struct PlanAuditor<'a> {
     spec: Option<(&'a Path, &'a str)>,
     baseline: Option<&'a str>,
     /// The committed baseline of the spec, holding the decision log to its
-    /// append-only contract — without it, editing an earlier bullet's counts
-    /// launders the convergence comparison the log exists to compute.
+    /// append-only contract — without it, editing or removing an earlier
+    /// bullet launders the round budget the log exists to compute.
     baseline_spec: Option<&'a str>,
     round_cap: Option<NonZeroU32>,
 }
@@ -706,11 +708,9 @@ impl<'a> PlanAuditor<'a> {
     }
 
     /// The firings one gate may record in a cycle before reaching the number
-    /// is a report. A comparison between two rounds answers whether one
-    /// improved on the other; it cannot answer whether the unit under review
-    /// is too large to finish, which is the question a loop still running
-    /// after many rounds is asking. The number is the caller's — nothing in a
-    /// log decides a budget.
+    /// is a report: a loop still running after many rounds is asking whether
+    /// the unit under review is one a review can finish. The number is the
+    /// caller's — nothing in a log decides a budget.
     pub fn with_round_cap(mut self, rounds: NonZeroU32) -> Self {
         self.round_cap = Some(rounds);
         self
@@ -729,7 +729,7 @@ impl<'a> PlanAuditor<'a> {
 
     /// The decision log is append-only: the baseline's bullets must stand as
     /// a prefix of the current log, verbatim. An edited, reordered or removed
-    /// bullet rewrites the history every convergence comparison reads — the
+    /// bullet rewrites the history the round budget counts — the
     /// same laundering the vanish check refuses for finding rows. An
     /// unreadable or absent baseline holds nothing.
     fn audit_log_rewrite(&self, spec_path: &Path, spec_text: &str, findings: &mut Vec<Finding>) {
@@ -932,30 +932,20 @@ impl<'a> PlanAuditor<'a> {
         }
 
         // Keyed case-folded: `Review` and `review` are one gate to a reader,
-        // and letting them track separately reset the comparison a case-typo
-        // was enough to escape.
+        // and letting them track separately opened a second budget a
+        // case-typo was enough to reach.
         let readable: Vec<(u32, &DecisionLine)> = decisions
             .iter()
             .filter_map(|(line_no, decision)| decision.as_ref().map(|d| (*line_no, d)))
             .collect();
 
-        let mut last_blocking: BTreeMap<String, u64> = BTreeMap::new();
-        // A bullet no gate can read is any gate's firing as far as this knows,
-        // so no gate's previous survives it. Dropping the comparison silently
-        // would take a finding with it — the gate that rose across an
-        // unrelated gate's slip — so each gate's first firing after one says
-        // that its convergence is the thing that cannot be read.
-        let mut gap_at: Option<u32> = None;
-        let mut resumed: BTreeSet<String> = BTreeSet::new();
-        // A cycle's firings, for the budget: what a comparison between two
-        // rounds cannot answer is whether the unit under review is too large
-        // to finish, and a loop still running after many rounds is asking that.
+        // A cycle's firings, for the budget: whether the unit under review is
+        // one a review can finish is what a loop still running after many
+        // rounds is asking. A bullet no gate can read spends nothing here; its
+        // own finding blocks until it is repaired, and then it counts.
         let mut rounds: BTreeMap<String, u32> = BTreeMap::new();
         for (line_no, decision) in &decisions {
             let Some(decision) = decision else {
-                last_blocking.clear();
-                gap_at = Some(*line_no);
-                resumed.clear();
                 continue;
             };
             let gate = decision.gate.as_str();
@@ -1000,8 +990,8 @@ impl<'a> PlanAuditor<'a> {
                             decision.decision.as_str()
                         ),
                         hint: Some(format!(
-                            "a {} firing writes {token} into its line — the next firing's \
-                             convergence comparison reads it there, never from memory",
+                            "a {} firing writes {token} into its line — what each round \
+                             counted is read from the log, never from memory",
                             class.as_str()
                         )),
                         auto_fixable: false,
@@ -1037,66 +1027,11 @@ impl<'a> PlanAuditor<'a> {
                             fix_command: None,
                         });
                     }
-                    if let Some(counts) = decision.counts {
-                        if let Some(gap) = gap_at
-                            && resumed.insert(gate_key.clone())
-                        {
-                            findings.push(Finding {
-                                slug: "plan-log-convergence-unreadable".into(),
-                                severity: Severity::Blocker,
-                                location: Location::line(spec_path, *line_no),
-                                message: format!(
-                                    "`{gate}` re-fired after the bullet at line {gap}, which no \
-                                     gate can read — whether this firing fell is unknown"
-                                ),
-                                hint: Some(format!(
-                                    "repair line {gap}: until it reads, the firing before this \
-                                     one cannot be named, and a count is only low against a \
-                                     round that is known"
-                                )),
-                                auto_fixable: false,
-                                fix_command: None,
-                            });
-                        }
-                        if let Some(&previous) = last_blocking.get(&gate_key)
-                            && counts.blocking() >= previous
-                            && !decision.rationale.starts_with(ACKNOWLEDGED_PREFIX)
-                        {
-                            findings.push(Finding {
-                                slug: "plan-log-not-falling".into(),
-                                severity: Severity::Blocker,
-                                location: Location::line(spec_path, *line_no),
-                                message: format!(
-                                    "`{gate}` re-fired with {} at {} — not below the previous \
-                                     firing's {previous}",
-                                    counts.blocking_label(),
-                                    counts.blocking()
-                                ),
-                                hint: Some(format!(
-                                    "escalate to the operator instead of firing again; riding on \
-                                     takes their recorded acknowledgement — a rationale beginning \
-                                     `{ACKNOWLEDGED_PREFIX}` naming the ground on which the next \
-                                     firing falls, which the round after this one is held to"
-                                )),
-                                auto_fixable: false,
-                                fix_command: None,
-                            });
-                        }
-                        last_blocking.insert(gate_key.clone(), counts.blocking());
-                    } else {
-                        // The firing before the next one recorded nothing to
-                        // fall below. Holding that one to the round before it
-                        // would name a previous firing that is not the
-                        // previous firing; the missing count is the finding.
-                        last_blocking.remove(&gate_key);
-                    }
                 }
-                // Neither the budget nor the round the next firing must fall
-                // below is reset by a pause: the cycle a deferral leaves in
-                // flight is the one that resumes.
+                // A pause does not reset the budget: the cycle a deferral
+                // leaves in flight is the one that resumes.
                 GateDecision::Deferred => {}
                 GateDecision::Approved | GateDecision::Rejected => {
-                    last_blocking.remove(&gate_key);
                     rounds.remove(&gate_key);
                 }
             }
@@ -1668,20 +1603,43 @@ mod tests {
     }
 
     #[test]
-    fn a_count_that_does_not_fall_escalates() {
+    fn a_level_or_rising_count_within_the_budget_is_no_verdict() {
+        // A round's count samples what one reviewer found; a descent to zero
+        // is flat or rising in places, and the budget is what bounds it.
         let log = "- 2026-01-15 · review · needs_revision · 1C/1B/0M/0m · first\n\
-                   - 2026-01-16 · review · needs_revision · 0C/2B/0M/0m · level";
-        let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(slugs(&findings), ["plan-log-not-falling"]);
-        assert_eq!(findings[0].severity, Severity::Blocker);
+                   - 2026-01-16 · review · needs_revision · 0C/2B/0M/0m · level\n\
+                   - 2026-01-17 · review · needs_revision · 0C/3B/0M/0m · rising";
+        let spec_text = spec(log);
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan("")),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(cap_of(3))
+        .audit();
+        assert!(findings.is_empty(), "{findings:?}");
     }
 
     #[test]
-    fn an_acknowledged_non_falling_count_rides_on() {
-        let log = "- 2026-01-15 · review · needs_revision · 1C/1B/0M/0m · first\n\
-                   - 2026-01-16 · review · needs_revision · 1C/1B/0M/0m · acknowledged: \
+    fn no_rationale_lifts_the_budget() {
+        // Every word of a decision line is written by the loop the budget
+        // bounds, so a line that names a reason to go on still spends a round.
+        let log = "- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · first\n\
+                   - 2026-01-16 · review · needs_revision · 0C/2B/0M/0m · acknowledged: \
                    operator judged the scope split worth another round";
-        assert!(audit_with_spec(&plan(""), &spec(log)).is_empty());
+        let spec_text = spec(log);
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan("")),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(cap_of(1))
+        .audit();
+        assert_eq!(slugs(&findings), ["plan-log-round-cap"]);
     }
 
     #[test]
@@ -1702,74 +1660,39 @@ mod tests {
 
     #[test]
     fn a_slip_in_one_gate_does_not_quietly_settle_another() {
-        // The unreadable bullet belongs to `design_review`, and `review` rose
-        // across it. Dropping every gate's previous is right — the bullet
-        // could have been any gate's firing — but dropping it in silence
-        // takes `review`'s finding with it and reports a formatting slip in
-        // its place.
+        // The unreadable bullet reads like `review` settling its cycle. Taken
+        // as one, it would reset the budget the round after it crossed; the
+        // slip is its own finding and settles nothing.
         let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
-                   - 2026-01-16 \u{2022} design_review \u{2022} needs_revision \u{2022} 0C/1B/0M/0m \u{2022} other\n\
+                   - 2026-01-16 \u{2022} review \u{2022} approved \u{2022} 0C/0B/0M/0m \u{2022} clean\n\
                    - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three";
-        let findings = audit_with_spec(&plan(""), &spec(log));
+        let spec_text = spec(log);
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan("")),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(cap_of(1))
+        .audit();
         assert_eq!(
             slugs(&findings),
-            ["plan-log-unparseable", "plan-log-convergence-unreadable"]
+            ["plan-log-unparseable", "plan-log-round-cap"]
         );
         assert!(findings.iter().all(|f| f.severity == Severity::Blocker));
         assert_eq!(
             findings[1].location.line,
             Some(7),
-            "at the firing it cannot judge"
-        );
-    }
-
-    #[test]
-    fn convergence_resumes_from_the_first_firing_a_gate_can_be_read_at() {
-        // The gate says so once, at the firing whose previous is unreadable,
-        // and holds the ones after it to the round before them as usual.
-        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
-                   - 2026-01-16 \u{2022} review \u{2022} needs_revision \u{2022} 0C/9B/0M/0m \u{2022} nine\n\
-                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three\n\
-                   - 2026-01-18 \u{b7} review \u{b7} needs_revision \u{b7} 0C/4B/0M/0m \u{b7} four";
-        let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(
-            slugs(&findings),
-            [
-                "plan-log-unparseable",
-                "plan-log-convergence-unreadable",
-                "plan-log-not-falling"
-            ]
-        );
-    }
-
-    #[test]
-    fn a_round_no_gate_can_read_is_not_compared_across() {
-        // The middle bullet separates on `\u{2022}`, which a CJK IME and a
-        // prettifier both reach for. Read past it, the last firing is held to
-        // the round before the one before it: 3 against 2 fires a convergence
-        // finding naming a firing that is not the previous one, and the
-        // reverse arrangement passes a round that rose.
-        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
-                   - 2026-01-16 \u{2022} review \u{2022} needs_revision \u{2022} 0C/9B/0M/0m \u{2022} nine\n\
-                   - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three";
-        let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(
-            slugs(&findings),
-            ["plan-log-unparseable", "plan-log-convergence-unreadable"]
-        );
-        assert!(findings.iter().all(|f| f.severity == Severity::Blocker));
-        assert!(
-            !slugs(&findings).contains(&"plan-log-not-falling"),
-            "3 against 2 is a comparison with the round before the one before: {findings:?}"
+            "at the firing that crossed it"
         );
     }
 
     #[test]
     fn a_cycle_reaching_its_budget_is_reported_once_where_it_crossed() {
-        // The budget answers what a comparison between two rounds cannot: not
-        // whether this round improved, but whether the unit under review is
-        // one a review can finish. Reported at the round that crossed it, so a
-        // log read again names the same line.
+        // The budget answers whether the unit under review is one a review
+        // can finish. Reported at the round that crossed it, so a log read
+        // again names the same line.
         let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} one\n\
                    - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
                    - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three";
@@ -1857,33 +1780,6 @@ mod tests {
     }
 
     #[test]
-    fn a_pause_leaves_the_round_the_next_firing_falls_below() {
-        // The firing before the one that resumes is the firing before it. A
-        // deferral that cleared the comparison would let the round after a
-        // pause stand at the count the round before it stood at.
-        let paused = spec(
-            "- 2026-01-01 · review · needs_revision · 0C/2B/0M/0m · r1\n\
-             - 2026-01-02 · review · deferred · 0C/2B/0M/0m · waits on staging\n\
-             - 2026-01-03 · review · needs_revision · 0C/2B/0M/0m · r2",
-        );
-        assert_eq!(
-            slugs(&audit_with_spec(&plan(""), &paused)),
-            ["plan-log-not-falling"],
-            "a pause is not a round, and the round before it still stands"
-        );
-
-        let settled = spec(
-            "- 2026-01-01 · review · needs_revision · 0C/2B/0M/0m · r1\n\
-             - 2026-01-02 · review · approved · 0C/0B/0M/0m · clean\n\
-             - 2026-01-03 · review · needs_revision · 0C/2B/0M/0m · a new cycle",
-        );
-        assert!(
-            audit_with_spec(&plan(""), &settled).is_empty(),
-            "a settled cycle leaves nothing for the next one to fall below"
-        );
-    }
-
-    #[test]
     fn a_closed_cycle_starts_its_budget_over() {
         // The budget is a cycle's, and an approval ends the cycle: a spec that
         // converges twice has not spent one budget twice.
@@ -1930,16 +1826,6 @@ mod tests {
             findings.is_empty(),
             "two firings each, not four of one: {findings:?}"
         );
-    }
-
-    #[test]
-    fn a_missing_count_does_not_launder_the_comparison() {
-        let log = "- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · two\n\
-                   - 2026-01-16 · review · needs_revision · forgot the counts\n\
-                   - 2026-01-17 · review · needs_revision · 0C/2B/0M/0m · still two";
-        let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(slugs(&findings), ["plan-log-counts-missing"]);
-        assert_eq!(findings[0].severity, Severity::Blocker);
     }
 
     #[test]
@@ -2073,18 +1959,22 @@ mod tests {
     }
 
     #[test]
-    fn acceptance_rounds_converge_under_the_same_floor_as_a_review() {
-        // One rule, both classes: a re-fire whose blocking total did not fall
-        // escalates instead of firing again.
-        let findings = audit_with_spec(
-            &plan(""),
-            &spec_with_criteria(
-                6,
-                "- 2026-01-14 · acceptance · needs_revision · 4P/1F/1U · c3 fails; c5 unmeasured\n\
-                 - 2026-01-15 · acceptance · needs_revision · 4P/2F/0U · c3 and c4 fail",
-            ),
+    fn acceptance_rounds_spend_the_same_budget_as_a_review() {
+        let spec_text = spec_with_criteria(
+            6,
+            "- 2026-01-14 · acceptance · needs_revision · 4P/1F/1U · c3 fails; c5 unmeasured\n\
+             - 2026-01-15 · acceptance · needs_revision · 5P/1F/0U · c3 still fails",
         );
-        assert_eq!(slugs(&findings), ["plan-log-not-falling"]);
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan("")),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(cap_of(1))
+        .audit();
+        assert_eq!(slugs(&findings), ["plan-log-round-cap"]);
     }
 
     #[test]
@@ -2254,10 +2144,9 @@ mod tests {
     #[test]
     fn a_closing_hash_on_the_log_heading_keeps_the_accounting_alive() {
         let spec = "# t\n\n## Decision log #\n\n\
-                    - 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · first\n\
-                    - 2026-01-16 · review · needs_revision · 0C/2B/0M/0m · level\n";
+                    - 2026-01-15 · review · approved · 0C/2B/0M/0m · two stand\n";
         let findings = audit_with_spec(&plan(""), spec);
-        assert_eq!(slugs(&findings), ["plan-log-not-falling"]);
+        assert_eq!(slugs(&findings), ["plan-log-approved-nonzero"]);
     }
 
     #[test]
@@ -2270,11 +2159,20 @@ mod tests {
     // ---- log accounting hardening ----
 
     #[test]
-    fn a_gate_name_case_change_does_not_reset_the_comparison() {
+    fn a_gate_name_case_change_does_not_open_a_second_budget() {
         let log = "- 2026-01-15 · review · needs_revision · 3C/2B/0M/0m · first\n\
-                   - 2026-01-16 · Review · needs_revision · 5C/4B/0M/0m · rising";
-        let findings = audit_with_spec(&plan(""), &spec(log));
-        assert_eq!(slugs(&findings), ["plan-log-not-falling"]);
+                   - 2026-01-16 · Review · needs_revision · 5C/4B/0M/0m · second";
+        let spec_text = spec(log);
+        let findings = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan("")),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(cap_of(1))
+        .audit();
+        assert_eq!(slugs(&findings), ["plan-log-round-cap"]);
     }
 
     #[test]

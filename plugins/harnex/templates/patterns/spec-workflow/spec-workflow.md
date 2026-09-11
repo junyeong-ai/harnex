@@ -113,9 +113,9 @@ what the last one found.
 
 `hooks/pre-commit.d/check-plan.sh` runs `harnex plan audit` over every staged
 plan: an open Critical/Blocker row, a row deleted, reworded or downgraded
-instead of gaining its terminal disposition, a decision log whose
-Critical+Blocker count will not fall, and a committed decision bullet edited
-instead of appended each block the commit — the grammar the gates write is
+instead of gaining its terminal disposition, a gate still revising past its
+round budget, and a committed decision bullet edited instead of appended each
+block the commit — the grammar the gates write is
 computed there, never trusted to narration.
 
 For a gate before the session ends rather than at the commit,

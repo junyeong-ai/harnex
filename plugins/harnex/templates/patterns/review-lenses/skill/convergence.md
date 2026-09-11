@@ -20,26 +20,20 @@ try is done, and spending the remaining iterations on it only delays the report.
 Two passes producing the same finding while files DID change is not stalled: the
 fix moved something the finding did not cover. Let it run.
 
-## A count that will not fall
+## A finding in the last fix
 
 Stalled catches the loop with nothing left to try. The slower failure keeps
-editing: files change every pass while the Critical + Blocker count stays level
-or rises — each fix opening what the last one closed. A pass whose count did
-not fall below the previous pass's escalates rather than riding to the cap;
-riding on anyway takes the operator's own recorded acknowledgement naming the
-ground on which the next pass falls — the same rule the spec-workflow gates
-hold their re-fires to, and the cap below is the circuit breaker both need for
-the same reason. The comparison reads the recorded
-pass lines (below), never memory — a convergence floor nothing computes is
-prose, and the measured failure of that shape is a gate that recorded eleven
-firings while its own rule said stop at the second.
+editing: every pass changes files and finds a new Critical or Blocker inside
+what the previous pass's fix wrote. That loop is refuting its own repairs, not
+converging on the change, and its count can hold level the whole way — which
+is why no count comparison decides it.
 
-Scope growth can raise the count with no fix failing — a grown file brings
-findings the previous pass never walked. The guard escalates anyway: the
-recorded counts carry no file attribution, a floor that guesses at
-attribution is not a floor, and escalation is a fail-safe rather than a
-verdict. Where the growth explains the rise, that is exactly what the
-acknowledgement records.
+Where a finding lands does. When a pass's Critical or Blocker sits in lines
+the previous pass's fix wrote, undo or simplify that fix rather than adding a
+condition to it: the answer to a fix that introduced a defect is a smaller
+fix, never a second one layered over the first. If no simpler form holds,
+escalate with both findings side by side. A finding outside the last fix is
+the loop reaching what was already there, and the pass proceeds.
 
 ## The record outlives the context
 
@@ -55,8 +49,8 @@ invoked the loop — the skill writes nothing outside the files the fixes touch
 - every finding's terminal disposition, end-anchored on its row —
   `[fixed: what pinned it]`, `[refuted: the ground truth]`, or
   `[accepted: who accepted it and why]`. Spec-bound, `harnex plan audit`
-  computes the whole contract — open rows, vanished rows, non-falling
-  counts — and the pre-commit arm holds it at the commit.
+  computes the whole contract — open rows, vanished rows, the round
+  budget — and the pre-commit arm holds it at the commit.
 
 A cleared finding keeps its row and gains its disposition. Prose that narrates
 findings away — "these became inexpressible after the redesign" — leaves a gate

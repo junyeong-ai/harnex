@@ -284,8 +284,8 @@ patterns covered out of the box:
   step left behind
 - The spec-workflow review floor — an open Critical/Blocker row, a row
   deleted, reworded or downgraded instead of gaining its terminal
-  disposition, a decision log whose Critical+Blocker count will not fall, and
-  a committed decision bullet edited instead of appended each block at commit
+  disposition, a gate still revising past its round budget, and a committed
+  decision bullet edited instead of appended each block at commit
   (`plan audit`, driven by the shipped `hooks/pre-commit.d/` arm)
 - Promotion + retirement lifecycle for learnings
 - Settings.json hook adapter (the documented hook events)
