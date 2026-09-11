@@ -46,10 +46,11 @@ every prose site.
   the approval its own hint asks for, which an append-only log cannot undo.
 - A finding-shaped list item that does not parse is a Major finding, never a
   silently skipped row. Keep the detector wider than the parser on every axis
-  (marker, case, decoration) — narrowing it restores the silence. The same
-  holds in the log: a record indented under the record above it renders as a
-  bullet and parses as that record's rationale, so `plan-log-buried-decision`
-  reports the round it would otherwise hide.
+  (marker, case, decoration) — narrowing it restores the silence. Position is
+  the axis the log adds: an entry nested, indented or quoted off the margin
+  renders as a firing and reaches no parser, so `plan-log-off-margin` reports
+  it. Decide it by the line an entry opens on — a rationale quoting the
+  grammar is one entry, and reading mentions makes a quotation a finding.
 - Unreadable is never empty. A duplicate heading or an unclosed fence is its
   own Blocker; a missing section is a Major, not a pass.
 - Vanish semantics: every open baseline row survives verbatim (whitespace

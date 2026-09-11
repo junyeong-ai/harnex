@@ -212,7 +212,8 @@ harnex guard telemetry-emit                           # PostToolUse: record a ha
 
 harnex plan audit --plan P [--spec S]                 # spec-workflow review floor:
                   [--baseline B] [--baseline-spec BS] # open C/B rows, vanished rows,
-                                                      # decision-log convergence
+                  [--max-rounds N] [--gates a,b,c]    # and the per-gate round budget,
+                                                      # which is held only when given
 
 harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
 
