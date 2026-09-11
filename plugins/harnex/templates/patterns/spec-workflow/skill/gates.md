@@ -27,9 +27,13 @@ the section `specs/_template/spec.md` ships for exactly this:
 - 2026-01-15 · review · needs_revision · 0C/2B/3M/1m · two Blockers in the migration path; see plan.md ## Outstanding issues
 ```
 
-Append-only. A gate that fires three times leaves three bullets in order — the
-history of a decision is the interesting part, and overwriting keeps only the
-last one. `git log specs/<slug>/` is the timeline this rides on.
+Append-only, at the margin, under the gate's own name. A gate that fires three
+times leaves three bullets in order — the history of a decision is the
+interesting part, and overwriting keeps only the last one. `git log
+specs/<slug>/` is the timeline this rides on. The two ways a record stops
+being one are both reported: indented under the bullet above it, it renders as
+a record and parses as that one's rationale; under a name this workflow never
+defined, it is a gate of its own and carries a round budget of its own.
 
 A counted firing writes its counts into the line: the log is where what each
 round found is read back. Two gate classes count different things and each
@@ -49,7 +53,8 @@ line the loop under review writes for itself. Reaching the budget is a report,
 not a verdict on the round: a review that needs that many rounds is naming a
 unit too large to finish as one. Answer it by settling the scope — split what
 is under review, or dispose of every blocking row and approve — never by
-writing a reason to go on.
+writing a reason to go on. The approval that settles the cycle takes the
+report with it; the next cycle starts on its own budget.
 
 Round-to-round counts are not compared. A round's count samples what one
 reviewer found, and a descent to zero is flat or rising in places; what tells
