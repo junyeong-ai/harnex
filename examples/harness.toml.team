@@ -1,7 +1,7 @@
 # Team baseline (≥3 active developers). Exercises every module.
 
 [meta]
-harnex_version = ">=0.14, <0.15"
+harnex_version = ">=0.15, <0.16"
 
 [[kinds]]
 name = "rule"
