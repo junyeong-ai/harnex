@@ -40,23 +40,25 @@ token:
 | review | `design_review`, `review` | `<n>C/<n>B/<n>M/<n>m` | Critical + Blocker |
 | acceptance | `acceptance` | `<n>P/<n>F/<n>U` | failed + unmeasured |
 
-One rule governs both: a re-fire whose blocking total did not fall below the
-previous firing's escalates to the operator instead of firing, and firing on
-anyway takes the operator's own recorded acknowledgement in the line — a
-rationale beginning `acknowledged:`, naming the ground on which the next
-firing falls.
+One rule bounds both: a cycle — the firings since the gate last recorded
+`approved` or `rejected` — holds a budget of `needs_revision` firings, which
+the shipped pre-commit arm passes. A deferral pauses the cycle; it does not
+start a new one. Reaching the budget is a report, not a verdict on the round:
+a review that needs that many rounds is naming a unit too large to finish as
+one. Answer it by settling the scope — split what is under review, or close
+the cycle — never by writing a reason to go on, because no line in the log
+lifts the budget.
 
-A comparison between two rounds cannot say whether the unit under review is
-one a review can finish, and that is what a cycle still firing after many
-rounds is asking. The shipped pre-commit arm passes a budget of firings per
-cycle; reaching it is a report, not a verdict on the round. Answer it by
-settling the scope — split what is under review, or close the cycle.
-The rule is computed from the log's own lines by `harnex plan audit`, never
-recalled — a convergence floor nothing computes is prose, and the measured
-failure of that shape is a gate that recorded eleven firings while its rule
-said stop at the second. A firing carrying the other class's token is a
-finding: the wrong token parses and reads as a total, so a review token on an
-acceptance line reports zero blocking while unmeasured criteria stand.
+Round-to-round counts are not compared. A round's count samples what one
+reviewer found, and a descent to zero is flat or rising in places; what tells
+a converging loop from a diverging one is where its findings land, which the
+`design_review` event below states. The budget is computed from the log's own
+lines by `harnex plan audit`, never recalled — a convergence floor nothing
+computes is prose, and the measured failure of that shape is a gate that
+recorded eleven firings while its rule said stop at the second. A firing
+carrying the other class's token is a finding: the wrong token parses and
+reads as a total, so a review token on an acceptance line reports zero
+blocking while unmeasured criteria stand.
 
 ## clarify — inline, during specify
 
@@ -76,6 +78,13 @@ Spawn a reviewer with fresh context over `plan.md`'s decisions. Tell it to
 refute, not to approve. On a Critical or Blocker: record `needs_revision`,
 revise, re-fire. On a clean report: transcribe what remains into
 `## Outstanding issues`, record `approved`, proceed.
+
+Revise by the smallest change that removes the finding. A Critical or Blocker
+that sits in what the previous revision wrote says that revision failed:
+rework or remove it rather than adding a condition to it. Every condition
+added to answer a round is new surface for the next round to refute, and a
+loop that answers its findings that way reaches the budget rather than a
+design.
 
 Judge the round on the verdict the reviewer delivered, never on the spawn
 having finished. A reviewer that returned nothing has produced no report;
