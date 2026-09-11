@@ -26,6 +26,11 @@ State lives in three places, by shape — git for what happened, a structured
 file for structured facts (test status, a work list), freeform notes for
 everything else. A fresh session starts by reading them.
 
+A session carries one unit of work. When a unit lands and the next request
+starts an unrelated one, say in a line that a fresh session would carry it
+cheaper: every call re-reads the whole context, and what the next unit needs
+is already in those three places.
+
 ## Take the smallest step that is correct
 
 Change what was asked and what that change requires. A bug fix does not clean
