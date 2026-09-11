@@ -38,14 +38,15 @@ thing that survives a confused, careless, or adversarial agent turn.
    computes it — a hook, a test, a validator, or a recorded count the next
    step must read before proceeding. State the computer beside the control;
    one with no computer is an observation for the lifecycle ledger, not a
-   rule. The measured failure shape: a review gate whose "stop when the
-   count does not fall" lived in prose while no round count was recorded —
-   it ran eleven rounds, and clearing findings was indistinguishable from
-   narrating them away. The spec-workflow's own
-   controls name theirs:
-   `harnex plan audit` computes the counts comparison, the disposition
-   floor, and the append-only row contract, and the shipped pre-commit arm
-   holds them at the commit.
+   rule. The measured failure shape: a review gate whose "stop at the
+   second round" lived in prose while no round count was recorded — it ran
+   eleven rounds, and clearing findings was indistinguishable from narrating
+   them away. The spec-workflow's own controls name theirs: `harnex plan
+   audit` computes the round budget, the disposition floor, and the
+   append-only row contract, and the shipped pre-commit arm holds them at the
+   commit. The computer also decides what a control can be: a count sampled
+   from one reviewer carries no rule about falling, which is why the budget
+   counts rounds instead.
 
 ## Unmeasured is not passed
 

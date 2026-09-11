@@ -38,9 +38,8 @@ while IFS= read -r -d '' f; do
   # relative paths, so findings name the file the operator knows.
   mkdir -p "$tmp/$(dirname "$f")"
   # Firings one gate may record in a cycle before reaching the number is a
-  # report — the circuit breaker for what a round-to-round comparison cannot
-  # see. Raise it for a genuinely large scope; a review that needs many more
-  # is naming a unit too large to finish as one.
+  # report. Raise it for a genuinely large scope; a review that needs many
+  # more is naming a unit too large to finish as one.
   args=(--plan "$f" --max-rounds 5)
   git show ":$f" >"$tmp/$f" 2>/dev/null || rm -f "$tmp/$f"
   spec="${f%plan.md}spec.md"

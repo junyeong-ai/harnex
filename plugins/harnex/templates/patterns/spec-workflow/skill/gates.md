@@ -31,9 +31,9 @@ Append-only. A gate that fires three times leaves three bullets in order — the
 history of a decision is the interesting part, and overwriting keeps only the
 last one. `git log specs/<slug>/` is the timeline this rides on.
 
-A counted firing writes its counts into the line, because the next firing
-reads them. Two gate classes count different things and each owes its own
-token:
+A counted firing writes its counts into the line: the log is where what each
+round found is read back. Two gate classes count different things and each
+owes its own token:
 
 | Class | Gates | Token | What must reach zero |
 |---|---|---|---|
@@ -41,13 +41,15 @@ token:
 | acceptance | `acceptance` | `<n>P/<n>F/<n>U` | failed + unmeasured |
 
 One rule bounds both: a cycle — the firings since the gate last recorded
-`approved` or `rejected` — holds a budget of `needs_revision` firings, which
-the shipped pre-commit arm passes. A deferral pauses the cycle; it does not
-start a new one. Reaching the budget is a report, not a verdict on the round:
-a review that needs that many rounds is naming a unit too large to finish as
-one. Answer it by settling the scope — split what is under review, or close
-the cycle — never by writing a reason to go on, because no line in the log
-lifts the budget.
+`approved` — holds a budget of `needs_revision` firings, which the shipped
+pre-commit arm passes. Only an approval opens a new cycle, and the audit holds
+an approval to the plan's open rows; a deferral pauses the cycle and a
+rejection ends the work, and neither starts a new one, because either is a
+line the loop under review writes for itself. Reaching the budget is a report,
+not a verdict on the round: a review that needs that many rounds is naming a
+unit too large to finish as one. Answer it by settling the scope — split what
+is under review, or dispose of every blocking row and approve — never by
+writing a reason to go on.
 
 Round-to-round counts are not compared. A round's count samples what one
 reviewer found, and a descent to zero is flat or rising in places; what tells
