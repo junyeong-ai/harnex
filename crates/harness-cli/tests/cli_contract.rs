@@ -142,3 +142,58 @@ fn version_is_clap_native_and_exits_0() {
     let out = harness().arg("--version").output().unwrap();
     assert_eq!(out.status.code(), Some(0));
 }
+
+/// The command the shipped spec-workflow hook runs, end to end: findings on
+/// stdout and exit 1, so the hook blocks. Exercised through the binary rather
+/// than the auditor, because the hook has the binary and a `run` that returned
+/// success would leave every gate reporting a clean tree.
+#[test]
+fn plan_audit_reports_its_findings_and_fails_the_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let plan = dir.path().join("plan.md");
+    let spec = dir.path().join("spec.md");
+    std::fs::write(
+        &plan,
+        "# t — Plan\n\n## Outstanding issues\n\n- [Critical] the migration drops rows\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &spec,
+        "# t\n\n## Decision log\n\n\
+         - 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · one\n\
+         - 2026-01-16 · review · needs_revision · 0C/1B/0M/0m · two\n",
+    )
+    .unwrap();
+
+    let out = harness()
+        .args(["plan", "audit", "--plan"])
+        .arg(&plan)
+        .arg("--spec")
+        .arg(&spec)
+        .args(["--max-rounds", "1", "--gates", "review"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "a finding fails the gate");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    for slug in ["plan-open-blocker", "plan-log-round-cap"] {
+        assert!(stdout.contains(slug), "{slug} missing from: {stdout}");
+    }
+
+    // The same inputs with nothing to report: exit 0 and an empty finding set,
+    // so the assertion above is about the findings and not about the command.
+    std::fs::write(&plan, "# t — Plan\n\n## Outstanding issues\n").unwrap();
+    let clean = harness()
+        .args(["plan", "audit", "--plan"])
+        .arg(&plan)
+        .arg("--spec")
+        .arg(&spec)
+        .args(["--max-rounds", "5", "--gates", "review"])
+        .output()
+        .unwrap();
+    assert_eq!(clean.status.code(), Some(0), "a clean tree passes");
+    assert!(
+        String::from_utf8(clean.stdout)
+            .unwrap()
+            .contains("\"total\":0")
+    );
+}
