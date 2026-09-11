@@ -172,6 +172,44 @@ fn every_counted_gate_is_documented_and_every_class_shown_in_its_own_token() {
     }
 }
 
+/// The gates the shipped pre-commit arm declares are the gates the shipped
+/// `gates.md` defines. The arm passes them to `plan audit --gates`, which
+/// keys a round budget per name, so a gate documented and not declared runs
+/// on a budget of its own and a name declared and not documented is a
+/// spelling nothing teaches (constitution IX).
+#[test]
+fn the_hook_declares_exactly_the_gates_its_workflow_documents() {
+    let documented: BTreeSet<String> =
+        std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
+            .expect("read gates.md")
+            .lines()
+            .filter_map(|line| line.strip_prefix("## ")?.split_once(" — "))
+            .map(|(gate, _)| gate.to_string())
+            .filter(|gate| {
+                gate.chars()
+                    .all(|c| c.is_ascii_lowercase() || c == '_' || c == '-')
+            })
+            .collect();
+    assert!(!documented.is_empty(), "gates.md documents no gate event");
+
+    let hook = std::fs::read_to_string(patterns_dir().join("spec-workflow/check-plan.sh"))
+        .expect("read check-plan.sh");
+    let declared: BTreeSet<String> = hook
+        .split_whitespace()
+        .skip_while(|token| *token != "--gates")
+        .nth(1)
+        .expect("check-plan.sh passes --gates")
+        .trim_matches(|c| c == ')' || c == '"' || c == '\'')
+        .split(',')
+        .map(str::to_string)
+        .collect();
+
+    assert_eq!(
+        declared, documented,
+        "check-plan.sh's --gates and the events gates.md defines have drifted"
+    );
+}
+
 /// Every file a manifest entry declares actually exists on disk.
 #[test]
 fn manifest_declared_files_exist() {
