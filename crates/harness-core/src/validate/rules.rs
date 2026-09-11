@@ -257,7 +257,12 @@ impl<'a> RuleValidator<'a> {
             });
         }
 
-        if !declares_paths && !self.policy.always_loaded_slugs.iter().any(|s| s == &slug) {
+        // When a rule loads is declared twice — by the file's own `paths:` and
+        // by the project's always-loaded list — and the two must agree. Each
+        // direction of disagreement changes what every session carries, and
+        // neither shows up in the file anyone edited.
+        let declared_always_loaded = self.policy.always_loaded_slugs.iter().any(|s| s == &slug);
+        if !declares_paths && !declared_always_loaded {
             findings.push(Finding {
                 slug: "rule-missing-paths-frontmatter".into(),
                 severity: Severity::Major,
@@ -265,6 +270,24 @@ impl<'a> RuleValidator<'a> {
                 message: "rule has no `paths:` and is not declared always-loaded".into(),
                 hint: Some(
                     "add `paths: [...]` or list the slug under [validate.rules].always_loaded_slugs"
+                        .into(),
+                ),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
+        if declares_paths && declared_always_loaded {
+            findings.push(Finding {
+                slug: "rule-always-loaded-but-scoped".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), frontmatter_line),
+                message: format!(
+                    "`{slug}` is declared always-loaded and scopes itself with `paths:`"
+                ),
+                hint: Some(
+                    "a scoped rule stops loading where nothing matches, and what was written \
+                     against it keeps assuming it — drop the `paths:` key, or remove the slug \
+                     from [validate.rules].always_loaded_slugs"
                         .into(),
                 ),
                 auto_fixable: false,
