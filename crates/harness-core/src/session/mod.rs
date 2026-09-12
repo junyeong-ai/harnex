@@ -549,6 +549,7 @@ mod tests {
                     },
                     path: PathBuf::from("/repo/CLAUDE.md"),
                     chars: 1,
+                    sidechain: false,
                 })
             })
             .collect()
