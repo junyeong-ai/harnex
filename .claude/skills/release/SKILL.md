@@ -81,6 +81,12 @@ what the audit job runs. Run both; neither alone covers all eight sites.
 Then: bump, commit, tag, push, and watch CI to completion. `gh run watch
 --exit-status` is the form that fails when the run does.
 
+The tag names the bump commit. A finding answered after the bump is answered
+before the tag, so its commit goes in front of the bump rather than behind it —
+`oracle_version` is what a baseline keys a method change on, and a tag standing
+somewhere other than the version it names leaves nothing to say which tree that
+version was measured from.
+
 ## 4 — Prove it, do not assume it
 
 The release is not the artifacts; it is what a machine gets from them.
