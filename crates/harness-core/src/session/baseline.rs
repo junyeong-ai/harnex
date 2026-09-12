@@ -96,7 +96,9 @@ wire_enum! {
         /// text that was in context and did not survive it. Denominated in
         /// submissions, which is where that repetition happens.
         WithinSessionCharsPerSubmission => "within_session_chars_per_submission",
-        /// Characters of project memory the runtime loaded.
+        /// Characters of project memory the runtime loaded, the subagent's
+        /// windows counted with the main one: a rate is what an instruction
+        /// cost, not what any single context held.
         RuleLoadCharsPerSubmission => "rule_load_chars_per_submission",
         /// Context discarded to keep a session going. The count rather than
         /// the number of compactions: what a compaction costs is the tokens it
@@ -123,10 +125,14 @@ wire_enum! {
         /// mix that moved moves this for a reason that is not the operator.
         OutputTokensPerSubmission => "output_tokens_per_submission",
         /// Tokens the window sent, cached or not — the three input counts
-        /// partition one prompt, and whether a token was served from cache is
-        /// a price rather than a size. Read beside
-        /// `dropped_tokens_per_submission`: emptying the context sooner lowers
-        /// this and raises that, so neither of the two moves alone.
+        /// partition one prompt, and where a token was served from is a price
+        /// rather than a size. A subagent's prompts are in the numerator and
+        /// its turns are not in the denominator, the way
+        /// `output_tokens_per_submission` also has it: what an instruction
+        /// cost is the whole of what it set running, and over the local corpus
+        /// a subagent supplies 20.5% of that. Read beside
+        /// `dropped_tokens_per_submission` — emptying the context sooner
+        /// lowers this and raises that, so neither moves alone.
         PromptTokensPerSubmission => "prompt_tokens_per_submission",
     }
 }
