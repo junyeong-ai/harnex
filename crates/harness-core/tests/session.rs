@@ -1917,6 +1917,44 @@ fn a_boundary_carries_what_the_request_after_it_rebuilt() {
 }
 
 #[test]
+fn a_boundary_takes_the_resuming_request_of_its_own_session_only() {
+    // Files are grouped by path ancestry, which is what puts a subagent's
+    // transcript beside its parent's. Nothing enforces that a group's files
+    // agree on a session id, so the attach is keyed by session rather than
+    // trusting the layout.
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![compacted(
+                "s1",
+                "k1",
+                "2026-08-01T10:00:00Z",
+                754_436,
+                15_645,
+                738_791,
+            )],
+        ),
+        (
+            "-Users-me-alpha/s1/agent-x.jsonl",
+            vec![agent_carrying(
+                "s2",
+                "b1",
+                "2026-08-01T10:01:00Z",
+                55_555,
+                false,
+            )],
+        ),
+    ]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.compactions[0].resumed_tokens, None,
+        "another session's request resumed nothing here"
+    );
+}
+
+#[test]
 fn a_boundary_with_no_request_after_it_carries_no_resumed_prompt() {
     let (_dir, config) = corpus(&[(
         "-Users-me-alpha/s1.jsonl",

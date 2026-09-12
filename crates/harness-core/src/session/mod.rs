@@ -338,9 +338,10 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         // boundary is written into the transcript behind it.
         let first_compaction = compactions.len();
         let mut commands: Vec<(Timestamp, String)> = Vec::new();
-        // The boundary whose resuming request has not arrived yet. Per session,
-        // because two sessions interleave here and each resumes its own.
-        let mut resuming: Option<usize> = None;
+        // Each session's boundary that is still waiting for the request that
+        // resumed it. Keyed like `recovering`, and for the same reason: a group
+        // is assembled from file paths, so nothing in it guarantees one session.
+        let mut resuming: HashMap<String, usize> = HashMap::new();
         for rec in &records {
             let session = &rec.citation().session;
             sessions.insert(session.clone());
@@ -371,7 +372,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             match rec {
                 record::Record::Compaction(c) => {
                     compactions.push(c.clone());
-                    resuming = Some(compactions.len() - 1);
+                    resuming.insert(session.clone(), compactions.len() - 1);
                     recovering.insert(session.clone());
                 }
                 record::Record::Assistant(turn) => {
@@ -382,11 +383,10 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                         // one of zero — the runtime charges a message once and
                         // writes it as several records. Waiting for a reported
                         // prompt reads the message rather than its first block.
-                        if let Some(boundary) = resuming
-                            && turn.tokens.prompt() > 0
+                        if turn.tokens.prompt() > 0
+                            && let Some(boundary) = resuming.remove(session)
                         {
                             compactions[boundary].resumed_tokens = Some(turn.tokens.prompt());
-                            resuming = None;
                         }
                     }
                     for action in &turn.actions {
