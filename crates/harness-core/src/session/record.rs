@@ -368,8 +368,8 @@ pub struct Compaction {
     /// boundaries in the local corpus it ran 33.2k to 79.8k, against summaries
     /// whose median was 17.5k.
     ///
-    /// `None` where the window holds no main-thread request after the boundary,
-    /// which 6 of 403 were. A subagent's turn is passed over: it runs on its own
+    /// `None` where no main-thread request separates this boundary from the next
+    /// one, which 6 of 403 were. A subagent's turn is passed over: it runs on its own
     /// context, which this boundary did not touch. The boundary itself is not
     /// separated that way, and none of the corpus's 420 was a subagent's.
     pub resumed_tokens: Option<u64>,
@@ -385,9 +385,10 @@ pub struct Compaction {
 
 /// What one turn, instruction or window spent.
 ///
-/// Four counts and no total: they price differently and this module does not
-/// know by how much. A single number would need a price list that is neither
-/// ours nor stable, so the reader gets the counts and money is never named.
+/// Four counts that never add to a price: they bill differently and this module
+/// does not know by how much. A single number would need a price list that is
+/// neither ours nor stable, so the reader gets the counts and money is never
+/// named. `prompt` adds three of them, which is a size and not a price.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TokenUse {
     pub input: u64,
@@ -404,9 +405,14 @@ impl TokenUse {
         self.output += other.output;
     }
 
-    /// What the request carried, however it was billed. The three input counts
-    /// partition one prompt — cached or not is a price, not a size — so a turn
-    /// answers what the window held only when they are read together.
+    /// What one request carried, however it was billed. The three input counts
+    /// partition a single prompt, and where a token was served from is a price
+    /// rather than a size.
+    ///
+    /// Summed over requests this is throughput and not context. `cache_read`
+    /// carries the whole prefix again on every turn, so a window that takes
+    /// more turns to answer the same instruction reads higher at an identical
+    /// context size.
     pub fn prompt(&self) -> u64 {
         self.input + self.cache_creation + self.cache_read
     }
