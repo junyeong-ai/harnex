@@ -84,6 +84,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
             "RecoveryFacts.after_compaction",
             "RecoveryFacts.elsewhere",
             "Compaction.resumed_tokens",
+            "Compaction.sidechain",
             "Compaction.instruction_chars",
             "Compaction.instruction",
             "SessionFacts.repository",

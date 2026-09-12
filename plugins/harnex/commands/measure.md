@@ -330,7 +330,9 @@ tokens in and out, that `resumed_tokens` is what the request after the boundary
 actually carried — the saving is measured against that and not against the
 summary, which the runtime rebuilds a prompt on top of — and that the runtime's
 `cumulative_dropped_tokens` is a running total per session, so it is read from
-the last event and never summed.
+the last event and never summed. A boundary whose `Compaction.sidechain` is set
+compacted a subagent's window and carries no `resumed_tokens`; leave it out of
+anything said about the operator's own context.
 
 **Report what a compaction cost only as a pair.** `recovery.after_compaction`
 counts the main-thread turns a summary had to carry alone and the corrections
