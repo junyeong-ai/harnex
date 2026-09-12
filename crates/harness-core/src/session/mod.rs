@@ -374,8 +374,14 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             match rec {
                 record::Record::Compaction(c) => {
                     compactions.push(c.clone());
-                    resuming.insert(session.clone(), compactions.len() - 1);
-                    recovering.insert(session.clone());
+                    // A subagent's boundary is recorded and nothing more. It
+                    // shares its parent's session id, so keying it here would
+                    // hand the parent's next request to a window that never
+                    // held it, and both spans below read the main thread only.
+                    if !c.sidechain {
+                        resuming.insert(session.clone(), compactions.len() - 1);
+                        recovering.insert(session.clone());
+                    }
                 }
                 record::Record::Assistant(turn) => {
                     tokens.add(turn.tokens);

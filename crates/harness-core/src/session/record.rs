@@ -368,10 +368,12 @@ pub struct Compaction {
     /// boundaries in the local corpus it ran 33.2k to 79.8k, against summaries
     /// whose median was 17.5k.
     ///
-    /// `None` where no main-thread request separates this boundary from the next
-    /// one, which 6 of 403 were. A subagent's turn is passed over: it runs on its own
-    /// context, which this boundary did not touch. The boundary itself is not
-    /// separated that way, and none of the corpus's 420 was a subagent's.
+    /// `None` where no charged main-thread request reached this boundary before
+    /// the window ended or the session compacted again — 6 of the local corpus's
+    /// 403, every one of them the last boundary its session had. A subagent's
+    /// turn is passed over: it runs on its own context, which this boundary did
+    /// not touch, and so is a subagent's own boundary, for the same reason
+    /// `recovery` reads only the main thread.
     pub resumed_tokens: Option<u64>,
     /// How much the operator asked the compaction to keep, in characters.
     /// `None` where no `/compact` preceded the boundary — the runtime compacted
@@ -381,6 +383,13 @@ pub struct Compaction {
     /// caller asked for text.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instruction: Option<String>,
+    /// Whether a subagent's window was compacted rather than the main thread's.
+    /// A subagent's transcript carries its parent's session id, so this is what
+    /// separates the two boundaries. None of the local corpus's 422 boundary
+    /// records was a subagent's, which makes this a guard rather than a
+    /// population; those 422 become the 403 counted above once fork replays and
+    /// records repeated across transcripts are dropped.
+    pub sidechain: bool,
 }
 
 /// What one turn, instruction or window spent.
@@ -1033,6 +1042,7 @@ pub fn read_transcript(
                         resumed_tokens: None,
                         instruction_chars: None,
                         instruction: None,
+                        sidechain: raw.is_sidechain.unwrap_or(false),
                     }));
                     continue;
                 }

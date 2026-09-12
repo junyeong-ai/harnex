@@ -1881,8 +1881,21 @@ fn a_sub_agent_counts_the_same_however_the_runtime_named_its_tool() {
 
 /// The system record marking where the context was compacted.
 fn compacted(session: &str, uuid: &str, ts: &str, pre: u64, post: u64, cumulative: u64) -> String {
+    compacted_in(session, uuid, ts, pre, post, cumulative, false)
+}
+
+/// A boundary in a named window — `true` where a subagent compacted its own.
+fn compacted_in(
+    session: &str,
+    uuid: &str,
+    ts: &str,
+    pre: u64,
+    post: u64,
+    cumulative: u64,
+    sidechain: bool,
+) -> String {
     format!(
-        r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","subtype":"compact_boundary","compactMetadata":{{"trigger":"manual","preTokens":{pre},"postTokens":{post},"cumulativeDroppedTokens":{cumulative},"durationMs":1200}}}}"#
+        r#"{{"type":"system","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","isSidechain":{sidechain},"subtype":"compact_boundary","compactMetadata":{{"trigger":"manual","preTokens":{pre},"postTokens":{post},"cumulativeDroppedTokens":{cumulative},"durationMs":1200}}}}"#
     )
 }
 
@@ -1913,6 +1926,47 @@ fn a_boundary_carries_what_the_request_after_it_rebuilt() {
         Some(81_200),
         "the first main-thread request that reported a prompt — not the block \
          before it that reported none, and not the subagent's own window"
+    );
+}
+
+#[test]
+fn a_subagent_boundary_does_not_take_the_main_thread_request_after_it() {
+    // A subagent's transcript carries its parent's session id, so a session
+    // key alone cannot tell the two boundaries apart. The parent's own
+    // boundary is the one its next request resumed.
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            compacted("s1", "k1", "2026-08-01T10:00:00Z", 754_436, 15_645, 738_791),
+            compacted_in(
+                "s1",
+                "k2",
+                "2026-08-01T10:01:00Z",
+                120_000,
+                9_000,
+                111_000,
+                true,
+            ),
+            agent_carrying("s1", "b1", "2026-08-01T10:02:00Z", 81_200, false),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    let main = facts
+        .compactions
+        .iter()
+        .find(|c| !c.sidechain)
+        .expect("the main thread's boundary");
+    let sub = facts
+        .compactions
+        .iter()
+        .find(|c| c.sidechain)
+        .expect("the subagent's boundary");
+    assert_eq!(main.resumed_tokens, Some(81_200));
+    assert_eq!(
+        sub.resumed_tokens, None,
+        "a window this boundary never held did not resume it"
     );
 }
 
