@@ -99,12 +99,14 @@ already contradicted both a page and the binary's own schema.
   (permission-rule-syntax predicate — evaluated only on tool events),
   `timeout`, `statusMessage` (shown during execution), `once` (honored in
   skill frontmatter only; ignored in settings files). Command-specific:
-  `async` (non-blocking), `asyncRewake`
+  `async` (non-blocking — and the runtime stops enforcing `timeout` on it, so a
+  bound written beside `async` reads as one and is not), `asyncRewake`
   (non-blocking + rewake Claude on exit 2 with stderr/stdout as system
   reminder), `shell` (`"bash"` | `"powershell"`).
-- **stdin** carries session_id, transcript_path, cwd, permission_mode,
-  hook_event_name, effort (PreToolUse adds tool_name, tool_input,
-  tool_use_id). Inside subagents: also agent_id, agent_type.
+- **stdin** carries session_id, prompt_id (2.1.196+), transcript_path,
+  scratchpad_dir (2.1.257+), cwd, permission_mode, hook_event_name, effort
+  (PreToolUse adds tool_name, tool_input, tool_use_id). Inside subagents: also
+  agent_id, agent_type.
 - **`additionalContext`** injects context on SessionStart, Setup,
   SubagentStart, UserPromptSubmit, UserPromptExpansion, the tool events
   (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch), and **Stop**,
@@ -299,11 +301,19 @@ already contradicted both a page and the binary's own schema.
   upward and orders them root→cwd (so the deepest, closest file is read last);
   within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`.
   Subdir CLAUDE.md (below cwd) loads lazily when Claude reads files there.
-- **Target ≤ 200 lines** per file; longer reduces adherence.
+- **Target ≤ 200 lines** per file; longer reduces adherence. A file over 4 MiB
+  is skipped whole rather than truncated.
 - **Path-scoped rules:** `.claude/rules/*.md`; with `paths:` frontmatter (glob,
   brace expansion) they load only on matching files; without `paths:` they load
   every session. A foundation rule (constitution) is the one that intentionally
   omits `paths:`.
+- **A `paths:` list is bounded before it is matched.** Brace groups multiply,
+  and the whole list shares one budget of 1,000 expanded patterns and 4 MiB
+  (brace-free patterns do not count against it). A pattern that would exceed
+  the budget is used UNEXPANDED, so its literal braces match nothing. A `[`
+  that does not open a bracket expression is likewise a pattern matching
+  nothing — escape it (`photos \[2024/**`). Both failures are silent: the rule
+  never loads and nothing says so.
 - `@path` import: relative to the importing file, max depth 4, loads at launch.
 - **`claudeMdExcludes`:** glob patterns to skip specific CLAUDE.md files.
   Merges across settings layers. Managed-policy files cannot be excluded.
