@@ -407,6 +407,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             harness.observe(rec);
         }
         rework.observe(&records);
+        // After the loop, because this sorts the slice `resuming` held
+        // positions into: a boundary that moved here would still be a boundary,
+        // so nothing would report the value landing on the wrong one.
         attach_instructions(&mut compactions[first_compaction..], &mut commands);
     }
 
