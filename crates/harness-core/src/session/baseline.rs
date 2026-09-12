@@ -129,8 +129,10 @@ wire_enum! {
         /// rather than a size. A subagent's prompts are in the numerator and
         /// its turns are not in the denominator, the way
         /// `output_tokens_per_submission` also has it: what an instruction
-        /// cost is the whole of what it set running, and over the local corpus
-        /// a subagent supplies 20.5% of that. Read beside
+        /// cost is the whole of what it set running, and across the local
+        /// corpus's 272,706 charged messages a subagent supplied 21.1% of that.
+        /// No command splits tokens by window, so that share is measured off
+        /// the transcripts rather than read back out of a result. Read beside
         /// `dropped_tokens_per_submission` — emptying the context sooner
         /// lowers this and raises that, so neither moves alone.
         PromptTokensPerSubmission => "prompt_tokens_per_submission",

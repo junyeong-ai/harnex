@@ -215,11 +215,13 @@ pub struct SessionFacts {
 /// One session's transcripts as a single sequence, each file's own order intact.
 ///
 /// A transcript is append-ordered, so its order is the order things happened.
-/// Its timestamps are not: measured over the local corpus, 2.27% of adjacent
-/// records carry a timestamp earlier than the one before them (68% of those an
-/// attachment written behind the turn it belongs to) and 5.55% carry the same
-/// one. Sorting the concatenation would rewrite that order — including for a
-/// session with no subagent, where there is nothing to interleave at all.
+/// Its timestamps are not: over the local corpus's 921,963 adjacent pairs of
+/// consumed records, 0.18% carry a timestamp earlier than the one before them
+/// and 0.74% carry the same one. The inversions are mostly the operator — 59%
+/// a user record behind another and 25% one behind the boundary that compacted
+/// it — so they sit exactly where an instruction is being read. Sorting the
+/// concatenation would rewrite that order, including for a session with no
+/// subagent, where there is nothing to interleave at all.
 ///
 /// So each file is consumed in its own order and only the choice between files
 /// is made by time. A tie goes to the earlier stream, and `discovery` hands
@@ -380,8 +382,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                     if !turn.sidechain {
                         recovery.charge(&recovering, session).agent_turns += 1;
                         // A turn that reports no prompt at all did not carry
-                        // one of zero — the runtime charges a message once and
-                        // writes it as several records. Waiting for a reported
+                        // one of zero. The runtime repeats a message's usage on
+                        // every block it writes, and `read_transcript` moves the
+                        // charge to the last of them, so waiting for a reported
                         // prompt reads the message rather than its first block.
                         if turn.tokens.prompt() > 0
                             && let Some(boundary) = resuming.remove(session)
