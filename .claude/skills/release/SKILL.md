@@ -32,7 +32,8 @@ Then, for every claim either returns:
   the manual form.
 
 Do not start §3 while a claim is open. An unresolved finding after a tag is a
-finding that ships.
+finding that ships, and a review dispatched and not yet read is an open claim —
+two is the floor on reviewers, so a third still running is not a spare.
 
 ## 2 — Decide the version
 
