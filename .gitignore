@@ -1,4 +1,5 @@
 target/
+mutants.out/
 # Machine-local measurement stays local; the promotion loop's ledgers are
 # repository memory and are tracked (observations feed candidates, decisions
 # are the audit trail governance reads, harvests are what a port cycle
