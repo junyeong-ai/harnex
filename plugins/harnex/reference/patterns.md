@@ -71,8 +71,8 @@ an observation is the blank-page problem in disguise.
   `.claude/settings.json` entries — `PostToolUse` and `PostToolUseFailure`,
   matcher `Skill|Task|Agent` (the tools that invoke a harness element; its slug
   is what the retirement sweep reads — MCP tools are not harness elements and
-  are deliberately not recorded), with `async: true` and a short `timeout` so
-  the append never sits on the tool's critical path. Dispatch it through
+  are deliberately not recorded), with `async: true` so the append never sits
+  on the tool's critical path. Dispatch it through
   `_runner.sh`, the same as the other session hooks: the runner execs the
   wrapper via `bash`, so the template ships without an executable bit and a
   directly-wired `0644` script cannot fail with a permission error. The wrapper
