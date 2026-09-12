@@ -36,7 +36,7 @@ use super::record::{Citation, Record, TokenUse, ToolUse, UserTurn};
 /// over the local corpus while a question asked in prose carries no marker at
 /// all. Zero here means the agent never used the tool, never that it never
 /// asked.
-const CLARIFYING_QUESTION_TOOL: &str = "AskUserQuestion";
+pub(crate) const CLARIFYING_QUESTION_TOOL: &str = "AskUserQuestion";
 
 /// The submission boundary, and the only place it is decided.
 #[derive(Default)]

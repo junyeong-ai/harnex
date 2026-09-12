@@ -136,6 +136,20 @@ wire_enum! {
         /// `dropped_tokens_per_submission` — emptying the context sooner
         /// lowers this and raises that, so neither moves alone.
         PromptTokensPerSubmission => "prompt_tokens_per_submission",
+        /// Times the agent stopped and put the choice to the operator, through
+        /// the one tool the runtime records it with.
+        ///
+        /// A floor on asking and not a count of it, for the reason
+        /// [`crate::session::submission::CLARIFYING_QUESTION_TOOL`] states: the
+        /// same question asked in prose leaves no marker, and finding it would
+        /// mean reading a turn by its wording, which belongs to the judge.
+        /// Neither direction is the good one. Read it against
+        /// `steering_per_submission` and `interrupts_per_submission`: a window
+        /// that asks less and is corrected more decided what it should have
+        /// put to the operator, and one that asks more without being corrected
+        /// less is spending their attention on choices it could have made.
+        /// Over the local corpus it runs 0.079, and 0.023 to 0.085 by project.
+        QuestionsPerSubmission => "questions_per_submission",
     }
 }
 
@@ -211,6 +225,13 @@ impl SessionMetric {
                 numerator: facts.harness.hooks.iter().map(|h| h.total_ms).sum(),
                 denominator: facts.harness.stops as u64,
             },
+            Self::QuestionsPerSubmission => Measurement::new(
+                facts
+                    .tools
+                    .get(crate::session::submission::CLARIFYING_QUESTION_TOOL)
+                    .map_or(0, |t| t.calls),
+                submissions,
+            ),
             Self::PromptTokensPerSubmission => Measurement {
                 numerator: facts.tokens.prompt(),
                 denominator: submissions as u64,

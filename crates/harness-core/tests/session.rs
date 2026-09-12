@@ -451,6 +451,13 @@ fn queued_turns_fold_into_one_instruction_end_to_end() {
 }
 
 /// The assistant record that makes a tool call, and the denial that answers it.
+/// One tool call the operator let through, so a tally is not a tally of denials.
+fn called(session: &str, tool: &str, seconds: u32) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"a{seconds}","timestamp":"2026-08-01T10:00:{seconds:02}Z","sessionId":"{session}","message":{{"content":[{{"type":"tool_use","id":"t{seconds}","name":"{tool}","input":{{}}}}]}}}}"#
+    )
+}
+
 fn call_and_denial(session: &str, tool: &str, kind: &str, seconds: u32) -> Vec<String> {
     let id = format!("t{seconds}");
     vec![
@@ -572,6 +579,10 @@ fn every_metric_corpus() -> (TempDir, SessionConfig) {
         stop_summary("s1", "h1", "2026-08-01T09:00:06Z", "check.sh", 90),
     ];
     alpha.extend(call_and_denial("s1", "Bash", "permission-rule", 7));
+    // Twice, and Bash once above: a pin of the same number as another tool's
+    // cannot tell this metric from one that counted the wrong tool.
+    alpha.push(called("s1", "AskUserQuestion", 13));
+    alpha.push(called("s1", "AskUserQuestion", 14));
     alpha.push(spoke("s1", "x2", "2026-08-01T09:00:08Z"));
     // Queued after the agent spoke: a second instruction, and steering.
     alpha.push(queued("s1", "a2", "2026-08-01T09:00:09Z", STANDING));
@@ -619,6 +630,7 @@ fn every_recorded_metric_computes_what_it_computed() {
         // 31 twice: the two turns that reported a usage. The tool call that
         // met a denial reported none, and no prompt is not a prompt of zero.
         ("prompt_tokens_per_submission", 62, 4),
+        ("questions_per_submission", 2, 4),
     ];
     assert_eq!(
         pinned.len(),
