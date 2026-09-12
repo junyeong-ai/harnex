@@ -616,6 +616,9 @@ fn every_recorded_metric_computes_what_it_computed() {
         ("reedits_per_commit", 1, 1),
         ("hook_milliseconds_per_stop", 90, 1),
         ("output_tokens_per_submission", 700, 4),
+        // 31 twice: the two turns that reported a usage. The tool call that
+        // met a denial reported none, and no prompt is not a prompt of zero.
+        ("prompt_tokens_per_submission", 62, 4),
     ];
     assert_eq!(
         pinned.len(),

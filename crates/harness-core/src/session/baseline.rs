@@ -122,6 +122,12 @@ wire_enum! {
         /// Tokens the agent generated. Read beside the window's model set: a
         /// mix that moved moves this for a reason that is not the operator.
         OutputTokensPerSubmission => "output_tokens_per_submission",
+        /// Tokens the window sent, cached or not — the three input counts
+        /// partition one prompt, and whether a token was served from cache is
+        /// a price rather than a size. Read beside
+        /// `dropped_tokens_per_submission`: emptying the context sooner lowers
+        /// this and raises that, so neither of the two moves alone.
+        PromptTokensPerSubmission => "prompt_tokens_per_submission",
     }
 }
 
@@ -196,6 +202,10 @@ impl SessionMetric {
             Self::HookMillisecondsPerStop => Measurement {
                 numerator: facts.harness.hooks.iter().map(|h| h.total_ms).sum(),
                 denominator: facts.harness.stops as u64,
+            },
+            Self::PromptTokensPerSubmission => Measurement {
+                numerator: facts.tokens.prompt(),
+                denominator: submissions as u64,
             },
             Self::OutputTokensPerSubmission => Measurement {
                 numerator: facts.tokens.output,
