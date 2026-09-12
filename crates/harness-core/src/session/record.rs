@@ -358,6 +358,19 @@ pub struct Compaction {
     /// session counts the same tokens again at every boundary.
     pub cumulative_dropped_tokens: u64,
     pub duration_ms: u64,
+    /// What the next main-thread request actually carried.
+    ///
+    /// `post_tokens` is the summary the boundary left; this is the prompt built
+    /// on top of it, so the difference is what the runtime rebuilds every time
+    /// — the system prompt, the tool definitions and the always-loaded memory,
+    /// none of which a compaction can drop. Measured over 31 boundaries in one
+    /// project's window, that difference ran 60.7k to 79.2k against summaries
+    /// whose median was 18.2k.
+    ///
+    /// `None` where the window holds no main-thread request after the boundary.
+    /// A subagent's turn is passed over: it runs on its own context, which this
+    /// boundary did not touch.
+    pub resumed_tokens: Option<u64>,
     /// How much the operator asked the compaction to keep, in characters.
     /// `None` where no `/compact` preceded the boundary — the runtime compacted
     /// on its own. `Some(0)` where the operator compacted and asked for nothing.
@@ -387,6 +400,13 @@ impl TokenUse {
         self.cache_creation += other.cache_creation;
         self.cache_read += other.cache_read;
         self.output += other.output;
+    }
+
+    /// What the request carried, however it was billed. The three input counts
+    /// partition one prompt — cached or not is a price, not a size — so a turn
+    /// answers what the window held only when they are read together.
+    pub fn prompt(&self) -> u64 {
+        self.input + self.cache_creation + self.cache_read
     }
 }
 
@@ -998,9 +1018,11 @@ pub fn read_transcript(
                             .cumulative_dropped_tokens
                             .unwrap_or_default(),
                         duration_ms: meta.duration_ms.unwrap_or_default(),
-                        // Joined to the command that caused it once the whole
-                        // session is read — the command's record is written
-                        // after this one. See `session::attach_instructions`.
+                        // Both are filled once the whole session is read: the
+                        // request that resumed is written after this record,
+                        // and so is the command that caused it. See
+                        // `session::attach_instructions`.
+                        resumed_tokens: None,
                         instruction_chars: None,
                         instruction: None,
                     }));

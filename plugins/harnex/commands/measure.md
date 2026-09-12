@@ -323,8 +323,11 @@ before saying it per commit: re-edits concentrated in one interval are one
 commit called done early, and the same count spread across many is a habit of
 declaring early — measured, 244 of 246 fell in a single interval, where
 "commit later" is the wrong prescription. Compaction belongs here when present: report
-tokens in and out, and that the runtime's `cumulative_dropped_tokens` is a
-running total per session, so it is read from the last event and never summed.
+tokens in and out, that `resumed_tokens` is what the request after the boundary
+actually carried — the saving is measured against that and not against the
+summary, which the runtime rebuilds a prompt on top of — and that the runtime's
+`cumulative_dropped_tokens` is a running total per session, so it is read from
+the last event and never summed.
 
 **Report what a compaction cost only as a pair.** `recovery.after_compaction`
 counts the main-thread turns a summary had to carry alone and the corrections

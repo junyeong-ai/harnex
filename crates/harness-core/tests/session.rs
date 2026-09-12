@@ -1883,6 +1883,51 @@ fn compacted(session: &str, uuid: &str, ts: &str, pre: u64, post: u64, cumulativ
     )
 }
 
+/// One turn of the agent's own output, with the prompt it carried.
+fn agent_carrying(session: &str, uuid: &str, ts: &str, prompt: u64, sidechain: bool) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","isSidechain":{sidechain},"message":{{"id":"m_{uuid}","model":"claude-opus-5","usage":{{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":{prompt},"output_tokens":9}},"content":[{{"type":"text","text":"working"}}]}}}}"#
+    )
+}
+
+#[test]
+fn a_boundary_carries_what_the_request_after_it_rebuilt() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            compacted("s1", "k1", "2026-08-01T10:00:00Z", 754_436, 15_645, 738_791),
+            agent("s1", "b1", "2026-08-01T10:01:00Z"),
+            agent_carrying("s1", "b2", "2026-08-01T10:02:00Z", 240_000, true),
+            agent_carrying("s1", "b3", "2026-08-01T10:03:00Z", 81_200, false),
+            agent_carrying("s1", "b4", "2026-08-01T10:04:00Z", 99_000, false),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.compactions[0].resumed_tokens,
+        Some(81_200),
+        "the first main-thread request that reported a prompt — not the block \
+         before it that reported none, and not the subagent's own window"
+    );
+}
+
+#[test]
+fn a_boundary_with_no_request_after_it_carries_no_resumed_prompt() {
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            agent_carrying("s1", "b1", "2026-08-01T09:00:00Z", 700_000, false),
+            compacted("s1", "k1", "2026-08-01T10:00:00Z", 754_436, 15_645, 738_791),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.compactions[0].resumed_tokens, None);
+}
+
 #[test]
 fn a_compaction_is_read_as_an_event_and_not_as_an_unread_record_type() {
     let (_dir, config) = corpus(&[(

@@ -67,7 +67,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
     ),
     (
         "commands/measure.md",
-        64,
+        65,
         &[
             "BaselineDiff.from",
             "BaselineDiff.to",
@@ -83,6 +83,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
             "SessionFacts.recovery",
             "RecoveryFacts.after_compaction",
             "RecoveryFacts.elsewhere",
+            "Compaction.resumed_tokens",
             "Compaction.instruction_chars",
             "Compaction.instruction",
             "SessionFacts.repository",
