@@ -140,9 +140,13 @@ pub struct RuleLoadGroup {
     pub path: PathBuf,
     /// Whether the loads counted here entered a subagent's window rather than
     /// the main thread's. The same file appears under both where both read it.
+    /// One row holds every subagent that read the file, since a subagent's
+    /// window has no identity the transcript carries.
     pub sidechain: bool,
     pub loads: usize,
-    /// Characters entering context across every load.
+    /// Characters entering context across every load. A row on the subagent
+    /// side adds up windows that never saw each other, so read it as what the
+    /// file cost the run and not as what any one context held.
     pub chars: usize,
     pub span: Span,
 }

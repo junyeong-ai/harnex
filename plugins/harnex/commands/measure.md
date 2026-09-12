@@ -127,9 +127,12 @@ and came back an error, which is a different population from `harness.denials`
 — those were refused and never ran — so report them apart: friction from the
 harness and friction from the work want opposite fixes.
 
-`tokens` carries four counts and no total, because they price differently by
-orders of magnitude and this command does not know a price list. Rank on
-`output`, name the others when they matter, and never convert to money.
+`tokens` carries four counts that never add to a price, because they bill
+differently by orders of magnitude and this command does not know a price list.
+Rank on `output`, name the others when they matter, and never convert to money.
+The three input counts do add to a size, which `prompt_tokens_per_submission`
+reports — read that as throughput rather than context, since a cached prefix is
+sent again on every turn.
 Compare token counts across kinds only where `models` matches: a kind answered
 by a different model is a different price, not a different habit.
 
@@ -435,10 +438,11 @@ describing the change. Everything else goes in an appendix.
   everything else
 - `rule_loads` is the project memory the runtime attached to a turn. A rule
   loaded on every turn is never attached and is absent here, so this is a floor
-  on what was in force. `sidechain` says which window received it, so a row's
-  characters are a size inside that window only; rank the two apart rather than
-  reading one merged list as what a context held. The rate over them,
-  `rule_load_chars_per_submission`, does add both, and its doc comment says why
+  on what was in force. `sidechain` says whether a subagent's window received
+  it, and every subagent lands in the one row, so no row is any single context's
+  size — rank the two sides apart and read either as what the file cost the run.
+  The rate over them, `rule_load_chars_per_submission`, does add both sides, and
+  its doc comment says why
 - `files_discovered` is the corpus the run opened; `files_in_window` is what it
   answered about
 - `by_fate` counts the commits the transcript recorded, which is a floor
