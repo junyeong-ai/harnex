@@ -562,6 +562,22 @@ mod tests {
     }
 
     #[test]
+    fn two_windows_that_spent_the_same_on_one_file_still_rank_in_a_fixed_order() {
+        // One file loaded once into each window is the same size in both, so
+        // path and chars tie and the accumulator is a HashMap. Without the
+        // window in the ordering these two rows would swap between runs.
+        let path = "/repo/.claude/rules/deps.md";
+        let facts = run(&[
+            loaded_into("r1", 100, path, 12_076, true),
+            loaded("r2", 200, path, 12_076),
+        ]);
+
+        assert_eq!(facts.rule_loads.len(), 2);
+        assert!(!facts.rule_loads[0].sidechain);
+        assert!(facts.rule_loads[1].sidechain);
+    }
+
+    #[test]
     fn a_hook_that_spends_time_and_prevents_nothing_is_visible_as_both() {
         let facts = run(&[
             stop(
