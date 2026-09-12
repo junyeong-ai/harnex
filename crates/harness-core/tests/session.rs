@@ -1917,6 +1917,29 @@ fn a_boundary_carries_what_the_request_after_it_rebuilt() {
 }
 
 #[test]
+fn a_boundary_skips_the_blocks_of_the_resuming_message_that_report_no_prompt() {
+    // The runtime charges one message once and writes it as several records,
+    // so every block but the last reports a prompt of zero. Taking the first
+    // record would value the boundary at nothing.
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            compacted("s1", "k1", "2026-08-01T10:00:00Z", 754_436, 15_645, 738_791),
+            block_of("s1", "b1", "2026-08-01T10:01:00Z", "msg_resume", 40),
+            block_of("s1", "b2", "2026-08-01T10:01:01Z", "msg_resume", 90),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.compactions[0].resumed_tokens,
+        Some(31),
+        "the message's own prompt, read off the block the runtime charged"
+    );
+}
+
+#[test]
 fn a_boundary_takes_the_resuming_request_of_its_own_session_only() {
     // Files are grouped by path ancestry, which is what puts a subagent's
     // transcript beside its parent's. Nothing enforces that a group's files
