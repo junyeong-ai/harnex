@@ -435,9 +435,10 @@ describing the change. Everything else goes in an appendix.
   everything else
 - `rule_loads` is the project memory the runtime attached to a turn. A rule
   loaded on every turn is never attached and is absent here, so this is a floor
-  on what was in force. `sidechain` says which window received it, and the two
-  are separate contexts — report them apart, as `recovery` already does, rather
-  than summing a total no window ever carried
+  on what was in force. `sidechain` says which window received it, so a row's
+  characters are a size inside that window only; rank the two apart rather than
+  reading one merged list as what a context held. The rate over them,
+  `rule_load_chars_per_submission`, does add both, and its doc comment says why
 - `files_discovered` is the corpus the run opened; `files_in_window` is what it
   answered about
 - `by_fate` counts the commits the transcript recorded, which is a floor
