@@ -44,7 +44,7 @@ floor, named for that, and carries the coverage it was measured at.
 - **A transcript's own order is authoritative; its timestamps are not.** A
   session's files are interleaved by `interleave_by_time`
   ([file: crates/harness-core/src/session/mod.rs :: fn interleave_by_time]), which never reorders within
-  one — 2.27% of adjacent records are stamped behind the record before them.
+  one; its doc carries what share of adjacent records is stamped out of order.
   Sorting the concatenation is the shape that looks equivalent and is not.
 - **One rule decides whether a rate can be compared.** `Measurement::supports`
   ([file: crates/harness-core/src/session/baseline.rs :: pub fn supports]) is what `diff` withholds
