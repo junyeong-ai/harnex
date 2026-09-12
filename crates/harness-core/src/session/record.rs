@@ -361,15 +361,17 @@ pub struct Compaction {
     /// What the next main-thread request actually carried.
     ///
     /// `post_tokens` is the summary the boundary left; this is the prompt built
-    /// on top of it, so the difference is what the runtime rebuilds every time
-    /// — the system prompt, the tool definitions and the always-loaded memory,
-    /// none of which a compaction can drop. Measured over 31 boundaries in one
-    /// project's window, that difference ran 60.7k to 79.2k against summaries
-    /// whose median was 18.2k.
+    /// on top of it. Their difference is an upper bound on what the runtime
+    /// rebuilds — the system prompt, the tool definitions and the always-loaded
+    /// memory, none of which a compaction can drop — because it also carries
+    /// whatever else reached the first charged message. Measured over 397
+    /// boundaries in the local corpus it ran 33.2k to 79.8k, against summaries
+    /// whose median was 17.5k.
     ///
-    /// `None` where the window holds no main-thread request after the boundary.
-    /// A subagent's turn is passed over: it runs on its own context, which this
-    /// boundary did not touch.
+    /// `None` where the window holds no main-thread request after the boundary,
+    /// which 6 of 403 were. A subagent's turn is passed over: it runs on its own
+    /// context, which this boundary did not touch. The boundary itself is not
+    /// separated that way, and none of the corpus's 420 was a subagent's.
     pub resumed_tokens: Option<u64>,
     /// How much the operator asked the compaction to keep, in characters.
     /// `None` where no `/compact` preceded the boundary — the runtime compacted
@@ -418,9 +420,9 @@ pub struct RuleLoad {
     /// Characters of the file as it entered context.
     pub chars: usize,
     /// Whether a subagent's window received it rather than the main thread's.
-    /// The two are separate contexts, so summing them describes no window that
-    /// ever existed — measured over one project's window, 84.5% of the
-    /// characters were a subagent's.
+    /// Measured over the local corpus, 71.2% of the characters were a
+    /// subagent's, and 601 of 1,722 files entered both — so which window a
+    /// load reached is most of what a total hides.
     pub sidechain: bool,
 }
 
