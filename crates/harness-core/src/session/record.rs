@@ -397,6 +397,11 @@ pub struct RuleLoad {
     pub path: PathBuf,
     /// Characters of the file as it entered context.
     pub chars: usize,
+    /// Whether a subagent's window received it rather than the main thread's.
+    /// The two are separate contexts, so summing them describes no window that
+    /// ever existed — measured over one project's window, 84.5% of the
+    /// characters were a subagent's.
+    pub sidechain: bool,
 }
 
 /// One hook run inside a Stop event.
@@ -974,6 +979,7 @@ pub fn read_transcript(
                     citation,
                     path: PathBuf::from(loaded),
                     chars,
+                    sidechain: raw.is_sidechain.unwrap_or(false),
                 }));
             }
             ConsumedType::System => {
@@ -1213,7 +1219,19 @@ mod tests {
             Record::RuleLoad(r) => {
                 assert_eq!(r.path, PathBuf::from("/repo/.claude/rules/testing.md"));
                 assert_eq!(r.chars, 5);
+                assert!(!r.sidechain);
             }
+            _ => panic!("expected a rule load"),
+        }
+    }
+
+    #[test]
+    fn a_rule_load_taken_by_a_subagent_says_so() {
+        let (recs, _) = rec(&format!(
+            r#"{{"type":"attachment",{BASE},"isSidechain":true,"attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/testing.md","content":{{"content":"abcde"}}}}}}"#
+        ));
+        match &recs[0] {
+            Record::RuleLoad(r) => assert!(r.sidechain),
             _ => panic!("expected a rule load"),
         }
     }

@@ -138,6 +138,9 @@ pub struct DenialGroup {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RuleLoadGroup {
     pub path: PathBuf,
+    /// Whether the loads counted here entered a subagent's window rather than
+    /// the main thread's. The same file appears under both where both read it.
+    pub sidechain: bool,
     pub loads: usize,
     /// Characters entering context across every load.
     pub chars: usize,
@@ -235,7 +238,7 @@ pub struct HarnessAnalyzer {
     denials: HashMap<(String, Option<String>), Group>,
     blocked: HashMap<(Option<String>, String), (serde_json::Value, Group)>,
     invocations: HashMap<(String, String), Group>,
-    rules: HashMap<PathBuf, Group>,
+    rules: HashMap<(PathBuf, bool), Group>,
     hooks: HashMap<String, Group>,
     stops: usize,
     hook_errors: usize,
@@ -267,7 +270,7 @@ impl HarnessAnalyzer {
             }
             Record::RuleLoad(load) => {
                 self.rules
-                    .entry(load.path.clone())
+                    .entry((load.path.clone(), load.sidechain))
                     .or_default()
                     .observe(&load.citation, load.chars as u64);
             }
@@ -360,14 +363,20 @@ impl HarnessAnalyzer {
         let mut rule_loads: Vec<RuleLoadGroup> = self
             .rules
             .into_iter()
-            .map(|(path, g)| RuleLoadGroup {
+            .map(|((path, sidechain), g)| RuleLoadGroup {
                 path,
+                sidechain,
                 loads: g.count,
                 chars: g.weight as usize,
                 span: g.span(),
             })
             .collect();
-        rule_loads.sort_by(|a, b| b.chars.cmp(&a.chars).then(a.path.cmp(&b.path)));
+        rule_loads.sort_by(|a, b| {
+            b.chars
+                .cmp(&a.chars)
+                .then(a.path.cmp(&b.path))
+                .then(a.sidechain.cmp(&b.sidechain))
+        });
 
         let mut hooks: Vec<HookCost> = self
             .hooks
@@ -463,10 +472,15 @@ mod tests {
     }
 
     fn loaded(uuid: &str, seconds: i64, path: &str, chars: usize) -> Record {
+        loaded_into(uuid, seconds, path, chars, false)
+    }
+
+    fn loaded_into(uuid: &str, seconds: i64, path: &str, chars: usize, sidechain: bool) -> Record {
         Record::RuleLoad(RuleLoad {
             citation: cite(uuid, seconds),
             path: PathBuf::from(path),
             chars,
+            sidechain,
         })
     }
 
@@ -527,6 +541,24 @@ mod tests {
         assert_eq!(facts.rule_loads[0].chars, 90_000);
         assert_eq!(facts.rule_loads[1].loads, 2);
         assert_eq!(facts.rule_loads[1].chars, 200);
+    }
+
+    #[test]
+    fn one_file_read_by_both_threads_is_two_rows_because_they_are_two_windows() {
+        let path = "/repo/.claude/rules/style.md";
+        let facts = run(&[
+            loaded("r1", 100, path, 100),
+            loaded_into("r2", 200, path, 900, true),
+            loaded_into("r3", 300, path, 900, true),
+        ]);
+
+        assert_eq!(facts.rule_loads.len(), 2);
+        assert!(facts.rule_loads[0].sidechain);
+        assert_eq!(facts.rule_loads[0].loads, 2);
+        assert_eq!(facts.rule_loads[0].chars, 1_800);
+        assert!(!facts.rule_loads[1].sidechain);
+        assert_eq!(facts.rule_loads[1].loads, 1);
+        assert_eq!(facts.rule_loads[1].chars, 100);
     }
 
     #[test]
