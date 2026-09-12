@@ -338,6 +338,9 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         // boundary is written into the transcript behind it.
         let first_compaction = compactions.len();
         let mut commands: Vec<(Timestamp, String)> = Vec::new();
+        // The boundary whose resuming request has not arrived yet. Per session,
+        // because two sessions interleave here and each resumes its own.
+        let mut resuming: Option<usize> = None;
         for rec in &records {
             let session = &rec.citation().session;
             sessions.insert(session.clone());
@@ -368,12 +371,23 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             match rec {
                 record::Record::Compaction(c) => {
                     compactions.push(c.clone());
+                    resuming = Some(compactions.len() - 1);
                     recovering.insert(session.clone());
                 }
                 record::Record::Assistant(turn) => {
                     tokens.add(turn.tokens);
                     if !turn.sidechain {
                         recovery.charge(&recovering, session).agent_turns += 1;
+                        // A turn that reports no prompt at all did not carry
+                        // one of zero — the runtime charges a message once and
+                        // writes it as several records. Waiting for a reported
+                        // prompt reads the message rather than its first block.
+                        if let Some(boundary) = resuming
+                            && turn.tokens.prompt() > 0
+                        {
+                            compactions[boundary].resumed_tokens = Some(turn.tokens.prompt());
+                            resuming = None;
+                        }
                     }
                     for action in &turn.actions {
                         tools.entry(action.tool.clone()).or_default().calls += 1;
