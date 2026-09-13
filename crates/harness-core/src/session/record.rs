@@ -71,11 +71,6 @@ const QUEUED_PROMPT_SOURCE: &str = "queued";
 /// The attachment carrying a project memory file that entered context.
 const RULE_LOAD_ATTACHMENT: &str = "nested_memory";
 
-/// The memory type of a file under a project's `.claude/rules`. Measured over
-/// this project's corpus, all 130 rule loads that carried `globs` were this
-/// type.
-const PROJECT_MEMORY_TYPE: &str = "Project";
-
 /// The system record carrying one Stop event's hook accounting.
 const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
 
@@ -450,50 +445,6 @@ pub struct RuleLoad {
     /// subagent's, and 601 of 1,722 files entered both — so which window a
     /// load reached is most of what a total hides.
     pub sidechain: bool,
-    /// What the runtime matched this file's `paths:` against. `None` for a
-    /// file loaded by the directory it sits in — a nested `CLAUDE.md` — and
-    /// for a rule outside a project's `.claude/rules`, whose root the record
-    /// does not carry.
-    pub scope: Option<RuleScope>,
-}
-
-/// A path-scoped rule's patterns as the runtime recorded them on the load, and
-/// the directory they are relative to.
-#[derive(Debug, Clone)]
-pub struct RuleScope {
-    pub root: PathBuf,
-    pub patterns: Vec<String>,
-}
-
-/// The patterns a rule load carries, and the root they resolve against.
-///
-/// `globs` is the rule's `paths:` after the runtime expanded its braces and
-/// stripped a trailing `/**`, which is what it matched. A project rule is
-/// matched against the directory holding its `.claude/rules`, however deep
-/// below that the file sits; a user or managed rule is matched against a
-/// directory the load does not record, so it has no scope here.
-fn rule_scope(path: &Path, content: Option<&serde_json::Value>) -> Option<RuleScope> {
-    let content = content?;
-    if content.get("type")?.as_str()? != PROJECT_MEMORY_TYPE {
-        return None;
-    }
-    let patterns = content
-        .get("globs")?
-        .as_array()?
-        .iter()
-        .map(|g| g.as_str().map(str::to_string))
-        .collect::<Option<Vec<String>>>()?;
-    let rules = path.ancestors().find(|dir| {
-        dir.file_name().is_some_and(|n| n == "rules")
-            && dir
-                .parent()
-                .and_then(Path::file_name)
-                .is_some_and(|n| n == ".claude")
-    })?;
-    Some(RuleScope {
-        root: rules.parent()?.parent()?.to_path_buf(),
-        patterns,
-    })
 }
 
 /// One hook run inside a Stop event.
@@ -1077,17 +1028,15 @@ pub fn read_transcript(
                     coverage.records_malformed += 1;
                     continue;
                 };
-                let content = attachment.and_then(|a| a.get("content"));
-                let chars = content
+                let chars = attachment
+                    .and_then(|a| a.get("content"))
                     .and_then(|c| c.get("content"))
                     .and_then(serde_json::Value::as_str)
                     .map(|s| s.chars().count())
                     .unwrap_or(0);
-                let path = PathBuf::from(loaded);
                 out.push(Record::RuleLoad(RuleLoad {
                     citation,
-                    scope: rule_scope(&path, content),
-                    path,
+                    path: PathBuf::from(loaded),
                     chars,
                     sidechain: raw.is_sidechain.unwrap_or(false),
                 }));
@@ -1347,35 +1296,6 @@ mod tests {
             Record::RuleLoad(r) => assert!(r.sidechain),
             _ => panic!("expected a rule load"),
         }
-    }
-
-    fn load_scope(path: &str, content: &str) -> Option<RuleScope> {
-        let (recs, _) = rec(&format!(
-            r#"{{"type":"attachment",{BASE},"attachment":{{"type":"nested_memory","path":"{path}","content":{content}}}}}"#
-        ));
-        match recs.into_iter().next() {
-            Some(Record::RuleLoad(r)) => r.scope,
-            _ => panic!("expected a rule load"),
-        }
-    }
-
-    #[test]
-    fn a_project_rule_is_scoped_against_the_directory_holding_its_rules() {
-        let scope = load_scope(
-            "/repo/.claude/worktrees/w/.claude/rules/lang/rust.md",
-            r#"{"type":"Project","globs":["crates/core/src","**/*.rs"],"content":"x"}"#,
-        )
-        .expect("a project rule that recorded globs");
-        assert_eq!(scope.root, PathBuf::from("/repo/.claude/worktrees/w"));
-        assert_eq!(scope.patterns, ["crates/core/src", "**/*.rs"]);
-    }
-
-    #[test]
-    fn a_load_whose_root_the_record_does_not_carry_has_no_scope() {
-        let nested = r#"{"type":"Project","content":"x"}"#;
-        assert!(load_scope("/repo/crates/core/CLAUDE.md", nested).is_none());
-        let user = r#"{"type":"User","globs":["src"],"content":"x"}"#;
-        assert!(load_scope("/home/me/.claude/rules/style.md", user).is_none());
     }
 
     #[test]

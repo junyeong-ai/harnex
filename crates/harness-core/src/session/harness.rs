@@ -19,21 +19,12 @@
 //! matching rule is simply not recorded anywhere. That limit is reported
 //! rather than worked around.
 //!
-//! A rule load is the opposite case. The load records the patterns the runtime
-//! matched, and those patterns are `.gitignore` lines, a grammar git owns, so
-//! an edit after the load is held against what was recorded by the grammar it
-//! was recorded in (`path_scope`). What the load does not record is the read
-//! that triggered it, and nothing here reconstructs that.
-//!
 //! ## What this module refuses to do
 //!
 //! - Never attribute a denial to a permission rule. The record does not carry
 //!   one, and re-deriving the match would reimplement the runtime's own
 //!   matching semantics — the drift `spec` exists to prevent, with a deletion
 //!   decision downstream of it.
-//! - Never report an edit as made without a rule. The runtime withholds a load
-//!   for a rule file the context has already read directly, so an edit with no
-//!   load before it may still have had the rule in view.
 //! - Never judge a cost. A hook that spends time and prevents nothing is
 //!   reported as exactly that; whether it should go is a reading.
 //! - Never carry every citation. A group's count is made verifiable by its
@@ -44,12 +35,11 @@
 //!   used as a predicate.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::record::{Citation, Record, RuleLoad};
-use crate::path_scope::PathScope;
+use super::record::{Citation, Record};
 
 /// A call that met a refusal more than once.
 ///
@@ -158,23 +148,7 @@ pub struct RuleLoadGroup {
     /// side adds up windows that never saw each other, so read it as what the
     /// file cost the run and not as what any one context held.
     pub chars: usize,
-    /// Of these loads, the ones after which the same context edited a file the
-    /// rule's `paths:` match, before a compaction dropped the rule.
-    ///
-    /// A floor: an edit made through a shell leaves no record, and neither a
-    /// context forked from this one nor an edit after the window is followed.
-    /// It says an edit in scope came after the load, not that the rule shaped
-    /// it. `None` where no load in this row recorded a scope.
-    pub followed_by_scoped_edit: Option<usize>,
     pub span: Span,
-}
-
-/// A load whose context has not yet been compacted, and whether an edit its
-/// scope covers has followed it there.
-struct OpenLoad {
-    load: RuleLoad,
-    scope: Option<PathScope>,
-    edited: bool,
 }
 
 /// A hook command, and what running it cost.
@@ -268,13 +242,7 @@ pub struct HarnessAnalyzer {
     denials: HashMap<(String, Option<String>), Group>,
     blocked: HashMap<(Option<String>, String), (serde_json::Value, Group)>,
     invocations: HashMap<(String, String), Group>,
-    /// Each row's loads, flagged where a scoped edit followed, and whether any
-    /// of them recorded a scope.
-    rules: HashMap<(PathBuf, bool), (Group, bool)>,
-    /// Loads still in context, by the transcript that holds that context. A
-    /// subagent writes its own transcript and starts without its parent's
-    /// loads, and a compaction drops every load in the transcript it is in.
-    open: HashMap<PathBuf, Vec<OpenLoad>>,
+    rules: HashMap<(PathBuf, bool), Group>,
     hooks: HashMap<String, Group>,
     stops: usize,
     hook_errors: usize,
@@ -303,28 +271,12 @@ impl HarnessAnalyzer {
                             .observe(&turn.citation, 0);
                     }
                 }
-                if let (Some(edited), Some(open)) =
-                    (&turn.edited_file, self.open.get_mut(&turn.citation.file))
-                {
-                    for load in open.iter_mut() {
-                        if load.scope.as_ref().is_some_and(|s| s.contains(edited)) {
-                            load.edited = true;
-                        }
-                    }
-                }
             }
             Record::RuleLoad(load) => {
-                self.open
-                    .entry(load.citation.file.clone())
+                self.rules
+                    .entry((load.path.clone(), load.sidechain))
                     .or_default()
-                    .push(OpenLoad {
-                        scope: load
-                            .scope
-                            .as_ref()
-                            .map(|s| PathScope::new(&s.root, &s.patterns)),
-                        load: load.clone(),
-                        edited: false,
-                    });
+                    .observe(&load.citation, load.chars as u64);
             }
             Record::StopSummary(stop) => {
                 self.stops += 1;
@@ -343,7 +295,7 @@ impl HarnessAnalyzer {
                         );
                 }
             }
-            Record::Compaction(boundary) => self.close(&boundary.citation.file),
+            Record::Compaction(_) => {}
             Record::Assistant(turn) => {
                 for asset in turn.actions.iter().filter_map(|a| a.asset.as_ref()) {
                     self.invocations
@@ -355,23 +307,7 @@ impl HarnessAnalyzer {
         }
     }
 
-    fn close(&mut self, transcript: &Path) {
-        for open in self.open.remove(transcript).unwrap_or_default() {
-            let (group, scoped) = self
-                .rules
-                .entry((open.load.path, open.load.sidechain))
-                .or_default();
-            group.observe_flagged(&open.load.citation, open.load.chars as u64, open.edited);
-            *scoped |= open.scope.is_some();
-        }
-    }
-
-    pub fn finish(mut self, with_text: bool) -> HarnessFacts {
-        let transcripts: Vec<PathBuf> = self.open.keys().cloned().collect();
-        for transcript in &transcripts {
-            self.close(transcript);
-        }
-
+    pub fn finish(self, with_text: bool) -> HarnessFacts {
         let mut blocked: Vec<BlockedCall> = self
             .blocked
             .into_iter()
@@ -431,12 +367,11 @@ impl HarnessAnalyzer {
         let mut rule_loads: Vec<RuleLoadGroup> = self
             .rules
             .into_iter()
-            .map(|((path, sidechain), (g, scoped))| RuleLoadGroup {
+            .map(|((path, sidechain), g)| RuleLoadGroup {
                 path,
                 sidechain,
                 loads: g.count,
                 chars: g.weight as usize,
-                followed_by_scoped_edit: scoped.then_some(g.flagged),
                 span: g.span(),
             })
             .collect();
@@ -510,66 +445,15 @@ mod canonical_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::record::{
-        Authorship, Compaction, Denial, HookRun, RuleLoad, RuleScope, StopSummary, UserTurn,
-    };
-
-    const MAIN: &str = "/corpus/s.jsonl";
+    use crate::session::record::{Authorship, Denial, HookRun, RuleLoad, StopSummary, UserTurn};
 
     fn cite(uuid: &str, seconds: i64) -> Citation {
-        cite_in(MAIN, uuid, seconds)
-    }
-
-    fn cite_in(transcript: &str, uuid: &str, seconds: i64) -> Citation {
         Citation {
             session: "s1".into(),
-            file: PathBuf::from(transcript),
+            file: PathBuf::from("/corpus/s.jsonl"),
             uuid: uuid.into(),
             timestamp: jiff::Timestamp::from_second(seconds).unwrap(),
         }
-    }
-
-    fn scoped_load(transcript: &str, uuid: &str, seconds: i64, patterns: &[&str]) -> Record {
-        Record::RuleLoad(RuleLoad {
-            citation: cite_in(transcript, uuid, seconds),
-            path: PathBuf::from("/repo/.claude/rules/style.md"),
-            chars: 100,
-            sidechain: false,
-            scope: Some(RuleScope {
-                root: PathBuf::from("/repo"),
-                patterns: patterns.iter().map(|p| p.to_string()).collect(),
-            }),
-        })
-    }
-
-    fn edit(transcript: &str, uuid: &str, seconds: i64, path: &str) -> Record {
-        Record::User(UserTurn {
-            citation: cite_in(transcript, uuid, seconds),
-            authorship: Authorship::Unclaimed,
-            text: None,
-            queued: false,
-            follows_agent_output: true,
-            interrupted: false,
-            commit: None,
-            edited_file: Some(PathBuf::from(path)),
-            denial: None,
-            failed_tool: None,
-        })
-    }
-
-    fn compacted(transcript: &str, uuid: &str, seconds: i64) -> Record {
-        Record::Compaction(Compaction {
-            citation: cite_in(transcript, uuid, seconds),
-            trigger: "auto".into(),
-            pre_tokens: 0,
-            post_tokens: 0,
-            cumulative_dropped_tokens: 0,
-            duration_ms: 0,
-            resumed_tokens: None,
-            instruction_chars: None,
-            instruction: None,
-            sidechain: false,
-        })
     }
 
     fn denied(uuid: &str, seconds: i64, kind: &str, tool: Option<&str>) -> Record {
@@ -601,7 +485,6 @@ mod tests {
             path: PathBuf::from(path),
             chars,
             sidechain,
-            scope: None,
         })
     }
 
@@ -696,59 +579,6 @@ mod tests {
         assert_eq!(facts.rule_loads.len(), 2);
         assert!(!facts.rule_loads[0].sidechain);
         assert!(facts.rule_loads[1].sidechain);
-    }
-
-    #[test]
-    fn a_load_is_followed_only_by_an_edit_its_own_paths_match() {
-        let load = scoped_load(MAIN, "r1", 100, &["src"]);
-        let elsewhere = run(&[load.clone(), edit(MAIN, "e1", 200, "/repo/docs/a.md")]);
-        assert_eq!(elsewhere.rule_loads[0].followed_by_scoped_edit, Some(0));
-
-        let within = run(&[load, edit(MAIN, "e1", 200, "/repo/src/a/b.rs")]);
-        assert_eq!(within.rule_loads[0].followed_by_scoped_edit, Some(1));
-    }
-
-    #[test]
-    fn an_edit_before_a_load_or_past_the_compaction_that_dropped_it_does_not_follow_it() {
-        let facts = run(&[
-            edit(MAIN, "e1", 100, "/repo/src/a.rs"),
-            scoped_load(MAIN, "r1", 200, &["src"]),
-            compacted(MAIN, "c1", 300),
-            edit(MAIN, "e2", 400, "/repo/src/a.rs"),
-            scoped_load(MAIN, "r2", 500, &["src"]),
-            edit(MAIN, "e3", 600, "/repo/src/a.rs"),
-        ]);
-        assert_eq!(facts.rule_loads[0].loads, 2);
-        assert_eq!(facts.rule_loads[0].followed_by_scoped_edit, Some(1));
-    }
-
-    #[test]
-    fn an_edit_in_another_transcript_is_another_context() {
-        let facts = run(&[
-            scoped_load(MAIN, "r1", 100, &["src"]),
-            edit(
-                "/corpus/s/subagents/agent-a.jsonl",
-                "e1",
-                200,
-                "/repo/src/a.rs",
-            ),
-            compacted("/corpus/s/subagents/agent-a.jsonl", "c1", 300),
-            edit(MAIN, "e2", 400, "/repo/src/a.rs"),
-        ]);
-        assert_eq!(
-            facts.rule_loads[0].followed_by_scoped_edit,
-            Some(1),
-            "neither the subagent's edit nor its compaction reaches the main thread's load"
-        );
-    }
-
-    #[test]
-    fn a_row_with_no_scoped_load_did_not_ask_the_question() {
-        let facts = run(&[
-            loaded("r1", 100, "/repo/crates/core/CLAUDE.md", 100),
-            edit(MAIN, "e1", 200, "/repo/crates/core/src/a.rs"),
-        ]);
-        assert_eq!(facts.rule_loads[0].followed_by_scoped_edit, None);
     }
 
     #[test]

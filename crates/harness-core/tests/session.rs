@@ -528,39 +528,6 @@ fn the_harness_side_separates_who_refused_and_what_each_hook_cost() {
 
     assert_eq!(h.rule_loads[0].loads, 1);
     assert_eq!(h.rule_loads[0].chars, 10);
-    assert_eq!(h.rule_loads[0].followed_by_scoped_edit, None);
-}
-
-#[test]
-fn a_rule_load_is_followed_to_the_edits_its_recorded_paths_match() {
-    let scoped = |uuid: &str, ts: &str| {
-        format!(
-            r#"{{"type":"attachment","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/core.md","content":{{"type":"Project","globs":["crates/core/src"],"content":"abcde"}}}}}}"#
-        )
-    };
-    let lines = vec![
-        typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
-        scoped("m1", "2026-08-01T09:00:01Z"),
-        edit("s1", "e1", "2026-08-01T09:00:02Z", "/repo/README.md"),
-        scoped("m2", "2026-08-01T09:00:03Z"),
-        edit(
-            "s1",
-            "e2",
-            "2026-08-01T09:00:04Z",
-            "/repo/crates/core/src/lib.rs",
-        ),
-    ];
-
-    let (_dir, config) = corpus(&[("-repo/s1.jsonl", lines)]);
-    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
-    let row = &facts.harness.rule_loads[0];
-
-    assert_eq!(row.loads, 2);
-    assert_eq!(
-        row.followed_by_scoped_edit,
-        Some(2),
-        "an edit in scope follows every load still in that context"
-    );
 }
 
 #[test]

@@ -68,7 +68,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
     ),
     (
         "commands/measure.md",
-        67,
+        65,
         &[
             "BaselineDiff.from",
             "BaselineDiff.to",
@@ -95,8 +95,6 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
             "HarnessFacts.invocations",
             "HarnessFacts.blocked",
             "RuleLoadGroup.sidechain",
-            "RuleLoadGroup.loads",
-            "RuleLoadGroup.followed_by_scoped_edit",
             "RepositoryFacts.by_fate",
             "CommitOutcome.reverted_by",
             "Coverage.sessions",
