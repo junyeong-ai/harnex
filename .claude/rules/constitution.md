@@ -44,9 +44,13 @@ Every project-specific shape derives from `harness.toml`.
 
 ## VIII. No human-pedagogical prose in rule files
 
-Rule files (`.claude/rules/*.md`) use imperatives. Background and
-reasoning live in commit bodies and the lifecycle ledger, not in the
-rule body that Claude re-reads every session.
+Rule files (`.claude/rules/*.md`) use imperatives carrying the mechanism
+that makes each one true, in a line — a reader generalises from the
+mechanism and cannot from a bare order. What leaves is provenance: how a
+rule was arrived at, what was tried first, which measurement session
+settled it. That belongs in commit bodies and the lifecycle ledger, not
+in a body Claude re-reads every session.
+`plugins/harnex/reference/keep-soften-cut.md` owns where the line falls.
 
 ## IX. Single source of truth, guarded by a test
 

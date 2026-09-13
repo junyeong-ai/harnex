@@ -136,6 +136,18 @@ sent again on every turn.
 Compare token counts across kinds only where `models` matches: a kind answered
 by a different model is a different price, not a different habit.
 
+What the tokens cost to produce, `agent_chars_per_submission` costs to read, and
+the two move apart: tool calls and reasoning are in the tokens and not in the
+characters, and so is a subagent's prose, which reached the agent rather than
+the person. Neither direction of either rate is the good one. Read both beside
+`steering_per_submission` and `interrupts_per_submission` — a window whose
+characters rose while corrections fell said more and was understood, and one
+where both rose said more and was not. `questions_per_submission` counts only
+the times the agent stopped through the tool the runtime records, so it is a
+floor on asking: zero means the tool went unused, never that nothing was asked.
+A window that asks less and is corrected more decided what it should have put
+to the operator.
+
 This is the delegation question, and it is a portfolio rather than a score.
 Say where the operator intervenes most and show it; do not say what they should
 delegate, because a kind that draws steering may be collaborative by nature
