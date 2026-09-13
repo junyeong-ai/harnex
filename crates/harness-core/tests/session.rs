@@ -2737,20 +2737,16 @@ fn a_compact_that_produced_no_boundary_is_not_charged_to_the_next_one() {
 /// rate question with another thread's denominator.
 #[test]
 fn a_subagents_prose_is_not_what_the_operator_had_to_read() {
-    // A subagent writes to the agent that dispatched it. Its characters are in
-    // the instruction's token count, because the instruction paid for them,
-    // and not in what the operator read.
-    let sidechain = |uuid: &str, ts: &str| {
-        format!(
-            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","isSidechain":true,"message":{{"id":"m_{uuid}","content":[{{"type":"text","text":"digging"}}]}}}}"#
-        )
-    };
+    // A subagent writes to the agent that dispatched it. What it spent is the
+    // instruction's, because the instruction set it running and paid for it;
+    // what it wrote is not, because it never reached the operator. The two
+    // counts part company here and nowhere else.
     let (_dir, config) = corpus(&[(
         "-Users-me-alpha/s1.jsonl",
         vec![
             typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
             spent("s1", "x1", "2026-08-01T09:00:01Z", "claude-opus-5", 10),
-            sidechain("x2", "2026-08-01T09:00:02Z"),
+            agent_carrying("s1", "x2", "2026-08-01T09:00:02Z", 500, true),
         ],
     )]);
     let options = CollectOptions {
@@ -2769,6 +2765,13 @@ fn a_subagents_prose_is_not_what_the_operator_had_to_read() {
         facts.submissions[0].agent_turns, 2,
         "both turns are still the work this instruction set running"
     );
+    assert_eq!(
+        facts.submissions[0].tokens.prompt(),
+        531,
+        "31 from the main thread and 500 from the subagent: the instruction \
+         paid for both"
+    );
+    assert_eq!(facts.tokens.prompt(), 531, "and the window agrees with it");
 }
 
 #[test]
