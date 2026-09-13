@@ -393,13 +393,7 @@ distinct calls), because diffuse friction points at a broad rule and repeated
 friction points at a habit, and the prescriptions are opposite. Then hook
 wall-clock against the `elapsed_ms` of the instructions in the window, which is
 what says whether it is worth anything: a hook holding two seconds is most of a
-ten-second instruction and none of a ten-minute one. Then rule-load characters,
-and beside each row's `loads` its `followed_by_scoped_edit`: the loads after
-which the same context edited a file that rule's `paths:` match. A rule whose
-loads mostly precede no such edit spent that context on reading, which asks
-where its `paths:` reach rather than what its text says. Read the two sides
-apart here too — a subagent sent to review loads what it reads and edits
-nothing.
+ten-second instruction and none of a ten-minute one. Then rule-load characters.
 
 Relativise against the operator, never against other people: "this instruction
 ran 27 times your median" names an outlier without a population.
@@ -463,13 +457,6 @@ describing the change. Everything else goes in an appendix.
   size — rank the two sides apart and read either as what the file cost the run.
   The rate over them, `rule_load_chars_per_submission`, does add both sides, and
   its doc comment says why
-- `followed_by_scoped_edit` is a floor: an edit made through a shell leaves no
-  record, and neither a forked context nor an edit after the window is followed.
-  It says an edit in the rule's scope came after the load, never that the rule
-  shaped it, and nothing here counts an edit made without a rule — the runtime
-  attaches no load for a rule file the context has already read directly. It is
-  null on a row whose loads recorded no scope: a nested `CLAUDE.md`, or a
-  user-level rule, whose root the load does not carry
 - `files_discovered` is the corpus the run opened; `files_in_window` is what it
   answered about
 - `by_fate` counts the commits the transcript recorded, which is a floor

@@ -15,7 +15,6 @@ thiserror.workspace = true
 jiff.workspace = true
 url.workspace = true
 glob.workspace = true
-gix-ignore.workspace = true
 pulldown-cmark.workspace = true
 regex.workspace = true
 semver.workspace = true
