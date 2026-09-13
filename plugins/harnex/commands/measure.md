@@ -77,8 +77,10 @@ it for the same window, check its own wiring first, and add:
 A collector often carries more than price: domain kinds the project itself
 emits — gates, deploys, rule blocks — keyed by the same session. Take the
 window's kinds beside its cost and report them as the collector's rows, never
-folded into the oracle's: the join is exact at the session, and at the session
-only.
+folded into the oracle's. A row that carries the runtime's `prompt_id` joins to
+the instruction whose `prompt_ids` hold it — tighter than the session, and one
+id can sit in two consecutive instructions, so such a row belongs to either.
+A row without one joins at the session and no finer.
 
 This step is optional in both directions. With no collector the report is
 complete without these rows and says so once; with one, no other section

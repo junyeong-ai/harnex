@@ -450,6 +450,89 @@ fn queued_turns_fold_into_one_instruction_end_to_end() {
     );
 }
 
+#[test]
+fn an_instruction_carries_the_prompt_ids_it_spans_and_the_memory_that_arrived_under_it() {
+    let prompt = |uuid: &str, ts: &str, source: &str, id: &str| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","origin":{{"kind":"human"}},"promptSource":"{source}","promptId":"{id}","message":{{"content":"{uuid}"}}}}"#
+        )
+    };
+    let result = |uuid: &str, ts: &str, id: &str, sidechain: bool| {
+        format!(
+            r#"{{"type":"user","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","isSidechain":{sidechain},"promptId":"{id}","message":{{"content":[{{"type":"tool_result","content":"ok"}}]}}}}"#
+        )
+    };
+    let subagent_load = r#"{"type":"attachment","uuid":"m3","timestamp":"2026-08-01T09:00:06Z","sessionId":"s1","isSidechain":true,"attachment":{"type":"nested_memory","path":"/repo/.claude/rules/core.md","content":{"content":"abc"}}}"#.to_string();
+    let main = vec![
+        rule_load(
+            "s1",
+            "m0",
+            "2026-08-01T08:59:00Z",
+            "/repo/CLAUDE.md",
+            "before",
+        ),
+        prompt("a1", "2026-08-01T09:00:00Z", "typed", "p1"),
+        prompt("a2", "2026-08-01T09:00:01Z", "queued", "p4"),
+        rule_load(
+            "s1",
+            "m1",
+            "2026-08-01T09:00:02Z",
+            "/repo/.claude/rules/core.md",
+            "abcde",
+        ),
+        result("r1", "2026-08-01T09:00:03Z", "p2", false),
+        agent("s1", "g1", "2026-08-01T09:00:08Z"),
+        prompt("a3", "2026-08-01T09:00:09Z", "queued", "p2"),
+        prompt("a4", "2026-08-01T09:10:00Z", "typed", "p3"),
+    ];
+    let subagent = vec![
+        subagent_load,
+        result("r2", "2026-08-01T09:00:07Z", "p2", true),
+    ];
+
+    let (_dir, config) = corpus(&[
+        ("-repo/s1.jsonl", main),
+        ("-repo/s1/subagents/agent-a.jsonl", subagent),
+    ]);
+    let facts = session::collect(
+        &config,
+        &CollectOptions {
+            with_submissions: true,
+            ..CollectOptions::default()
+        },
+    )
+    .unwrap();
+    let subs = &facts.submissions;
+
+    assert_eq!(subs.len(), 3);
+    assert_eq!(subs[0].prompt_ids, ["p1", "p4", "p2"]);
+    assert_eq!(
+        subs[1].prompt_ids,
+        ["p2"],
+        "a message queued after the agent spoke opens an instruction under the same prompt"
+    );
+    assert_eq!(subs[2].prompt_ids, ["p3"]);
+
+    let loads: Vec<(&str, bool, usize)> = subs[0]
+        .rule_loads
+        .iter()
+        .map(|r| (r.path.to_str().unwrap(), r.sidechain, r.chars))
+        .collect();
+    assert_eq!(
+        loads,
+        [
+            ("/repo/.claude/rules/core.md", false, 5),
+            ("/repo/.claude/rules/core.md", true, 3)
+        ]
+    );
+    assert!(subs[1].rule_loads.is_empty() && subs[2].rule_loads.is_empty());
+    assert_eq!(
+        facts.harness.rule_loads.len(),
+        3,
+        "a load before any instruction still counts for the window"
+    );
+}
+
 /// The assistant record that makes a tool call, and the denial that answers it.
 /// One tool call the operator let through, so a tally is not a tally of denials.
 fn called(session: &str, tool: &str, seconds: u32) -> String {

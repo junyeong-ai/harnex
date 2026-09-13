@@ -25,6 +25,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use super::harness::{RuleLoadGroup, RuleLoadTally};
 #[cfg(test)]
 use super::record::Authorship;
 use super::record::{Citation, Record, TokenUse, ToolUse, UserTurn};
@@ -86,6 +87,15 @@ impl SubmissionIndex {
 pub struct Submission {
     /// The turn that opened it.
     pub citation: Citation,
+    /// The runtime's ids for the prompts it spans, in the order they first
+    /// appear — what a hook event's `prompt_id` joins on. The runtime opens a
+    /// prompt for what it delivers as well as for what the operator types — a
+    /// background task's notification, a peer session's message — and those
+    /// fall under the instruction standing. A message queued after the agent
+    /// spoke opens a new instruction yet kept its prompt's id 32 times of 45
+    /// over this project's corpus, so one id can sit in two consecutive
+    /// instructions.
+    pub prompt_ids: Vec<String>,
     /// Operator turns folded into this instruction.
     pub turns: usize,
     pub chars: usize,
@@ -141,6 +151,11 @@ pub struct Submission {
     /// Present only where the window was scoped to a project and that project
     /// is a git work tree.
     pub committed: Vec<PathBuf>,
+    /// Project memory that entered context while it stood, grouped and ranked
+    /// as `harness.rule_loads` is. A file already in that context is not
+    /// attached again and one loaded on every turn never is, so this is what
+    /// arrived under the instruction rather than everything in force.
+    pub rule_loads: Vec<RuleLoadGroup>,
     /// Interruptions the runtime marked while it stood — a floor, for the
     /// reason [`super::InterventionKind`] gives.
     pub interrupts: usize,
@@ -175,6 +190,7 @@ pub struct SubmissionAnalyzer {
     /// record carries each path once however many times it was edited.
     touched: HashMap<usize, BTreeSet<PathBuf>>,
     models: HashMap<usize, BTreeSet<String>>,
+    loads: HashMap<usize, RuleLoadTally>,
 }
 
 impl SubmissionAnalyzer {
@@ -223,7 +239,21 @@ impl SubmissionAnalyzer {
                         .max(0) as u64;
                 }
             }
-            Record::RuleLoad(_) | Record::StopSummary(_) | Record::Compaction(_) => {}
+            Record::RuleLoad(load) => {
+                if let Some((_, at)) = self.active.get(session).copied() {
+                    self.loads.entry(at).or_default().observe(load);
+                }
+            }
+            Record::StopSummary(_) | Record::Compaction(_) => {}
+        }
+    }
+
+    fn note_prompt(&mut self, at: usize, turn: &UserTurn) {
+        let ids = &mut self.out[at].prompt_ids;
+        if let Some(id) = &turn.prompt_id
+            && !ids.contains(id)
+        {
+            ids.push(id.clone());
         }
     }
 
@@ -231,6 +261,7 @@ impl SubmissionAnalyzer {
         let session = turn.citation.session.clone();
         if let Some((open, at)) = self.active.get(&session).copied() {
             if open == id {
+                self.note_prompt(at, turn);
                 let held = &mut self.out[at];
                 held.turns += 1;
                 held.chars += turn.text.as_deref().map_or(0, |t| t.chars().count());
@@ -248,6 +279,7 @@ impl SubmissionAnalyzer {
         self.active.insert(session, (id, self.out.len()));
         self.out.push(Submission {
             citation: turn.citation.clone(),
+            prompt_ids: turn.prompt_id.iter().cloned().collect(),
             turns: 1,
             chars: text.chars().count(),
             agent_turns: 0,
@@ -261,6 +293,7 @@ impl SubmissionAnalyzer {
             written: Vec::new(),
             commits: Vec::new(),
             committed: Vec::new(),
+            rule_loads: Vec::new(),
             interrupts: 0,
             denials: 0,
             steered_away: false,
@@ -272,6 +305,7 @@ impl SubmissionAnalyzer {
         let Some((_, at)) = self.active.get(&turn.citation.session).copied() else {
             return;
         };
+        self.note_prompt(at, turn);
         if turn.interrupted {
             self.out[at].interrupts += 1;
         }
@@ -296,6 +330,9 @@ impl SubmissionAnalyzer {
         }
         for (at, models) in &self.models {
             self.out[*at].models = models.iter().cloned().collect();
+        }
+        for (at, loads) in std::mem::take(&mut self.loads) {
+            self.out[at].rule_loads = loads.finish();
         }
         self.out.sort_by_key(|s| s.citation.timestamp);
         if !with_text {
@@ -344,6 +381,7 @@ mod boundary_tests {
             edited_file: None,
             denial: None,
             failed_tool: None,
+            prompt_id: None,
         }
     }
 
@@ -415,6 +453,7 @@ mod sample_tests {
                 uuid: format!("u{seconds}"),
                 timestamp: format!("2026-08-01T00:00:{seconds:02}Z").parse().unwrap(),
             },
+            prompt_ids: Vec::new(),
             turns: 1,
             chars: 1,
             agent_turns: 0,
@@ -428,6 +467,7 @@ mod sample_tests {
             written: Vec::new(),
             commits: Vec::new(),
             committed: Vec::new(),
+            rule_loads: Vec::new(),
             interrupts: 0,
             denials: 0,
             steered_away: false,
