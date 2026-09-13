@@ -46,9 +46,10 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
     (
         // The agent judges one submission, and reads it field by field.
         "agents/session-judge.md",
-        25,
+        26,
         &[
             "Submission.citation",
+            "Submission.agent_chars",
             "Submission.chars",
             "Submission.turns",
             "Submission.agent_turns",

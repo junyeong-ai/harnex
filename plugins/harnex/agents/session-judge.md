@@ -30,6 +30,7 @@ text and what followed it:
 | `questions` | times the agent stopped to ask instead of choosing |
 | `edits` · `written` | changes made through a tool the runtime records, and the paths they went to |
 | `commits` · `committed` | what shipped, and the paths those commits changed |
+| `agent_chars` | characters the agent put in front of the operator under it — a subagent's prose is not here, because it went to the agent rather than the person |
 | `tokens` · `models` | what it spent, and which models spent it |
 | `tools` | tool calls made under it, by tool, with `calls` and the `failed` that came back an error — how the work was actually done, and where it fought |
 | `elapsed_ms` | from this instruction to the last record made under it — the work, not the wait after it |
@@ -115,7 +116,8 @@ is a good idea.
  "text": "성능 좀 개선해줘",
  "chars": 9, "turns": 1, "agent_turns": 23, "questions": 0,
  "edits": 6, "written": ["src/cache.rs", "src/index.rs", "src/query.rs", "src/store.rs"],
- "commits": 0, "interrupts": 0, "denials": 0, "steered_away": false}
+ "commits": [], "committed": [], "agent_chars": 4180,
+ "interrupts": 0, "denials": 0, "steered_away": false}
 </input>
 <output>
 {"citation": {"session": "s1", "uuid": "u7"},
