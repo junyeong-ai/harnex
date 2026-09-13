@@ -341,6 +341,10 @@ pub struct AssistantTurn {
     /// they do not share a context: a compaction of the parent leaves a
     /// running subagent's own window untouched.
     pub sidechain: bool,
+    /// Characters of prose this turn wrote, which is what a reader of it
+    /// spends time on. Zero for a turn that only called tools. It moves to the
+    /// message's last record with [`TokenUse`] and for the same reason.
+    pub chars: usize,
 }
 
 /// Where a session's context was compacted, and what it cost.
@@ -929,8 +933,13 @@ pub fn read_transcript(
             }
             ConsumedType::Assistant => {
                 let mut actions = Vec::new();
+                let mut chars = 0;
                 for block in blocks_of(content) {
                     if block.get("type").and_then(serde_json::Value::as_str) != Some("tool_use") {
+                        chars += block
+                            .get("text")
+                            .and_then(serde_json::Value::as_str)
+                            .map_or(0, |t| t.chars().count());
                         continue;
                     }
                     let Some(tool) = block.get("name").and_then(serde_json::Value::as_str) else {
@@ -967,6 +976,7 @@ pub fn read_transcript(
                     message: named,
                     model,
                     sidechain: raw.is_sidechain.unwrap_or(false),
+                    chars,
                 }));
                 // The latest record of a message holds its charge: while a
                 // message is still being written its earlier records report a
@@ -979,6 +989,7 @@ pub fn read_transcript(
                             && let Record::Assistant(turn) = &mut out[previous]
                         {
                             turn.tokens = TokenUse::default();
+                            turn.chars = 0;
                         }
                     }
                     // Charging it is the only answer left — dropping it would

@@ -196,6 +196,11 @@ pub struct SessionFacts {
     /// What the window spent, whether or not the caller asked for the
     /// instruction list.
     pub tokens: TokenUse,
+    /// Characters the agent put in front of the operator, narration and
+    /// closing reports alike. A subagent's prose is left out: it reached the
+    /// agent that dispatched it rather than the operator, which is why this
+    /// and `tokens` answer different questions about the same turns.
+    pub agent_chars: usize,
     /// Tool calls across the window, by tool, with the calls that came back an
     /// error. Read beside `harness.denials`, which groups by the same names:
     /// friction is as much a function of which tool the work goes through as of
@@ -267,6 +272,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     // in one says nothing about the turns of another.
     let mut recovering: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut tokens = TokenUse::default();
+    let mut agent_chars = 0usize;
     let mut commits: Vec<String> = Vec::new();
     let mut tools: BTreeMap<String, ToolUse> = BTreeMap::new();
     let mut sessions: BTreeSet<String> = BTreeSet::new();
@@ -386,6 +392,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
                 record::Record::Assistant(turn) => {
                     tokens.add(turn.tokens);
                     if !turn.sidechain {
+                        agent_chars += turn.chars;
                         recovery.charge(&recovering, session).agent_turns += 1;
                         // A turn that reports no prompt at all did not carry
                         // one of zero. The runtime repeats a message's usage on
@@ -467,6 +474,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         },
         recovery,
         tokens,
+        agent_chars,
         tools,
         repository,
         rework: rework.finish(),

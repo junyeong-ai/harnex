@@ -118,6 +118,11 @@ pub struct Submission {
     /// Times the agent stopped to ask rather than choose — a floor, see
     /// [`CLARIFYING_QUESTION_TOOL`].
     pub questions: usize,
+    /// Characters the agent put in front of the operator under this
+    /// instruction, narration between tool calls and the closing report alike.
+    /// A subagent's prose is not here — it reached this agent rather than the
+    /// operator, which is the one place this parts company with `tokens`.
+    pub agent_chars: usize,
     /// File edits the agent made under it, through a tool the runtime records.
     pub edits: usize,
     /// Distinct files those edits touched, in path order. A floor on where the
@@ -191,6 +196,9 @@ impl SubmissionAnalyzer {
                     let held = &mut self.out[at];
                     held.agent_turns += 1;
                     held.tokens.add(turn.tokens);
+                    if !turn.sidechain {
+                        held.agent_chars += turn.chars;
+                    }
                     held.questions += turn
                         .actions
                         .iter()
@@ -248,6 +256,7 @@ impl SubmissionAnalyzer {
             tools: BTreeMap::new(),
             models: Vec::new(),
             questions: 0,
+            agent_chars: 0,
             edits: 0,
             written: Vec::new(),
             commits: Vec::new(),
@@ -414,6 +423,7 @@ mod sample_tests {
             tools: BTreeMap::new(),
             models: Vec::new(),
             questions: 0,
+            agent_chars: 0,
             edits: 0,
             written: Vec::new(),
             commits: Vec::new(),
