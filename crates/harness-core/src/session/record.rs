@@ -342,8 +342,10 @@ pub struct AssistantTurn {
     /// running subagent's own window untouched.
     pub sidechain: bool,
     /// Characters of prose this turn wrote, which is what a reader of it
-    /// spends time on. Zero for a turn that only called tools. It moves to the
-    /// message's last record with [`TokenUse`] and for the same reason.
+    /// spends time on. A message's text lands on its last record, gathered
+    /// there from the records before it: the runtime writes one record per
+    /// content block, so a turn that narrated and then called a tool wrote its
+    /// prose in the record before the one that closes the message.
     pub chars: usize,
 }
 
@@ -978,18 +980,27 @@ pub fn read_transcript(
                     sidechain: raw.is_sidechain.unwrap_or(false),
                     chars,
                 }));
-                // The latest record of a message holds its charge: while a
-                // message is still being written its earlier records report a
-                // partial output count and the last one reports the settled
-                // one. Clearing the record that held it before keeps the
-                // message counted once at its final value.
+                // The latest record of a message holds it, and the two counts
+                // reach it differently. `usage` is the message's running total
+                // repeated on every record, so the last one is already the
+                // settled figure and the earlier one is cleared. Prose is not
+                // repeated — a text block and the tool call after it are
+                // separate records — so the earlier record's characters move
+                // forward instead, and clearing them there would lose the
+                // whole message's text whenever a tool call closed it.
                 match message.and_then(|m| m.id.as_deref()) {
                     Some(id) => {
-                        if let Some(previous) = charged.insert(id.to_string(), out.len() - 1)
-                            && let Record::Assistant(turn) = &mut out[previous]
-                        {
-                            turn.tokens = TokenUse::default();
-                            turn.chars = 0;
+                        if let Some(previous) = charged.insert(id.to_string(), out.len() - 1) {
+                            let carried = match &mut out[previous] {
+                                Record::Assistant(turn) => {
+                                    turn.tokens = TokenUse::default();
+                                    std::mem::take(&mut turn.chars)
+                                }
+                                _ => 0,
+                            };
+                            if let Some(Record::Assistant(turn)) = out.last_mut() {
+                                turn.chars += carried;
+                            }
                         }
                     }
                     // Charging it is the only answer left — dropping it would

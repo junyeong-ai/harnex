@@ -2735,6 +2735,46 @@ fn a_compact_that_produced_no_boundary_is_not_charged_to_the_next_one() {
 /// compaction of the parent leaves a running subagent's own window alone, so
 /// its turns ran on nothing the summary had to hold. Counting them answers a
 /// rate question with another thread's denominator.
+/// One message written as the runtime writes it: prose in its own record, the
+/// tool call that follows in another, both under one message id.
+fn narrated_then_called(session: &str, uuid: &str, ts: &str, text: &str) -> Vec<String> {
+    vec![
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}a","timestamp":"{ts}","sessionId":"{session}","message":{{"id":"m_{uuid}","usage":{{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":40,"output_tokens":3}},"content":[{{"type":"text","text":"{text}"}}]}}}}"#
+        ),
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}b","timestamp":"{ts}","sessionId":"{session}","message":{{"id":"m_{uuid}","usage":{{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":40,"output_tokens":9}},"content":[{{"type":"tool_use","id":"t_{uuid}","name":"Read","input":{{}}}}]}}}}"#
+        ),
+    ]
+}
+
+#[test]
+fn prose_written_before_a_tool_call_is_still_prose_the_operator_read() {
+    // The runtime writes one record per content block. A turn that speaks and
+    // then calls a tool puts its prose in the record before the one that ends
+    // the message, so the message's own last record carries none of it.
+    let mut records = vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)];
+    records.extend(narrated_then_called(
+        "s1",
+        "x1",
+        "2026-08-01T09:00:01Z",
+        "규칙 파일부터 읽는다",
+    ));
+    let (_dir, config) = corpus(&[("-Users-me-alpha/s1.jsonl", records)]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(
+        facts.agent_chars, 11,
+        "eleven Korean characters, counted as characters rather than bytes"
+    );
+    assert_eq!(
+        facts.tokens.prompt(),
+        40,
+        "and the message is still charged once"
+    );
+}
+
 #[test]
 fn a_subagents_prose_is_not_what_the_operator_had_to_read() {
     // A subagent writes to the agent that dispatched it. What it spent is the
