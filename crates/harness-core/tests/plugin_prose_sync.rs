@@ -76,6 +76,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
             "Config.lifecycle",
             "Submission.citation",
             "Submission.prompt_ids",
+            "Submission.rule_loads",
             "PromptFacts.across_sessions",
             "PromptFacts.within_sessions",
             "Repetition.chars",

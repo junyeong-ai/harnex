@@ -487,7 +487,7 @@ fn an_instruction_carries_the_prompt_ids_it_spans_and_the_memory_that_arrived_un
     ];
     let subagent = vec![
         subagent_load,
-        result("r2", "2026-08-01T09:00:07Z", "p2", true),
+        result("r2", "2026-08-01T09:00:07Z", "p9", true),
     ];
 
     let (_dir, config) = corpus(&[
@@ -505,7 +505,11 @@ fn an_instruction_carries_the_prompt_ids_it_spans_and_the_memory_that_arrived_un
     let subs = &facts.submissions;
 
     assert_eq!(subs.len(), 3);
-    assert_eq!(subs[0].prompt_ids, ["p1", "p4", "p2"]);
+    assert_eq!(
+        subs[0].prompt_ids,
+        ["p1", "p4", "p2"],
+        "a subagent's record is not where a prompt is submitted, so its id is not taken"
+    );
     assert_eq!(
         subs[1].prompt_ids,
         ["p2"],
@@ -513,16 +517,16 @@ fn an_instruction_carries_the_prompt_ids_it_spans_and_the_memory_that_arrived_un
     );
     assert_eq!(subs[2].prompt_ids, ["p3"]);
 
-    let loads: Vec<(&str, bool, usize)> = subs[0]
+    let loads: Vec<(&str, bool, usize, usize)> = subs[0]
         .rule_loads
         .iter()
-        .map(|r| (r.path.to_str().unwrap(), r.sidechain, r.chars))
+        .map(|r| (r.path.to_str().unwrap(), r.sidechain, r.loads, r.chars))
         .collect();
     assert_eq!(
         loads,
         [
-            ("/repo/.claude/rules/core.md", false, 5),
-            ("/repo/.claude/rules/core.md", true, 3)
+            ("/repo/.claude/rules/core.md", false, 1, 5),
+            ("/repo/.claude/rules/core.md", true, 1, 3)
         ]
     );
     assert!(subs[1].rule_loads.is_empty() && subs[2].rule_loads.is_empty());
