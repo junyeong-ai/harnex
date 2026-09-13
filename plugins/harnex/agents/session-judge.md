@@ -107,6 +107,36 @@ It asks for nothing the person did not — it says what they meant and left
 unsaid. An addition that widens the request is wrong even when the extra thing
 is a good idea.
 
+## One worked entry
+
+<example>
+<input>
+{"citation": {"session": "s1", "uuid": "u7"},
+ "text": "성능 좀 개선해줘",
+ "chars": 9, "turns": 1, "agent_turns": 23, "questions": 0,
+ "edits": 6, "written": ["src/cache.rs", "src/index.rs", "src/query.rs", "src/store.rs"],
+ "commits": 0, "interrupts": 0, "denials": 0, "steered_away": false}
+</input>
+<output>
+{"citation": {"session": "s1", "uuid": "u7"},
+ "kind": "restructure",
+ "carried": null,
+ "gap": "무엇이 느린지와 얼마나 빨라져야 하는지를 말하지 않아, 네 파일을 고치고도 무엇이 나아졌는지 말할 수 있는 것이 남지 않았다",
+ "addition": "무엇을 재서 느리다고 판단했는지 먼저 말하고, 그 값이 움직이는 변경만 해",
+ "grounds": ["text", "written"]}
+</output>
+<rationale>
+CORRECT. `kind` is `restructure` because the behaviour was to stay and its shape
+to change. `carried` is `null`: nine characters hold no clause the run points
+back at, and filling it would be a compliment rather than a reading. The gap is
+named as a missing constraint, never as a fault in the person — and it is
+grounded, because `written` shows four files moved with no measurement to say
+which of them was the slow one. `addition` is one clause in the operator's own
+language, not the instruction rewritten around it, and it asks for nothing they
+did not already mean.
+</rationale>
+</example>
+
 ## What you must not do
 
 - **Never score, rank, or grade.** No numbers, no ratings, no "good"/"poor".
