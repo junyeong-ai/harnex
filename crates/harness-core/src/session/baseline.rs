@@ -160,7 +160,7 @@ wire_enum! {
         /// while a closing report that outgrows the reading time it is given
         /// raises it too. Read it against `steering_per_submission`, which is
         /// what a report that did not land looks like. Over the local corpus it
-        /// runs 2,556 characters an instruction against 9.15M output tokens in
+        /// runs 3,578 characters an instruction against 9.2M output tokens in
         /// one project alone, so what the operator reads is a small part of
         /// what the agent writes and a rate over tokens says nothing about it.
         AgentCharsPerSubmission => "agent_chars_per_submission",
