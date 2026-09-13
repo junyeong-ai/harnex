@@ -73,7 +73,7 @@ it for the same window, check its own wiring first, and add:
 | wall-clock per tool | the runtime times a whole run, not the calls inside it |
 | money, split by model and by main / subagent | pricing is not in the record and is not this plugin's to know |
 | active time per session | the transcript has timestamps, not attention |
-| memory loaded at session start or after a compaction, and the read that triggered a lazy load | the runtime writes those to its `InstructionsLoaded` hook and never into the transcript |
+| memory loaded eagerly — at session start and again at a compaction — and the read that triggered a lazy load | the runtime reports those only to its `InstructionsLoaded` hook |
 
 A collector often carries more than price: domain kinds the project itself
 emits — gates, deploys, rule blocks — keyed by the same session. Take the
@@ -84,15 +84,18 @@ id can sit in two consecutive instructions, so such a row belongs to either.
 A row without one joins at the session and no finer.
 
 **Memory-load rows answer what `rule_loads` cannot, and are read with their own
-load reason.** The oracle sees a file the runtime attached mid-session; it never
-sees one loaded at session start or rebuilt after a compaction, and never the
-read that pulled a path-scoped rule in. A collector recording the runtime's
-`InstructionsLoaded` event has all four. The runtime carries its last submitted
-prompt id into an eager load as well, so the presence of a `prompt_id` does not
-say a load was lazy — the row's own load reason does. Report those rows beside
-`rule_loads` rather than summed into it, and name a file the way the collector
-names it: the same path under two checkouts of one repository is one name
-there.
+load reason.** The oracle sees a file the runtime attached lazily, after a read,
+including the re-attachments that follow a compaction; it never sees memory
+loaded eagerly, at session start or at the compaction itself, and never the
+read that triggered a lazy load. The `InstructionsLoaded` event carries both, so
+a collector's rows hold whichever of them it keeps — read what its rows carry
+before relying on either. The runtime stamps its last submitted prompt id on an
+eager load too, so a `prompt_id` does not make a load lazy; the load reason
+does. Report those rows beside the `rule_loads` of the instruction their
+`prompt_id` joined them to — the transcript's side of what arrived under it —
+rather than summed into it, and
+match a row to a file only by a name that identifies one file: a path, not a
+bare file name, which every nested `CLAUDE.md` shares.
 
 This step is optional in both directions. With no collector the report is
 complete without these rows and says so once; with one, no other section

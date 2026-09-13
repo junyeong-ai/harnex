@@ -26,9 +26,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use super::harness::{RuleLoadGroup, RuleLoadTally};
-#[cfg(test)]
-use super::record::Authorship;
-use super::record::{Citation, Record, TokenUse, ToolUse, UserTurn};
+use super::record::{Authorship, Citation, Record, TokenUse, ToolUse, UserTurn};
 
 /// The tool the runtime records when the agent stops and asks the operator
 /// rather than choosing for them.
@@ -88,7 +86,10 @@ pub struct Submission {
     /// The turn that opened it.
     pub citation: Citation,
     /// The runtime's ids for the prompts it spans, in the order they first
-    /// appear — what a hook event's `prompt_id` joins on. The runtime opens a
+    /// appear — what a hook event's `prompt_id` joins on. Read from the main
+    /// thread, where prompts are submitted: a subagent's records repeat its
+    /// parent's ids, and one still running after the operator moved on would
+    /// carry an old id into a later instruction. The runtime opens a
     /// prompt for what it delivers as well as for what the operator types — a
     /// background task's notification, a peer session's message — and those
     /// fall under the instruction standing. A message queued after the agent
@@ -152,9 +153,10 @@ pub struct Submission {
     /// is a git work tree.
     pub committed: Vec<PathBuf>,
     /// Project memory that entered context while it stood, grouped and ranked
-    /// as `harness.rule_loads` is. A file already in that context is not
-    /// attached again and one loaded on every turn never is, so this is what
-    /// arrived under the instruction rather than everything in force.
+    /// as `harness.rule_loads` is. The runtime attaches a file again only
+    /// after a compaction or a resume clears its record of what it attached,
+    /// and never attaches one loaded on every turn, so this is what arrived
+    /// under the instruction rather than everything in force.
     pub rule_loads: Vec<RuleLoadGroup>,
     /// Interruptions the runtime marked while it stood — a floor, for the
     /// reason [`super::InterventionKind`] gives.
@@ -249,6 +251,9 @@ impl SubmissionAnalyzer {
     }
 
     fn note_prompt(&mut self, at: usize, turn: &UserTurn) {
+        if turn.authorship == Authorship::Sidechain {
+            return;
+        }
         let ids = &mut self.out[at].prompt_ids;
         if let Some(id) = &turn.prompt_id
             && !ids.contains(id)
