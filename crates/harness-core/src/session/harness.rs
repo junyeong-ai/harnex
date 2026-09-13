@@ -39,7 +39,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::record::{Citation, Record};
+use super::record::{Citation, Record, RuleLoad};
 
 /// A call that met a refusal more than once.
 ///
@@ -236,13 +236,50 @@ impl Group {
     }
 }
 
+/// Rule loads by file and window, most characters first. The window and each
+/// instruction group through this one tally, so a row means the same in both.
+#[derive(Default)]
+pub(crate) struct RuleLoadTally {
+    groups: HashMap<(PathBuf, bool), Group>,
+}
+
+impl RuleLoadTally {
+    pub(crate) fn observe(&mut self, load: &RuleLoad) {
+        self.groups
+            .entry((load.path.clone(), load.sidechain))
+            .or_default()
+            .observe(&load.citation, load.chars as u64);
+    }
+
+    pub(crate) fn finish(self) -> Vec<RuleLoadGroup> {
+        let mut rows: Vec<RuleLoadGroup> = self
+            .groups
+            .into_iter()
+            .map(|((path, sidechain), g)| RuleLoadGroup {
+                path,
+                sidechain,
+                loads: g.count,
+                chars: g.weight as usize,
+                span: g.span(),
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            b.chars
+                .cmp(&a.chars)
+                .then(a.path.cmp(&b.path))
+                .then(a.sidechain.cmp(&b.sidechain))
+        });
+        rows
+    }
+}
+
 /// Accumulates harness activity across every transcript in a run.
 #[derive(Default)]
 pub struct HarnessAnalyzer {
     denials: HashMap<(String, Option<String>), Group>,
     blocked: HashMap<(Option<String>, String), (serde_json::Value, Group)>,
     invocations: HashMap<(String, String), Group>,
-    rules: HashMap<(PathBuf, bool), Group>,
+    rules: RuleLoadTally,
     hooks: HashMap<String, Group>,
     stops: usize,
     hook_errors: usize,
@@ -272,12 +309,7 @@ impl HarnessAnalyzer {
                     }
                 }
             }
-            Record::RuleLoad(load) => {
-                self.rules
-                    .entry((load.path.clone(), load.sidechain))
-                    .or_default()
-                    .observe(&load.citation, load.chars as u64);
-            }
+            Record::RuleLoad(load) => self.rules.observe(load),
             Record::StopSummary(stop) => {
                 self.stops += 1;
                 self.hook_errors += stop.errors;
@@ -364,23 +396,7 @@ impl HarnessAnalyzer {
                 .then(a.tool.cmp(&b.tool))
         });
 
-        let mut rule_loads: Vec<RuleLoadGroup> = self
-            .rules
-            .into_iter()
-            .map(|((path, sidechain), g)| RuleLoadGroup {
-                path,
-                sidechain,
-                loads: g.count,
-                chars: g.weight as usize,
-                span: g.span(),
-            })
-            .collect();
-        rule_loads.sort_by(|a, b| {
-            b.chars
-                .cmp(&a.chars)
-                .then(a.path.cmp(&b.path))
-                .then(a.sidechain.cmp(&b.sidechain))
-        });
+        let rule_loads = self.rules.finish();
 
         let mut hooks: Vec<HookCost> = self
             .hooks
@@ -472,6 +488,7 @@ mod tests {
                 input: None,
             }),
             failed_tool: None,
+            prompt_id: None,
         })
     }
 

@@ -322,6 +322,11 @@ pub struct UserTurn {
     /// `tool_use_id`. `None` where the call was refused instead — a refusal is
     /// [`UserTurn::denial`] and never both.
     pub failed_tool: Option<String>,
+    /// The runtime's id for the prompt this record was made under, which hook
+    /// payloads carry as `prompt_id`. Only user records carry it — 10,875 of
+    /// this project's 10,899 main-thread ones — and a subagent's records carry
+    /// the parent's: every id in its 186 subagent transcripts is in the parent's.
+    pub prompt_id: Option<String>,
 }
 
 /// An assistant turn, reduced to the actions it took.
@@ -654,6 +659,8 @@ struct RawRecord {
     origin: Option<RawOrigin>,
     #[serde(rename = "promptSource")]
     prompt_source: Option<String>,
+    #[serde(rename = "promptId")]
+    prompt_id: Option<String>,
     #[serde(rename = "isSidechain")]
     is_sidechain: Option<bool>,
     /// Set by the runtime on a record it replayed out of the session this one
@@ -924,6 +931,7 @@ pub fn read_transcript(
                     edited_file: result.and_then(edited_file_of),
                     denial,
                     failed_tool,
+                    prompt_id: raw.prompt_id.clone(),
                 }));
                 // Only a turn the runtime attributed to a person closes the
                 // interval. A tool result is also a `user` record, and letting
@@ -1161,6 +1169,17 @@ mod tests {
         ));
         match &recs[0] {
             Record::User(u) => assert!(u.text.is_none()),
+            _ => panic!("expected a user turn"),
+        }
+    }
+
+    #[test]
+    fn a_user_record_carries_the_prompt_it_was_made_under() {
+        let (recs, _) = rec(&format!(
+            r#"{{"type":"user",{BASE},"promptId":"p1","message":{{"content":[{{"type":"tool_result","content":"out"}}]}}}}"#
+        ));
+        match &recs[0] {
+            Record::User(u) => assert_eq!(u.prompt_id.as_deref(), Some("p1")),
             _ => panic!("expected a user turn"),
         }
     }

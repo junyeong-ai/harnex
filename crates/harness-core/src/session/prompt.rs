@@ -319,6 +319,7 @@ mod tests {
             edited_file: None,
             denial: None,
             failed_tool: None,
+            prompt_id: None,
         }
     }
 
