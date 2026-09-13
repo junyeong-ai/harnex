@@ -22,6 +22,10 @@ clap_complete = "4"
 jiff = { version = "0.2", features = ["serde"] }
 url = "2"
 glob = "0.3"
+# The matcher Claude Code scopes a rule's `paths:` by is gitignore's. gix ports
+# git's own wildmatch; the `ignore` crate reads `{a,b}` as alternation, which
+# gitignore does not have.
+gix-ignore = "0.22"
 # The CommonMark reader. Hand-rolling the subset harnex needs cost four
 # false Blockers in a gate that is on by default — a fenced sample inside a
 # list item, a fence CommonMark terminates at EOF, and a heading spelled

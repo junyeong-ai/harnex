@@ -12,6 +12,7 @@
 //! - [`path_guard`] — safe write primitives (`write_atomic` + `append_line`).
 //! - `markdown` — the one reader for what a rendered document shows.
 //! - [`glob_root`] — a glob pattern rooted at a literal directory.
+//! - `path_scope` — what a rule's `paths:` matches, as Claude Code decides it.
 //! - [`evidence`] — provenance verifier with pluggable strategies.
 //! - [`telemetry`] — append-only closed-schema event ledger.
 //! - [`codegen`] — cross-file sentinel-block sync.
@@ -54,6 +55,7 @@ pub mod guard;
 pub mod lifecycle;
 mod markdown;
 pub mod path_guard;
+mod path_scope;
 pub mod plan;
 pub mod policy;
 pub mod routines;

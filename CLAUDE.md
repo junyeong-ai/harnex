@@ -34,6 +34,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::envelope` | JSON envelope contract every command emits |
 | `harness-core::error` | typed `Error` + stable `ErrorCode` wire codes |
 | `harness-core::path_guard` | safe write paths: `write_atomic` + `append_line` |
+| `harness-core::path_scope` | what a rule's `paths:` matches, as Claude Code decides it — gitignore lines relative to the directory holding `.claude/rules` |
 | `harness-core::glob_root` | the one place a declared pattern meets a project root — the root is escaped so it matches itself, and only the caller's pattern stays a pattern |
 | `harness-core::git` | the files a project owns, as git answers it — what `check`'s memory set and the grep consumer detector read |
 | `harness-core::sentinel` | the two reserved marker grammars harnex writes — managed regions + fill markers |
