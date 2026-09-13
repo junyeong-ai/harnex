@@ -631,6 +631,9 @@ fn every_recorded_metric_computes_what_it_computed() {
         // met a denial reported none, and no prompt is not a prompt of zero.
         ("prompt_tokens_per_submission", 62, 4),
         ("questions_per_submission", 2, 4),
+        // "working on it" twice, from the two turns that wrote prose. The
+        // tool calls and the denial wrote none.
+        ("agent_chars_per_submission", 26, 4),
     ];
     assert_eq!(
         pinned.len(),
@@ -2732,6 +2735,42 @@ fn a_compact_that_produced_no_boundary_is_not_charged_to_the_next_one() {
 /// compaction of the parent leaves a running subagent's own window alone, so
 /// its turns ran on nothing the summary had to hold. Counting them answers a
 /// rate question with another thread's denominator.
+#[test]
+fn a_subagents_prose_is_not_what_the_operator_had_to_read() {
+    // A subagent writes to the agent that dispatched it. Its characters are in
+    // the instruction's token count, because the instruction paid for them,
+    // and not in what the operator read.
+    let sidechain = |uuid: &str, ts: &str| {
+        format!(
+            r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"s1","isSidechain":true,"message":{{"id":"m_{uuid}","content":[{{"type":"text","text":"digging"}}]}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            spent("s1", "x1", "2026-08-01T09:00:01Z", "claude-opus-5", 10),
+            sidechain("x2", "2026-08-01T09:00:02Z"),
+        ],
+    )]);
+    let options = CollectOptions {
+        with_submissions: true,
+        ..CollectOptions::default()
+    };
+
+    let facts = session::collect(&config, &options).unwrap();
+
+    assert_eq!(
+        facts.submissions[0].agent_chars, 13,
+        "\"working on it\" alone — the subagent's seven went to the agent"
+    );
+    assert_eq!(facts.agent_chars, 13, "and the window agrees with it");
+    assert_eq!(
+        facts.submissions[0].agent_turns, 2,
+        "both turns are still the work this instruction set running"
+    );
+}
+
 #[test]
 fn a_subagents_turns_are_not_the_work_a_summary_had_to_carry() {
     let sidechain_agent = |uuid: &str, ts: &str| {

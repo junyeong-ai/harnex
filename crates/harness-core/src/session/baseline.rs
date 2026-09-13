@@ -150,6 +150,20 @@ wire_enum! {
         /// less is spending their attention on choices it could have made.
         /// Over the local corpus it runs 0.079, and 0.023 to 0.085 by project.
         QuestionsPerSubmission => "questions_per_submission",
+        /// Characters the agent put in front of the operator, per instruction.
+        ///
+        /// What `output_tokens_per_submission` costs to produce, this costs to
+        /// read, and the two move apart: tool calls and reasoning are in the
+        /// tokens and not here, a subagent's prose is in the tokens and not
+        /// here. Neither direction is the good one — narration between tool
+        /// calls raises this and is what lets the operator stop a run early,
+        /// while a closing report that outgrows the reading time it is given
+        /// raises it too. Read it against `steering_per_submission`, which is
+        /// what a report that did not land looks like. Over the local corpus it
+        /// runs 2,556 characters an instruction against 9.15M output tokens in
+        /// one project alone, so what the operator reads is a small part of
+        /// what the agent writes and a rate over tokens says nothing about it.
+        AgentCharsPerSubmission => "agent_chars_per_submission",
     }
 }
 
@@ -225,6 +239,7 @@ impl SessionMetric {
                 numerator: facts.harness.hooks.iter().map(|h| h.total_ms).sum(),
                 denominator: facts.harness.stops as u64,
             },
+            Self::AgentCharsPerSubmission => Measurement::new(facts.agent_chars, submissions),
             Self::QuestionsPerSubmission => Measurement::new(
                 facts
                     .tools
