@@ -42,9 +42,13 @@ thing that survives a confused, careless, or adversarial agent turn.
    second round" lived in prose while no round count was recorded — it ran
    eleven rounds, and clearing findings was indistinguishable from narrating
    them away. The spec-workflow's own controls name theirs: `harnex plan
-   audit` computes the round budget, the disposition floor, and the
-   append-only row contract, and the shipped pre-commit arm holds them at the
-   commit. The computer also decides what a control can be: a count sampled
+   audit` computes the round budget, the disposition floor, the append-only
+   row contract, and whether the commit that lands a round's findings records
+   that round at all, and the shipped pre-commit arm holds them at the commit.
+   That last one is the same failure one layer down — a budget counting
+   records bounds nothing while recording stays the loop's own choice, and
+   fifty-four rounds landed on one spec against a budget of five before a gate
+   read the rows instead of the ledger. The computer also decides what a control can be: a count sampled
    from one reviewer carries no rule about falling, which is why the budget
    counts rounds instead.
 
