@@ -70,11 +70,13 @@ pub struct AssetInvocation {
     pub kind: String,
     pub name: String,
     pub calls: usize,
-    /// Characters handed to this element across every call — an agent's
-    /// `prompt`, a skill's `args`. Each call opens a window of its own, so
-    /// read this as what the element cost the run rather than as what any one
-    /// context held; `max_chars` is the largest single charge. What the record
-    /// carries per tool, and where it carries nothing, is
+    /// Characters the calls handed this element — an agent's `prompt`, a
+    /// skill's `args`. What the call passed IN, never what the element then
+    /// loaded: a skill's own body and an agent's definition are outside it,
+    /// and so is a context a spawn inherits. Each call opens a window of its
+    /// own, so the sum is across windows rather than anything one context
+    /// held; `max_chars` is the largest single charge. What the record carries
+    /// per tool, and where it carries nothing, is
     /// [`crate::session::AssetCall::chars`].
     pub chars: usize,
     /// The largest single invocation's characters. A charge that grows per
