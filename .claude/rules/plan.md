@@ -60,8 +60,11 @@ every prose site.
   bullets stand verbatim as a prefix of the current log, or
   `plan-log-rewritten` blocks.
 - A commit that adds rows records the round that found them: with both
-  baselines given, rows past the committed plan and no review-class line past
-  the committed log is `plan-round-unrecorded`. The budget counts records, so
-  a round landing without one spends nothing. New is keyed by
-  `FindingRow::identity`, the vanish check's own key — a disposition gained in
-  place adds no row, and a reworded one is the vanish check's finding alone.
+  baselines given, rows past the committed plan and no round past the
+  committed log is `plan-round-unrecorded`. A round is a line the budget will
+  account for — `needs_revision` under whichever gate fired, or the approval
+  that closes a review cycle — so `deferred` and `rejected` record none, and
+  the seam and the budget cannot disagree about what a round is. New is keyed
+  by `FindingRow::identity`, the vanish check's own key. A baseline row that
+  did not survive silences the check, disposed as much as open: against a row
+  that is gone, an added row and a reworded one are the same two lines.
