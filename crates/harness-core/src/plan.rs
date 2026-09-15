@@ -846,8 +846,9 @@ impl<'a> PlanAuditor<'a> {
     /// section holds nothing, as the two sibling contracts read it.
     ///
     /// Two silences, each where the inputs stop answering. A baseline row that
-    /// did not survive, disposed as much as open: against a row that is gone,
-    /// an added row and a reworded one are the same two lines, and a verdict
+    /// did not survive, disposed as much as open and counted as a multiset so
+    /// one current row cannot stand in for two: against a row that is gone, an
+    /// added row and a reworded one are the same two lines, and a verdict
     /// would call a repaired citation a round. A committed log bullet edited
     /// or gone: the count that reads past the committed prefix is off by
     /// whatever was removed, so a record that IS appended would read as
@@ -886,25 +887,15 @@ impl<'a> PlanAuditor<'a> {
             return;
         };
 
-        // Claimed on match, as the vanish check claims: two identical new
-        // rows are two rows added, and one baseline row must not cover both.
-        let mut held: Vec<FindingRow> = Vec::new();
-        for item in &held_rows {
-            let Some(row) = (item.canonical_marker)
-                .then(|| parse_row(&item.text))
-                .flatten()
-            else {
-                continue;
-            };
-            // A baseline row gone is a row this check cannot read: against it
-            // an added row and a reworded one are the same two lines. Open, the
-            // vanish check says so; disposed, nothing does, and a verdict here
-            // would name a round that a repaired citation is not.
-            if !rows.iter().any(|r| r.identity() == row.identity()) {
-                return;
-            }
-            held.push(row);
-        }
+        // One pass over one pool answers both halves, claimed on match as the
+        // vanish check claims: two identical rows are two obligations, and one
+        // row must not cover both. What the current section does not claim is
+        // added; what the baseline is left holding did not survive.
+        let mut held: Vec<FindingRow> = held_rows
+            .iter()
+            .filter(|item| item.canonical_marker)
+            .filter_map(|item| parse_row(&item.text))
+            .collect();
         let mut added = 0usize;
         for row in rows {
             match held.iter().position(|h| h.identity() == row.identity()) {
@@ -914,7 +905,11 @@ impl<'a> PlanAuditor<'a> {
                 None => added += 1,
             }
         }
-        if added == 0 {
+        // A baseline row gone is a row this check cannot read: against it an
+        // added row and a reworded one are the same two lines. Open, the vanish
+        // check says so; disposed, nothing does, and a verdict here would name
+        // a round that a repaired citation is not.
+        if !held.is_empty() || added == 0 {
             return;
         }
 
@@ -2964,6 +2959,20 @@ mod tests {
             "- 2026-01-15 · code_review · needs_revision · found one\n- 2026-01-16 · code_review · needs_revision · a stale comment",
         );
         assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn one_current_row_does_not_stand_in_for_two_the_baseline_held() {
+        // Two obligations, one survivor: the second is gone, and the row that
+        // arrived may be it, reworded. The vanish check reports the loss and
+        // this one says nothing rather than calling the arrival a round.
+        let findings = audit_round(
+            "- [Major] naming drifts\n- [Major] naming drifts",
+            "- [Major] naming drifts\n- [Minor] a stale comment",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert_eq!(slugs(&findings), ["plan-row-vanished"], "{findings:#?}");
     }
 
     #[test]
