@@ -77,14 +77,24 @@ pub enum FloorDecision {
 }
 
 pub struct FloorAuditor {
-    protected: Vec<String>,
+    /// The declared floor, or `None` where `harness.toml` states none. Only
+    /// the freeze reads it: the tripwire judges a command line and consults
+    /// no declaration, so a project that declares nothing still keeps the
+    /// hook stack its gates run in.
+    protected: Option<Vec<String>>,
 }
 
 impl FloorAuditor {
     pub fn new(config: &FloorConfig) -> Self {
         Self {
-            protected: config.protected_paths.clone(),
+            protected: Some(config.protected_paths.clone()),
         }
+    }
+
+    /// The floor of a project that declares none: no path is frozen, and the
+    /// tripwire stands, because what it refuses is the same in every project.
+    pub fn undeclared() -> Self {
+        Self { protected: None }
     }
 
     /// Judge one proposed tool call. `root` is the directory `harness.toml`
@@ -142,6 +152,13 @@ impl FloorAuditor {
     }
 
     fn evaluate_write(&self, root: &Path, tool_input: &serde_json::Value) -> FloorDecision {
+        let Some(protected) = self.protected.as_deref() else {
+            return FloorDecision::Skip {
+                reason: "`harness.toml` declares no `[guard.floor]`, so no path is frozen — \
+                         declare the section, or remove the Edit/Write PreToolUse wiring"
+                    .into(),
+            };
+        };
         // An absent, non-string, or empty path is malformed input, not a write
         // to judge — resolving `""` lands on the repository root, which is
         // under no protected entry and would silently allow.
@@ -171,7 +188,7 @@ impl FloorAuditor {
                 .ok()?
                 .to_string_lossy()
                 .into_owned();
-            let entry = self.protected_entry(&rel)?;
+            let entry = protected_entry(protected, &rel)?;
             Some((from.clone(), rel, entry.to_string()))
         }) else {
             return FloorDecision::Allow;
@@ -201,27 +218,27 @@ impl FloorAuditor {
             }
         }
     }
+}
 
-    /// The protected entry a repo-relative path falls under, or `None`.
-    /// Case-insensitive — the floor also ships on case-insensitive
-    /// filesystems, where `Harness.toml` lands on `harness.toml`; on a
-    /// case-sensitive one the odd-cased write is a false block that surfaces
-    /// and names its entry, the accepted direction. A trailing `/` marks a
-    /// directory prefix; anything else is an exact repo-relative path.
-    fn protected_entry(&self, rel_path: &str) -> Option<&str> {
-        let lower = rel_path.to_lowercase();
-        BUILT_IN_PROTECTED
-            .into_iter()
-            .chain(self.protected.iter().map(String::as_str))
-            .find(|entry| {
-                let entry_lower = entry.to_lowercase();
-                if entry_lower.ends_with('/') {
-                    lower.starts_with(&entry_lower)
-                } else {
-                    lower == entry_lower
-                }
-            })
-    }
+/// The protected entry a repo-relative path falls under, or `None`.
+/// Case-insensitive — the floor also ships on case-insensitive filesystems,
+/// where `Harness.toml` lands on `harness.toml`; on a case-sensitive one the
+/// odd-cased write is a false block that surfaces and names its entry, the
+/// accepted direction. A trailing `/` marks a directory prefix; anything else
+/// is an exact repo-relative path.
+fn protected_entry<'a>(protected: &'a [String], rel_path: &str) -> Option<&'a str> {
+    let lower = rel_path.to_lowercase();
+    BUILT_IN_PROTECTED
+        .into_iter()
+        .chain(protected.iter().map(String::as_str))
+        .find(|entry| {
+            let entry_lower = entry.to_lowercase();
+            if entry_lower.ends_with('/') {
+                lower.starts_with(&entry_lower)
+            } else {
+                lower == entry_lower
+            }
+        })
 }
 
 #[cfg(test)]
@@ -312,6 +329,39 @@ mod tests {
             auditor.evaluate(dir.path(), "Bash", &bash_input("   ")),
             FloorDecision::Allow
         );
+    }
+
+    #[test]
+    fn an_undeclared_floor_still_refuses_a_hook_bypass() {
+        // What the tripwire refuses is the same in every project, so a
+        // project that declares no floor keeps it — the freeze is what the
+        // declaration arms, and bundling the two kept both out of every
+        // repository whose gate files are its work product.
+        let dir = plain_root();
+        let auditor = FloorAuditor::undeclared();
+        assert!(matches!(
+            auditor.evaluate(
+                dir.path(),
+                "Bash",
+                &bash_input("git commit --no-verify -m x")
+            ),
+            FloorDecision::Block { .. }
+        ));
+        assert_eq!(
+            auditor.evaluate(dir.path(), "Bash", &bash_input("cargo test")),
+            FloorDecision::Allow
+        );
+    }
+
+    #[test]
+    fn an_undeclared_floor_freezes_nothing_and_says_which() {
+        let dir = plain_root();
+        let FloorDecision::Skip { reason } =
+            FloorAuditor::undeclared().evaluate(dir.path(), "Write", &write_input("harness.toml"))
+        else {
+            panic!("an undeclared floor freezes nothing");
+        };
+        assert!(reason.contains("[guard.floor]"), "{reason}");
     }
 
     #[test]

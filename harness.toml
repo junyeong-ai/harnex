@@ -12,16 +12,15 @@
 # policy and codegen stay absent: this repo runs neither loop on itself, and
 # `harnex check` reporting them skipped with a reason is the honest answer.
 #
-# guard stays absent, and not for want of a subject: `core.hooksPath` is armed
-# here, and `hooks/pre-commit` is what `--no-verify` would skip. The floor
-# cannot arm that tripwire alone — `BUILT_IN_PROTECTED` always chains, so even
-# an empty `[guard.floor]` freezes harness.toml and `.claude/settings.json`,
-# which 38 of the 60 commits before this line touch. The freeze exists to stop
-# a gate being weakened to make a failure go away; here, editing those files is
-# the work, and the floor is built not to guess the difference. A grant left
-# standing would print `[floor-edit allowed]` on most commits, which is how the
-# one signal that the freeze was bypassed stops being one. Adopters whose gate
-# files are not their work product get it as shipped.
+# guard.floor stays absent, and the tripwire it used to hold back is armed:
+# the Bash PreToolUse entry refuses a command that would skip the hook stack,
+# and it reads nothing from here. What the section would arm is the freeze,
+# which covers harness.toml and `.claude/settings.json` — files 38 of the 60
+# commits before this line touch, because here the harness is the work
+# product. A grant left standing to answer that prints `[floor-edit allowed]`
+# on most commits, which is how the one signal that the freeze was bypassed
+# stops being one. Adopters whose gate files are not their work product wire
+# the second entry with the enforcement-floor pattern.
 # lifecycle and telemetry are ON (below): the promotion/retirement loop this
 # repo ships was field-tested only by its consumers until 2026-08 — the loop's
 # own friction has to be findable here, on the corpus that builds it.

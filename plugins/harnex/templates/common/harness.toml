@@ -106,13 +106,15 @@ strategy = "file-path-line"
 # engine = ["tools/contrast-audit", "package-lock.json"]
 # unattended_remeasure = false
 
-# The enforcement floor: `harnex guard floor` (PreToolUse, wired by the
-# enforcement-floor pattern) blocks a git command that would skip the hook
-# stack and an agent write to a file the gates are defined by. harness.toml,
-# .claude/settings.json and .claude/settings.local.json are built into the
-# floor; list the project's own gate-defining files here (a trailing /
-# freezes a directory). The operator's break-glass is
-# HARNEX_ALLOW_FLOOR_EDIT: "1" in the settings.local.json env block.
+# The enforcement floor's second half. The first — refusing a git command
+# that would skip the hook stack — is wired for Bash in every scaffold and
+# reads nothing here. This section arms the freeze, which the
+# enforcement-floor pattern wires for Edit|Write|MultiEdit: harness.toml,
+# .claude/settings.json and .claude/settings.local.json are built in, and the
+# project's own gate-defining files are listed here (a trailing / freezes a
+# directory). Without that wiring the list is inert. The operator's
+# break-glass is HARNEX_ALLOW_FLOOR_EDIT: "1" in the settings.local.json env
+# block.
 [guard.floor]
 protected_paths = ["hooks/", ".gitleaks.toml"]
 

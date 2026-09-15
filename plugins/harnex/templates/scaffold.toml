@@ -176,6 +176,13 @@ executable = true
 [[artifact]]
 tier = "foundation"
 content = { kind = "copy" }
+template = "common/check-floor.sh"
+destination = "hooks/check-floor.sh"
+executable = true
+
+[[artifact]]
+tier = "foundation"
+content = { kind = "copy" }
 template = "common/git-hooks/pre-commit"
 destination = "hooks/pre-commit"
 executable = true
