@@ -39,7 +39,7 @@ pub mod bypass;
 pub mod command_line;
 pub mod grant;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::config::FloorConfig;
 use grant::{FLOOR_EDIT_GRANT_KEY, FloorGrant};
@@ -76,38 +76,49 @@ pub enum FloorDecision {
     },
 }
 
+/// What the freeze has to work with. The declared paths and the root they
+/// resolve against are one fact and are held as one: the tripwire reads
+/// neither, so a project with no readable declaration still keeps the hook
+/// stack its gates run in.
+enum Floor {
+    Declared {
+        root: PathBuf,
+        paths: Vec<String>,
+    },
+    /// No path is frozen, carrying what the freeze says when it skips.
+    Absent(String),
+}
+
 pub struct FloorAuditor {
-    /// The declared floor, or `None` where `harness.toml` states none. Only
-    /// the freeze reads it: the tripwire judges a command line and consults
-    /// no declaration, so a project that declares nothing still keeps the
-    /// hook stack its gates run in.
-    protected: Option<Vec<String>>,
+    floor: Floor,
 }
 
 impl FloorAuditor {
-    pub fn new(config: &FloorConfig) -> Self {
+    /// The floor `harness.toml` declares, rooted at the directory that file
+    /// was found in.
+    pub fn declared(root: PathBuf, config: &FloorConfig) -> Self {
         Self {
-            protected: Some(config.protected_paths.clone()),
+            floor: Floor::Declared {
+                root,
+                paths: config.protected_paths.clone(),
+            },
         }
     }
 
-    /// The floor of a project that declares none: no path is frozen, and the
-    /// tripwire stands, because what it refuses is the same in every project.
-    pub fn undeclared() -> Self {
-        Self { protected: None }
+    /// A floor that freezes nothing, `reason` naming why — no `[guard.floor]`
+    /// section, or no configuration to read it from.
+    pub fn undeclared(reason: impl Into<String>) -> Self {
+        Self {
+            floor: Floor::Absent(reason.into()),
+        }
     }
 
-    /// Judge one proposed tool call. `root` is the directory `harness.toml`
-    /// was found in; `tool_input` is the hook event's raw `tool_input`.
-    pub fn evaluate(
-        &self,
-        root: &Path,
-        tool_name: &str,
-        tool_input: &serde_json::Value,
-    ) -> FloorDecision {
+    /// Judge one proposed tool call, `tool_input` being the hook event's raw
+    /// `tool_input`.
+    pub fn evaluate(&self, tool_name: &str, tool_input: &serde_json::Value) -> FloorDecision {
         match tool_name {
             "Bash" => self.evaluate_command(tool_input),
-            "Edit" | "Write" | "MultiEdit" => self.evaluate_write(root, tool_input),
+            "Edit" | "Write" | "MultiEdit" => self.evaluate_write(tool_input),
             // A regex PreToolUse matcher can over-match; this dispatch — not
             // the matcher — is the authority on which tools the floor
             // evaluates.
@@ -151,13 +162,14 @@ impl FloorAuditor {
         }
     }
 
-    fn evaluate_write(&self, root: &Path, tool_input: &serde_json::Value) -> FloorDecision {
-        let Some(protected) = self.protected.as_deref() else {
-            return FloorDecision::Skip {
-                reason: "`harness.toml` declares no `[guard.floor]`, so no path is frozen — \
-                         declare the section, or remove the Edit/Write PreToolUse wiring"
-                    .into(),
-            };
+    fn evaluate_write(&self, tool_input: &serde_json::Value) -> FloorDecision {
+        let (root, protected) = match &self.floor {
+            Floor::Declared { root, paths } => (root.as_path(), paths.as_slice()),
+            Floor::Absent(reason) => {
+                return FloorDecision::Skip {
+                    reason: reason.clone(),
+                };
+            }
         };
         // An absent, non-string, or empty path is malformed input, not a write
         // to judge — resolving `""` lands on the repository root, which is
@@ -245,10 +257,17 @@ fn protected_entry<'a>(protected: &'a [String], rel_path: &str) -> Option<&'a st
 mod tests {
     use super::*;
 
-    fn auditor(protected_paths: &[&str]) -> FloorAuditor {
-        FloorAuditor::new(&FloorConfig {
-            protected_paths: protected_paths.iter().map(|s| s.to_string()).collect(),
-        })
+    fn auditor(root: &Path, protected_paths: &[&str]) -> FloorAuditor {
+        FloorAuditor::declared(
+            root.to_path_buf(),
+            &FloorConfig {
+                protected_paths: protected_paths.iter().map(|s| s.to_string()).collect(),
+            },
+        )
+    }
+
+    fn undeclared() -> FloorAuditor {
+        FloorAuditor::undeclared("no `[guard.floor]`")
     }
 
     fn bash_input(command: &str) -> serde_json::Value {
@@ -269,13 +288,13 @@ mod tests {
     #[test]
     fn blocks_a_bash_bypass_and_allows_a_clean_command() {
         let dir = plain_root();
-        let auditor = auditor(&[]);
+        let auditor = auditor(dir.path(), &[]);
         assert!(matches!(
-            auditor.evaluate(dir.path(), "Bash", &bash_input("git commit --no-verify")),
+            auditor.evaluate("Bash", &bash_input("git commit --no-verify")),
             FloorDecision::Block { .. }
         ));
         assert_eq!(
-            auditor.evaluate(dir.path(), "Bash", &bash_input("git status")),
+            auditor.evaluate("Bash", &bash_input("git status")),
             FloorDecision::Allow
         );
     }
@@ -283,7 +302,7 @@ mod tests {
     #[test]
     fn an_unparseable_command_skips_with_its_reason_rather_than_blocking() {
         let dir = plain_root();
-        let decision = auditor(&[]).evaluate(dir.path(), "Bash", &bash_input("echo 'oops"));
+        let decision = auditor(dir.path(), &[]).evaluate("Bash", &bash_input("echo 'oops"));
         let FloorDecision::Skip { reason } = decision else {
             panic!("expected skip, got {decision:?}");
         };
@@ -293,16 +312,16 @@ mod tests {
     #[test]
     fn a_malformed_command_field_skips_while_an_absent_one_allows() {
         let dir = plain_root();
-        let auditor = auditor(&[]);
+        let auditor = auditor(dir.path(), &[]);
         // Present but not a string: malformed input the floor cannot read.
-        let decision = auditor.evaluate(dir.path(), "Bash", &serde_json::json!({"command": 7}));
+        let decision = auditor.evaluate("Bash", &serde_json::json!({"command": 7}));
         assert!(
             matches!(decision, FloorDecision::Skip { .. }),
             "{decision:?}"
         );
         // Absent or null: no command to run, nothing to check.
         assert_eq!(
-            auditor.evaluate(dir.path(), "Bash", &serde_json::json!({"command": null})),
+            auditor.evaluate("Bash", &serde_json::json!({"command": null})),
             FloorDecision::Allow
         );
     }
@@ -310,7 +329,7 @@ mod tests {
     #[test]
     fn an_empty_file_path_skips_rather_than_resolving_to_the_repository_root() {
         let dir = plain_root();
-        let decision = auditor(&[]).evaluate(dir.path(), "Write", &write_input(""));
+        let decision = auditor(dir.path(), &[]).evaluate("Write", &write_input(""));
         assert!(
             matches!(decision, FloorDecision::Skip { .. }),
             "{decision:?}"
@@ -320,13 +339,13 @@ mod tests {
     #[test]
     fn a_missing_or_empty_command_is_not_the_floor_s_question() {
         let dir = plain_root();
-        let auditor = auditor(&[]);
+        let auditor = auditor(dir.path(), &[]);
         assert_eq!(
-            auditor.evaluate(dir.path(), "Bash", &serde_json::json!({})),
+            auditor.evaluate("Bash", &serde_json::json!({})),
             FloorDecision::Allow
         );
         assert_eq!(
-            auditor.evaluate(dir.path(), "Bash", &bash_input("   ")),
+            auditor.evaluate("Bash", &bash_input("   ")),
             FloorDecision::Allow
         );
     }
@@ -337,27 +356,21 @@ mod tests {
         // project that declares no floor keeps it — the freeze is what the
         // declaration arms, and bundling the two kept both out of every
         // repository whose gate files are its work product.
-        let dir = plain_root();
-        let auditor = FloorAuditor::undeclared();
+        let auditor = undeclared();
         assert!(matches!(
-            auditor.evaluate(
-                dir.path(),
-                "Bash",
-                &bash_input("git commit --no-verify -m x")
-            ),
+            auditor.evaluate("Bash", &bash_input("git commit --no-verify -m x")),
             FloorDecision::Block { .. }
         ));
         assert_eq!(
-            auditor.evaluate(dir.path(), "Bash", &bash_input("cargo test")),
+            auditor.evaluate("Bash", &bash_input("cargo test")),
             FloorDecision::Allow
         );
     }
 
     #[test]
     fn an_undeclared_floor_freezes_nothing_and_says_which() {
-        let dir = plain_root();
         let FloorDecision::Skip { reason } =
-            FloorAuditor::undeclared().evaluate(dir.path(), "Write", &write_input("harness.toml"))
+            undeclared().evaluate("Write", &write_input("harness.toml"))
         else {
             panic!("an undeclared floor freezes nothing");
         };
@@ -367,7 +380,7 @@ mod tests {
     #[test]
     fn freezes_the_built_in_floor_without_any_declaration() {
         let dir = plain_root();
-        let auditor = auditor(&[]);
+        let auditor = auditor(dir.path(), &[]);
         for path in [
             "harness.toml",
             ".claude/settings.json",
@@ -376,7 +389,7 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    auditor.evaluate(dir.path(), "Write", &write_input(path)),
+                    auditor.evaluate("Write", &write_input(path)),
                     FloorDecision::Block { .. }
                 ),
                 "not frozen: {path}"
@@ -387,21 +400,21 @@ mod tests {
     #[test]
     fn freezes_a_declared_entry_exactly_and_a_directory_entry_by_prefix() {
         let dir = plain_root();
-        let auditor = auditor(&["hooks/", ".gitleaks.toml"]);
+        let auditor = auditor(dir.path(), &["hooks/", ".gitleaks.toml"]);
         assert!(matches!(
-            auditor.evaluate(dir.path(), "Edit", &write_input("hooks/pre-commit")),
+            auditor.evaluate("Edit", &write_input("hooks/pre-commit")),
             FloorDecision::Block { .. }
         ));
         assert!(matches!(
-            auditor.evaluate(dir.path(), "Write", &write_input(".gitleaks.toml")),
+            auditor.evaluate("Write", &write_input(".gitleaks.toml")),
             FloorDecision::Block { .. }
         ));
         assert_eq!(
-            auditor.evaluate(dir.path(), "Write", &write_input("hooks-doc.md")),
+            auditor.evaluate("Write", &write_input("hooks-doc.md")),
             FloorDecision::Allow
         );
         assert_eq!(
-            auditor.evaluate(dir.path(), "Write", &write_input("src/main.rs")),
+            auditor.evaluate("Write", &write_input("src/main.rs")),
             FloorDecision::Allow
         );
     }
@@ -410,7 +423,7 @@ mod tests {
     fn a_dot_segment_spelling_of_a_protected_path_still_matches() {
         let dir = plain_root();
         assert!(matches!(
-            auditor(&[]).evaluate(dir.path(), "Write", &write_input("./src/../harness.toml")),
+            auditor(dir.path(), &[]).evaluate("Write", &write_input("./src/../harness.toml")),
             FloorDecision::Block { .. }
         ));
     }
@@ -424,7 +437,7 @@ mod tests {
             r#"{"env": {"HARNEX_ALLOW_FLOOR_EDIT": "1"}}"#,
         )
         .unwrap();
-        let decision = auditor(&[]).evaluate(dir.path(), "Edit", &write_input("harness.toml"));
+        let decision = auditor(dir.path(), &[]).evaluate("Edit", &write_input("harness.toml"));
         assert!(
             matches!(decision, FloorDecision::Grant { .. }),
             "{decision:?}"
@@ -436,7 +449,7 @@ mod tests {
         let dir = plain_root();
         std::fs::create_dir_all(dir.path().join(".claude")).unwrap();
         std::fs::write(dir.path().join(".claude/settings.local.json"), "{not json").unwrap();
-        let decision = auditor(&[]).evaluate(dir.path(), "Edit", &write_input("harness.toml"));
+        let decision = auditor(dir.path(), &[]).evaluate("Edit", &write_input("harness.toml"));
         let FloorDecision::Block { reason } = decision else {
             panic!("expected block, got {decision:?}");
         };
@@ -460,7 +473,7 @@ mod tests {
         .unwrap();
         let target = main.join(".claude/settings.local.json");
         assert!(matches!(
-            auditor(&[]).evaluate(&worktree, "Write", &write_input(&target.to_string_lossy())),
+            auditor(&worktree, &[]).evaluate("Write", &write_input(&target.to_string_lossy())),
             FloorDecision::Block { .. }
         ));
     }
@@ -468,7 +481,7 @@ mod tests {
     #[test]
     fn a_tool_outside_the_dispatch_set_skips_as_the_matcher_s_overreach() {
         let dir = plain_root();
-        let decision = auditor(&[]).evaluate(dir.path(), "Glob", &serde_json::json!({}));
+        let decision = auditor(dir.path(), &[]).evaluate("Glob", &serde_json::json!({}));
         assert!(
             matches!(decision, FloorDecision::Skip { .. }),
             "{decision:?}"

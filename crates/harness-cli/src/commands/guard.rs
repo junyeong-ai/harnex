@@ -123,16 +123,25 @@ fn floor<W: Write>(out: &mut W) -> Result<ExitCode> {
         Ok(parsed) => parsed,
         Err(e) => return skip(out, &format!("hook stdin json: {e}")),
     };
-    let (config, config_path, working_dir) = match load_config() {
-        Ok(loaded) => loaded,
-        Err(e) => return skip(out, &e.to_string()),
+    // Configuration is a precondition of the freeze alone. The tripwire reads
+    // none, so a project whose `harness.toml` is gone keeps it — otherwise
+    // removing that file, which no Edit can do but any Bash call can, would
+    // take the tripwire with it.
+    let auditor = match load_config() {
+        Ok((config, config_path, working_dir)) => {
+            match config.guard.as_ref().and_then(|g| g.floor.as_ref()) {
+                Some(floor_cfg) => {
+                    FloorAuditor::declared(config_dir(&config_path, &working_dir), floor_cfg)
+                }
+                None => FloorAuditor::undeclared(
+                    "`harness.toml` declares no `[guard.floor]`, so no path is frozen — \
+                     declare the section, or remove the Edit/Write PreToolUse wiring",
+                ),
+            }
+        }
+        Err(e) => FloorAuditor::undeclared(e.to_string()),
     };
-    let root = config_dir(&config_path, &working_dir);
-    let auditor = match config.guard.as_ref().and_then(|g| g.floor.as_ref()) {
-        Some(floor_cfg) => FloorAuditor::new(floor_cfg),
-        None => FloorAuditor::undeclared(),
-    };
-    match auditor.evaluate(&root, &input.tool_name, &input.tool_input) {
+    match auditor.evaluate(&input.tool_name, &input.tool_input) {
         FloorDecision::Allow => Ok(ExitCode::SUCCESS),
         FloorDecision::Skip { reason } => skip(out, &reason),
         FloorDecision::Grant { path } => notice(
