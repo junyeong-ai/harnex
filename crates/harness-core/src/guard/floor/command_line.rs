@@ -89,6 +89,33 @@ fn redirection_at(input: &str, i: usize) -> Option<&'static str> {
         .find(|op| input[i..].starts_with(op))
 }
 
+/// The body of the double-quoted span opening at `start` (just past the
+/// quote), and the byte index past its closing quote. One reader, because a
+/// heredoc delimiter is a word like any other: a second copy resolving
+/// escapes differently would end a body somewhere the shell does not.
+fn read_double_quoted(input: &str, start: usize) -> Result<(String, usize), SplitError> {
+    let bytes = input.as_bytes();
+    let mut body = String::new();
+    let mut i = start;
+    while i < bytes.len() && bytes[i] != b'"' {
+        if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\n') {
+            i += 2; // line continuation — removed inside double quotes too
+        } else if bytes[i] == b'\\' && matches!(bytes.get(i + 1), Some(b'"' | b'\\' | b'$' | b'`'))
+        {
+            body.push(bytes[i + 1] as char);
+            i += 2;
+        } else {
+            let ch = input[i..].chars().next().expect("in-bounds char");
+            body.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    if i >= bytes.len() {
+        return Err(SplitError::UnterminatedDoubleQuote);
+    }
+    Ok((body, i + 1))
+}
+
 /// A heredoc the line has opened, waiting for the body that follows the
 /// newline.
 struct Heredoc {
@@ -141,21 +168,9 @@ fn read_heredoc_delimiter(
             }
             b'"' => {
                 quoted = true;
-                i += 1;
-                while i < bytes.len() && bytes[i] != b'"' {
-                    if bytes[i] == b'\\'
-                        && matches!(bytes.get(i + 1), Some(b'"' | b'\\' | b'$' | b'`'))
-                    {
-                        i += 1;
-                    }
-                    let ch = input[i..].chars().next().expect("in-bounds char");
-                    delimiter.push(ch);
-                    i += ch.len_utf8();
-                }
-                if i >= bytes.len() {
-                    return Err(SplitError::UnterminatedDoubleQuote);
-                }
-                i += 1;
+                let (body, next) = read_double_quoted(input, i + 1)?;
+                delimiter.push_str(&body);
+                i = next;
             }
             b'\\' if i + 1 < bytes.len() => {
                 quoted = true;
@@ -428,27 +443,9 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
             continue;
         }
         if b == b'"' {
-            i += 1;
-            let mut buf = String::new();
-            while i < bytes.len() && bytes[i] != b'"' {
-                if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\n') {
-                    i += 2; // line continuation — removed inside double quotes too
-                } else if bytes[i] == b'\\'
-                    && matches!(bytes.get(i + 1), Some(b'"' | b'\\' | b'$' | b'`'))
-                {
-                    buf.push(bytes[i + 1] as char);
-                    i += 2;
-                } else {
-                    let ch = input[i..].chars().next().expect("in-bounds char");
-                    buf.push(ch);
-                    i += ch.len_utf8();
-                }
-            }
-            if i >= bytes.len() {
-                return Err(SplitError::UnterminatedDoubleQuote);
-            }
-            i += 1;
-            acc.push_str(&buf);
+            let (body, next) = read_double_quoted(input, i + 1)?;
+            acc.push_str(&body);
+            i = next;
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'\'') {
@@ -752,6 +749,12 @@ mod tests {
             split("cat <<\\EOF\ngit commit --no-verify -m x\nEOF"),
             owned(&[&["cat"]])
         );
+        // The delimiter is a word, so blanks may stand between it and the
+        // operator.
+        assert_eq!(
+            split("cat << 'EOF'\ngit commit --no-verify -m x\nEOF\ngit status"),
+            owned(&[&["cat"], &["git", "status"]])
+        );
     }
 
     #[test]
@@ -795,6 +798,28 @@ mod tests {
                 &["git", "commit", "--no-verify", "-m", "x"],
                 &["B"]
             ])
+        );
+    }
+
+    #[test]
+    fn keeps_the_command_that_follows_a_heredoc_written_before_it() {
+        // A redirection may precede its command, so the word after the
+        // delimiter is the command word rather than the operator's target.
+        assert_eq!(
+            split("<<'EOF' git commit --no-verify -m x\nprose\nEOF"),
+            owned(&[&["git", "commit", "--no-verify", "-m", "x"]])
+        );
+    }
+
+    #[test]
+    fn reads_a_delimiter_the_way_it_reads_any_other_word() {
+        assert_eq!(
+            split("cat <<\"E\\\"OF\"\ngit commit --no-verify -m x\nE\"OF\ngit status"),
+            owned(&[&["cat"], &["git", "status"]])
+        );
+        assert_eq!(
+            split("cat <<\"EO\\\nF\"\ngit commit --no-verify -m x\nEOF\ngit status"),
+            owned(&[&["cat"], &["git", "status"]])
         );
     }
 
