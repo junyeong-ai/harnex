@@ -21,9 +21,9 @@
 //! comparison: a round's count is a sample of what one reviewer found, a rule
 //! demanding it fall fires on the flat stretches every noisy descent has, and
 //! any token that let a round past such a rule would be one the loop under
-//! review writes for itself. For the same reason only an approval opens a new
-//! cycle — the one decision the auditor holds to the plan's open rows — while
-//! a rejection ends the work and a deferral pauses it. What the budget binds
+//! review writes for itself. For the same reason nothing returns a round: the
+//! count is every `needs_revision` the gate ever recorded, and an approval
+//! closes the gate without buying back what the gate spent. What the budget binds
 //! is one gate's name, so a firing under a second spelling is a second budget
 //! — which is why the caller declares the gates its workflow has and every
 //! firing answers to one of them.
@@ -80,6 +80,17 @@ wire_enum! {
     }
 }
 
+impl Disposition {
+    /// The three spellings, as a hint names them.
+    fn spelling() -> String {
+        Self::ALL
+            .iter()
+            .map(|d| format!("`[{}: …]`", d.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 wire_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     /// Finding ranks as a row spells them: `[Critical]` … `[Minor]`. Distinct
@@ -119,34 +130,6 @@ wire_enum! {
         Rejected => "rejected",
         NeedsRevision => "needs_revision",
         Deferred => "deferred",
-    }
-}
-
-impl GateDecision {
-    /// Whether the firing closes the gate. Only an approval does, and the
-    /// approval rules below hold it to what the plan carries. A deferral
-    /// holds the spec in flight until the gate re-fires, which is what the
-    /// shipped `gates.md` and `wrapup.md` tell the operator, and a rejection
-    /// ends the work rather than measuring it.
-    ///
-    /// Closing the gate spends no round and returns none: the budget is the
-    /// spec's, and the way out at the budget has to be writable at the
-    /// budget.
-    pub fn settles(self) -> bool {
-        match self {
-            Self::Approved => true,
-            Self::Rejected | Self::NeedsRevision | Self::Deferred => false,
-        }
-    }
-
-    /// The decisions that close a gate, as a hint names them.
-    fn settling() -> String {
-        Self::ALL
-            .iter()
-            .filter(|d| d.settles())
-            .map(|d| format!("`{}`", d.as_str()))
-            .collect::<Vec<_>>()
-            .join(" or ")
     }
 }
 
@@ -794,10 +777,12 @@ impl<'a> PlanAuditor<'a> {
         }
     }
 
-    /// The firings one gate may record in a cycle before reaching the number
+    /// The rounds one gate may spend on one spec before reaching the number
     /// is a report: a loop still running after many rounds is asking whether
-    /// the unit under review is one a review can finish. The number is the
-    /// caller's — nothing in a log decides a budget.
+    /// the unit under review is one a review can finish. Counted over the
+    /// spec's whole life, and reported against the commit that appends the
+    /// crossing record, so the baseline log is what holds it. The number is
+    /// the caller's — nothing in a log decides a budget.
     pub fn with_round_cap(mut self, rounds: NonZeroU32) -> Self {
         self.round_cap = Some(rounds);
         self
@@ -825,18 +810,21 @@ impl<'a> PlanAuditor<'a> {
         findings
     }
 
-    /// How many of the current log's bullets the committed baseline already
-    /// held — where the two checks that read past the committed prefix agree
-    /// on where it ends, so an edit one of them tolerates is not an edit the
-    /// other reads as a log that never grew.
+    /// Where the committed log ends inside the current one: `Ok(len)` when
+    /// the committed bullets stand as a prefix, `Err(index)` at the first one
+    /// that does not.
     ///
-    /// `None` is where nothing says: no committed spec, a committed section
-    /// that does not enumerate (`plan-baseline-unreadable` reports it), or a
-    /// prefix the current log no longer stands on (`plan-log-rewritten`
-    /// reports that, and a count read past a broken prefix is off by whatever
-    /// was removed). An absent section held nothing, which is a prefix of
-    /// length zero rather than an unknown.
-    fn committed_log_len(&self, log: &[Item]) -> Option<usize> {
+    /// One comparison, so the check that reports a rewritten log and the check
+    /// that reads past the prefix cannot disagree about which edits are edits.
+    /// Identity is the bullet's marker and its text with whitespace collapsed:
+    /// re-marked, a bullet is one no gate counts, which is a rewritten log
+    /// rather than a bullet that stayed.
+    ///
+    /// `None` is where nothing says: no committed spec, or a committed section
+    /// that does not enumerate (`plan-baseline-unreadable` reports that). An
+    /// absent section held nothing, which is a prefix of length zero rather
+    /// than an unknown.
+    fn committed_log_prefix(&self, log: &[Item]) -> Option<Result<usize, usize>> {
         let held = match self
             .baseline_spec
             .map(|t| section_of(t, DECISION_LOG_HEADING))?
@@ -845,12 +833,28 @@ impl<'a> PlanAuditor<'a> {
             Section::Missing { .. } => Vec::new(),
             Section::Found { items, .. } => items,
         };
-        (log.len() >= held.len()
-            && held
+        let same = |held: &Item, current: &Item| {
+            held.canonical_marker == current.canonical_marker
+                && normalize(&held.text) == normalize(&current.text)
+        };
+        Some(
+            match held
                 .iter()
-                .zip(log)
-                .all(|(held, current)| normalize(&held.text) == normalize(&current.text)))
-        .then_some(held.len())
+                .enumerate()
+                .find(|(index, item)| log.get(*index).is_none_or(|c| !same(item, c)))
+            {
+                Some((index, _)) => Err(index),
+                None => Ok(held.len()),
+            },
+        )
+    }
+
+    /// How many bullets this change did not append. A prefix the current log
+    /// no longer stands on answers nothing: the count that reads past it is
+    /// off by whatever moved, so a record that IS appended would read as
+    /// absent, and `plan-log-rewritten` is the finding instead.
+    fn committed_log_len(&self, log: &[Item]) -> Option<usize> {
+        self.committed_log_prefix(log)?.ok()
     }
 
     /// A commit that adds finding rows is a review round, and a round is
@@ -966,15 +970,17 @@ impl<'a> PlanAuditor<'a> {
     /// reads again.
     fn audit_baseline(&self, findings: &mut Vec<Finding>) {
         let unreadable = [
-            (self.baseline, OUTSTANDING_HEADING, self.plan_path),
+            (self.baseline, OUTSTANDING_HEADING, Some(self.plan_path)),
             (
                 self.baseline_spec,
                 DECISION_LOG_HEADING,
-                self.spec.map_or(self.plan_path, |(path, _)| path),
+                self.spec.map(|(path, _)| path),
             ),
         ];
         for (text, heading, path) in unreadable {
-            let Some(text) = text else { continue };
+            let (Some(text), Some(path)) = (text, path) else {
+                continue;
+            };
             let Section::Unreadable { reason, .. } = section_of(text, heading) else {
                 continue;
             };
@@ -1006,41 +1012,37 @@ impl<'a> PlanAuditor<'a> {
         let Some(baseline_spec) = self.baseline_spec else {
             return;
         };
-        let Section::Found { items: held, .. } = section_of(baseline_spec, DECISION_LOG_HEADING)
-        else {
-            return;
-        };
         let Section::Found { items: current, .. } = section_of(spec_text, DECISION_LOG_HEADING)
         else {
             // The current log's own Missing/Unreadable finding stands.
             return;
         };
-        for (index, item) in held.iter().enumerate() {
-            let kept = current
-                .get(index)
-                .is_some_and(|c| normalize(&c.text) == normalize(&item.text));
-            if !kept {
-                findings.push(Finding {
-                    slug: "plan-log-rewritten".into(),
-                    severity: Severity::Blocker,
-                    location: Location::file(spec_path),
-                    message: format!(
-                        "the committed decision log's bullet {} is edited, moved or gone: {}",
-                        index + 1,
-                        normalize(&item.text)
-                    ),
-                    hint: Some(
-                        "the log is append-only — a gate that fires again appends a new bullet; \
-                         restore the committed bullets verbatim and record the new decision \
-                         after them"
-                            .into(),
-                    ),
-                    auto_fixable: false,
-                    fix_command: None,
-                });
-                return;
-            }
-        }
+        let Some(Err(index)) = self.committed_log_prefix(&current) else {
+            return;
+        };
+        let Section::Found { items: held, .. } = section_of(baseline_spec, DECISION_LOG_HEADING)
+        else {
+            return;
+        };
+        let Some(item) = held.get(index) else { return };
+        findings.push(Finding {
+            slug: "plan-log-rewritten".into(),
+            severity: Severity::Blocker,
+            location: Location::file(spec_path),
+            message: format!(
+                "the committed decision log's bullet {} is edited, moved or gone: {}",
+                index + 1,
+                normalize(&item.text)
+            ),
+            hint: Some(
+                "the log is append-only — a gate that fires again appends a new bullet; \
+                 restore the committed bullets verbatim and record the new decision \
+                 after them"
+                    .into(),
+            ),
+            auto_fixable: false,
+            fix_command: None,
+        });
     }
 
     /// The plan's rows, with the row-level findings; `None` when the section
@@ -1367,10 +1369,12 @@ impl<'a> PlanAuditor<'a> {
                         hint: Some(format!(
                             "reaching the budget is a report, not a verdict on the round: a \
                              review that needs this many is naming a unit too large to finish. \
-                             Settle the scope — split what is under review, or close the gate \
-                             with {} once no blocking row stands. The budget is the spec's, so \
-                             closing the gate answers the rows rather than returning the rounds",
-                            GateDecision::settling()
+                             Settle the scope — split what is under review, so each part carries \
+                             its own budget, or close the gate with `{}` once no blocking row \
+                             stands, which spends nothing and adds no rows. The budget is the \
+                             spec's: closing the gate answers the rows rather than returning \
+                             the rounds",
+                            GateDecision::Approved.as_str()
                         )),
                         auto_fixable: false,
                         fix_command: None,
@@ -1495,10 +1499,19 @@ impl<'a> PlanAuditor<'a> {
         }
     }
 
-    /// Every open row the baseline held must survive in the current plan —
+    /// Every row the baseline held must survive in the current plan —
     /// verbatim, still open or now carrying its disposition. An unreadable or
     /// absent baseline holds nothing; an absent current plan is a deletion
     /// every baseline row witnesses.
+    ///
+    /// Disposed rows are held for the same reason open ones are: the section
+    /// is the spec's record of what review found, and a disposition ends a
+    /// finding rather than retiring its row. Held only while open, the check
+    /// also priced a deletion at nothing, and the seam above pairs an
+    /// unmatched baseline row against an arrival — so deleting a settled row
+    /// bought silence for a new finding, one for one, and a loop that
+    /// disposed its rows each round could go on spending that currency
+    /// indefinitely.
     fn audit_vanish(&self, rows: Option<&[FindingRow]>, findings: &mut Vec<Finding>) {
         let Some(baseline) = self.baseline else {
             return;
@@ -1523,9 +1536,6 @@ impl<'a> PlanAuditor<'a> {
             else {
                 continue;
             };
-            if !row.open() {
-                continue;
-            }
             // Claimed on match, never merely tested: two identical baseline
             // rows are two obligations, and one disposed current row must
             // not satisfy both.
@@ -1538,15 +1548,15 @@ impl<'a> PlanAuditor<'a> {
                     severity: Severity::Blocker,
                     location: Location::file(self.plan_path),
                     message: format!(
-                        "open [{}] finding the committed plan held is gone: {}",
+                        "[{}] finding the committed plan held is gone: {}",
                         row.severity.as_str(),
                         row.text
                     ),
-                    hint: Some(
+                    hint: Some(format!(
                         "a row is never deleted, reworded or downgraded — restore it verbatim at \
-                         its rank and end it with `[fixed: …]`, `[refuted: …]` or `[accepted: …]`"
-                            .into(),
-                    ),
+                         its rank and, where it is settled, end it with {}",
+                        Disposition::spelling()
+                    )),
                     auto_fixable: false,
                     fix_command: None,
                 });
@@ -1990,11 +2000,11 @@ mod tests {
     }
 
     #[test]
-    fn a_falling_count_converges_and_an_approval_resets_the_cycle() {
+    fn a_falling_count_is_not_a_finding_of_its_own() {
         let log = "- 2026-01-15 · review · needs_revision · 2C/1B/0M/0m · first\n\
                    - 2026-01-16 · review · needs_revision · 0C/1B/0M/0m · falling\n\
                    - 2026-01-17 · review · approved · 0C/0B/2M/1m · clean\n\
-                   - 2026-02-01 · review · needs_revision · 0C/1B/0M/0m · new cycle";
+                   - 2026-02-01 · review · needs_revision · 0C/1B/0M/0m · reopened";
         assert!(audit_with_spec(&plan(""), &spec(log)).is_empty());
     }
 
@@ -2067,12 +2077,11 @@ mod tests {
         assert_eq!(over[0].severity, Severity::Blocker);
         assert_eq!(over[0].location.line, Some(7), "the round that crossed it");
         let hint = over[0].hint.as_deref().expect("the cap names the way out");
-        for decision in GateDecision::ALL {
-            assert_eq!(
-                hint.contains(&format!("`{}`", decision.as_str())),
-                decision.settles(),
-                "the way out of a cap is a settlement, and `{}` is not one",
-                decision.as_str()
+        assert!(hint.contains("`approved`"), "the way out is named: {hint}");
+        for token in ["`rejected`", "`needs_revision`", "`deferred`"] {
+            assert!(
+                !hint.contains(token),
+                "{token} is not a way out of the budget: {hint}"
             );
         }
     }
@@ -2504,10 +2513,37 @@ mod tests {
     }
 
     #[test]
-    fn a_deleted_plan_is_witnessed_by_every_open_baseline_row() {
+    fn a_deleted_plan_is_witnessed_by_every_baseline_row() {
+        // Settled as much as open: the section is what review found, and a
+        // plan that leaves takes the whole record with it.
         let baseline = plan("- [Critical] a\n- [Minor] b [accepted: x, y]");
         let findings = audit_against(&baseline, None);
-        assert_eq!(slugs(&findings), ["plan-row-vanished"]);
+        assert_eq!(slugs(&findings), ["plan-row-vanished", "plan-row-vanished"]);
+    }
+
+    #[test]
+    fn a_settled_row_deleted_buys_nothing() {
+        // The seam pairs an unmatched baseline row against an arrival, so a
+        // row this check let go is one new finding the seam cannot see. Held
+        // only while open, three settled rows deleted bought three new ones,
+        // and the arm let that commit land round after round.
+        let settled =
+            "- [Major] one [fixed: a]\n- [Major] two [fixed: b]\n- [Major] three [fixed: c]";
+        let findings = audit_round(
+            settled,
+            "- [Major] four\n- [Major] five\n- [Major] six",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert_eq!(
+            slugs(&findings),
+            [
+                "plan-row-vanished",
+                "plan-row-vanished",
+                "plan-row-vanished"
+            ],
+            "the deletion is what is refused; the seam's pairing is then honest"
+        );
     }
 
     #[test]
@@ -2677,6 +2713,20 @@ mod tests {
         assert!(
             slugs(&findings).contains(&"plan-log-rewritten"),
             "{findings:#?}"
+        );
+    }
+
+    #[test]
+    fn a_committed_bullet_re_marked_is_a_rewritten_log() {
+        // The marker is what makes a bullet one a gate counts, so a committed
+        // record re-marked is a record gone — and the prefix both checks read
+        // has to say so, or the seam would read past a bullet the budget no
+        // longer counts and call the round recorded.
+        let held = spec(HELD_LOG);
+        let current = spec(&HELD_LOG.replacen('-', "*", 1));
+        assert_eq!(
+            slugs(&audit_log_against(&held, &current)),
+            ["plan-log-unparseable", "plan-log-rewritten"]
         );
     }
 
@@ -2950,9 +3000,9 @@ mod tests {
 
     #[test]
     fn a_pause_or_an_abandonment_records_no_round() {
-        // Neither spends a firing of the budget nor settles the cycle, so a
-        // round written as either leaves the budget where it was — which is
-        // the loop this seam exists to bound, running under another token.
+        // Neither spends a round, so a round written as either leaves the
+        // budget where it was — which is the loop this seam exists to bound,
+        // running under another token.
         for line in [
             "- 2026-01-16 · review · deferred · 0C/0B/1M/1m · paused",
             "- 2026-01-16 · review · rejected · 0C/0B/1M/1m · abandoned",
@@ -3111,20 +3161,24 @@ mod tests {
             HELD_LOG,
             HELD_LOG,
         );
-        assert_eq!(slugs(&findings), ["plan-round-unrecorded"]);
+        assert_eq!(
+            slugs(&findings),
+            ["plan-round-unrecorded", "plan-row-vanished"]
+        );
         assert!(
             findings[0].message.starts_with("3 finding row(s)"),
             "the count is the rows the baseline cannot explain: {}",
-            findings[0].message
+            findings[1].message
         );
-        // The reworded row alone explains itself, and nothing is reported.
+        // The reworded row alone explains itself, and the seam says nothing
+        // about it — the rewrite is the vanish check's finding to report.
         let reworded = audit_round(
             "- [Major] naming drifts [fixed: a.rs:10]",
             "- [Major] naming drifts from the glossary [fixed: a.rs:10]",
             HELD_LOG,
             HELD_LOG,
         );
-        assert!(reworded.is_empty(), "{reworded:#?}");
+        assert_eq!(slugs(&reworded), ["plan-row-vanished"]);
     }
 
     #[test]

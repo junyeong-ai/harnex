@@ -32,9 +32,12 @@ pub enum PlanCommand {
         /// stand verbatim as a prefix of `--spec`'s
         #[arg(long)]
         baseline_spec: Option<PathBuf>,
-        /// Firings one gate may record in a cycle before reaching the number
-        /// is reported. Omitted, no budget is held: whether the unit under
-        /// review is one a review can finish is the project's to choose
+        /// Rounds one gate may spend on one spec before reaching the number
+        /// is reported, counted over the spec's whole life and never returned.
+        /// Held only where `--baseline-spec` names the committed log, since
+        /// the crossing is answered by the commit that appends it. Omitted,
+        /// no budget is held: whether the unit under review is one a review
+        /// can finish is the project's to choose
         #[arg(long)]
         max_rounds: Option<NonZeroU32>,
         /// The gates this project's workflow defines, comma-separated. Every

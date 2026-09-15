@@ -7,7 +7,8 @@
 # disposition, no approval recorded over what its gate still counts against it
 # — an open Blocker, or an acceptance criterion nothing measured — no rows
 # landing without the round that found them, no round past the gate's budget,
-# and a decision log that only ever appends. The staged content
+# and a decision log that only ever appends. A commit that leaves neither
+# document retires the spec and is held to none of it. The staged content
 # is what is judged — the worktree may be further along — and HEAD is the
 # baseline both append-only contracts are held against. Paths are read
 # NUL-delimited with renames split into delete + add: a rename that also
@@ -38,6 +39,15 @@ while IFS= read -r -d '' f; do
   # The staged content is judged from a temp tree that mirrors the repo's
   # relative paths, so findings name the file the operator knows.
   mkdir -p "$tmp/$(dirname "$f")"
+  spec="${f%plan.md}spec.md"
+  # A commit that leaves neither document is the spec's retirement, not its
+  # record disappearing: there is nothing left to hold, and the rows it held
+  # went with the unit that owned them. Judged from the index rather than from
+  # the diff, so a spec removed over several commits reaches the same answer.
+  if ! git cat-file -e ":$f" 2>/dev/null && ! git cat-file -e ":$spec" 2>/dev/null; then
+    rm -rf "$tmp"
+    continue
+  fi
   # Rounds one gate may spend on one spec before reaching the number is a
   # report. Raise it for a genuinely large scope; a review that needs many
   # more is naming a unit too large to finish as one. The gate list is this
@@ -46,14 +56,14 @@ while IFS= read -r -d '' f; do
   # gains one.
   args=(--plan "$f" --max-rounds 5 --gates clarify,design_review,review,acceptance,resume)
   git show ":$f" >"$tmp/$f" 2>/dev/null || rm -f "$tmp/$f"
-  spec="${f%plan.md}spec.md"
-  if git show ":$spec" >"$tmp/$spec" 2>/dev/null; then
-    args+=(--spec "$spec")
-  fi
-  # A path HEAD does not carry is committed to nothing, which is a baseline of
-  # no rows and no records rather than an absent one: the first commit of a
-  # spec carries rows only if a pass found them, and every append-only contract
-  # here starts from that empty page.
+  # The four inputs are always supplied, and absent is spelled as empty. A
+  # staged plan whose spec is not in the index would otherwise skip every
+  # check the log carries — the round record among them — and an empty one
+  # makes the missing ledger the finding it is. A path HEAD does not carry is
+  # committed to nothing, which is a baseline of no rows and no records: the
+  # first commit of a spec carries rows only if a pass found them.
+  git show ":$spec" >"$tmp/$spec" 2>/dev/null || : >"$tmp/$spec"
+  args+=(--spec "$spec")
   git show "HEAD:$f" >"$tmp/$f.baseline" 2>/dev/null || : >"$tmp/$f.baseline"
   args+=(--baseline "$f.baseline")
   git show "HEAD:$spec" >"$tmp/$spec.baseline" 2>/dev/null || : >"$tmp/$spec.baseline"
