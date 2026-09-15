@@ -18,16 +18,17 @@
 //!   dropped, so `2>&1` binds as one redirection rather than splitting at its
 //!   `&`, and `--no-verify>log` reads as a flag plus a redirection rather
 //!   than one opaque word.
-//! - Heredoc bodies are not modelled. `<<` / `<<-` are recognised whole and
-//!   the delimiter word is consumed as the operator's target — but each
-//!   newline remains a separator, so a prose line beginning
-//!   `git commit --no-verify` inside `cat <<EOF` still false-blocks. The
-//!   fail direction is a surfaced block on an unusual path, never a silent
-//!   pass, and that is what keeps the body unmodelled now that the tripwire
-//!   ships in every scaffold: a model of where a body ends is a place to
-//!   spell a bypass that reads as prose. A mention inside the line rather
-//!   than at its head — the shape a document that quotes the flag actually
-//!   takes — is not a command and passes.
+//! - A heredoc body is read as the shell reads it, which its delimiter
+//!   decides. Quoting any part of the delimiter (`<<'EOF'`) suppresses every
+//!   expansion, so the body reaches the command's stdin as data and the scan
+//!   steps over it — that is how a document *about* a bypass is written. An
+//!   unquoted `<<EOF` keeps `$(…)` live, so its body stays in the scan, and
+//!   with each newline a separator a prose line beginning `git commit
+//!   --no-verify` there still false-blocks: a surfaced block on a document
+//!   whose author can quote the delimiter, never a silent pass. The skip
+//!   rests on the delimiter alone, never on guessing which lines look like
+//!   prose, and a delimiter that never arrives ends the body at the end of
+//!   input, exactly where the shell ends it.
 
 use std::fmt;
 
@@ -86,6 +87,134 @@ fn redirection_at(input: &str, i: usize) -> Option<&'static str> {
     REDIRECTION_OPERATORS
         .into_iter()
         .find(|op| input[i..].starts_with(op))
+}
+
+/// A heredoc the line has opened, waiting for the body that follows the
+/// newline.
+struct Heredoc {
+    /// The delimiter after quote removal, as the shell compares it against
+    /// each body line.
+    delimiter: String,
+    /// `<<-`, which strips leading tabs from the body and the delimiter line.
+    strip_tabs: bool,
+    /// Whether any part of the delimiter word was quoted, which is what
+    /// decides whether the body is data or text the shell still expands.
+    quoted: bool,
+}
+
+/// Whether `redirection` opens a heredoc, and whether it strips leading tabs.
+fn heredoc_operator(redirection: &str) -> Option<bool> {
+    match redirection {
+        "<<" => Some(false),
+        "<<-" => Some(true),
+        _ => None,
+    }
+}
+
+/// Characters that end the delimiter word unquoted: the shell's own
+/// metacharacters, past which the word belongs to the next construct.
+const DELIMITER_TERMINATORS: &[u8] = b";&|<>()";
+
+/// Read the delimiter word at `start` (just past the operator), returning the
+/// heredoc it opens and the byte index past the word.
+fn read_heredoc_delimiter(
+    input: &str,
+    start: usize,
+    strip_tabs: bool,
+) -> Result<(Heredoc, usize), SplitError> {
+    let bytes = input.as_bytes();
+    let mut i = start;
+    while matches!(bytes.get(i), Some(b' ' | b'\t')) {
+        i += 1;
+    }
+    let mut delimiter = String::new();
+    let mut quoted = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' => {
+                quoted = true;
+                let end = input[i + 1..]
+                    .find('\'')
+                    .ok_or(SplitError::UnterminatedSingleQuote)?;
+                delimiter.push_str(&input[i + 1..i + 1 + end]);
+                i += end + 2;
+            }
+            b'"' => {
+                quoted = true;
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\'
+                        && matches!(bytes.get(i + 1), Some(b'"' | b'\\' | b'$' | b'`'))
+                    {
+                        i += 1;
+                    }
+                    let ch = input[i..].chars().next().expect("in-bounds char");
+                    delimiter.push(ch);
+                    i += ch.len_utf8();
+                }
+                if i >= bytes.len() {
+                    return Err(SplitError::UnterminatedDoubleQuote);
+                }
+                i += 1;
+            }
+            b'\\' if i + 1 < bytes.len() => {
+                quoted = true;
+                let ch = input[i + 1..].chars().next().expect("in-bounds char");
+                delimiter.push(ch);
+                i += 1 + ch.len_utf8();
+            }
+            b if b.is_ascii_whitespace() || DELIMITER_TERMINATORS.contains(&b) => break,
+            _ => {
+                let ch = input[i..].chars().next().expect("in-bounds char");
+                delimiter.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    Ok((
+        Heredoc {
+            delimiter,
+            strip_tabs,
+            quoted,
+        },
+        i,
+    ))
+}
+
+/// Advance past the bodies `queued` on the line just ended.
+///
+/// A quoted delimiter makes its body data the shell never runs, so the scan
+/// steps over it. An unquoted one leaves the body — and every body queued
+/// behind it, since the scan no longer knows where they begin — in the scan.
+fn consume_heredoc_bodies(input: &str, mut at: usize, queued: &mut Vec<Heredoc>) -> usize {
+    for heredoc in queued.drain(..) {
+        if !heredoc.quoted {
+            break;
+        }
+        at = skip_heredoc_body(input, at, &heredoc);
+    }
+    at
+}
+
+/// The index past `heredoc`'s body: the start of the line after its delimiter
+/// line, or the end of input where the delimiter never arrives, which is
+/// where the shell ends that body too.
+fn skip_heredoc_body(input: &str, start: usize, heredoc: &Heredoc) -> usize {
+    let mut at = start;
+    while at < input.len() {
+        let newline = input[at..].find('\n').map(|offset| at + offset);
+        let line = &input[at..newline.unwrap_or(input.len())];
+        at = newline.map_or(input.len(), |index| index + 1);
+        let candidate = if heredoc.strip_tabs {
+            line.trim_start_matches('\t')
+        } else {
+            line
+        };
+        if candidate == heredoc.delimiter {
+            return at;
+        }
+    }
+    input.len()
 }
 
 /// Decode a `$'…'` body starting at `start` (just past the opening quote),
@@ -250,6 +379,12 @@ impl Accumulator {
         }
         self.drop_next_word = true;
     }
+
+    /// The redirection's target was read by the scan itself, as a heredoc
+    /// delimiter is, so no later word is that target.
+    fn target_consumed(&mut self) {
+        self.drop_next_word = false;
+    }
 }
 
 /// Split a shell command line into simple commands (each a word list).
@@ -261,6 +396,7 @@ impl Accumulator {
 pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
     let bytes = input.as_bytes();
     let mut acc = Accumulator::default();
+    let mut heredocs: Vec<Heredoc> = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
         let b = bytes[i];
@@ -362,11 +498,20 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
         if let Some(redirection) = redirection_at(input, i) {
             acc.start_redirection();
             i += redirection.len();
+            if let Some(strip_tabs) = heredoc_operator(redirection) {
+                let (heredoc, past_delimiter) = read_heredoc_delimiter(input, i, strip_tabs)?;
+                acc.target_consumed();
+                heredocs.push(heredoc);
+                i = past_delimiter;
+            }
             continue;
         }
         if matches!(b, b'\n' | b';' | b'(' | b')') {
             acc.push_command();
             i += 1;
+            if b == b'\n' {
+                i = consume_heredoc_bodies(input, i, &mut heredocs);
+            }
             continue;
         }
         if b == b'&' || b == b'|' {
@@ -586,6 +731,79 @@ mod tests {
     fn recognises_heredoc_operators_whole() {
         assert_eq!(split("cat <<EOF"), owned(&[&["cat"]]));
         assert_eq!(split("cat <<-EOF"), owned(&[&["cat"]]));
+        assert_eq!(split("cat <<<'git commit'"), owned(&[&["cat"]]));
+    }
+
+    #[test]
+    fn reads_a_quoted_delimiter_body_as_data_rather_than_as_commands() {
+        assert_eq!(
+            split("cat > gate.md <<'EOF'\ngit commit --no-verify -m x\nEOF"),
+            owned(&[&["cat"]])
+        );
+        assert_eq!(
+            split("cat <<\"EOF\"\ngit commit --no-verify -m x\nEOF"),
+            owned(&[&["cat"]])
+        );
+        assert_eq!(
+            split("cat <<E'O'F\ngit commit --no-verify -m x\nEOF"),
+            owned(&[&["cat"]])
+        );
+        assert_eq!(
+            split("cat <<\\EOF\ngit commit --no-verify -m x\nEOF"),
+            owned(&[&["cat"]])
+        );
+    }
+
+    #[test]
+    fn keeps_an_unquoted_delimiter_body_in_the_scan() {
+        assert_eq!(
+            split("cat <<EOF\ngit commit --no-verify -m x\nEOF"),
+            owned(&[
+                &["cat"],
+                &["git", "commit", "--no-verify", "-m", "x"],
+                &["EOF"]
+            ])
+        );
+    }
+
+    #[test]
+    fn strips_leading_tabs_from_a_dash_heredoc_delimiter_line() {
+        assert_eq!(
+            split("cat <<-'EOF'\n\tgit commit --no-verify -m x\n\tEOF\ngit status"),
+            owned(&[&["cat"], &["git", "status"]])
+        );
+        assert_eq!(
+            split("cat <<'EOF'\n\tEOF\ngit commit --no-verify -m x\nEOF\ngit status"),
+            owned(&[&["cat"], &["git", "status"]])
+        );
+    }
+
+    #[test]
+    fn resumes_scanning_after_a_quoted_body_ends() {
+        assert_eq!(
+            split("cat <<'EOF'\nprose\nEOF\ngit commit --no-verify -m x"),
+            owned(&[&["cat"], &["git", "commit", "--no-verify", "-m", "x"]])
+        );
+    }
+
+    #[test]
+    fn stops_stepping_over_bodies_at_the_first_unquoted_delimiter() {
+        assert_eq!(
+            split("cat <<'A' <<B\nprose\nA\ngit commit --no-verify -m x\nB"),
+            owned(&[
+                &["cat"],
+                &["git", "commit", "--no-verify", "-m", "x"],
+                &["B"]
+            ])
+        );
+    }
+
+    #[test]
+    fn ends_a_body_whose_delimiter_never_arrives_at_the_end_of_input() {
+        assert_eq!(
+            split("cat <<'EOF'\ngit commit --no-verify -m x"),
+            owned(&[&["cat"]])
+        );
     }
 
     #[test]
