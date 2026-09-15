@@ -131,9 +131,8 @@ impl FloorAuditor {
             Ok(Some(detected)) => FloorDecision::Block {
                 reason: format!(
                     "{detected}. The git hook stack is the shared safety contract; fix the \
-                     failing gate at its cause. A harnex-generated hook names its own escape \
-                     hatch, which skips that one check and never the stack; a bypass the \
-                     operator truly needs is run by the operator, outside the agent."
+                     failing gate at its cause. A bypass the operator truly needs is theirs \
+                     to run, outside the agent."
                 ),
             },
             Err(e) => FloorDecision::Skip {

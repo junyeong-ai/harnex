@@ -17,10 +17,15 @@
 #
 # Fail-open on a missing binary and on a runtime failure of the tool itself;
 # only findings block. Escape hatch via HARNEX_SKIP_PLANCHECK=1 when the
-# operator has decided the state may land as it stands.
+# operator has decided the state may land as it stands. Set, it says so on the
+# commit it skips, and the block message below names no way around itself: the
+# loop this floor bounds is what reads it first.
 set -uo pipefail
 
-[[ "${HARNEX_SKIP_PLANCHECK:-}" == "1" ]] && exit 0
+if [[ "${HARNEX_SKIP_PLANCHECK:-}" == "1" ]]; then
+  echo "[harnex] review floor skipped by operator override — this commit was not judged." >&2
+  exit 0
+fi
 
 command -v harnex >/dev/null 2>&1 || {
   echo "[harnex] harnex not installed — plan audit skipped." >&2
@@ -77,7 +82,7 @@ while IFS= read -r -d '' f; do
   1)
     echo "[harnex] $f fails the review floor — commit blocked." >&2
     echo "$out" >&2
-    echo "         Operator override: HARNEX_SKIP_PLANCHECK=1 git commit ..." >&2
+    echo "         Landing it anyway is the operator's call; this hook says how." >&2
     status=1
     ;;
   *)
