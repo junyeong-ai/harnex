@@ -329,7 +329,7 @@ operator to re-phrase using a verb from this list.
     bookends (critique, design-review) as **skills**, the fresh-context
     reviewer **agent** they all run through, the severity × citation rule
     that decides what may be fixed unattended, and 6 lens files.
-  - `spec-workflow` — the spec orchestrator as a **skill** (four gate events, a
+  - `spec-workflow` — the spec orchestrator as a **skill** (gate events with a
     closed decision-token enum, resume from disk), the threshold-and-lifecycle
     rule, and `specs/_template/`.
   - `telemetry-kinds` — the closed-schema event ledger the harness measures
