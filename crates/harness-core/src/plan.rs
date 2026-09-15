@@ -59,7 +59,7 @@
 //!   pre-commit arm and the skill — because a project-wide walk would need
 //!   the layout this module refuses to guess.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroU32;
 use std::path::Path;
 
@@ -123,14 +123,15 @@ wire_enum! {
 }
 
 impl GateDecision {
-    /// Whether the firing closes the cycle, so the next firing of the same
-    /// gate opens a new one. Only an approval does, and the approval rules
-    /// below hold it to what the plan carries. A deferral holds the spec in
-    /// flight until the gate re-fires, which is what the shipped `gates.md`
-    /// and `wrapup.md` tell the operator, and a rejection ends the work
-    /// rather than measuring it — both are lines the loop under review writes
-    /// for itself, so a budget either one reopened would be the rationale
-    /// hatch under another name.
+    /// Whether the firing closes the gate. Only an approval does, and the
+    /// approval rules below hold it to what the plan carries. A deferral
+    /// holds the spec in flight until the gate re-fires, which is what the
+    /// shipped `gates.md` and `wrapup.md` tell the operator, and a rejection
+    /// ends the work rather than measuring it.
+    ///
+    /// Closing the gate spends no round and returns none: the budget is the
+    /// spec's, and the way out at the budget has to be writable at the
+    /// budget.
     pub fn settles(self) -> bool {
         match self {
             Self::Approved => true,
@@ -138,7 +139,7 @@ impl GateDecision {
         }
     }
 
-    /// The decisions that close a cycle, as a hint names them.
+    /// The decisions that close a gate, as a hint names them.
     fn settling() -> String {
         Self::ALL
             .iter()
@@ -170,36 +171,29 @@ pub const COUNTED_GATES: [(&str, GateClass); 3] = [
     ("acceptance", GateClass::Acceptance),
 ];
 
-/// Whether a decision line records a round the budget will account for.
+/// Whether a decision line spends a round of its gate's budget.
 ///
-/// The seam that holds a row-adding commit to a record asks this, and asks it
-/// in the budget's own terms so the two cannot disagree. `needs_revision` is
-/// the token [`PlanAuditor::audit_log`] increments a cycle by, and it does so
-/// under whatever name the caller declared — so a project whose review gate
-/// carries its own name records rounds the same way, and only the one gate
-/// this module knows measures something else is excluded. An approval is the
-/// round that closes a cycle, the one transcribing what the loop leaves
-/// standing, and there the name must be one whose class is known: an approval
-/// is how a gate that judged nothing under review also ends.
+/// One set, read by the budget that counts rounds and by the seam that holds
+/// a row-adding commit to recording one, so the two cannot disagree about
+/// what a round is. `needs_revision` is the token: it states that the gate
+/// fired and the work continues, which is the pass a budget bounds.
 ///
-/// `deferred` and `rejected` record no round. Neither spends a firing and
-/// neither settles ([`GateDecision::settles`] argues the same for the cycle),
-/// so a round written as either would satisfy this seam while the budget
-/// stayed where it was — measured, ten `deferred` firings against a budget of
-/// five reported nothing at all.
+/// Nothing else spends. An approval closes the gate and has to stay writable
+/// at the budget, since disposing every blocking row and approving is one of
+/// the two ways out of one; a deferral and a rejection state that the gate
+/// stopped without judging. A seam that accepted any of the three would take
+/// a token the budget cannot see as a round — measured, a loop that disposed
+/// its rows and approved each pass ran unbounded against a budget of five.
 ///
-/// The residue: a project whose review gate is named outside
-/// [`COUNTED_GATES`] closes its cycle with an approval this does not read as
-/// a round, so a commit transcribing residue under that approval alone is
-/// refused. Declaring the gate under a counted name is what resolves it, and
-/// the alternative — reading any unknown gate's approval as a round — would
-/// let `clarify`'s approval stand for a review that never ran.
-fn spends_or_settles_a_round(line: DecisionLine) -> bool {
-    match line.decision {
-        GateDecision::NeedsRevision => gate_class(&line.gate) != Some(GateClass::Acceptance),
-        GateDecision::Approved => gate_class(&line.gate) == Some(GateClass::Review),
-        GateDecision::Rejected | GateDecision::Deferred => false,
-    }
+/// The gate must be one whose class is known, because a budget is what makes
+/// a record answerable and only [`COUNTED_GATES`] carry one. The residue: a
+/// project whose review gate is named outside that list records rounds no
+/// budget counts, and its row-adding commits are refused until the gate is
+/// declared under a counted name. The alternative — reading any declared
+/// gate's `needs_revision` as a round — lets `clarify` answer for a review
+/// that never ran, and leaves the seam accepting records the budget skips.
+fn spends_a_round(line: &DecisionLine) -> bool {
+    line.decision == GateDecision::NeedsRevision && gate_class(&line.gate).is_some()
 }
 
 /// The class a gate owes counts in, or `None` where it owes none.
@@ -821,6 +815,7 @@ impl<'a> PlanAuditor<'a> {
     pub fn audit(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
         let rows = self.plan_rows(&mut findings);
+        self.audit_baseline(&mut findings);
         if let Some((spec_path, spec_text)) = self.spec {
             self.audit_log(spec_path, spec_text, rows.as_deref(), &mut findings);
             self.audit_log_rewrite(spec_path, spec_text, &mut findings);
@@ -830,34 +825,54 @@ impl<'a> PlanAuditor<'a> {
         findings
     }
 
+    /// How many of the current log's bullets the committed baseline already
+    /// held — where the two checks that read past the committed prefix agree
+    /// on where it ends, so an edit one of them tolerates is not an edit the
+    /// other reads as a log that never grew.
+    ///
+    /// `None` is where nothing says: no committed spec, a committed section
+    /// that does not enumerate (`plan-baseline-unreadable` reports it), or a
+    /// prefix the current log no longer stands on (`plan-log-rewritten`
+    /// reports that, and a count read past a broken prefix is off by whatever
+    /// was removed). An absent section held nothing, which is a prefix of
+    /// length zero rather than an unknown.
+    fn committed_log_len(&self, log: &[Item]) -> Option<usize> {
+        let held = match self
+            .baseline_spec
+            .map(|t| section_of(t, DECISION_LOG_HEADING))?
+        {
+            Section::Unreadable { .. } => return None,
+            Section::Missing { .. } => Vec::new(),
+            Section::Found { items, .. } => items,
+        };
+        (log.len() >= held.len()
+            && held
+                .iter()
+                .zip(log)
+                .all(|(held, current)| normalize(&held.text) == normalize(&current.text)))
+        .then_some(held.len())
+    }
+
     /// A commit that adds finding rows is a review round, and a round is
-    /// recorded or it is refused: the plan's rows past its baseline are
-    /// non-empty while the decision log past its own baseline carries no line
-    /// [`spends_or_settles_a_round`] reads as one. The budget counts records,
-    /// so a round that lands without one spends nothing — measured, fifty-four
+    /// recorded or it is refused: the plan carries rows its baseline did not
+    /// while the decision log past its committed prefix carries no line
+    /// [`spends_a_round`] reads as one. The budget counts those records, so a
+    /// round that lands without one spends nothing — measured, fifty-four
     /// rounds on one spec against a budget of five, every one a commit adding
     /// rows and none a record. A row is new when its [`FindingRow::identity`]
     /// claims no baseline row, the same key the vanish check matches under;
     /// gaining a disposition, then, is not adding a row.
     ///
-    /// Held only where both baselines are supplied — without the committed
-    /// plan nothing says which rows are new, and without the committed spec
-    /// nothing says which lines are — and an unreadable or absent baseline
-    /// section holds nothing, as the two sibling contracts read it.
+    /// A committed row that did not survive accounts for one unclaimed
+    /// current row and no more: against a row that is gone, an added row and
+    /// a reworded one are the same two lines, so a verdict on the pair would
+    /// call a repaired citation a round. The surplus past that pairing is
+    /// rows the baseline cannot explain however it is read, which is what the
+    /// count reports — a plain rewording leaves none and stays silent, and a
+    /// repair beside twenty new findings no longer hides them.
     ///
-    /// Two silences, each where the inputs stop answering. A baseline row that
-    /// did not survive, disposed as much as open and counted as a multiset so
-    /// one current row cannot stand in for two: against a row that is gone, an
-    /// added row and a reworded one are the same two lines, and a verdict
-    /// would call a repaired citation a round. A committed log bullet edited
-    /// or gone: the count that reads past the committed prefix is off by
-    /// whatever was removed, so a record that IS appended would read as
-    /// absent. Each is `plan-row-vanished`'s or `plan-log-rewritten`'s to
-    /// report, and where neither reports — a disposed row reworded — the
-    /// silence is the honest answer rather than a guess.
-    ///
-    /// Whether a firing answers to a declared name stays
-    /// `plan-log-gate-undeclared`'s question.
+    /// Held only where the committed plan is supplied; without it nothing
+    /// says which rows are new. An absent committed section held no rows.
     fn audit_round_recorded(
         &self,
         spec_path: &Path,
@@ -865,32 +880,26 @@ impl<'a> PlanAuditor<'a> {
         rows: Option<&[FindingRow]>,
         findings: &mut Vec<Finding>,
     ) {
-        let (Some(baseline), Some(baseline_spec), Some(rows)) =
-            (self.baseline, self.baseline_spec, rows)
-        else {
+        let (Some(baseline), Some(rows)) = (self.baseline, rows) else {
             return;
         };
-        let Section::Found {
-            items: held_rows, ..
-        } = section_of(baseline, OUTSTANDING_HEADING)
-        else {
-            return;
-        };
-        let Section::Found {
-            items: held_log, ..
-        } = section_of(baseline_spec, DECISION_LOG_HEADING)
-        else {
-            return;
+        let held_rows = match section_of(baseline, OUTSTANDING_HEADING) {
+            Section::Unreadable { .. } => return,
+            Section::Missing { .. } => Vec::new(),
+            Section::Found { items, .. } => items,
         };
         let Section::Found { items: log, .. } = section_of(spec_text, DECISION_LOG_HEADING) else {
             // The current log's own Missing/Unreadable finding stands.
             return;
         };
+        let Some(committed) = self.committed_log_len(&log) else {
+            return;
+        };
 
-        // One pass over one pool answers both halves, claimed on match as the
-        // vanish check claims: two identical rows are two obligations, and one
-        // row must not cover both. What the current section does not claim is
-        // added; what the baseline is left holding did not survive.
+        // One pass over one pool, claimed on match as the vanish check
+        // claims: two identical rows are two obligations, and one row must
+        // not cover both. What the current section does not claim is added;
+        // what the baseline is left holding did not survive.
         let mut held: Vec<FindingRow> = held_rows
             .iter()
             .filter(|item| item.canonical_marker)
@@ -905,33 +914,17 @@ impl<'a> PlanAuditor<'a> {
                 None => added += 1,
             }
         }
-        // A baseline row gone is a row this check cannot read: against it an
-        // added row and a reworded one are the same two lines. Open, the vanish
-        // check says so; disposed, nothing does, and a verdict here would name
-        // a round that a repaired citation is not.
-        if !held.is_empty() || added == 0 {
+        let new_rows = added.saturating_sub(held.len());
+        if new_rows == 0 {
             return;
         }
 
-        // The committed bullets are a prefix of the current log or they are
-        // `plan-log-rewritten`'s finding, and past that prefix is what this
-        // commit records. Where the prefix does not hold, the count that reads
-        // it is off by whatever was removed, so this check says nothing rather
-        // than reporting a record it skipped past as absent.
-        if !held_log
-            .iter()
-            .zip(log.iter())
-            .all(|(held, current)| held.text == current.text)
-            || log.len() < held_log.len()
-        {
-            return;
-        }
         let recorded = log
             .iter()
-            .skip(held_log.len())
+            .skip(committed)
             .filter(|item| item.canonical_marker)
             .filter_map(|item| parse_decision(&item.text))
-            .any(spends_or_settles_a_round);
+            .any(|line| spends_a_round(&line));
         if recorded {
             return;
         }
@@ -940,25 +933,68 @@ impl<'a> PlanAuditor<'a> {
             severity: Severity::Blocker,
             location: Location::file(spec_path),
             message: format!(
-                "{added} finding row(s) added to `{}`'s `## {OUTSTANDING_HEADING}` with no round \
-                 appended to this log — the round budget counts records, so an unrecorded round \
-                 spends nothing",
+                "{new_rows} finding row(s) added to `{}`'s `## {OUTSTANDING_HEADING}` with no \
+                 round appended to this log — the round budget counts records, so an unrecorded \
+                 round spends nothing",
                 self.plan_path.display()
             ),
             hint: Some(format!(
                 "a pass that adds rows is a round: record it in the same commit under the gate \
-                 that ran, as `- <YYYY-MM-DD> · <gate> · {} · <counts, where the gate owes them> \
-                 · <rationale>` appended at the margin. {} is what the budget counts, so it is \
-                 what a round spends; an `{}` on a review gate closes the cycle and is the last \
-                 round of it. At the budget the operator settles the scope — split what is under \
-                 review, or dispose of every blocking row and approve",
+                 that ran, as `- <YYYY-MM-DD> · <gate> · {} · <counts> · <rationale>` appended \
+                 at the margin. That token is what the budget counts, and only under a gate that \
+                 carries one ({}). A pass that also ends the gate writes `{}` as a second bullet \
+                 behind it; alone it records no round. At the budget the operator settles the \
+                 scope — split what is under review, or dispose of every blocking row and approve",
                 GateDecision::NeedsRevision.as_str(),
-                GateDecision::NeedsRevision.as_str(),
+                COUNTED_GATES
+                    .iter()
+                    .map(|(gate, _)| format!("`{gate}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 GateDecision::Approved.as_str(),
             )),
             auto_fixable: false,
             fix_command: None,
         });
+    }
+
+    /// A committed section that does not enumerate is no baseline, and the
+    /// three checks that read one answer nothing without it. Said once, where
+    /// the state is, rather than as three silences that read like a pass:
+    /// which rows are new, which rows did not survive, and which records this
+    /// commit appended are all unanswerable until the committed document
+    /// reads again.
+    fn audit_baseline(&self, findings: &mut Vec<Finding>) {
+        let unreadable = [
+            (self.baseline, OUTSTANDING_HEADING, self.plan_path),
+            (
+                self.baseline_spec,
+                DECISION_LOG_HEADING,
+                self.spec.map_or(self.plan_path, |(path, _)| path),
+            ),
+        ];
+        for (text, heading, path) in unreadable {
+            let Some(text) = text else { continue };
+            let Section::Unreadable { reason, .. } = section_of(text, heading) else {
+                continue;
+            };
+            findings.push(Finding {
+                slug: "plan-baseline-unreadable".into(),
+                severity: Severity::Blocker,
+                location: Location::file(path),
+                message: format!(
+                    "the committed `## {heading}` cannot be read, so what this change adds to it \
+                     cannot be accounted for: {reason}"
+                ),
+                hint: Some(
+                    "repair the committed document first — until it enumerates, no append-only \
+                     contract over it has a baseline to hold"
+                        .into(),
+                ),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
     }
 
     /// The decision log is append-only: the baseline's bullets must stand as
@@ -1131,6 +1167,13 @@ impl<'a> PlanAuditor<'a> {
             }
             Section::Found { items, loose } => (items, loose),
         };
+        // The first bullet this change appends, against which a budget
+        // crossing is this commit's to answer for rather than the spec's
+        // history to carry.
+        let appended_from = self
+            .committed_log_len(&items)
+            .and_then(|committed| items.get(committed))
+            .map(|item| item.line);
 
         // An entry the log opens off its margin — nested under the bullet
         // above it, indented past it, or quoted. A reader counts it and the
@@ -1204,16 +1247,18 @@ impl<'a> PlanAuditor<'a> {
             .filter_map(|(line_no, decision)| decision.as_ref().map(|d| (*line_no, d)))
             .collect();
 
-        // A cycle's firings, for the budget: whether the unit under review is
-        // one a review can finish is what a loop still running after many
-        // rounds is asking. A bullet no gate can read spends nothing here; its
-        // own finding blocks until it is repaired, and then it counts.
+        // The rounds a gate has spent on this spec, for the budget: whether
+        // the unit under review is one a review can finish is what a loop
+        // still running after many rounds is asking. A bullet no gate can
+        // read spends nothing here; its own finding blocks until it is
+        // repaired, and then it counts.
+        //
+        // Nothing lowers it. The loop writes this log, so a count any token
+        // could return would be a budget the loop hands itself — measured, a
+        // pass that disposed its rows and approved bought back the five it
+        // had just spent, every round, indefinitely.
         let mut rounds: BTreeMap<String, u32> = BTreeMap::new();
-        // Crossing the budget is a fact about the cycle that crossed it, held
-        // until that cycle closes. Reported from the log's history instead, the
-        // finding outlives the approval its own hint asks for, and an
-        // append-only log has no way to unsay it.
-        let mut over_budget: BTreeMap<String, Finding> = BTreeMap::new();
+        let mut over_budget: BTreeSet<String> = BTreeSet::new();
         for (line_no, decision) in &decisions {
             let Some(decision) = decision else {
                 continue;
@@ -1297,45 +1342,39 @@ impl<'a> PlanAuditor<'a> {
                     fix_command: None,
                 });
             }
-            match decision.decision {
-                GateDecision::NeedsRevision => {
-                    let fired = rounds
-                        .entry(gate_key.clone())
-                        .and_modify(|n| *n += 1)
-                        .or_insert(1);
-                    if let Some(cap) = self.round_cap
-                        && fired.checked_sub(cap.get()) == Some(1)
-                    {
-                        over_budget.insert(
-                            gate_key.clone(),
-                            Finding {
-                                slug: "plan-log-round-cap".into(),
-                                severity: Severity::Blocker,
-                                location: Location::line(spec_path, *line_no),
-                                message: format!(
-                                    "`{gate}` fired {fired} times in this cycle, past a cap of {}",
-                                    cap.get()
-                                ),
-                                hint: Some(format!(
-                                    "reaching the cap is a report, not a verdict on the round: \
-                                     a review that needs this many is naming a unit too large \
-                                     to finish. Settle the scope — split what is under review, \
-                                     or close the cycle with {} once no blocking row stands",
-                                    GateDecision::settling()
-                                )),
-                                auto_fixable: false,
-                                fix_command: None,
-                            },
-                        );
-                    }
-                }
-                // Neither a pause nor a rejection resets the budget: the
-                // cycle a deferral leaves in flight is the one that resumes,
-                // and a rejection ends the work rather than closing the count.
-                GateDecision::Deferred | GateDecision::Rejected => {}
-                GateDecision::Approved => {
-                    rounds.remove(&gate_key);
-                    over_budget.remove(&gate_key);
+            if spends_a_round(decision) {
+                let spent = *rounds
+                    .entry(gate_key.clone())
+                    .and_modify(|n| *n += 1)
+                    .or_insert(1);
+                // Answered for by the commit that appends the record, not by
+                // every later reader of the log: a spec whose budget is spent
+                // still has to be wrapped up, and a finding its own history
+                // carried would block the commits that wrap it.
+                if let Some(cap) = self.round_cap
+                    && spent > cap.get()
+                    && appended_from.is_some_and(|first| *line_no >= first)
+                    && over_budget.insert(gate_key.clone())
+                {
+                    findings.push(Finding {
+                        slug: "plan-log-round-cap".into(),
+                        severity: Severity::Blocker,
+                        location: Location::line(spec_path, *line_no),
+                        message: format!(
+                            "`{gate}` has spent {spent} rounds on this spec, past a budget of {}",
+                            cap.get()
+                        ),
+                        hint: Some(format!(
+                            "reaching the budget is a report, not a verdict on the round: a \
+                             review that needs this many is naming a unit too large to finish. \
+                             Settle the scope — split what is under review, or close the gate \
+                             with {} once no blocking row stands. The budget is the spec's, so \
+                             closing the gate answers the rows rather than returning the rounds",
+                            GateDecision::settling()
+                        )),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
                 }
             }
             if decision.decision == GateDecision::Approved
@@ -1367,8 +1406,6 @@ impl<'a> PlanAuditor<'a> {
                 });
             }
         }
-
-        findings.extend(over_budget.into_values());
 
         // The live acceptance claim must account for every criterion the spec
         // now carries. Only the last firing is held to it: the log is
@@ -1590,6 +1627,23 @@ mod tests {
 
     fn slugs(findings: &[Finding]) -> Vec<&str> {
         findings.iter().map(|f| f.slug.as_str()).collect()
+    }
+
+    /// The budget as the commit arm reads it: the committed log is the
+    /// baseline, so a crossing this change appends is this change's to answer.
+    fn audit_budget(baseline_log: &str, log: &str, cap: u32) -> Vec<Finding> {
+        let spec_path = PathBuf::from("specs/t/spec.md");
+        let (held, current) = (spec(baseline_log), spec(log));
+        let plan_text = plan("");
+        PlanAuditor::new(
+            &PathBuf::from("specs/t/plan.md"),
+            Some(&plan_text),
+            Some((&spec_path, &current)),
+            Some(&plan_text),
+            Some(&held),
+        )
+        .with_round_cap(cap_of(cap))
+        .audit()
     }
 
     fn cap_of(n: u32) -> NonZeroU32 {
@@ -1932,17 +1986,7 @@ mod tests {
         let log = "- 2026-01-15 · review · needs_revision · 0C/2B/0M/0m · first\n\
                    - 2026-01-16 · review · needs_revision · 0C/2B/0M/0m · acknowledged: \
                    operator judged the scope split worth another round";
-        let spec_text = spec(log);
-        let findings = PlanAuditor::new(
-            Path::new("specs/t/plan.md"),
-            Some(&plan("")),
-            Some((Path::new("specs/t/spec.md"), &spec_text)),
-            None,
-            None,
-        )
-        .with_round_cap(cap_of(1))
-        .audit();
-        assert_eq!(slugs(&findings), ["plan-log-round-cap"]);
+        assert_eq!(slugs(&audit_budget("", log, 1)), ["plan-log-round-cap"]);
     }
 
     #[test]
@@ -1962,23 +2006,13 @@ mod tests {
     }
 
     #[test]
-    fn a_slip_that_looks_like_a_settlement_settles_nothing() {
-        // The unreadable bullet reads like `review` settling its cycle. Taken
-        // as one, it would reset the budget the round after it crossed; the
-        // slip is its own finding and settles nothing.
+    fn a_bullet_no_gate_can_read_spends_no_round() {
+        // A slip is its own finding and spends nothing: counted, it would
+        // move a budget on a line no parser agrees about.
         let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
                    - 2026-01-16 \u{2022} review \u{2022} approved \u{2022} 0C/0B/0M/0m \u{2022} clean\n\
                    - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} three";
-        let spec_text = spec(log);
-        let findings = PlanAuditor::new(
-            Path::new("specs/t/plan.md"),
-            Some(&plan("")),
-            Some((Path::new("specs/t/spec.md"), &spec_text)),
-            None,
-            None,
-        )
-        .with_round_cap(cap_of(1))
-        .audit();
+        let findings = audit_budget("", log, 1);
         assert_eq!(
             slugs(&findings),
             ["plan-log-unparseable", "plan-log-round-cap"]
@@ -1992,7 +2026,7 @@ mod tests {
     }
 
     #[test]
-    fn a_cycle_reaching_its_budget_is_reported_once_where_it_crossed() {
+    fn a_budget_crossing_is_reported_once_where_it_crossed() {
         // The budget answers whether the unit under review is one a review
         // can finish. Reported at the round that crossed it, so a log read
         // again names the same line.
@@ -2001,23 +2035,34 @@ mod tests {
                    - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three";
         let spec_text = spec(log);
         let plan_text = plan("");
-        let audit = |cap: Option<u32>| {
-            let a = PlanAuditor::new(
-                Path::new("specs/t/plan.md"),
-                Some(&plan_text),
-                Some((Path::new("specs/t/spec.md"), &spec_text)),
-                None,
-                None,
-            );
-            match cap {
-                Some(c) => a.with_round_cap(cap_of(c)),
-                None => a,
-            }
-            .audit()
-        };
-        assert!(audit(None).is_empty(), "no budget, no verdict on the count");
-        assert!(audit(Some(3)).is_empty(), "three firings is not past three");
-        let over = audit(Some(2));
+        let held = spec("");
+        let uncapped = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan_text),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            Some(&plan_text),
+            Some(&held),
+        )
+        .audit();
+        assert!(uncapped.is_empty(), "no budget, no verdict on the count");
+        let uncommitted = PlanAuditor::new(
+            Path::new("specs/t/plan.md"),
+            Some(&plan_text),
+            Some((Path::new("specs/t/spec.md"), &spec_text)),
+            None,
+            None,
+        )
+        .with_round_cap(cap_of(2))
+        .audit();
+        assert!(
+            uncommitted.is_empty(),
+            "no committed side, nothing says this change appended the crossing: {uncommitted:#?}"
+        );
+        assert!(
+            audit_budget("", log, 3).is_empty(),
+            "three firings is not past three"
+        );
+        let over = audit_budget("", log, 2);
         assert_eq!(slugs(&over), ["plan-log-round-cap"]);
         assert_eq!(over[0].severity, Severity::Blocker);
         assert_eq!(over[0].location.line, Some(7), "the round that crossed it");
@@ -2048,11 +2093,11 @@ mod tests {
     }
 
     #[test]
-    fn only_a_settlement_starts_the_budget_over() {
-        // Four revision rounds against a cap of two, with one firing of each
-        // decision interposed between the second and the third. A settlement
-        // opens a new cycle, so the rounds after it are the first two of it;
-        // anything else leaves the budget where the pause found it.
+    fn nothing_interposed_starts_the_budget_over() {
+        // Four revision rounds against a budget of two, with one firing of
+        // each decision interposed between the second and the third. Every
+        // word of these lines is written by the loop the budget bounds, so
+        // none of them returns a round.
         for interposed in GateDecision::ALL {
             let log = format!(
                 "- 2026-01-01 · review · needs_revision · 0C/4B/0M/0m · r1\n\
@@ -2062,20 +2107,9 @@ mod tests {
                  - 2026-01-05 · review · needs_revision · 0C/1B/0M/0m · r4",
                 interposed.as_str()
             );
-            let spec_text = spec(&log);
-            let plan_text = plan("");
-            let findings = PlanAuditor::new(
-                Path::new("specs/t/plan.md"),
-                Some(&plan_text),
-                Some((Path::new("specs/t/spec.md"), &spec_text)),
-                None,
-                None,
-            )
-            .with_round_cap(cap_of(2))
-            .audit();
-            assert_eq!(
+            let findings = audit_budget("", &log, 2);
+            assert!(
                 findings.iter().any(|f| f.slug == "plan-log-round-cap"),
-                !interposed.settles(),
                 "`{}` interposed: {findings:?}",
                 interposed.as_str()
             );
@@ -2083,66 +2117,24 @@ mod tests {
     }
 
     #[test]
-    fn a_closed_cycle_starts_its_budget_over() {
-        // The budget is a cycle's, and an approval ends the cycle: a spec that
-        // converges twice has not spent one budget twice.
-        let log = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} one\n\
-                   - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two\n\
-                   - 2026-01-17 \u{b7} review \u{b7} approved \u{b7} 0C/0B/0M/0m \u{b7} clean\n\
-                   - 2026-02-01 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} new cycle\n\
-                   - 2026-02-02 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} falling";
-        let spec_text = spec(log);
-        let plan_text = plan("");
-        let findings = PlanAuditor::new(
-            Path::new("specs/t/plan.md"),
-            Some(&plan_text),
-            Some((Path::new("specs/t/spec.md"), &spec_text)),
-            None,
-            None,
-        )
-        .with_round_cap(cap_of(2))
-        .audit();
-        assert!(
-            findings.is_empty(),
-            "two cycles of two, not one of four: {findings:?}"
-        );
-    }
-
-    #[test]
-    fn a_settlement_withdraws_the_budget_report_it_answers() {
-        // The cap names its way out, and the way out is an approval. Reported
-        // from the log's history rather than from the open cycle, the finding
-        // outlives the approval it asked for — and an append-only log has no
-        // way to unsay the crossing, so nothing clears it again.
-        let crossed = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/3B/0M/0m \u{b7} one\n\
-                       - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} two\n\
-                       - 2026-01-17 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} three";
-        let settled = format!(
-            "{crossed}\n- 2026-01-20 \u{b7} review \u{b7} approved \u{b7} 0C/0B/0M/0m \u{b7} split, \
-             and every row disposed"
-        );
-        let plan_text = plan("");
-        let audit = |log: &str| {
-            let spec_text = spec(log);
-            PlanAuditor::new(
-                Path::new("specs/t/plan.md"),
-                Some(&plan_text),
-                Some((Path::new("specs/t/spec.md"), &spec_text)),
-                None,
-                None,
-            )
-            .with_round_cap(cap_of(2))
-            .audit()
-        };
-        assert_eq!(
-            slugs(&audit(crossed)),
-            ["plan-log-round-cap"],
-            "the cycle that crossed the budget is still open"
+    fn an_approval_returns_no_rounds_to_the_budget() {
+        // The budget is the spec's, and the loop writes every word of this
+        // log: a count an approval lowered would be a budget the loop hands
+        // itself, which is how a pass that disposed its rows and approved ran
+        // unbounded against a budget of five.
+        let settled = "- 2026-01-15 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} one\n\
+                       - 2026-01-16 \u{b7} review \u{b7} needs_revision \u{b7} 0C/1B/0M/0m \u{b7} two\n\
+                       - 2026-01-17 \u{b7} review \u{b7} approved \u{b7} 0C/0B/0M/0m \u{b7} clean";
+        let reopened = format!(
+            "{settled}\n- 2026-02-01 \u{b7} review \u{b7} needs_revision \u{b7} 0C/2B/0M/0m \u{b7} again"
         );
         assert!(
-            audit(&settled).is_empty(),
-            "the cycle closed, and the report went with it"
+            audit_budget(settled, settled, 2).is_empty(),
+            "the committed crossing is answered by the commit that appended it"
         );
+        let over = audit_budget(settled, &reopened, 2);
+        assert_eq!(slugs(&over), ["plan-log-round-cap"]);
+        assert_eq!(over[0].location.line, Some(8), "the round that crossed it");
     }
 
     #[test]
@@ -2433,12 +2425,14 @@ mod tests {
             "- 2026-01-14 · acceptance · needs_revision · 4P/1F/1U · c3 fails; c5 unmeasured\n\
              - 2026-01-15 · acceptance · needs_revision · 5P/1F/0U · c3 still fails",
         );
+        let held = spec_with_criteria(6, "");
+        let plan_text = plan("");
         let findings = PlanAuditor::new(
             Path::new("specs/t/plan.md"),
-            Some(&plan("")),
+            Some(&plan_text),
             Some((Path::new("specs/t/spec.md"), &spec_text)),
-            None,
-            None,
+            Some(&plan_text),
+            Some(&held),
         )
         .with_round_cap(cap_of(1))
         .audit();
@@ -2517,9 +2511,26 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_baseline_holds_nothing() {
+    fn an_unreadable_baseline_is_its_own_finding() {
+        // Every check that reads a committed section answers nothing without
+        // one, and three silences read exactly like a pass.
         let baseline = "## Outstanding issues\n\n- [Critical] x\n\n## Outstanding issues\n";
-        assert!(audit_against(baseline, Some(&plan(""))).is_empty());
+        let findings = audit_against(baseline, Some(&plan("")));
+        assert_eq!(slugs(&findings), ["plan-baseline-unreadable"]);
+        assert_eq!(findings[0].severity, Severity::Blocker);
+        // And it holds no rows to compare against either: a round read off a
+        // baseline nobody enumerated is a finding invented from silence.
+        let current = plan("- [Major] naming drifts");
+        let current_spec = spec(HELD_LOG);
+        let findings = PlanAuditor::new(
+            &PathBuf::from("plan.md"),
+            Some(&current),
+            Some((&PathBuf::from("spec.md"), &current_spec)),
+            Some(baseline),
+            Some(&spec(HELD_LOG)),
+        )
+        .audit();
+        assert_eq!(slugs(&findings), ["plan-baseline-unreadable"]);
     }
 
     #[test]
@@ -2630,17 +2641,9 @@ mod tests {
     fn a_gate_name_case_change_does_not_open_a_second_budget() {
         let log = "- 2026-01-15 · review · needs_revision · 3C/2B/0M/0m · first\n\
                    - 2026-01-16 · Review · needs_revision · 5C/4B/0M/0m · second";
-        let spec_text = spec(log);
-        let findings = PlanAuditor::new(
-            Path::new("specs/t/plan.md"),
-            Some(&plan("")),
-            Some((Path::new("specs/t/spec.md"), &spec_text)),
-            None,
-            None,
-        )
-        .with_round_cap(cap_of(1))
-        .audit();
-        assert_eq!(slugs(&findings), ["plan-log-round-cap"]);
+        // deliberately one line: the two spellings are one gate, so the
+        // second firing crosses a budget of one.
+        assert_eq!(slugs(&audit_budget("", log, 1)), ["plan-log-round-cap"]);
     }
 
     #[test]
@@ -2848,10 +2851,13 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_baseline_log_holds_nothing() {
+    fn an_unreadable_baseline_log_is_its_own_finding() {
         let held = "# t\n\n## Decision log\n\n```\nunclosed\n";
         let current = spec("- 2026-01-15 · review · approved · 0C/0B/0M/0m · clean");
-        assert!(audit_log_against(held, &current).is_empty());
+        assert_eq!(
+            slugs(&audit_log_against(held, &current)),
+            ["plan-baseline-unreadable"]
+        );
     }
 
     // ---- a round is recorded or it is refused ----
@@ -2907,19 +2913,33 @@ mod tests {
     }
 
     #[test]
-    fn an_approval_transcribing_residual_rows_is_a_recorded_round() {
-        // The approved-over-open rule reads the rows' rank; with residual
-        // Major rows it has nothing to say and neither does this check.
+    fn a_pass_that_both_finds_and_settles_records_the_round_it_spent() {
+        // Transcribing residual rows is a pass that landed findings, so the
+        // round it spent is recorded like any other and the approval stands
+        // behind it. The approval alone would leave the budget where it was
+        // while the rows kept arriving.
+        let rows = "- [Major] naming drifts\n- [Minor] a stale comment";
+        let approval = "- 2026-01-16 · review · approved · 0C/0B/1M/1m · residuals";
+        let round = "- 2026-01-16 · review · needs_revision · 0C/0B/1M/1m · two residuals stand";
+        assert_eq!(
+            slugs(&audit_round(
+                "",
+                rows,
+                HELD_LOG,
+                &format!("{HELD_LOG}\n{approval}")
+            )),
+            ["plan-round-unrecorded"]
+        );
         let findings = audit_round(
             "",
-            "- [Major] naming drifts\n- [Minor] a stale comment",
+            rows,
             HELD_LOG,
-            &format!("{HELD_LOG}\n- 2026-01-16 · review · approved · 0C/0B/1M/1m · residuals"),
+            &format!("{HELD_LOG}\n{round}\n{approval}"),
         );
         assert!(findings.is_empty(), "{findings:#?}");
         let findings = audit_round(
             "",
-            "- [Major] naming drifts\n- [Minor] a stale comment",
+            rows,
             HELD_LOG,
             &format!(
                 "{HELD_LOG}\n- 2026-01-16 · design_review · needs_revision · 0C/0B/2M/0m · plan"
@@ -2948,17 +2968,18 @@ mod tests {
     }
 
     #[test]
-    fn a_project_records_a_round_under_the_gate_name_it_declared() {
-        // Gate names are open and the budget counts `needs_revision` under
-        // whichever one fired, so a review gate carrying a project's own name
-        // records a round like any other.
+    fn a_gate_carrying_no_budget_records_no_round() {
+        // Gate names are open, and a name outside `COUNTED_GATES` carries no
+        // budget: a record under it is answerable to nothing, so it cannot
+        // answer for the round that landed these rows either. Declaring the
+        // project's review gate under a counted name is what resolves it.
         let findings = audit_round(
             "",
             "- [Minor] a stale comment",
             "- 2026-01-15 · code_review · needs_revision · found one",
             "- 2026-01-15 · code_review · needs_revision · found one\n- 2026-01-16 · code_review · needs_revision · a stale comment",
         );
-        assert!(findings.is_empty(), "{findings:#?}");
+        assert_eq!(slugs(&findings), ["plan-round-unrecorded"]);
     }
 
     #[test]
@@ -2999,12 +3020,17 @@ mod tests {
     }
 
     #[test]
-    fn a_record_outside_the_review_class_records_no_round() {
-        // `clarify` and `acceptance` answer other questions; a firing of
-        // either is not what the review budget counts.
+    fn only_a_record_the_budget_counts_answers_for_a_round() {
+        // The seam reads the budget's own set: a `needs_revision` under a
+        // gate that carries a budget, and nothing else. `clarify` carries
+        // none whatever it decides; an approval, a deferral and a rejection
+        // spend nothing under a gate that does.
         for line in [
             "- 2026-01-16 · clarify · approved · answered",
-            "- 2026-01-16 · acceptance · needs_revision · 1P/1F/0U · c2 fails",
+            "- 2026-01-16 · clarify · needs_revision · still open",
+            "- 2026-01-16 · review · approved · 0C/0B/1M/0m · residuals",
+            "- 2026-01-16 · review · deferred · 0C/0B/1M/0m · paused",
+            "- 2026-01-16 · review · rejected · abandoned",
         ] {
             let findings = audit_round(
                 "",
@@ -3017,6 +3043,25 @@ mod tests {
                 "{line}: {findings:#?}"
             );
         }
+        // Acceptance findings land as rows like any other gate's, and its
+        // firings spend its own budget, so its revision answers for them.
+        let held_spec = spec_with_criteria(2, HELD_LOG);
+        let current_spec = spec_with_criteria(
+            2,
+            &format!(
+                "{HELD_LOG}\n- 2026-01-16 · acceptance · needs_revision · 1P/1F/0U · c2 fails"
+            ),
+        );
+        let (baseline, current) = (plan(""), plan("- [Major] naming drifts"));
+        let findings = PlanAuditor::new(
+            &PathBuf::from("plan.md"),
+            Some(&current),
+            Some((&PathBuf::from("spec.md"), &current_spec)),
+            Some(&baseline),
+            Some(&held_spec),
+        )
+        .audit();
+        assert!(findings.is_empty(), "{findings:#?}");
     }
 
     #[test]
@@ -3052,6 +3097,93 @@ mod tests {
         );
         assert_eq!(slugs(&findings), ["plan-round-unrecorded"]);
         assert!(findings[0].message.contains("1 finding row(s)"));
+    }
+
+    #[test]
+    fn a_repair_beside_new_rows_counts_what_no_rewording_explains() {
+        // A committed row that did not survive accounts for one unclaimed
+        // current row and no more, so a repaired citation stops hiding the
+        // findings that arrived beside it.
+        let findings = audit_round(
+            "- [Major] naming drifts [fixed: a.rs:10]",
+            "- [Major] naming drifts from the glossary [fixed: a.rs:10]\n\
+             - [Minor] one\n- [Minor] two\n- [Minor] three",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert_eq!(slugs(&findings), ["plan-round-unrecorded"]);
+        assert!(
+            findings[0].message.starts_with("3 finding row(s)"),
+            "the count is the rows the baseline cannot explain: {}",
+            findings[0].message
+        );
+        // The reworded row alone explains itself, and nothing is reported.
+        let reworded = audit_round(
+            "- [Major] naming drifts [fixed: a.rs:10]",
+            "- [Major] naming drifts from the glossary [fixed: a.rs:10]",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert!(reworded.is_empty(), "{reworded:#?}");
+    }
+
+    #[test]
+    fn a_whitespace_edit_to_a_committed_bullet_leaves_the_prefix_standing() {
+        // One predicate decides where the committed prefix ends, for the
+        // rewrite check and for this one alike: a doubled space an editor
+        // collapses on save is the same bullet, and reading it as a broken
+        // prefix would leave the round to a check that also says nothing.
+        let held = "- 2026-01-15 · review · needs_revision · 0C/0B/1M/0m ·  one";
+        let findings = audit_round("", "- [Major] naming drifts", held, HELD_LOG);
+        assert_eq!(slugs(&findings), ["plan-round-unrecorded"]);
+    }
+
+    #[test]
+    fn a_committed_document_without_the_section_held_nothing() {
+        // The first commit of a spec: nothing is committed to compare
+        // against, and rows in it are rows a pass found.
+        let current = plan("- [Major] naming drifts");
+        let audit = |log: &str| {
+            let current_spec = spec(log);
+            PlanAuditor::new(
+                &PathBuf::from("plan.md"),
+                Some(&current),
+                Some((&PathBuf::from("spec.md"), &current_spec)),
+                Some("# t — Plan\n"),
+                Some("# t\n"),
+            )
+            .audit()
+        };
+        assert_eq!(
+            slugs(&audit(
+                "- 2026-01-16 · review · approved · 0C/0B/1M/0m · residuals"
+            )),
+            ["plan-round-unrecorded"]
+        );
+        assert!(audit(HELD_LOG).is_empty());
+    }
+
+    #[test]
+    fn a_pass_that_disposes_and_approves_each_round_runs_out_of_budget() {
+        // The measured loop: every round landed its rows, disposed them, and
+        // ended clean. Read as a cycle each approval closed, its budget of
+        // five was never more than one round old.
+        let cycle = |n: u32| {
+            format!(
+                "- 2026-0{n}-01 · review · needs_revision · 0C/1B/0M/0m · r{n}\n\
+                 - 2026-0{n}-02 · review · approved · 0C/0B/0M/0m · every row disposed"
+            )
+        };
+        let held: String = (1..=5).map(cycle).collect::<Vec<_>>().join("\n");
+        let current = format!("{held}\n{}", cycle(6));
+        assert!(
+            audit_budget(&held, &held, 5).is_empty(),
+            "five rounds is not past five"
+        );
+        assert_eq!(
+            slugs(&audit_budget(&held, &current, 5)),
+            ["plan-log-round-cap"]
+        );
     }
 
     #[test]

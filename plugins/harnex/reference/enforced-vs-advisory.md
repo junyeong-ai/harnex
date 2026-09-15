@@ -48,7 +48,12 @@ thing that survives a confused, careless, or adversarial agent turn.
    That last one is the same failure one layer down — a budget counting
    records bounds nothing while recording stays the loop's own choice, and
    fifty-four rounds landed on one spec against a budget of five before a gate
-   read the rows instead of the ledger. The computer also decides what a control can be: a count sampled
+   read the rows instead of the ledger. One layer down again: the loop writes
+   the ledger, so a budget any token it can write returns is a budget it hands
+   itself — a pass that disposed its rows and recorded the approval that closed
+   the cycle bought back the whole count, every round. A control over a loop is
+   computed from something monotone under everything that loop can write.
+   The computer also decides what a control can be: a count sampled
    from one reviewer carries no rule about falling, which is why the budget
    counts rounds instead.
 

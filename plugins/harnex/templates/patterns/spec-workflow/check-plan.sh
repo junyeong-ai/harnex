@@ -5,8 +5,9 @@
 # is being committed to the contract the gates wrote: no open Critical/Blocker
 # row, no row deleted, reworded or downgraded instead of gaining its terminal
 # disposition, no approval recorded over what its gate still counts against it
-# — an open Blocker, or an acceptance criterion nothing measured — and a
-# decision log that only ever appends. The staged content
+# — an open Blocker, or an acceptance criterion nothing measured — no rows
+# landing without the round that found them, no round past the gate's budget,
+# and a decision log that only ever appends. The staged content
 # is what is judged — the worktree may be further along — and HEAD is the
 # baseline both append-only contracts are held against. Paths are read
 # NUL-delimited with renames split into delete + add: a rename that also
@@ -37,7 +38,7 @@ while IFS= read -r -d '' f; do
   # The staged content is judged from a temp tree that mirrors the repo's
   # relative paths, so findings name the file the operator knows.
   mkdir -p "$tmp/$(dirname "$f")"
-  # Firings one gate may record in a cycle before reaching the number is a
+  # Rounds one gate may spend on one spec before reaching the number is a
   # report. Raise it for a genuinely large scope; a review that needs many
   # more is naming a unit too large to finish as one. The gate list is this
   # workflow's own: the budget is per gate, so a firing under a name nothing
@@ -49,12 +50,14 @@ while IFS= read -r -d '' f; do
   if git show ":$spec" >"$tmp/$spec" 2>/dev/null; then
     args+=(--spec "$spec")
   fi
-  if git show "HEAD:$f" >"$tmp/$f.baseline" 2>/dev/null; then
-    args+=(--baseline "$f.baseline")
-  fi
-  if git show "HEAD:$spec" >"$tmp/$spec.baseline" 2>/dev/null; then
-    args+=(--baseline-spec "$spec.baseline")
-  fi
+  # A path HEAD does not carry is committed to nothing, which is a baseline of
+  # no rows and no records rather than an absent one: the first commit of a
+  # spec carries rows only if a pass found them, and every append-only contract
+  # here starts from that empty page.
+  git show "HEAD:$f" >"$tmp/$f.baseline" 2>/dev/null || : >"$tmp/$f.baseline"
+  args+=(--baseline "$f.baseline")
+  git show "HEAD:$spec" >"$tmp/$spec.baseline" 2>/dev/null || : >"$tmp/$spec.baseline"
+  args+=(--baseline-spec "$spec.baseline")
 
   out=$(cd "$tmp" && harnex plan audit "${args[@]}" 2>/dev/null)
   code=$?

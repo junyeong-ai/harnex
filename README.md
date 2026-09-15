@@ -288,7 +288,8 @@ patterns covered out of the box:
   deleted, reworded or downgraded instead of gaining its terminal
   disposition, a commit adding finding rows without the decision line that
   makes it a round the budget counts, a gate still revising past its round
-  budget, and a committed decision bullet edited instead of appended each
+  budget, a committed decision bullet edited instead of appended, and a
+  committed section none of them can be read against each
   block at commit (`plan audit`, driven by the shipped `hooks/pre-commit.d/`
   arm)
 - Promotion + retirement lifecycle for learnings

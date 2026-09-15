@@ -165,11 +165,22 @@ fn plan_audit_reports_its_findings_and_fails_the_gate() {
     )
     .unwrap();
 
+    // The committed side the pre-commit arm supplies: what this change adds
+    // to the log is what its budget answers for.
+    let baseline = dir.path().join("plan.baseline.md");
+    let baseline_spec = dir.path().join("spec.baseline.md");
+    std::fs::write(&baseline, "# t — Plan\n\n## Outstanding issues\n").unwrap();
+    std::fs::write(&baseline_spec, "# t\n\n## Decision log\n").unwrap();
+
     let out = harness()
         .args(["plan", "audit", "--plan"])
         .arg(&plan)
         .arg("--spec")
         .arg(&spec)
+        .arg("--baseline")
+        .arg(&baseline)
+        .arg("--baseline-spec")
+        .arg(&baseline_spec)
         .args(["--max-rounds", "1", "--gates", "review"])
         .output()
         .unwrap();
