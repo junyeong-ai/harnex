@@ -124,8 +124,9 @@ default, not floor.
 
 ## Break glass
 
-Every enforced guardrail names its escape hatch, and using one is loud and
-recorded. `.claude/settings.local.json` (gitignored, per-developer) is the
+Every enforced guardrail names its escape hatch in its own source, where the
+operator looks for it and not in the message a blocked loop reads, and using
+one is loud and recorded. `.claude/settings.local.json` (gitignored, per-developer) is the
 override home — `disableAllHooks: true` disarms the hook layer session-wide.
 The committed `.claude/settings.json` carries only team-shared defaults, so a
 fresh clone is policy-consistent with no per-developer setup.

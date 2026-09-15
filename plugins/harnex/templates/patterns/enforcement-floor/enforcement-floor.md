@@ -40,7 +40,9 @@ the gate verifies.
   git alias, `sh -c`, env-var config injection) are out of scope. The
   authoritative backstop is the server-side CI re-run of the same gates —
   keep it green and un-bypassed.
-- **A block is a message, not a wall.** Fix the failing gate at its cause; a
-  harnex-generated hook names its own escape hatch, which skips that one
-  check and never the stack. A bypass the operator truly needs is run by the
-  operator, outside the agent.
+- **A block is a message, not a wall.** Fix the failing gate at its cause. A
+  bypass the operator truly needs is theirs to run, outside the agent, and the
+  block names no way around itself: the loop the gate bounds is what reads it
+  first, and a message that hands it an exit is a floor that teaches how to
+  leave. Each hatch is named in the guardrail's own source, where the operator
+  looks for it, and says so on the commit it skips.
