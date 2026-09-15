@@ -102,9 +102,8 @@ up where `harness.toml` declares no `[guard.floor]` and equally where there is
 no `harness.toml` to read: that file is frozen against the Edit tools but not
 against Bash, so a tripwire gated on it would be one `rm` away. The two are
 wired as separate PreToolUse entries because their costs differ: the freeze
-covers
-`harness.toml` and the settings files, which in a repository whose harness is
-the work product is most commits. Its two halves fail in deliberately opposite
+covers `harness.toml` and the settings files, which in a repository whose
+harness is the work product is most commits. Its two halves fail in deliberately opposite
 directions — violation checks fail open (inability to evaluate is a
 `Skip` with a reason, never a block), while the operator's break-glass
 grant fails closed (an unreadable override is an absent one). The grant is

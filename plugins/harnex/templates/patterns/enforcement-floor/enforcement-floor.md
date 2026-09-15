@@ -17,9 +17,10 @@ that would skip the hook stack (`--no-verify`, `commit -n`, a
 `core.hooksPath` reroute, compound commands included) — reads no
 configuration and freezes nothing, so `hooks/check-floor.sh` is wired for
 `Bash` in every scaffold and keeps standing where `harness.toml` has been
-removed, which no Edit can do but any Bash call can. This pattern adds the second entry, `Edit|Write|MultiEdit`, which
-freezes the files that define what the gates verify. A failing gate is fixed
-at its cause, never by weakening what the gate verifies.
+removed, which no Edit can do but any Bash call can. This pattern adds the
+second entry, `Edit|Write|MultiEdit`, which freezes the files that define what
+the gates verify. A failing gate is fixed at its cause, never by weakening what
+the gate verifies.
 
 The freeze is the half with a price: it covers `harness.toml` and
 `.claude/settings.json`, so in a repository where the harness is the work
