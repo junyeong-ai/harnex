@@ -14,9 +14,10 @@ governs:
 `harnex guard floor` blocks exactly two things, and they are wired
 separately because their costs are not alike. The tripwire — a git command
 that would skip the hook stack (`--no-verify`, `commit -n`, a
-`core.hooksPath` reroute, compound commands included) — reads no declaration
-and freezes nothing, so `hooks/check-floor.sh` is wired for `Bash` in every
-scaffold. This pattern adds the second entry, `Edit|Write|MultiEdit`, which
+`core.hooksPath` reroute, compound commands included) — reads no
+configuration and freezes nothing, so `hooks/check-floor.sh` is wired for
+`Bash` in every scaffold and keeps standing where `harness.toml` has been
+removed, which no Edit can do but any Bash call can. This pattern adds the second entry, `Edit|Write|MultiEdit`, which
 freezes the files that define what the gates verify. A failing gate is fixed
 at its cause, never by weakening what the gate verifies.
 

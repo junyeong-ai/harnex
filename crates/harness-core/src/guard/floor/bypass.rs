@@ -480,6 +480,7 @@ mod tests {
             // POSIX terminator — the live git 2.55 evasion the split closes.
             &["config", "--add", "--", "core.hooksPath", "--get"],
             &["config", "--", "core.hooksPath", "--unset"],
+            &["config", "--", "core.hooksPath", "--get"],
             // A write whose value-consuming option swallows the read flag —
             // `--comment` / `--value` take the next token, so `--get` there is
             // the value, not a diagnostic (both write on git 2.55).
