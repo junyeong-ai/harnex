@@ -23,7 +23,11 @@
 //!   newline remains a separator, so a prose line beginning
 //!   `git commit --no-verify` inside `cat <<EOF` still false-blocks. The
 //!   fail direction is a surfaced block on an unusual path, never a silent
-//!   pass.
+//!   pass, and that is what keeps the body unmodelled now that the tripwire
+//!   ships in every scaffold: a model of where a body ends is a place to
+//!   spell a bypass that reads as prose. A mention inside the line rather
+//!   than at its head — the shape a document that quotes the flag actually
+//!   takes — is not a command and passes.
 
 use std::fmt;
 
