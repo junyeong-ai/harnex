@@ -10,7 +10,10 @@
 #
 # Fail-open on a missing tool — never block a commit because gitleaks is not
 # installed. Escape hatch via HARNEX_SKIP_GITLEAKS=1 for a confirmed false
-# positive; each arm in pre-commit.d/ carries its own.
+# positive; each arm in pre-commit.d/ carries its own. Set, it says so on the
+# commit it skips: a floor that is off silently is a floor nobody knows is off,
+# and the block messages name no way around themselves because the loop the
+# gates bound reads them first.
 #
 # A scan has three outcomes, not two, and gitleaks spells only two of them by
 # default: a finding and a failure of the scan itself both exit 1. So findings
@@ -40,7 +43,7 @@ if [[ "${HARNEX_SKIP_GITLEAKS:-}" != "1" ]]; then
       "$GITLEAKS_LEAK_CODE")
         echo "[harnex] gitleaks flagged potential secrets in staged changes — commit blocked." >&2
         echo "         Inspect: gitleaks git --staged --verbose" >&2
-        echo "         Confirmed false positive? HARNEX_SKIP_GITLEAKS=1 git commit ..." >&2
+        echo "         A confirmed false positive is the operator's call; this hook says how." >&2
         exit 1
         ;;
       *)
@@ -49,7 +52,7 @@ if [[ "${HARNEX_SKIP_GITLEAKS:-}" != "1" ]]; then
         echo "         Diagnose: gitleaks git --staged --verbose" >&2
         echo "         Usually a malformed .gitleaks.toml, or a build before 8.19, which" >&2
         echo "         has no \`git\` subcommand — \`gitleaks version\` says which you have." >&2
-        echo "         HARNEX_SKIP_GITLEAKS=1 commits it unjudged; fixing the scan does not." >&2
+        echo "         Overriding commits it unjudged; fixing the scan does not." >&2
         exit 1
         ;;
     esac
@@ -57,6 +60,8 @@ if [[ "${HARNEX_SKIP_GITLEAKS:-}" != "1" ]]; then
     echo "[harnex] gitleaks not installed — secret scan skipped." >&2
     echo "         Install: https://github.com/gitleaks/gitleaks" >&2
   fi
+else
+  echo "[harnex] secret scan skipped by operator override — staged changes are unjudged." >&2
 fi
 
 ARMS="$(cd "$(dirname "$0")" && pwd)/pre-commit.d"
