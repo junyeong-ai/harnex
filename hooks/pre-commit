@@ -52,7 +52,7 @@ if [[ "${HARNEX_SKIP_GITLEAKS:-}" != "1" ]]; then
         echo "         Diagnose: gitleaks git --staged --verbose" >&2
         echo "         Usually a malformed .gitleaks.toml, or a build before 8.19, which" >&2
         echo "         has no \`git\` subcommand — \`gitleaks version\` says which you have." >&2
-        echo "         Overriding commits it unjudged; fixing the scan does not." >&2
+        echo "         Skipping the scan commits the tree unjudged; fixing it does not." >&2
         exit 1
         ;;
     esac

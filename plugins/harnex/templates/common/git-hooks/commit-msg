@@ -6,10 +6,14 @@
 # required-trailer presence.
 #
 # Fail-open: missing harnex binary → skip.
-# Escape hatch via HARNEX_SKIP_COMMITMSG=1.
+# Escape hatch via HARNEX_SKIP_COMMITMSG=1. Set, it says so on the commit it
+# skips: a floor that is off silently is a floor nobody knows is off.
 set -uo pipefail
 
-[[ "${HARNEX_SKIP_COMMITMSG:-}" == "1" ]] && exit 0
+if [[ "${HARNEX_SKIP_COMMITMSG:-}" == "1" ]]; then
+  echo "[harnex] commit-message check skipped by operator override." >&2
+  exit 0
+fi
 
 command -v harnex >/dev/null 2>&1 || exit 0
 

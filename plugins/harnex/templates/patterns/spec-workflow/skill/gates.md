@@ -38,12 +38,14 @@ as a firing and no gate counts it; under a name this workflow never defined, it
 is a gate of its own and carries a round budget of its own.
 
 A counted firing writes its counts into the line: the log is where what each
-round found is read back, and the counts stand over the page. A commit landing
-more rows at a rank than the log's review rounds have counted there is refused
-— the record's every other field answers to something, and this is the field
-that says how much. A row transcribed from an earlier round needs no count of
-its own: the line that recorded that round already carries it. Two gate classes
-count different things and each owes its own token:
+round found is read back, and the counts stand over the rows that round lands.
+A commit landing more rows at a rank than its own `needs_revision` records
+counted there is refused — every other field of a record answers to something,
+and this is the field that says how much. Counting more than the commit lands
+is no finding: a round may re-find what the page already holds, and there is
+nothing to transcribe. An acceptance firing counts criteria rather than ranks,
+so it answers for as many rows as it had criteria it could not pass, and no
+more. Two gate classes count different things and each owes its own token:
 
 | Class | Gates | Token | What must reach zero |
 |---|---|---|---|

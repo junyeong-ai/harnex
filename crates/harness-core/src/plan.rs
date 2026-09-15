@@ -378,15 +378,6 @@ impl RankTally {
     fn at(self, rank: ReviewSeverity) -> u64 {
         self.0[rank.slot()]
     }
-
-    /// What this tally holds past `counted`, rank by rank.
-    fn short_of(self, counted: Self) -> Self {
-        let mut out = Self::default();
-        for rank in ReviewSeverity::ALL {
-            out.add(*rank, self.at(*rank).saturating_sub(counted.at(*rank)));
-        }
-        out
-    }
 }
 
 /// The rows a section holds, by rank. A settled row counts as an open one
@@ -400,26 +391,20 @@ fn rows_by_rank<'a>(rows: impl IntoIterator<Item = &'a FindingRow>) -> RankTally
     tally
 }
 
-/// What a log's review-class firings counted, by rank. Every firing that
-/// carries the token states what its round found, whatever it then decided,
-/// so an approval's own count is part of the total as much as a revision's.
-fn counted_by_rank(log: &[Item]) -> RankTally {
-    let mut tally = RankTally::default();
-    let counted = log
-        .iter()
-        .filter(|item| item.canonical_marker)
-        .filter_map(|item| parse_decision(&item.text))
-        .filter(|line| gate_class(&line.gate) == Some(GateClass::Review))
-        .filter_map(|line| match line.counts {
-            Some(GateCounts::Review(counts)) => Some(counts),
-            _ => None,
-        });
-    for counts in counted {
-        for rank in ReviewSeverity::ALL {
-            tally.add(*rank, counts.at(*rank) as u64);
-        }
-    }
-    tally
+/// Whether every committed row is still on the page, under the identity the
+/// vanish check claims by. Claimed on match, never merely tested: two
+/// identical rows are two obligations.
+fn every_row_survives(held: &[FindingRow], rows: &[FindingRow]) -> bool {
+    let mut current: Vec<(ReviewSeverity, &str)> = rows.iter().map(FindingRow::identity).collect();
+    held.iter().all(|row| {
+        current
+            .iter()
+            .position(|claimed| *claimed == row.identity())
+            .is_some_and(|index| {
+                current.swap_remove(index);
+                true
+            })
+    })
 }
 
 /// The rows a committed section holds — one reader, so the checks that ask
@@ -1049,25 +1034,36 @@ impl<'a> PlanAuditor<'a> {
         });
     }
 
-    /// Every row the plan holds was counted by a round. A review-class firing
-    /// writes what it found into its line, and what it found is what lands in
-    /// the section, so the log's counts stand over the page. A commit that
-    /// widens the gap between them lands rows no round ever claimed —
-    /// measured, a round recording two Blockers while its own commit
-    /// transcribed eight, which leaves the log reading as a converging loop
-    /// over a page that is not. The counts are the only number in a record,
-    /// and every other field of one is already held to something.
+    /// The rows a commit lands were counted by the rounds it records. A
+    /// review-class firing writes what it found into its line, and what it
+    /// found is what lands in the section, so the record's number stands over
+    /// the page — measured, a round recording two Blockers while its own
+    /// commit transcribed eight, which leaves the log reading as a converging
+    /// loop over a page that is not. The counts are the only number a record
+    /// carries, and every other field of one already answers to something.
     ///
-    /// Judged as a gap that grew, never as a gap that stands: a row
-    /// transcribed late is covered by the count of the round that found it,
-    /// and a spec whose history carries a gap still has to be wrappable up.
+    /// Commit-scoped, not cumulative. A round may find more than it lands —
+    /// a finding already on the page is nothing to transcribe — so a count
+    /// over the rows it lands is no finding. Read over the spec's life
+    /// instead, that surplus would bank: one round claiming ninety-nine would
+    /// license ninety-nine uncounted rows for the rest of the spec.
     ///
-    /// Silent where the ranks cannot answer. An acceptance firing counts
-    /// criteria, so a commit recording one lands rows in a currency this
-    /// tally does not hold, and the seam above with the criteria accounting
-    /// are what stand there. Silent, too, where the commit appends no round:
-    /// [`Self::audit_round_recorded`] names the record that is missing, and a
-    /// count nobody wrote is not one to raise.
+    /// Credit comes only from the records the budget counts. An approval and
+    /// a deferral spend nothing, so a number parked on one would be credit
+    /// the loop mints without spending a round for it.
+    ///
+    /// An acceptance firing counts criteria rather than ranks, so it cannot
+    /// name what it lands. Its failed and unmeasured criteria bound it
+    /// instead: each is one criterion a finding can be about, and the rows it
+    /// lands past that number are rows nothing accounts for. Silencing the
+    /// ranks outright would leave one acceptance bullet releasing every
+    /// review round beside it.
+    ///
+    /// Silent where the commit appends no round — [`Self::audit_round_recorded`]
+    /// names the record that is missing, and a count nobody wrote is not one
+    /// to raise — and where a committed row did not survive, because the rank
+    /// delta read past a re-ranking counts it as an arrival and the vanish
+    /// check is what answers for it.
     fn audit_rows_counted(
         &self,
         spec_path: &Path,
@@ -1091,6 +1087,10 @@ impl<'a> PlanAuditor<'a> {
             Section::Missing { .. } => Vec::new(),
             Section::Found { items, .. } => items,
         };
+        let held = committed_rows(&held_rows);
+        if !every_row_survives(&held, rows) {
+            return;
+        }
 
         let appended: Vec<(u32, DecisionLine)> = log
             .iter()
@@ -1102,22 +1102,37 @@ impl<'a> PlanAuditor<'a> {
         let Some((line_no, round)) = appended.last() else {
             return;
         };
-        if appended
-            .iter()
-            .any(|(_, line)| gate_class(&line.gate) == Some(GateClass::Acceptance))
-        {
-            return;
+
+        let mut counted = RankTally::default();
+        let mut criteria = 0u64;
+        for (_, line) in &appended {
+            match line.counts {
+                Some(GateCounts::Review(token)) => {
+                    for rank in ReviewSeverity::ALL {
+                        counted.add(*rank, u64::from(token.at(*rank)));
+                    }
+                }
+                Some(GateCounts::Acceptance(token)) => {
+                    criteria = criteria.saturating_add(token.blocking());
+                }
+                None => {}
+            }
         }
 
-        let now = rows_by_rank(rows).short_of(counted_by_rank(&log));
-        let held =
-            rows_by_rank(&committed_rows(&held_rows)).short_of(counted_by_rank(&log[..committed]));
-        let past: Vec<String> = ReviewSeverity::ALL
-            .iter()
-            .filter(|rank| now.at(**rank) > held.at(**rank))
-            .map(|rank| format!("{} [{}]", now.at(*rank) - held.at(*rank), rank.as_str()))
-            .collect();
-        if past.is_empty() {
+        let (landed, before) = (rows_by_rank(rows), rows_by_rank(&held));
+        let mut uncounted = 0u64;
+        let mut past: Vec<String> = Vec::new();
+        for rank in ReviewSeverity::ALL {
+            let short = landed
+                .at(*rank)
+                .saturating_sub(before.at(*rank))
+                .saturating_sub(counted.at(*rank));
+            if short > 0 {
+                uncounted = uncounted.saturating_add(short);
+                past.push(format!("{short} [{}]", rank.as_str()));
+            }
+        }
+        if uncounted <= criteria {
             return;
         }
         findings.push(Finding {
@@ -1125,15 +1140,18 @@ impl<'a> PlanAuditor<'a> {
             severity: Severity::Blocker,
             location: Location::line(spec_path, *line_no),
             message: format!(
-                "this commit lands {} row(s) in `{}` past what the log's rounds counted",
+                "this commit lands {} row(s) in `{}` past what its rounds counted{}",
                 past.join(", "),
-                self.plan_path.display()
+                self.plan_path.display(),
+                match criteria {
+                    0 => String::new(),
+                    n => format!(", of which its acceptance firing accounts for {n}"),
+                }
             ),
             hint: Some(format!(
-                "a round's counts are what it found, and every row on the page was found by a \
-                 round — raise `{}`'s `<n>C/<n>B/<n>M/<n>m` to the rows this commit lands. A row \
-                 transcribed from an earlier round needs no count of its own: the line that \
-                 recorded that round already carries it",
+                "a round's counts are what it found, and every row the commit lands was found \
+                 by one — raise `{}`'s `<n>C/<n>B/<n>M/<n>m` to the rows beside it. A count over \
+                 them is no finding; a round that lands rows it did not count is",
                 round.gate
             )),
             auto_fixable: false,
@@ -3440,30 +3458,142 @@ mod tests {
             "- 2026-01-16 · review · needs_revision · 0C/0B/9M/0m · nine of something else",
         );
         assert_eq!(slugs(&findings), ["plan-log-counts-short"]);
+        // Only the short ranks are named: a rank the round covered is not a
+        // rank the author has anything to do about.
         assert!(
             findings[0].message.contains("1 [Blocker]"),
+            "{}",
+            findings[0].message
+        );
+        for covered in ["[Critical]", "[Major]", "[Minor]"] {
+            assert!(
+                !findings[0].message.contains(covered),
+                "{covered} is covered and should not be named: {}",
+                findings[0].message
+            );
+        }
+    }
+
+    #[test]
+    fn an_earlier_rounds_surplus_does_not_bank() {
+        // Read over the spec's life a count once written would license rows
+        // for the rest of it: ninety-nine claimed in round one, and every
+        // later commit lands what it likes.
+        let held_log = "- 2026-01-15 · review · needs_revision · 0C/99B/0M/0m · ninety-nine";
+        let findings = audit_round(
+            "- [Blocker] one [fixed: pinned]",
+            "- [Blocker] one [fixed: pinned]\n- [Blocker] two [fixed: pinned]\n\
+             - [Blocker] three [fixed: pinned]",
+            held_log,
+            &format!("{held_log}\n- 2026-01-16 · review · needs_revision · 0C/0B/0M/0m · nothing"),
+        );
+        assert_eq!(slugs(&findings), ["plan-log-counts-short"]);
+        assert!(
+            findings[0].message.contains("2 [Blocker]"),
             "{}",
             findings[0].message
         );
     }
 
     #[test]
-    fn a_row_transcribed_inside_an_earlier_rounds_count_needs_no_new_one() {
-        // The round that found eight said so; transcribing the rest later is
-        // not a second discovery, and the seam still holds that commit to
-        // recording the pass that made it.
-        let held_log = "- 2026-01-15 · review · needs_revision · 0C/8B/0M/0m · eight";
-        let findings = audit_round(
-            "- [Blocker] one [fixed: pinned]",
-            "- [Blocker] one [fixed: pinned]\n- [Blocker] two [fixed: pinned]\n\
-             - [Blocker] three [fixed: pinned]",
-            held_log,
-            &format!(
-                "{held_log}\n- 2026-01-16 · review · needs_revision · 0C/0B/0M/0m · the rest of \
-                 what r1 found, transcribed"
-            ),
+    fn a_count_on_a_token_that_spends_no_round_is_not_credit() {
+        // An approval and a deferral spend nothing, so a number parked on one
+        // would be credit minted without a round spent for it.
+        for parked in [
+            "- 2026-01-16 · review · deferred · 0C/9B/0M/0m · parked",
+            "- 2026-01-16 · design_review · approved · 0C/0B/9M/0m · design gate closed",
+        ] {
+            let findings = audit_round(
+                "",
+                "- [Blocker] one [fixed: pinned]\n- [Major] two",
+                "",
+                &format!(
+                    "- 2026-01-16 · review · needs_revision · 0C/0B/0M/0m · nothing\n{parked}"
+                ),
+            );
+            assert_eq!(slugs(&findings), ["plan-log-counts-short"], "{parked}");
+        }
+    }
+
+    #[test]
+    fn an_acceptance_firing_answers_for_the_criteria_it_could_not_pass() {
+        // Its token counts criteria, so each failed or unmeasured one is a
+        // criterion a row can be about — and no more than that.
+        let spec_path = PathBuf::from("spec.md");
+        let held_plan = plan("");
+        let held_spec = spec_with_criteria(3, "");
+        let audit = |rows: &str, log: &str| {
+            let current = plan(rows);
+            let current_spec = spec_with_criteria(3, log);
+            PlanAuditor::new(
+                &PathBuf::from("plan.md"),
+                Some(&current),
+                Some((&spec_path, &current_spec)),
+                Some(&held_plan),
+                Some(&held_spec),
+            )
+            .audit()
+        };
+        let two_open =
+            "- 2026-01-16 · acceptance · needs_revision · 1P/1F/1U · c2 fails, c3 unmeasured";
+        let within = audit(
+            "- [Major] criterion 2 is not checkable as written\n\
+             - [Major] criterion 3 needs the staging environment",
+            two_open,
         );
-        assert!(findings.is_empty(), "{findings:#?}");
+        assert!(within.is_empty(), "{within:#?}");
+        let past = audit(
+            "- [Major] criterion 2 is not checkable as written\n\
+             - [Major] criterion 3 needs the staging environment\n\
+             - [Major] a third finding no criterion answers for",
+            two_open,
+        );
+        assert_eq!(slugs(&past), ["plan-log-counts-short"]);
+        assert!(
+            past[0].message.contains("accounts for 2"),
+            "{}",
+            past[0].message
+        );
+    }
+
+    #[test]
+    fn an_acceptance_firing_does_not_release_the_review_round_beside_it() {
+        // Silencing the ranks wherever an acceptance bullet appears left one
+        // honest line releasing every review round in the same commit.
+        let spec_path = PathBuf::from("spec.md");
+        let held_plan = plan("");
+        let held_spec = spec_with_criteria(2, "");
+        let current = plan(
+            "- [Blocker] one [fixed: pinned]\n- [Blocker] two [fixed: pinned]\n\
+             - [Blocker] three [fixed: pinned]\n- [Major] four",
+        );
+        let current_spec = spec_with_criteria(
+            2,
+            "- 2026-01-16 · review · needs_revision · 0C/0B/0M/0m · found nothing, honest\n\
+             - 2026-01-16 · acceptance · needs_revision · 2P/0F/0U · both criteria pass",
+        );
+        let findings = PlanAuditor::new(
+            &PathBuf::from("plan.md"),
+            Some(&current),
+            Some((&spec_path, &current_spec)),
+            Some(&held_plan),
+            Some(&held_spec),
+        )
+        .audit();
+        assert_eq!(slugs(&findings), ["plan-log-counts-short"]);
+    }
+
+    #[test]
+    fn a_row_that_did_not_survive_leaves_the_ranks_to_the_vanish_check() {
+        // A re-ranked row is one rank down and one rank up; read as a delta
+        // it arrives, and the check that answers for it is the other one.
+        let findings = audit_round(
+            "- [Minor] a stale comment",
+            "- [Blocker] a stale comment [fixed: pinned]",
+            "",
+            "- 2026-01-16 · review · needs_revision · 0C/0B/0M/0m · nothing",
+        );
+        assert_eq!(slugs(&findings), ["plan-row-vanished"]);
     }
 
     #[test]
