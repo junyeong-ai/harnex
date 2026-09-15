@@ -9,10 +9,13 @@
 //! [`PlanAuditor`] is the computer the prose names: open Critical/Blocker
 //! rows, rows that vanished instead of gaining a terminal disposition,
 //! decision lines whose counts contradict their token, an acceptance token
-//! that does not add up to the criteria it claims to have walked, and a
-//! cycle still revising past the budget its caller sets. The measured failure
-//! of the prose-only version of this floor is a gate that recorded eleven
-//! firings while its own rule said stop at the second.
+//! that does not add up to the criteria it claims to have walked, a cycle
+//! still revising past the budget its caller sets, and a commit that adds
+//! rows without the decision line that makes it a round the budget counts.
+//! The measured failure of the prose-only version of this floor is a gate
+//! that recorded eleven firings while its own rule said stop at the second;
+//! the measured failure of a budget counting only voluntary records is
+//! fifty-four rounds landing as commits against a budget of five.
 //!
 //! The budget is the only convergence control. There is no round-to-round
 //! comparison: a round's count is a sample of what one reviewer found, a rule
@@ -412,6 +415,14 @@ impl FindingRow {
     pub fn open(&self) -> bool {
         self.disposition.is_none()
     }
+
+    /// What makes two rows the same row across commits: rank and text, the
+    /// disposition left out. The vanish check and the round check both key
+    /// on this, and only this — a second key would let a row count as
+    /// surviving under one and as new under the other.
+    fn identity(&self) -> (ReviewSeverity, &str) {
+        (self.severity, self.text.as_str())
+    }
 }
 
 /// Parse one row's joined text (marker already stripped).
@@ -781,9 +792,127 @@ impl<'a> PlanAuditor<'a> {
         if let Some((spec_path, spec_text)) = self.spec {
             self.audit_log(spec_path, spec_text, rows.as_deref(), &mut findings);
             self.audit_log_rewrite(spec_path, spec_text, &mut findings);
+            self.audit_round_recorded(spec_path, spec_text, rows.as_deref(), &mut findings);
         }
         self.audit_vanish(rows.as_deref(), &mut findings);
         findings
+    }
+
+    /// A commit that adds finding rows is a review round, and a round is
+    /// recorded or it is refused: the plan's rows past its baseline are
+    /// non-empty while the decision log past its own baseline carries no
+    /// review-class line. The budget counts records, so a round that lands
+    /// without one spends nothing — measured, fifty-four rounds on one spec
+    /// against a budget of five, every one a commit adding rows and none a
+    /// record. A row is new when its [`FindingRow::identity`] claims no
+    /// baseline row, the same key the vanish check matches under; gaining a
+    /// disposition, then, is not adding a row.
+    ///
+    /// Held only where both baselines are supplied — without the committed
+    /// plan nothing says which rows are new, and without the committed spec
+    /// nothing says which lines are — and an unreadable or absent baseline
+    /// section holds nothing, as the two sibling contracts read it. Against a
+    /// baseline whose open rows did not all survive this check says nothing:
+    /// it cannot tell a row added from a row reworded, and the vanish check
+    /// already refuses the commit. A gate the module counts nothing for is
+    /// not review-class here, whatever the caller declared; whether a firing
+    /// answers to a declared name is `plan-log-gate-undeclared`'s question.
+    fn audit_round_recorded(
+        &self,
+        spec_path: &Path,
+        spec_text: &str,
+        rows: Option<&[FindingRow]>,
+        findings: &mut Vec<Finding>,
+    ) {
+        let (Some(baseline), Some(baseline_spec), Some(rows)) =
+            (self.baseline, self.baseline_spec, rows)
+        else {
+            return;
+        };
+        let Section::Found {
+            items: held_rows, ..
+        } = section_of(baseline, OUTSTANDING_HEADING)
+        else {
+            return;
+        };
+        let Section::Found {
+            items: held_log, ..
+        } = section_of(baseline_spec, DECISION_LOG_HEADING)
+        else {
+            return;
+        };
+        let Section::Found { items: log, .. } = section_of(spec_text, DECISION_LOG_HEADING) else {
+            // The current log's own Missing/Unreadable finding stands.
+            return;
+        };
+
+        // Claimed on match, as the vanish check claims: two identical new
+        // rows are two rows added, and one baseline row must not cover both.
+        let mut held: Vec<FindingRow> = Vec::new();
+        for item in &held_rows {
+            let Some(row) = (item.canonical_marker)
+                .then(|| parse_row(&item.text))
+                .flatten()
+            else {
+                continue;
+            };
+            // An open row gone is the vanish check's finding, and against it
+            // an added row and a reworded one read alike.
+            if row.open() && !rows.iter().any(|r| r.identity() == row.identity()) {
+                return;
+            }
+            held.push(row);
+        }
+        let mut added = 0usize;
+        for row in rows {
+            match held.iter().position(|h| h.identity() == row.identity()) {
+                Some(index) => {
+                    held.swap_remove(index);
+                }
+                None => added += 1,
+            }
+        }
+        if added == 0 {
+            return;
+        }
+
+        // The lines past the committed log are what this commit records; a
+        // committed bullet edited or gone is `plan-log-rewritten`'s finding.
+        let recorded = log
+            .iter()
+            .skip(held_log.len())
+            .filter(|item| item.canonical_marker)
+            .filter_map(|item| parse_decision(&item.text))
+            .any(|line| gate_class(&line.gate) == Some(GateClass::Review));
+        if recorded {
+            return;
+        }
+        let review_gates = COUNTED_GATES
+            .iter()
+            .filter(|(_, class)| *class == GateClass::Review)
+            .map(|(gate, _)| format!("`{gate}`"))
+            .collect::<Vec<_>>()
+            .join(" or ");
+        findings.push(Finding {
+            slug: "plan-round-unrecorded".into(),
+            severity: Severity::Blocker,
+            location: Location::file(self.plan_path),
+            message: format!(
+                "{added} finding row(s) added to `## {OUTSTANDING_HEADING}` with no review-class \
+                 decision appended to {}'s `## {DECISION_LOG_HEADING}` — the round budget \
+                 counts records, so an unrecorded round spends nothing",
+                spec_path.display()
+            ),
+            hint: Some(format!(
+                "a pass that adds rows is a round: record it in the same commit under \
+                 {review_gates}, as `- <YYYY-MM-DD> · <gate> · needs_revision · \
+                 <n>C/<n>B/<n>M/<n>m · <rationale>` appended at the margin. At the budget the \
+                 operator settles the scope — split what is under review, or dispose of every \
+                 blocking row and record `approved`"
+            )),
+            auto_fixable: false,
+            fix_command: None,
+        });
     }
 
     /// The decision log is append-only: the baseline's bullets must stand as
@@ -1302,7 +1431,7 @@ impl<'a> PlanAuditor<'a> {
             // a vanish verdict against rows nobody read would be noise.
             (Some(_), None) => return,
             (None, _) => Vec::new(),
-            (Some(_), Some(rows)) => rows.iter().map(|r| (r.severity, r.text.as_str())).collect(),
+            (Some(_), Some(rows)) => rows.iter().map(FindingRow::identity).collect(),
         };
         for item in items {
             let Some(row) = (item.canonical_marker) // structural filter first
@@ -1317,9 +1446,7 @@ impl<'a> PlanAuditor<'a> {
             // Claimed on match, never merely tested: two identical baseline
             // rows are two obligations, and one disposed current row must
             // not satisfy both.
-            let claimed = current
-                .iter()
-                .position(|c| *c == (row.severity, row.text.as_str()));
+            let claimed = current.iter().position(|c| *c == row.identity());
             if let Some(index) = claimed {
                 current.swap_remove(index);
             } else {
@@ -2679,5 +2806,172 @@ mod tests {
         let held = "# t\n\n## Decision log\n\n```\nunclosed\n";
         let current = spec("- 2026-01-15 · review · approved · 0C/0B/0M/0m · clean");
         assert!(audit_log_against(held, &current).is_empty());
+    }
+
+    // ---- a round is recorded or it is refused ----
+
+    const HELD_LOG: &str = "- 2026-01-15 · review · needs_revision · 0C/0B/1M/0m · one";
+
+    /// Both baselines supplied, the way the pre-commit arm supplies them.
+    fn audit_round(baseline_rows: &str, rows: &str, baseline_log: &str, log: &str) -> Vec<Finding> {
+        let spec_path = PathBuf::from("spec.md");
+        let (baseline, current) = (plan(baseline_rows), plan(rows));
+        let (held_spec, current_spec) = (spec(baseline_log), spec(log));
+        PlanAuditor::new(
+            &PathBuf::from("plan.md"),
+            Some(&current),
+            Some((&spec_path, &current_spec)),
+            Some(&baseline),
+            Some(&held_spec),
+        )
+        .audit()
+    }
+
+    #[test]
+    fn rows_added_without_a_record_are_an_unrecorded_round() {
+        let findings = audit_round(
+            "- [Major] naming drifts",
+            "- [Major] naming drifts\n- [Major] no rollback path\n- [Minor] a stale comment",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert_eq!(slugs(&findings), ["plan-round-unrecorded"]);
+        assert_eq!(findings[0].severity, Severity::Blocker);
+        assert!(
+            findings[0].message.contains("2 finding row(s)"),
+            "{}",
+            findings[0].message
+        );
+        assert!(findings[0].message.contains("spec.md"));
+        let hint = findings[0].hint.as_deref().expect("names the record line");
+        assert!(hint.contains("needs_revision ·"), "{hint}");
+        for (gate, class) in COUNTED_GATES {
+            assert_eq!(
+                hint.contains(&format!("`{gate}`")),
+                class == GateClass::Review,
+                "`{gate}` is a way to record a round only in the review class: {hint}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_revision_record_makes_the_added_rows_a_round() {
+        let findings = audit_round(
+            "- [Major] naming drifts",
+            "- [Major] naming drifts\n- [Major] no rollback path",
+            HELD_LOG,
+            &format!("{HELD_LOG}\n- 2026-01-16 · review · needs_revision · 0C/0B/2M/0m · two"),
+        );
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn an_approval_transcribing_residual_rows_is_a_recorded_round() {
+        // The approved-over-open rule reads the rows' rank; with residual
+        // Major rows it has nothing to say and neither does this check.
+        let findings = audit_round(
+            "",
+            "- [Major] naming drifts\n- [Minor] a stale comment",
+            HELD_LOG,
+            &format!("{HELD_LOG}\n- 2026-01-16 · review · approved · 0C/0B/1M/1m · residuals"),
+        );
+        assert!(findings.is_empty(), "{findings:#?}");
+        // Any decision under a review-class gate is a record; so is a design
+        // review's.
+        for line in [
+            "- 2026-01-16 · review · deferred · 0C/0B/1M/1m · paused",
+            "- 2026-01-16 · design_review · needs_revision · 0C/0B/2M/0m · plan",
+        ] {
+            let findings = audit_round(
+                "",
+                "- [Major] naming drifts\n- [Minor] a stale comment",
+                HELD_LOG,
+                &format!("{HELD_LOG}\n{line}"),
+            );
+            assert!(findings.is_empty(), "{line}: {findings:#?}");
+        }
+    }
+
+    #[test]
+    fn a_record_outside_the_review_class_records_no_round() {
+        // `clarify` and `acceptance` answer other questions; a firing of
+        // either is not what the review budget counts.
+        for line in [
+            "- 2026-01-16 · clarify · approved · answered",
+            "- 2026-01-16 · acceptance · needs_revision · 1P/1F/0U · c2 fails",
+        ] {
+            let findings = audit_round(
+                "",
+                "- [Major] naming drifts",
+                HELD_LOG,
+                &format!("{HELD_LOG}\n{line}"),
+            );
+            assert!(
+                slugs(&findings).contains(&"plan-round-unrecorded"),
+                "{line}: {findings:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_disposition_gained_in_place_adds_no_row() {
+        let findings = audit_round(
+            "- [Major] naming drifts\n- [Blocker] no rollback path",
+            "- [Major] naming drifts [fixed: renamed per glossary]\n\
+             - [Blocker] no rollback path [refuted: DDL here is transactional]",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn a_reworded_row_is_the_vanish_checks_finding_alone() {
+        let findings = audit_round(
+            "- [Major] naming drifts from the glossary",
+            "- [Major] naming could be better",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert_eq!(slugs(&findings), ["plan-row-vanished"]);
+    }
+
+    #[test]
+    fn two_identical_rows_added_are_two_rows_added() {
+        let findings = audit_round(
+            "- [Major] naming drifts",
+            "- [Major] naming drifts\n- [Major] naming drifts",
+            HELD_LOG,
+            HELD_LOG,
+        );
+        assert_eq!(slugs(&findings), ["plan-round-unrecorded"]);
+        assert!(findings[0].message.contains("1 finding row(s)"));
+    }
+
+    #[test]
+    fn without_both_baselines_the_round_check_says_nothing() {
+        let spec_path = PathBuf::from("spec.md");
+        let (baseline, current) = (plan(""), plan("- [Major] naming drifts"));
+        let (held_spec, current_spec) = (spec(HELD_LOG), spec(HELD_LOG));
+        for (plan_baseline, spec_baseline) in [
+            (None, Some(held_spec.as_str())),
+            (Some(baseline.as_str()), None),
+            (None, None),
+        ] {
+            let findings = PlanAuditor::new(
+                &PathBuf::from("plan.md"),
+                Some(&current),
+                Some((&spec_path, &current_spec)),
+                plan_baseline,
+                spec_baseline,
+            )
+            .audit();
+            assert!(
+                findings.is_empty(),
+                "plan baseline {}, spec baseline {}: {findings:#?}",
+                plan_baseline.is_some(),
+                spec_baseline.is_some()
+            );
+        }
     }
 }

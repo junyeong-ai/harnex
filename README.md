@@ -212,7 +212,8 @@ harnex guard telemetry-emit                           # PostToolUse: record a ha
 
 harnex plan audit --plan P [--spec S]                 # spec-workflow review floor:
                   [--baseline B] [--baseline-spec BS] # open C/B rows, vanished rows,
-                  [--max-rounds N] [--gates a,b,c]    # and the per-gate round budget,
+                  [--max-rounds N] [--gates a,b,c]    # rows added with no round recorded,
+                                                      # and the per-gate round budget,
                                                       # which is held only when given
 
 harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
@@ -285,9 +286,11 @@ patterns covered out of the box:
   step left behind
 - The spec-workflow review floor — an open Critical/Blocker row, a row
   deleted, reworded or downgraded instead of gaining its terminal
-  disposition, a gate still revising past its round budget, and a committed
-  decision bullet edited instead of appended each block at commit
-  (`plan audit`, driven by the shipped `hooks/pre-commit.d/` arm)
+  disposition, a commit adding finding rows without the decision line that
+  makes it a round the budget counts, a gate still revising past its round
+  budget, and a committed decision bullet edited instead of appended each
+  block at commit (`plan audit`, driven by the shipped `hooks/pre-commit.d/`
+  arm)
 - Promotion + retirement lifecycle for learnings
 - Settings.json hook adapter (the documented hook events)
 - Single-command CI gate
