@@ -59,3 +59,9 @@ every prose site.
 - The decision log is append-only against its own baseline: committed
   bullets stand verbatim as a prefix of the current log, or
   `plan-log-rewritten` blocks.
+- A commit that adds rows records the round that found them: with both
+  baselines given, rows past the committed plan and no review-class line past
+  the committed log is `plan-round-unrecorded`. The budget counts records, so
+  a round landing without one spends nothing. New is keyed by
+  `FindingRow::identity`, the vanish check's own key — a disposition gained in
+  place adds no row, and a reworded one is the vanish check's finding alone.
