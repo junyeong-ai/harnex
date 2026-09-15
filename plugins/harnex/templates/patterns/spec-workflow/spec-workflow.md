@@ -117,8 +117,8 @@ instead of gaining its terminal disposition, finding rows added without the
 decision line that makes the pass a round the budget counts, a gate still
 revising past its round budget, a committed decision bullet edited instead
 of appended, and a committed section none of them can be read against — each
-blocks the commit — the grammar the gates write is
-computed there, never trusted to narration.
+blocks the commit. The grammar the gates write is computed there, never
+trusted to narration.
 
 For a gate before the session ends rather than at the commit,
 `harnex guard stop-audit` (`[guard.stop_audit]` in `harness.toml`) adds a

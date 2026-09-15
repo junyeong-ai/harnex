@@ -50,8 +50,8 @@ thing that survives a confused, careless, or adversarial agent turn.
    fifty-four rounds landed on one spec against a budget of five before a gate
    read the rows instead of the ledger. One layer down again: the loop writes
    the ledger, so a budget any token it can write returns is a budget it hands
-   itself — a pass that disposed its rows and recorded the approval that closed
-   the cycle bought back the whole count, every round. A control over a loop is
+   itself — a pass that disposed its rows and recorded the approval that ended
+   the gate bought back the whole count, every round. A control over a loop is
    computed from something monotone under everything that loop can write.
    The computer also decides what a control can be: a count sampled
    from one reviewer carries no rule about falling, which is why the budget
