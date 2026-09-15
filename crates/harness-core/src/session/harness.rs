@@ -59,7 +59,8 @@ pub struct BlockedCall {
     pub span: Span,
 }
 
-/// A harness element and how often it was actually invoked.
+/// A harness element, how often it was actually invoked, and how much each
+/// invocation handed it.
 ///
 /// The other half of the question — which elements exist and were never
 /// invoked — needs the project's own tree, so it belongs to a project-scoped
@@ -69,6 +70,16 @@ pub struct AssetInvocation {
     pub kind: String,
     pub name: String,
     pub calls: usize,
+    /// Characters handed to this element across every call — an agent's
+    /// `prompt`, a skill's `args`. Each call opens a window of its own, so
+    /// read this as what the element cost the run rather than as what any one
+    /// context held; `max_chars` is the largest single charge. What the record
+    /// carries per tool, and where it carries nothing, is
+    /// [`crate::session::AssetCall::chars`].
+    pub chars: usize,
+    /// The largest single invocation's characters. A charge that grows per
+    /// round is invisible in a total and visible here beside `calls`.
+    pub max_chars: usize,
     pub span: Span,
 }
 
@@ -196,6 +207,10 @@ pub struct HarnessFacts {
 struct Group {
     count: usize,
     weight: u64,
+    /// The largest single observation's weight. A total and a peak answer
+    /// different questions about the same group, and one cannot be derived
+    /// from the other once the observations are folded away.
+    peak: u64,
     flagged: usize,
     first: Option<Citation>,
     last: Option<Citation>,
@@ -209,6 +224,7 @@ impl Group {
     fn observe_flagged(&mut self, citation: &Citation, weight: u64, flagged: bool) {
         self.count += 1;
         self.weight += weight;
+        self.peak = self.peak.max(weight);
         self.flagged += usize::from(flagged);
         // By time, not by arrival: a group spans every session in the window
         // and those are read in path order, which for a UUID-named transcript
@@ -333,7 +349,7 @@ impl HarnessAnalyzer {
                     self.invocations
                         .entry((asset.kind.clone(), asset.name.clone()))
                         .or_default()
-                        .observe(&turn.citation, 0);
+                        .observe(&turn.citation, asset.chars as u64);
                 }
             }
         }
@@ -369,6 +385,8 @@ impl HarnessAnalyzer {
                 kind,
                 name,
                 calls: g.count,
+                chars: g.weight as usize,
+                max_chars: g.peak as usize,
                 span: g.span(),
             })
             .collect();
@@ -461,7 +479,10 @@ mod canonical_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::record::{Authorship, Denial, HookRun, RuleLoad, StopSummary, UserTurn};
+    use crate::session::record::{
+        AssetCall, AssistantTurn, Authorship, Denial, HookRun, RuleLoad, StopSummary, TokenUse,
+        ToolAction, UserTurn,
+    };
 
     fn cite(uuid: &str, seconds: i64) -> Citation {
         Citation {
@@ -661,5 +682,48 @@ mod tests {
     fn an_unresolved_denial_tool_stays_absent_rather_than_guessed() {
         let facts = run(&[denied("d1", 100, "permission-rule", None)]);
         assert!(facts.denials[0].tool.is_none());
+    }
+
+    fn invoked(uuid: &str, seconds: i64, kind: &str, name: &str, chars: usize) -> Record {
+        Record::Assistant(AssistantTurn {
+            citation: cite(uuid, seconds),
+            actions: vec![ToolAction {
+                tool: "Agent".into(),
+                asset: Some(AssetCall {
+                    kind: kind.into(),
+                    name: name.into(),
+                    chars,
+                }),
+            }],
+            tokens: TokenUse::default(),
+            message: None,
+            model: None,
+            sidechain: false,
+            chars: 0,
+        })
+    }
+
+    #[test]
+    fn an_element_carries_what_every_call_handed_it_and_the_largest_one() {
+        // A charge that grows per round is invisible in a total: three calls
+        // averaging 20 and one of 40 read alike until the peak is beside it.
+        let facts = run(&[
+            invoked("x1", 100, "agent", "reviewer", 10),
+            invoked("x2", 200, "agent", "reviewer", 40),
+            invoked("x3", 300, "agent", "reviewer", 10),
+        ]);
+
+        assert_eq!(facts.invocations.len(), 1);
+        assert_eq!(facts.invocations[0].calls, 3);
+        assert_eq!(facts.invocations[0].chars, 60);
+        assert_eq!(facts.invocations[0].max_chars, 40);
+    }
+
+    #[test]
+    fn an_element_handed_nothing_is_still_an_invocation() {
+        let facts = run(&[invoked("x1", 100, "skill", "release", 0)]);
+        assert_eq!(facts.invocations[0].calls, 1);
+        assert_eq!(facts.invocations[0].chars, 0);
+        assert_eq!(facts.invocations[0].max_chars, 0);
     }
 }
