@@ -1906,6 +1906,13 @@ fn invoked(session: &str, uuid: &str, ts: &str, tool: &str, key: &str, name: &st
     )
 }
 
+/// An `Agent` call carrying the charge the runtime hands the subagent.
+fn charged(session: &str, uuid: &str, ts: &str, name: &str, prompt: &str) -> String {
+    format!(
+        r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"{ts}","sessionId":"{session}","message":{{"content":[{{"type":"tool_use","id":"i{uuid}","name":"Agent","input":{{"subagent_type":"{name}","prompt":"{prompt}"}}}}]}}}}"#
+    )
+}
+
 #[test]
 fn the_same_call_refused_twice_is_one_row_and_its_text_is_opt_in() {
     let mut lines = vec![typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING)];
@@ -1978,6 +1985,52 @@ fn a_sub_agent_counts_the_same_however_the_runtime_named_its_tool() {
     assert_eq!(
         by_name,
         vec![("agent", "reviewer", 2), ("skill", "harnex", 1)]
+    );
+}
+
+#[test]
+fn an_elements_invocations_carry_what_each_one_handed_it() {
+    // What a reviewer is charged per round was found by hand — 135 KB growing
+    // 5 KB a round. The window reports it.
+    let (_dir, config) = corpus(&[(
+        "-Users-me-alpha/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            charged("s1", "x1", "2026-08-01T09:00:01Z", "reviewer", "abcde"),
+            charged("s1", "x2", "2026-08-01T09:00:02Z", "reviewer", "abcdefghij"),
+            invoked(
+                "s1",
+                "x3",
+                "2026-08-01T09:00:03Z",
+                "Skill",
+                "skill",
+                "harnex",
+            ),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    let reviewer = facts
+        .harness
+        .invocations
+        .iter()
+        .find(|i| i.name == "reviewer")
+        .expect("the agent was invoked");
+    assert_eq!(reviewer.calls, 2);
+    assert_eq!(reviewer.chars, 15);
+    assert_eq!(reviewer.max_chars, 10, "the largest single charge");
+
+    let skill = facts
+        .harness
+        .invocations
+        .iter()
+        .find(|i| i.name == "harnex")
+        .expect("the skill was invoked");
+    assert_eq!(
+        (skill.chars, skill.max_chars),
+        (0, 0),
+        "a call passing the element's name alone handed it nothing"
     );
 }
 

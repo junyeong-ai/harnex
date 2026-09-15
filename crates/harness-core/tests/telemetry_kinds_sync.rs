@@ -35,7 +35,7 @@ fn read(rel: &str) -> String {
 /// authority itself — never a second copy, so a tool added to `ASSET_TOOL_KEYS`
 /// fails this guard until the matcher prose names it too.
 fn element_tools() -> Vec<&'static str> {
-    let mut tools: Vec<&str> = ASSET_TOOL_KEYS.iter().map(|(tool, _, _)| *tool).collect();
+    let mut tools: Vec<&str> = ASSET_TOOL_KEYS.iter().map(|(tool, ..)| *tool).collect();
     tools.dedup();
     tools
 }

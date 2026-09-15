@@ -109,21 +109,24 @@ pub(crate) fn compact_instruction(turn: &UserTurn) -> Option<String> {
     Some(args.trim().to_string())
 }
 
-/// Tools that invoke a harness element, and the input key naming it.
+/// Tools that invoke a harness element: the input key naming it, the kind it
+/// is, and the key carrying what the call handed it.
 ///
-/// The only per-tool argument vocabulary this module admits, and it is admitted
-/// because the value is an element's own name rather than anything the operator
-/// wrote — which is what lets it be reported plainly. `Task` and `Agent` both
-/// appear because the runtime renamed the tool and the corpus spans both.
-/// Slash commands are absent: their `command` carries arguments as well as a
-/// name, so it is operator text and not an element.
+/// The only per-tool argument vocabulary this module admits. The name key is
+/// admitted because its value is an element's own name rather than anything
+/// the operator wrote — which is what lets it be reported plainly. The charge
+/// key's value IS operator-written, so only its size is ever read; the text
+/// stays out of this crate, which is why no verbatim-text option reaches it.
+/// `Task` and `Agent` both appear because the runtime renamed the tool and the
+/// corpus spans both. Slash commands are absent: their `command` carries
+/// arguments as well as a name, so it is operator text and not an element.
 ///
 /// Public because the telemetry emit hook's matcher must name exactly these
 /// tools; a drift guard binds the pattern's matcher prose to this set.
-pub const ASSET_TOOL_KEYS: &[(&str, &str, &str)] = &[
-    ("Skill", "skill", "skill"),
-    ("Task", "subagent_type", "agent"),
-    ("Agent", "subagent_type", "agent"),
+pub const ASSET_TOOL_KEYS: &[(&str, &str, &str, &str)] = &[
+    ("Skill", "skill", "skill", "args"),
+    ("Task", "subagent_type", "agent", "prompt"),
+    ("Agent", "subagent_type", "agent", "prompt"),
 ];
 
 /// A harness element a tool call invoked.
@@ -132,6 +135,12 @@ pub struct AssetCall {
     /// `skill` or `agent`, unified across the tool rename.
     pub kind: String,
     pub name: String,
+    /// Characters of what the call handed the element — an agent's `prompt`,
+    /// a skill's `args`. A floor where the key is optional: every one of the
+    /// 2,430 `Agent` calls in the local corpus carries a `prompt`, while 202
+    /// of 249 `Skill` calls carry `args` and the other 47 pass the skill's
+    /// name alone, which is zero characters handed and not an unread one.
+    pub chars: usize,
 }
 
 /// The harness element a tool call invoked, or `None` when the tool is not one
@@ -140,12 +149,16 @@ pub struct AssetCall {
 /// reader and the telemetry emit hook (`guard::telemetry`) both resolve an
 /// invocation through it, so the recorded set and the measured set cannot drift.
 pub fn asset_of(tool: &str, input: &serde_json::Value) -> Option<AssetCall> {
-    let (key, kind) = ASSET_TOOL_KEYS
+    let (key, kind, charge) = ASSET_TOOL_KEYS
         .iter()
-        .find_map(|(t, key, kind)| (*t == tool).then_some((*key, *kind)))?;
+        .find_map(|(t, key, kind, charge)| (*t == tool).then_some((*key, *kind, *charge)))?;
     Some(AssetCall {
         kind: kind.to_string(),
         name: input.get(key)?.as_str()?.to_string(),
+        chars: input
+            .get(charge)
+            .and_then(serde_json::Value::as_str)
+            .map_or(0, |text| text.chars().count()),
     })
 }
 
@@ -1341,6 +1354,39 @@ mod tests {
         match &recs[0] {
             Record::Assistant(a) => assert_eq!(a.actions[0].tool, "Bash"),
             _ => panic!("expected an assistant turn"),
+        }
+    }
+
+    #[test]
+    fn an_invocation_carries_the_size_of_what_it_handed_the_element() {
+        // Characters, not bytes: the charge is what entered a context.
+        let agent = asset_of(
+            "Agent",
+            &serde_json::json!({"subagent_type": "reviewer", "prompt": "리뷰해 줘"}),
+        )
+        .expect("an agent call");
+        assert_eq!(agent.name, "reviewer");
+        assert_eq!(agent.chars, 5);
+
+        let skill = asset_of(
+            "Skill",
+            &serde_json::json!({"skill": "release", "args": "0.1.0"}),
+        )
+        .expect("a skill call");
+        assert_eq!(skill.chars, 5);
+    }
+
+    #[test]
+    fn a_call_that_handed_nothing_reads_as_nothing_handed() {
+        // A `Skill` call without `args` passed the name alone, and a charge
+        // the record does not carry as a string is not one this reads past.
+        for input in [
+            serde_json::json!({"skill": "release"}),
+            serde_json::json!({"skill": "release", "args": null}),
+            serde_json::json!({"skill": "release", "args": {"version": "0.1.0"}}),
+        ] {
+            let call = asset_of("Skill", &input).expect("a skill call");
+            assert_eq!(call.chars, 0, "{input}");
         }
     }
 }
