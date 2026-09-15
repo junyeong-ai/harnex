@@ -27,8 +27,10 @@ the section `specs/_template/spec.md` ships for exactly this:
 - 2026-01-15 · review · needs_revision · 0C/2B/3M/1m · two Blockers in the migration path; see plan.md ## Outstanding issues
 ```
 
-Append-only, at the margin, under the gate's own name. A gate that fires three
-times leaves three bullets in order — the history of a decision is the
+Append-only, at the margin, under the gate's own name, and a merge is no
+exception: bringing a branch's bullets in ahead of ones already committed
+rewrites the log, so merge by appending the other side's records after yours.
+A gate that fires three times leaves three bullets in order — the history of a decision is the
 interesting part, and overwriting keeps only the last one. `git log
 specs/<slug>/` is the timeline this rides on. The two ways a record stops being
 one are both reported: off the margin — nested, indented or quoted — it renders
@@ -58,10 +60,23 @@ the gate stays writable at the budget, because it is the way out of one.
 
 A pass that lands rows spends a round and records it. The commit that adds
 rows to `## Outstanding issues` carries a `needs_revision` bullet under the
-gate that ran, or the arm refuses it: the budget counts records, so a round
-recorded as anything else is a round nothing bounds. A pass that lands rows
-and also ends the gate writes both bullets, the round it spent and the
-approval behind it.
+gate that ran — one of the three above, the gates that carry a budget — or the
+arm refuses it: the budget counts records, so a round recorded as anything
+else is a round nothing bounds. A pass that lands rows and also ends the gate
+writes both bullets, the round it spent and the approval behind it.
+
+At the budget the loop stops, and both exits land no new row. Disposing every
+blocking row and approving adds nothing to the section, so it passes;
+splitting opens a second spec whose own budget the carried rows are the first
+round of. Running one more review and transcribing what it finds is neither —
+the budget refuses the round, and omitting the round refuses the rows — which
+is the budget doing what it is for: a unit still yielding findings at the
+budget is one to split, not one to review again.
+
+A row is never deleted, settled as much as open: the section is what review
+found, and a disposition ends a finding rather than retiring its row. The arm
+refuses a commit that drops one. A commit that leaves neither `plan.md` nor
+`spec.md` retires the spec and is held to none of this.
 
 Round-to-round counts are not compared. A round's count samples what one
 reviewer found, and a descent to zero is flat or rising in places; what tells
