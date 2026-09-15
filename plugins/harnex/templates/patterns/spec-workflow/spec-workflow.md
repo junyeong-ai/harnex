@@ -115,7 +115,7 @@ what the last one found.
 plan: an open Critical/Blocker row, a row deleted, reworded or downgraded
 instead of gaining its terminal disposition, finding rows added without the
 decision line that makes the pass a round the budget counts, rows landing
-past what the log's rounds counted at that rank, a gate still revising past
+past what that commit's own rounds counted at that rank, a gate still revising past
 its round budget, a committed decision bullet edited instead of appended, and
 a committed section none of them can be read against — each blocks the
 commit. The grammar the gates write is computed there, never

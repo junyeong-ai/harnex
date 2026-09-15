@@ -6,8 +6,8 @@
 # row, no row deleted, reworded or downgraded instead of gaining its terminal
 # disposition, no approval recorded over what its gate still counts against it
 # — an open Blocker, or an acceptance criterion nothing measured — no rows
-# landing without the round that found them or past what the log's rounds
-# counted at that rank, no round past the gate's budget, and a decision log
+# landing without the round that found them or past what that commit's own
+# rounds counted at that rank, no round past the gate's budget, and a decision log
 # that only ever appends. A commit that leaves neither
 # document retires the spec and is held to none of it. The staged content
 # is what is judged — the worktree may be further along — and HEAD is the

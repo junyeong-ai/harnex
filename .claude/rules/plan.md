@@ -70,14 +70,19 @@ every prose site.
   by `FindingRow::identity`, the vanish check's own key, and a committed row
   that did not survive explains one unclaimed row and no more: the surplus is
   what no rewording accounts for, which is what the finding counts.
-- The counts are held to the rows: what the log's review-class firings counted
-  by rank must cover what `## Outstanding issues` holds at that rank, and
-  `plan-log-counts-short` blocks the commit that widens the gap. Judged as a
-  gap that grew, so late transcription is covered by the round that found it
-  and a spec whose history carries a gap stays wrappable. Silent where an
-  acceptance round lands the rows — its token counts criteria, not ranks — and
-  where no round is appended at all, because `plan-round-unrecorded` names the
-  record that is missing.
+- The counts are held to the rows the commit lands, rank by rank, and
+  `plan-log-counts-short` blocks a commit that lands more at a rank than its
+  own appended rounds counted. Commit-scoped, never cumulative: a surplus read
+  over the spec's life banks, and one round claiming ninety-nine would license
+  ninety-nine uncounted rows after it. Credit comes only from records
+  `spends_a_round` reads as rounds — a count parked on an approval or a
+  deferral is credit minted without a round spent for it. An acceptance firing
+  counts criteria, so it answers for as many rows as it had failed and
+  unmeasured criteria and no more; silencing the ranks wherever one appears
+  left a single bullet releasing every review round beside it. Silent where no
+  round is appended (`plan-round-unrecorded` names the missing record) and
+  where a committed row did not survive (the rank delta reads a re-ranking as
+  an arrival, and `plan-row-vanished` answers for it).
 - A committed section that does not enumerate is `plan-baseline-unreadable`,
   not three silences. Every check that reads a baseline answers nothing
   without one, and a verdict read off a section nobody enumerated would be a
