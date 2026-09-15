@@ -54,7 +54,10 @@ invoked the loop — the skill writes nothing outside the files the fixes touch
   `[fixed: what pinned it]`, `[refuted: the ground truth]`, or
   `[accepted: who accepted it and why]`. Spec-bound, `harnex plan audit`
   computes the whole contract — open rows, vanished rows, the round
-  budget — and the pre-commit arm holds it at the commit.
+  budget — and the pre-commit arm holds it at the commit. A pass that adds
+  finding rows without its decision-log line is refused there
+  (`plan-round-unrecorded`), so a pass the loop ran outside this skill still
+  spends its round.
 
 A cleared finding keeps its row and gains its disposition. Prose that narrates
 findings away — "these became inexpressible after the redesign" — leaves a gate
