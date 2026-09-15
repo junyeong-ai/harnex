@@ -2985,9 +2985,7 @@ mod tests {
         let held =
             format!("{HELD_LOG}\n- 2026-01-16 · review · needs_revision · 0C/0B/1M/0m · two");
         for current in [
-            format!(
-                "- 2026-01-16 · review · needs_revision · 0C/0B/1M/0m · two\n- 2026-01-17 · review · needs_revision · 0C/0B/2M/0m · three"
-            ),
+            "- 2026-01-16 · review · needs_revision · 0C/0B/1M/0m · two\n- 2026-01-17 · review · needs_revision · 0C/0B/2M/0m · three".to_string(),
             HELD_LOG.to_string(),
         ] {
             let findings = audit_round(
