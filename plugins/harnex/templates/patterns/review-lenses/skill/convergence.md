@@ -57,7 +57,9 @@ invoked the loop — the skill writes nothing outside the files the fixes touch
   budget — and the pre-commit arm holds it at the commit. A pass that adds
   finding rows without its decision-log line is refused there
   (`plan-round-unrecorded`), so a pass the loop ran outside this skill still
-  spends its round.
+  spends its round; a line stating fewer findings than the pass filed is
+  refused too (`plan-log-counts-short`), so the severities on it are the
+  ones on the page.
 
 A cleared finding keeps its row and gains its disposition. Prose that narrates
 findings away — "these became inexpressible after the redesign" — leaves a gate

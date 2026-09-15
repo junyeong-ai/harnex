@@ -52,7 +52,10 @@ thing that survives a confused, careless, or adversarial agent turn.
    the ledger, so a budget any token it can write returns is a budget it hands
    itself — a pass that disposed its rows and recorded the approval that ended
    the gate bought back the whole count, every round. A control over a loop is
-   computed from something monotone under everything that loop can write.
+   computed from something monotone under everything that loop can write. And
+   a control reads numbers, so the numbers answer to the page: a record stating
+   fewer findings than its own commit filed read as a converging log over a
+   filling plan, until the counts were held rank by rank to the rows.
    The computer also decides what a control can be: a count sampled
    from one reviewer carries no rule about falling, which is why the budget
    counts rounds instead.
