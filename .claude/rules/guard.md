@@ -94,9 +94,14 @@ emits nothing. Propagating a failure as an error exits 2 through the generic
 path, which the runtime reads as a Block that no retry counter bounds, holding
 the session open at every Stop.
 
-FloorAuditor (`guard::floor`, gated on `[guard.floor]`) handles PreToolUse
-for Bash and Edit|Write|MultiEdit: the enforcement-surface freeze plus the
-hook-bypass tripwire. Its two halves fail in deliberately opposite
+FloorAuditor (`guard::floor`) handles PreToolUse for Bash and
+Edit|Write|MultiEdit: the hook-bypass tripwire plus the enforcement-surface
+freeze. Only the freeze is gated on `[guard.floor]` — the tripwire judges a
+command line and reads no declaration, so `FloorAuditor::undeclared()` stands
+it up in a project that declares none, and the two are wired as separate
+PreToolUse entries because their costs differ: the freeze covers
+`harness.toml` and the settings files, which in a repository whose harness is
+the work product is most commits. Its two halves fail in deliberately opposite
 directions — violation checks fail open (inability to evaluate is a
 `Skip` with a reason, never a block), while the operator's break-glass
 grant fails closed (an unreadable override is an absent one). The grant is
@@ -109,14 +114,18 @@ the main checkout so a worktree cannot mint its own grant.
 
 `harnex guard floor` speaks the PreToolUse hook contract, not the
 envelope: exit 2 (reason on stderr) is reserved for a *detected*
-violation; a config failure, missing `[guard.floor]`, unreadable stdin, or
-unparseable command line exits 0 with a `[floor-check skipped: …]`
-systemMessage — a broken floor must degrade to the project's other gates,
-never block every tool call. A granted protected write emits the
-`[floor-edit allowed …]` notice: the one signal the freeze was bypassed.
-Wire it directly as PreToolUse (not through `_runner.sh`); it resolves the
-project root from `harness.toml` discovery like every config-bearing
-command.
+violation; a config failure, unreadable stdin, an unparseable command line,
+or a write where no `[guard.floor]` is declared exits 0 with a
+`[floor-check skipped: …]` systemMessage — a broken floor must degrade to the
+project's other gates, never block every tool call. A granted protected write
+emits the `[floor-edit allowed …]` notice: the one signal the freeze was
+bypassed. It resolves the project root from `harness.toml` discovery like
+every config-bearing command. The scaffold wires it through
+`hooks/check-floor.sh` rather than directly, because a hook `command` is exec
+form with no shell: an absent oracle would fail the hook on every tool call,
+and one too old to carry the subcommand would exit 2 — the block code — on
+every command it was asked about. The arm probes the subcommand and leaves
+the call alone unless it parses.
 
 `guard::telemetry` (`harnex guard telemetry-emit`) handles PostToolUse /
 PostToolUseFailure: it records one `harness_invocation` event — the invoked

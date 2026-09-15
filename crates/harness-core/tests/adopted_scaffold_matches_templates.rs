@@ -38,9 +38,9 @@ use harness_core::scaffold::{Artifact, Content, ScaffoldManifest};
 /// choice.
 const AUTHORED: &[&str] = &[];
 
-/// How many adopted `copy` artifacts this repo holds: the five foundation
+/// How many adopted `copy` artifacts this repo holds: the six foundation
 /// hooks plus the language formatter.
-const ADOPTED_ARTIFACT_COUNT: usize = 6;
+const ADOPTED_ARTIFACT_COUNT: usize = 7;
 
 /// The `merge` fragments this repo has adopted into `.claude/settings.json`.
 ///

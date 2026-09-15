@@ -43,12 +43,12 @@ pub enum GuardCommand {
         #[arg(long)]
         session: Option<String>,
     },
-    /// PreToolUse floor-integrity check (requires [guard.floor]). Wire
-    /// directly for Bash and Edit|Write|MultiEdit. Blocks (exit 2, reason
-    /// on stderr) only a detected violation — a hook-skipping git command,
-    /// or a write to a protected path without the operator's standing
-    /// override. Anything that prevents evaluation allows with a visible
-    /// skip notice on the systemMessage channel.
+    /// PreToolUse floor-integrity check. Wire for Bash to refuse a
+    /// hook-skipping git command, which needs no declaration, and for
+    /// Edit|Write|MultiEdit to freeze what [guard.floor] declares. Blocks
+    /// (exit 2, reason on stderr) only a detected violation. Anything that
+    /// prevents evaluation allows with a visible skip notice on the
+    /// systemMessage channel.
     Floor,
     /// PostToolUse / PostToolUseFailure telemetry emit — record one
     /// harness_invocation event (the invoked element's slug + the outcome).
@@ -127,17 +127,11 @@ fn floor<W: Write>(out: &mut W) -> Result<ExitCode> {
         Ok(loaded) => loaded,
         Err(e) => return skip(out, &e.to_string()),
     };
-    let Some(floor_cfg) = config.guard.as_ref().and_then(|g| g.floor.as_ref()) else {
-        return skip(
-            out,
-            &format!(
-                "no [guard.floor] section in {} — declare it or remove the PreToolUse wiring",
-                config_path.display()
-            ),
-        );
-    };
     let root = config_dir(&config_path, &working_dir);
-    let auditor = FloorAuditor::new(floor_cfg);
+    let auditor = match config.guard.as_ref().and_then(|g| g.floor.as_ref()) {
+        Some(floor_cfg) => FloorAuditor::new(floor_cfg),
+        None => FloorAuditor::undeclared(),
+    };
     match auditor.evaluate(&root, &input.tool_name, &input.tool_input) {
         FloorDecision::Allow => Ok(ExitCode::SUCCESS),
         FloorDecision::Skip { reason } => skip(out, &reason),

@@ -11,13 +11,20 @@ governs:
 
 # Enforcement floor — the gates cannot be edited past
 
-`harnex guard floor` runs on PreToolUse for `Bash` and `Edit|Write|MultiEdit`
-(two entries in `.claude/settings.json`, wired directly, not through
-`_runner.sh`). It blocks exactly two things: a git command that would skip
-the hook stack (`--no-verify`, `commit -n`, a `core.hooksPath` reroute —
-compound commands included), and a write to a file that defines what the
-gates verify. A failing gate is fixed at its cause, never by weakening what
-the gate verifies.
+`harnex guard floor` blocks exactly two things, and they are wired
+separately because their costs are not alike. The tripwire — a git command
+that would skip the hook stack (`--no-verify`, `commit -n`, a
+`core.hooksPath` reroute, compound commands included) — reads no declaration
+and freezes nothing, so `hooks/check-floor.sh` is wired for `Bash` in every
+scaffold. This pattern adds the second entry, `Edit|Write|MultiEdit`, which
+freezes the files that define what the gates verify. A failing gate is fixed
+at its cause, never by weakening what the gate verifies.
+
+The freeze is the half with a price: it covers `harness.toml` and
+`.claude/settings.json`, so in a repository where the harness is the work
+product it fires on most commits, and a grant left standing to answer that
+prints its notice so often it stops being a signal. Install this pattern
+where the gate files are not the work product.
 
 ## The contract
 
