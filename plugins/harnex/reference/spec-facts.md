@@ -196,7 +196,11 @@ already contradicted both a page and the binary's own schema.
   harnex's baseline deliberately stays Bash-only — the generated harness targets
   POSIX toolchains where the tool is off by default, and mirroring every rule
   for a tool no target project enables is cost without catch. A project that
-  turns it on owns the mirror.
+  turns it on owns the mirror. The scaffold's own bypass tripwire matches
+  `Bash` for that reason and one more: `FloorAuditor::evaluate` dispatches on
+  the tool and has no PowerShell arm, so widening the matcher alone would
+  print a skip notice on every PowerShell call rather than judge it — the
+  mirror is the command-line reader, not the matcher.
 - **Read-only built-ins never prompt** (`ls cat echo pwd head tail grep find wc
   which diff stat du cd` + read-only `git`): an allow rule for them is a no-op —
   never emit one. To force a prompt, add an `ask`/`deny` rule.
