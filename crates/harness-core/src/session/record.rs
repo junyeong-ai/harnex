@@ -140,6 +140,11 @@ pub struct AssetCall {
     /// 2,430 `Agent` calls in the local corpus carries a `prompt`, while 202
     /// of 249 `Skill` calls carry `args` and the other 47 pass the skill's
     /// name alone, which is zero characters handed and not an unread one.
+    ///
+    /// Only a string is read, so a charge the record carries as some other
+    /// shape reads as zero beside those 47. No such call is in the corpus the
+    /// figures above count, and a reader that needs the two apart needs a
+    /// record that distinguishes them first.
     pub chars: usize,
 }
 
