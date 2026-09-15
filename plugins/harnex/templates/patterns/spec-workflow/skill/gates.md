@@ -44,17 +44,24 @@ owes its own token:
 | review | `design_review`, `review` | `<n>C/<n>B/<n>M/<n>m` | Critical + Blocker |
 | acceptance | `acceptance` | `<n>P/<n>F/<n>U` | failed + unmeasured |
 
-One rule bounds both: a cycle — the firings since the gate last recorded
-`approved` — holds a budget of `needs_revision` firings, which the shipped
-pre-commit arm passes. Only an approval opens a new cycle, and the audit holds
-an approval to the plan's open rows; a deferral pauses the cycle and a
-rejection ends the work, and neither starts a new one, because either is a
-line the loop under review writes for itself. Reaching the budget is a report,
-not a verdict on the round: a review that needs that many rounds is naming a
-unit too large to finish as one. Answer it by settling the scope — split what
-is under review, or dispose of every blocking row and approve — never by
-writing a reason to go on. The approval that settles the cycle takes the
-report with it; the next cycle starts on its own budget.
+One rule bounds both: a gate holds a budget of `needs_revision` firings over
+the spec's life, which the shipped pre-commit arm passes. Nothing returns one.
+Every line in this log is written by the loop the budget bounds, so a count an
+approval, a deferral or a rejection could lower is a budget the loop hands
+itself — measured, a pass that disposed its rows and approved bought back the
+five it had just spent, every round, indefinitely. Reaching the budget is a
+report, not a verdict on the round: a review that needs that many rounds is
+naming a unit too large to finish as one. Answer it by settling the scope —
+split what is under review, so each part carries its own budget, or dispose of
+every blocking row and approve — never by writing a reason to go on. Closing
+the gate stays writable at the budget, because it is the way out of one.
+
+A pass that lands rows spends a round and records it. The commit that adds
+rows to `## Outstanding issues` carries a `needs_revision` bullet under the
+gate that ran, or the arm refuses it: the budget counts records, so a round
+recorded as anything else is a round nothing bounds. A pass that lands rows
+and also ends the gate writes both bullets, the round it spent and the
+approval behind it.
 
 Round-to-round counts are not compared. A round's count samples what one
 reviewer found, and a descent to zero is flat or rising in places; what tells
@@ -86,8 +93,8 @@ refute, not to approve, and charge it with the document alone — never with
 what earlier rounds filed or which revisions to look at, because a reviewer
 steered by the last round's verdicts is that round again. On a Critical or
 Blocker: record `needs_revision`, revise, re-fire. On a clean report:
-transcribe what remains into `## Outstanding issues`, record `approved`,
-proceed.
+transcribe what remains into `## Outstanding issues`, record the round that
+found it and `approved` behind it, proceed.
 
 Revise by the smallest change that removes the finding. A Critical or Blocker
 that sits in what the previous revision wrote says that revision failed:
@@ -109,8 +116,8 @@ the spec's diff. It converges or reports why it stopped.
 
 Zero Critical and zero Blocker passes the gate. Write what remains to
 `plan.md ## Outstanding issues` — Major and Minor are follow-up signal, not
-blockers — and record `approved`. Otherwise record `needs_revision` with the
-count, and the work goes back.
+blockers — and record the round that found them with `approved` behind it.
+Otherwise record `needs_revision` with the count, and the work goes back.
 
 A finding written to `## Outstanding issues` is one
 `- [Critical|Blocker|Major|Minor] <finding>` row, and a row is never deleted.
@@ -119,7 +126,8 @@ Cleared, it ends with its terminal disposition — `[fixed: what pinned it]`,
 passes on zero Critical/Blocker rows *without* a terminal disposition — a
 condition `harnex plan audit` computes, never on the rows' absence, which
 narration can fake: the pre-commit arm at `hooks/pre-commit.d/check-plan.sh`
-blocks the commit that leaves one standing, deletes a row, or rewords one.
+blocks the commit that leaves one standing, deletes a row, rewords one, or
+lands rows without recording the round that found them.
 
 ## acceptance — blocking, end of implement, after review
 
