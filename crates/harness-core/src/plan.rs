@@ -170,6 +170,38 @@ pub const COUNTED_GATES: [(&str, GateClass); 3] = [
     ("acceptance", GateClass::Acceptance),
 ];
 
+/// Whether a decision line records a round the budget will account for.
+///
+/// The seam that holds a row-adding commit to a record asks this, and asks it
+/// in the budget's own terms so the two cannot disagree. `needs_revision` is
+/// the token [`PlanAuditor::audit_log`] increments a cycle by, and it does so
+/// under whatever name the caller declared — so a project whose review gate
+/// carries its own name records rounds the same way, and only the one gate
+/// this module knows measures something else is excluded. An approval is the
+/// round that closes a cycle, the one transcribing what the loop leaves
+/// standing, and there the name must be one whose class is known: an approval
+/// is how a gate that judged nothing under review also ends.
+///
+/// `deferred` and `rejected` record no round. Neither spends a firing and
+/// neither settles ([`GateDecision::settles`] argues the same for the cycle),
+/// so a round written as either would satisfy this seam while the budget
+/// stayed where it was — measured, ten `deferred` firings against a budget of
+/// five reported nothing at all.
+///
+/// The residue: a project whose review gate is named outside
+/// [`COUNTED_GATES`] closes its cycle with an approval this does not read as
+/// a round, so a commit transcribing residue under that approval alone is
+/// refused. Declaring the gate under a counted name is what resolves it, and
+/// the alternative — reading any unknown gate's approval as a round — would
+/// let `clarify`'s approval stand for a review that never ran.
+fn spends_or_settles_a_round(line: DecisionLine) -> bool {
+    match line.decision {
+        GateDecision::NeedsRevision => gate_class(&line.gate) != Some(GateClass::Acceptance),
+        GateDecision::Approved => gate_class(&line.gate) == Some(GateClass::Review),
+        GateDecision::Rejected | GateDecision::Deferred => false,
+    }
+}
+
 /// The class a gate owes counts in, or `None` where it owes none.
 pub fn gate_class(gate: &str) -> Option<GateClass> {
     COUNTED_GATES
@@ -800,23 +832,31 @@ impl<'a> PlanAuditor<'a> {
 
     /// A commit that adds finding rows is a review round, and a round is
     /// recorded or it is refused: the plan's rows past its baseline are
-    /// non-empty while the decision log past its own baseline carries no
-    /// review-class line. The budget counts records, so a round that lands
-    /// without one spends nothing — measured, fifty-four rounds on one spec
-    /// against a budget of five, every one a commit adding rows and none a
-    /// record. A row is new when its [`FindingRow::identity`] claims no
-    /// baseline row, the same key the vanish check matches under; gaining a
-    /// disposition, then, is not adding a row.
+    /// non-empty while the decision log past its own baseline carries no line
+    /// [`spends_or_settles_a_round`] reads as one. The budget counts records,
+    /// so a round that lands without one spends nothing — measured, fifty-four
+    /// rounds on one spec against a budget of five, every one a commit adding
+    /// rows and none a record. A row is new when its [`FindingRow::identity`]
+    /// claims no baseline row, the same key the vanish check matches under;
+    /// gaining a disposition, then, is not adding a row.
     ///
     /// Held only where both baselines are supplied — without the committed
     /// plan nothing says which rows are new, and without the committed spec
     /// nothing says which lines are — and an unreadable or absent baseline
-    /// section holds nothing, as the two sibling contracts read it. Against a
-    /// baseline whose open rows did not all survive this check says nothing:
-    /// it cannot tell a row added from a row reworded, and the vanish check
-    /// already refuses the commit. A gate the module counts nothing for is
-    /// not review-class here, whatever the caller declared; whether a firing
-    /// answers to a declared name is `plan-log-gate-undeclared`'s question.
+    /// section holds nothing, as the two sibling contracts read it.
+    ///
+    /// Two silences, each where the inputs stop answering. A baseline row that
+    /// did not survive, disposed as much as open: against a row that is gone,
+    /// an added row and a reworded one are the same two lines, and a verdict
+    /// would call a repaired citation a round. A committed log bullet edited
+    /// or gone: the count that reads past the committed prefix is off by
+    /// whatever was removed, so a record that IS appended would read as
+    /// absent. Each is `plan-row-vanished`'s or `plan-log-rewritten`'s to
+    /// report, and where neither reports — a disposed row reworded — the
+    /// silence is the honest answer rather than a guess.
+    ///
+    /// Whether a firing answers to a declared name stays
+    /// `plan-log-gate-undeclared`'s question.
     fn audit_round_recorded(
         &self,
         spec_path: &Path,
@@ -856,9 +896,11 @@ impl<'a> PlanAuditor<'a> {
             else {
                 continue;
             };
-            // An open row gone is the vanish check's finding, and against it
-            // an added row and a reworded one read alike.
-            if row.open() && !rows.iter().any(|r| r.identity() == row.identity()) {
+            // A baseline row gone is a row this check cannot read: against it
+            // an added row and a reworded one are the same two lines. Open, the
+            // vanish check says so; disposed, nothing does, and a verdict here
+            // would name a round that a repaired citation is not.
+            if !rows.iter().any(|r| r.identity() == row.identity()) {
                 return;
             }
             held.push(row);
@@ -876,39 +918,48 @@ impl<'a> PlanAuditor<'a> {
             return;
         }
 
-        // The lines past the committed log are what this commit records; a
-        // committed bullet edited or gone is `plan-log-rewritten`'s finding.
+        // The committed bullets are a prefix of the current log or they are
+        // `plan-log-rewritten`'s finding, and past that prefix is what this
+        // commit records. Where the prefix does not hold, the count that reads
+        // it is off by whatever was removed, so this check says nothing rather
+        // than reporting a record it skipped past as absent.
+        if !held_log
+            .iter()
+            .zip(log.iter())
+            .all(|(held, current)| held.text == current.text)
+            || log.len() < held_log.len()
+        {
+            return;
+        }
         let recorded = log
             .iter()
             .skip(held_log.len())
             .filter(|item| item.canonical_marker)
             .filter_map(|item| parse_decision(&item.text))
-            .any(|line| gate_class(&line.gate) == Some(GateClass::Review));
+            .any(spends_or_settles_a_round);
         if recorded {
             return;
         }
-        let review_gates = COUNTED_GATES
-            .iter()
-            .filter(|(_, class)| *class == GateClass::Review)
-            .map(|(gate, _)| format!("`{gate}`"))
-            .collect::<Vec<_>>()
-            .join(" or ");
         findings.push(Finding {
             slug: "plan-round-unrecorded".into(),
             severity: Severity::Blocker,
-            location: Location::file(self.plan_path),
+            location: Location::file(spec_path),
             message: format!(
-                "{added} finding row(s) added to `## {OUTSTANDING_HEADING}` with no review-class \
-                 decision appended to {}'s `## {DECISION_LOG_HEADING}` — the round budget \
-                 counts records, so an unrecorded round spends nothing",
-                spec_path.display()
+                "{added} finding row(s) added to `{}`'s `## {OUTSTANDING_HEADING}` with no round \
+                 appended to this log — the round budget counts records, so an unrecorded round \
+                 spends nothing",
+                self.plan_path.display()
             ),
             hint: Some(format!(
-                "a pass that adds rows is a round: record it in the same commit under \
-                 {review_gates}, as `- <YYYY-MM-DD> · <gate> · needs_revision · \
-                 <n>C/<n>B/<n>M/<n>m · <rationale>` appended at the margin. At the budget the \
-                 operator settles the scope — split what is under review, or dispose of every \
-                 blocking row and record `approved`"
+                "a pass that adds rows is a round: record it in the same commit under the gate \
+                 that ran, as `- <YYYY-MM-DD> · <gate> · {} · <counts, where the gate owes them> \
+                 · <rationale>` appended at the margin. {} is what the budget counts, so it is \
+                 what a round spends; an `{}` on a review gate closes the cycle and is the last \
+                 round of it. At the budget the operator settles the scope — split what is under \
+                 review, or dispose of every blocking row and approve",
+                GateDecision::NeedsRevision.as_str(),
+                GateDecision::NeedsRevision.as_str(),
+                GateDecision::Approved.as_str(),
             )),
             auto_fixable: false,
             fix_command: None,
@@ -2842,16 +2893,11 @@ mod tests {
             "{}",
             findings[0].message
         );
-        assert!(findings[0].message.contains("spec.md"));
+        assert!(findings[0].message.contains("plan.md"));
+        assert_eq!(findings[0].location.path, PathBuf::from("spec.md"));
         let hint = findings[0].hint.as_deref().expect("names the record line");
-        assert!(hint.contains("needs_revision ·"), "{hint}");
-        for (gate, class) in COUNTED_GATES {
-            assert_eq!(
-                hint.contains(&format!("`{gate}`")),
-                class == GateClass::Review,
-                "`{gate}` is a way to record a round only in the review class: {hint}"
-            );
-        }
+        assert!(hint.contains("needs_revision"), "{hint}");
+        assert!(hint.contains("approved"), "{hint}");
     }
 
     #[test]
@@ -2876,11 +2922,25 @@ mod tests {
             &format!("{HELD_LOG}\n- 2026-01-16 · review · approved · 0C/0B/1M/1m · residuals"),
         );
         assert!(findings.is_empty(), "{findings:#?}");
-        // Any decision under a review-class gate is a record; so is a design
-        // review's.
+        let findings = audit_round(
+            "",
+            "- [Major] naming drifts\n- [Minor] a stale comment",
+            HELD_LOG,
+            &format!(
+                "{HELD_LOG}\n- 2026-01-16 · design_review · needs_revision · 0C/0B/2M/0m · plan"
+            ),
+        );
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn a_pause_or_an_abandonment_records_no_round() {
+        // Neither spends a firing of the budget nor settles the cycle, so a
+        // round written as either leaves the budget where it was — which is
+        // the loop this seam exists to bound, running under another token.
         for line in [
             "- 2026-01-16 · review · deferred · 0C/0B/1M/1m · paused",
-            "- 2026-01-16 · design_review · needs_revision · 0C/0B/2M/0m · plan",
+            "- 2026-01-16 · review · rejected · 0C/0B/1M/1m · abandoned",
         ] {
             let findings = audit_round(
                 "",
@@ -2888,7 +2948,46 @@ mod tests {
                 HELD_LOG,
                 &format!("{HELD_LOG}\n{line}"),
             );
-            assert!(findings.is_empty(), "{line}: {findings:#?}");
+            assert_eq!(slugs(&findings), ["plan-round-unrecorded"], "{line}");
+        }
+    }
+
+    #[test]
+    fn a_project_records_a_round_under_the_gate_name_it_declared() {
+        // Gate names are open and the budget counts `needs_revision` under
+        // whichever one fired, so a review gate carrying a project's own name
+        // records a round like any other.
+        let findings = audit_round(
+            "",
+            "- [Minor] a stale comment",
+            "- 2026-01-15 · code_review · needs_revision · found one",
+            "- 2026-01-15 · code_review · needs_revision · found one\n- 2026-01-16 · code_review · needs_revision · a stale comment",
+        );
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn a_log_whose_committed_prefix_moved_leaves_the_round_to_the_rewrite_check() {
+        // Both shapes the prefix can break, because the count that reads past
+        // it is off by exactly what moved: a committed bullet replaced, where
+        // the log is no shorter, and a committed bullet dropped, where it is.
+        // Either way a record that IS appended reads as absent, so the verdict
+        // belongs to `plan-log-rewritten` alone.
+        let held =
+            format!("{HELD_LOG}\n- 2026-01-16 · review · needs_revision · 0C/0B/1M/0m · two");
+        for current in [
+            format!(
+                "- 2026-01-16 · review · needs_revision · 0C/0B/1M/0m · two\n- 2026-01-17 · review · needs_revision · 0C/0B/2M/0m · three"
+            ),
+            HELD_LOG.to_string(),
+        ] {
+            let findings = audit_round(
+                "- [Major] naming drifts [fixed: renamed]",
+                "- [Major] naming drifts [fixed: renamed]\n- [Minor] a stale comment",
+                &held,
+                &current,
+            );
+            assert_eq!(slugs(&findings), ["plan-log-rewritten"], "{current}");
         }
     }
 
