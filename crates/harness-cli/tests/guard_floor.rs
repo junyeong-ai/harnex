@@ -27,6 +27,10 @@ fn harness_toml(floor: &str) -> String {
 
 fn floor_in(dir: &Path, config: &str, tool: &str, tool_input: serde_json::Value) -> Output {
     std::fs::write(dir.join("harness.toml"), config).expect("write harness.toml");
+    floor_at(dir, tool, tool_input)
+}
+
+fn floor_at(dir: &Path, tool: &str, tool_input: serde_json::Value) -> Output {
     std::fs::create_dir_all(dir.join(".git")).expect("a repository root");
     let payload = serde_json::json!({
         "session_id": "contract",
@@ -111,6 +115,28 @@ fn a_write_with_no_floor_declared_is_allowed_and_says_why() {
         serde_json::from_str(text(&output.stdout).trim()).expect("one JSON object");
     let message = body["systemMessage"].as_str().expect("the skip says why");
     assert!(message.contains("[guard.floor]"), "{message}");
+}
+
+#[test]
+fn a_hook_skipping_command_is_refused_with_no_configuration_at_all() {
+    // `harness.toml` is frozen against the Edit tools but not against Bash, so
+    // a configuration the tripwire needed would be one `rm` away from taking
+    // the tripwire with it.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let output = floor_at(dir.path(), "Bash", bash("git commit --no-verify -m x"));
+    assert_eq!(output.status.code(), Some(2), "exit 2 blocks the action");
+    assert!(text(&output.stderr).contains("--no-verify"));
+
+    let write = floor_at(dir.path(), "Write", write("harness.toml"));
+    assert_eq!(
+        write.status.code(),
+        Some(0),
+        "the freeze has nothing to read, so it freezes nothing"
+    );
+    let body: serde_json::Value =
+        serde_json::from_str(text(&write.stdout).trim()).expect("one JSON object");
+    let message = body["systemMessage"].as_str().expect("the skip says why");
+    assert!(message.contains("harness.toml"), "{message}");
 }
 
 #[test]
