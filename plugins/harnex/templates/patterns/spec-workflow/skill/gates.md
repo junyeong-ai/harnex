@@ -38,8 +38,12 @@ as a firing and no gate counts it; under a name this workflow never defined, it
 is a gate of its own and carries a round budget of its own.
 
 A counted firing writes its counts into the line: the log is where what each
-round found is read back. Two gate classes count different things and each
-owes its own token:
+round found is read back, and the counts stand over the page. A commit landing
+more rows at a rank than the log's review rounds have counted there is refused
+— the record's every other field answers to something, and this is the field
+that says how much. A row transcribed from an earlier round needs no count of
+its own: the line that recorded that round already carries it. Two gate classes
+count different things and each owes its own token:
 
 | Class | Gates | Token | What must reach zero |
 |---|---|---|---|

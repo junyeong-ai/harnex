@@ -111,6 +111,15 @@ impl ReviewSeverity {
         matches!(self, Self::Critical | Self::Blocker)
     }
 
+    /// This rank's slot in a [`RankTally`], read off [`Self::ALL`] so the
+    /// tally cannot fall out of step with the vocabulary.
+    fn slot(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|rank| *rank == self)
+            .expect("ALL carries every variant")
+    }
+
     /// The letter this rank carries in a counts token (`0C/2B/3M/1m`).
     fn count_letter(self) -> char {
         match self {
@@ -322,6 +331,16 @@ impl Counts {
         self.critical as u64 + self.blocker as u64
     }
 
+    /// What this token counted at one rank.
+    fn at(self, rank: ReviewSeverity) -> u32 {
+        match rank {
+            ReviewSeverity::Critical => self.critical,
+            ReviewSeverity::Blocker => self.blocker,
+            ReviewSeverity::Major => self.major,
+            ReviewSeverity::Minor => self.minor,
+        }
+    }
+
     fn parse(segment: &str) -> Option<Self> {
         let mut parts = segment.split('/');
         let mut take = |severity: ReviewSeverity| {
@@ -340,6 +359,77 @@ impl Counts {
         };
         parts.next().is_none().then_some(counts)
     }
+}
+
+/// Findings by rank: what a plan's section holds, and what a log's rounds
+/// counted. One shape for both sides, so the two are compared at the rank
+/// each of them names rather than through a total that hides which one moved.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct RankTally([u64; ReviewSeverity::ALL.len()]);
+
+impl RankTally {
+    /// Saturating, because both sides are author-supplied: a wrapped tally
+    /// reads as a smaller one, which is the direction that releases.
+    fn add(&mut self, rank: ReviewSeverity, n: u64) {
+        let slot = &mut self.0[rank.slot()];
+        *slot = slot.saturating_add(n);
+    }
+
+    fn at(self, rank: ReviewSeverity) -> u64 {
+        self.0[rank.slot()]
+    }
+
+    /// What this tally holds past `counted`, rank by rank.
+    fn short_of(self, counted: Self) -> Self {
+        let mut out = Self::default();
+        for rank in ReviewSeverity::ALL {
+            out.add(*rank, self.at(*rank).saturating_sub(counted.at(*rank)));
+        }
+        out
+    }
+}
+
+/// The rows a section holds, by rank. A settled row counts as an open one
+/// does: the section is what review found, and a disposition ends a finding
+/// rather than unfinding it.
+fn rows_by_rank<'a>(rows: impl IntoIterator<Item = &'a FindingRow>) -> RankTally {
+    let mut tally = RankTally::default();
+    for row in rows {
+        tally.add(row.severity, 1);
+    }
+    tally
+}
+
+/// What a log's review-class firings counted, by rank. Every firing that
+/// carries the token states what its round found, whatever it then decided,
+/// so an approval's own count is part of the total as much as a revision's.
+fn counted_by_rank(log: &[Item]) -> RankTally {
+    let mut tally = RankTally::default();
+    let counted = log
+        .iter()
+        .filter(|item| item.canonical_marker)
+        .filter_map(|item| parse_decision(&item.text))
+        .filter(|line| gate_class(&line.gate) == Some(GateClass::Review))
+        .filter_map(|line| match line.counts {
+            Some(GateCounts::Review(counts)) => Some(counts),
+            _ => None,
+        });
+    for counts in counted {
+        for rank in ReviewSeverity::ALL {
+            tally.add(*rank, counts.at(*rank) as u64);
+        }
+    }
+    tally
+}
+
+/// The rows a committed section holds — one reader, so the checks that ask
+/// what a baseline carried cannot disagree about which bullets are rows.
+fn committed_rows(items: &[Item]) -> Vec<FindingRow> {
+    items
+        .iter()
+        .filter(|item| item.canonical_marker)
+        .filter_map(|item| parse_row(&item.text))
+        .collect()
 }
 
 /// Parse one decision bullet's text (marker already stripped).
@@ -805,6 +895,7 @@ impl<'a> PlanAuditor<'a> {
             self.audit_log(spec_path, spec_text, rows.as_deref(), &mut findings);
             self.audit_log_rewrite(spec_path, spec_text, &mut findings);
             self.audit_round_recorded(spec_path, spec_text, rows.as_deref(), &mut findings);
+            self.audit_rows_counted(spec_path, spec_text, rows.as_deref(), &mut findings);
         }
         self.audit_vanish(rows.as_deref(), &mut findings);
         findings
@@ -904,11 +995,7 @@ impl<'a> PlanAuditor<'a> {
         // claims: two identical rows are two obligations, and one row must
         // not cover both. What the current section does not claim is added;
         // what the baseline is left holding did not survive.
-        let mut held: Vec<FindingRow> = held_rows
-            .iter()
-            .filter(|item| item.canonical_marker)
-            .filter_map(|item| parse_row(&item.text))
-            .collect();
+        let mut held = committed_rows(&held_rows);
         let mut added = 0usize;
         for row in rows {
             match held.iter().position(|h| h.identity() == row.identity()) {
@@ -956,6 +1043,98 @@ impl<'a> PlanAuditor<'a> {
                     .collect::<Vec<_>>()
                     .join(", "),
                 GateDecision::Approved.as_str(),
+            )),
+            auto_fixable: false,
+            fix_command: None,
+        });
+    }
+
+    /// Every row the plan holds was counted by a round. A review-class firing
+    /// writes what it found into its line, and what it found is what lands in
+    /// the section, so the log's counts stand over the page. A commit that
+    /// widens the gap between them lands rows no round ever claimed —
+    /// measured, a round recording two Blockers while its own commit
+    /// transcribed eight, which leaves the log reading as a converging loop
+    /// over a page that is not. The counts are the only number in a record,
+    /// and every other field of one is already held to something.
+    ///
+    /// Judged as a gap that grew, never as a gap that stands: a row
+    /// transcribed late is covered by the count of the round that found it,
+    /// and a spec whose history carries a gap still has to be wrappable up.
+    ///
+    /// Silent where the ranks cannot answer. An acceptance firing counts
+    /// criteria, so a commit recording one lands rows in a currency this
+    /// tally does not hold, and the seam above with the criteria accounting
+    /// are what stand there. Silent, too, where the commit appends no round:
+    /// [`Self::audit_round_recorded`] names the record that is missing, and a
+    /// count nobody wrote is not one to raise.
+    fn audit_rows_counted(
+        &self,
+        spec_path: &Path,
+        spec_text: &str,
+        rows: Option<&[FindingRow]>,
+        findings: &mut Vec<Finding>,
+    ) {
+        let (Some(baseline), Some(rows)) = (self.baseline, rows) else {
+            return;
+        };
+        let Section::Found { items: log, .. } = section_of(spec_text, DECISION_LOG_HEADING) else {
+            return;
+        };
+        // The committed bullets stand as a prefix, so they are also the
+        // committed log — one parse, and a rewritten one has its own finding.
+        let Some(Ok(committed)) = self.committed_log_prefix(&log) else {
+            return;
+        };
+        let held_rows = match section_of(baseline, OUTSTANDING_HEADING) {
+            Section::Unreadable { .. } => return,
+            Section::Missing { .. } => Vec::new(),
+            Section::Found { items, .. } => items,
+        };
+
+        let appended: Vec<(u32, DecisionLine)> = log
+            .iter()
+            .skip(committed)
+            .filter(|item| item.canonical_marker)
+            .filter_map(|item| parse_decision(&item.text).map(|line| (item.line, line)))
+            .filter(|(_, line)| spends_a_round(line))
+            .collect();
+        let Some((line_no, round)) = appended.last() else {
+            return;
+        };
+        if appended
+            .iter()
+            .any(|(_, line)| gate_class(&line.gate) == Some(GateClass::Acceptance))
+        {
+            return;
+        }
+
+        let now = rows_by_rank(rows).short_of(counted_by_rank(&log));
+        let held =
+            rows_by_rank(&committed_rows(&held_rows)).short_of(counted_by_rank(&log[..committed]));
+        let past: Vec<String> = ReviewSeverity::ALL
+            .iter()
+            .filter(|rank| now.at(**rank) > held.at(**rank))
+            .map(|rank| format!("{} [{}]", now.at(*rank) - held.at(*rank), rank.as_str()))
+            .collect();
+        if past.is_empty() {
+            return;
+        }
+        findings.push(Finding {
+            slug: "plan-log-counts-short".into(),
+            severity: Severity::Blocker,
+            location: Location::line(spec_path, *line_no),
+            message: format!(
+                "this commit lands {} row(s) in `{}` past what the log's rounds counted",
+                past.join(", "),
+                self.plan_path.display()
+            ),
+            hint: Some(format!(
+                "a round's counts are what it found, and every row on the page was found by a \
+                 round — raise `{}`'s `<n>C/<n>B/<n>M/<n>m` to the rows this commit lands. A row \
+                 transcribed from an earlier round needs no count of its own: the line that \
+                 recorded that round already carries it",
+                round.gate
             )),
             auto_fixable: false,
             fix_command: None,
@@ -2992,7 +3171,7 @@ mod tests {
             rows,
             HELD_LOG,
             &format!(
-                "{HELD_LOG}\n- 2026-01-16 · design_review · needs_revision · 0C/0B/2M/0m · plan"
+                "{HELD_LOG}\n- 2026-01-16 · design_review · needs_revision · 0C/0B/1M/1m · plan"
             ),
         );
         assert!(findings.is_empty(), "{findings:#?}");
@@ -3215,6 +3394,127 @@ mod tests {
             ["plan-round-unrecorded"]
         );
         assert!(audit(HELD_LOG).is_empty());
+    }
+
+    #[test]
+    fn a_round_that_lands_more_rows_than_it_counted_is_short() {
+        let findings = audit_round(
+            "",
+            "- [Blocker] no rollback path [fixed: the path is back]\n\
+             - [Blocker] the lock order is reversed [fixed: reordered]\n\
+             - [Minor] a stale comment",
+            "",
+            "- 2026-01-16 · review · needs_revision · 0C/0B/0M/1m · one small thing",
+        );
+        assert_eq!(slugs(&findings), ["plan-log-counts-short"]);
+        assert!(
+            findings[0].message.contains("2 [Blocker]"),
+            "{}",
+            findings[0].message
+        );
+    }
+
+    #[test]
+    fn a_count_that_covers_the_rows_it_lands_stands() {
+        // Exactly, and over: a round finds what it finds, and a finding that
+        // duplicates a row already on the page lands nothing to transcribe.
+        for token in ["0C/2B/0M/1m", "0C/5B/0M/3m"] {
+            let findings = audit_round(
+                "",
+                "- [Blocker] no rollback path [fixed: the path is back]\n\
+                 - [Blocker] the lock order is reversed [fixed: reordered]\n\
+                 - [Minor] a stale comment",
+                "",
+                &format!("- 2026-01-16 · review · needs_revision · {token} · what it found"),
+            );
+            assert!(findings.is_empty(), "{token}: {findings:#?}");
+        }
+    }
+
+    #[test]
+    fn a_surplus_at_one_rank_does_not_answer_for_another() {
+        let findings = audit_round(
+            "",
+            "- [Blocker] no rollback path [fixed: the path is back]",
+            "",
+            "- 2026-01-16 · review · needs_revision · 0C/0B/9M/0m · nine of something else",
+        );
+        assert_eq!(slugs(&findings), ["plan-log-counts-short"]);
+        assert!(
+            findings[0].message.contains("1 [Blocker]"),
+            "{}",
+            findings[0].message
+        );
+    }
+
+    #[test]
+    fn a_row_transcribed_inside_an_earlier_rounds_count_needs_no_new_one() {
+        // The round that found eight said so; transcribing the rest later is
+        // not a second discovery, and the seam still holds that commit to
+        // recording the pass that made it.
+        let held_log = "- 2026-01-15 · review · needs_revision · 0C/8B/0M/0m · eight";
+        let findings = audit_round(
+            "- [Blocker] one [fixed: pinned]",
+            "- [Blocker] one [fixed: pinned]\n- [Blocker] two [fixed: pinned]\n\
+             - [Blocker] three [fixed: pinned]",
+            held_log,
+            &format!(
+                "{held_log}\n- 2026-01-16 · review · needs_revision · 0C/0B/0M/0m · the rest of \
+                 what r1 found, transcribed"
+            ),
+        );
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn a_shortfall_this_commit_does_not_widen_leaves_the_wrapup_writable() {
+        // A spec carrying an uncounted row from before this check is one the
+        // operator still has to be able to finish: what is refused is the
+        // commit that makes the gap bigger, never the gap the history left.
+        let held_rows = "- [Blocker] uncounted from before [accepted: the operator took it]";
+        let held_log = "- 2026-01-15 · review · needs_revision · 0C/0B/0M/0m · nothing counted";
+        let findings = audit_round(
+            held_rows,
+            &format!("{held_rows}\n- [Minor] a stale comment"),
+            held_log,
+            &format!("{held_log}\n- 2026-01-16 · review · needs_revision · 0C/0B/0M/1m · one"),
+        );
+        assert!(findings.is_empty(), "{findings:#?}");
+    }
+
+    #[test]
+    fn a_settled_row_is_a_row_the_counts_must_cover() {
+        // Landing a finding already disposed of does not make it uncounted
+        // work: the section is what review found, and the log states how much.
+        let findings = audit_round(
+            "",
+            "- [Blocker] no rollback path [fixed: the path is back]",
+            "",
+            "- 2026-01-16 · review · needs_revision · 0C/0B/0M/0m · nothing to report",
+        );
+        assert_eq!(slugs(&findings), ["plan-log-counts-short"]);
+    }
+
+    #[test]
+    fn an_acceptance_round_lands_rows_the_ranks_cannot_hold() {
+        // Its token counts criteria, so the rank tally has nothing to hold it
+        // to; the criteria accounting and the seam are what stand there.
+        let spec_path = PathBuf::from("spec.md");
+        let current =
+            plan("- [Blocker] criterion 1 cannot be measured [accepted: deferred to staging]");
+        let held_plan = plan("");
+        let log = "- 2026-01-16 · acceptance · needs_revision · 0P/1F/0U · criterion 1 fails";
+        let current_spec = spec_with_criteria(1, log);
+        let held_spec = spec_with_criteria(1, "");
+        let findings = PlanAuditor::new(
+            &PathBuf::from("plan.md"),
+            Some(&current),
+            Some((&spec_path, &current_spec)),
+            Some(&held_plan),
+            Some(&held_spec),
+        )
+        .audit();
+        assert!(findings.is_empty(), "{findings:#?}");
     }
 
     #[test]
