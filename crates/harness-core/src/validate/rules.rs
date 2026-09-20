@@ -35,37 +35,15 @@ use serde::Deserialize;
 use crate::config::RulesPolicy;
 use crate::envelope::{Finding, Location, Severity};
 use crate::validate::frontmatter;
+use crate::validate::path_globs::{
+    SYNTAX_HINT, compile_glob, declares_scope, globs, is_glob_shaped,
+};
 
 pub struct RuleValidator<'a> {
     policy: &'a RulesPolicy,
 }
 
-/// Whether a `paths:` value is a shape Claude Code reads as globs — a
-/// comma-separated string or a list of strings.
-fn is_glob_shaped(value: &yaml_serde::Value) -> bool {
-    match value.as_sequence() {
-        Some(seq) => seq.iter().all(yaml_serde::Value::is_string),
-        None => value.is_string(),
-    }
-}
-
-/// Every glob a `paths:` value carries, in declaration order. The string form
-/// is comma-separated per the memory spec.
-fn globs(value: &yaml_serde::Value) -> Vec<String> {
-    match value.as_sequence() {
-        Some(seq) => seq
-            .iter()
-            .filter_map(|v| v.as_str())
-            .map(str::to_string)
-            .collect(),
-        None => value
-            .as_str()
-            .into_iter()
-            .flat_map(|s| s.split(','))
-            .map(|s| s.trim().to_string())
-            .collect(),
-    }
-}
+pub(crate) const RULE_DIRECTORY: &str = ".claude/rules";
 
 /// The rule's identity for `always_loaded_slugs`: its path below
 /// `.claude/rules/`, extension removed. A bare file stem would let one entry
@@ -88,29 +66,10 @@ fn rule_slug(path: &Path) -> String {
         .to_string()
 }
 
-/// Whether a `paths:` value actually scopes the rule.
-///
-/// Presence of the key is not the question: `paths:` with no value, an empty
-/// list, and a list of empty strings all carry zero globs, so Claude Code has
-/// nothing to match the rule against and it is not path-scoped. Reading the
-/// key alone would exempt such a rule from both the always-loaded budget and
-/// the declaration requirement while it loads on every turn.
-fn declares_scope(value: Option<&yaml_serde::Value>) -> bool {
-    let Some(value) = value else {
-        return false;
-    };
-    match value.as_sequence() {
-        Some(seq) => seq
-            .iter()
-            .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty())),
-        None => value.as_str().is_some_and(|s| !s.trim().is_empty()),
-    }
-}
-
 #[derive(Debug, Deserialize)]
-struct RuleFrontmatter {
+pub(crate) struct RuleFrontmatter {
     #[serde(default)]
-    paths: Option<yaml_serde::Value>,
+    pub(crate) paths: Option<yaml_serde::Value>,
 }
 
 impl<'a> RuleValidator<'a> {
@@ -177,23 +136,17 @@ impl<'a> RuleValidator<'a> {
                         };
                     if let Some(value) = &parsed.paths {
                         if is_glob_shaped(value) {
-                            // A pattern the matcher rejects matches nothing, so
-                            // the rule never loads while reading as scoped.
                             for pattern in globs(value) {
-                                if glob::Pattern::new(&pattern).is_err() {
+                                if compile_glob(&pattern).is_err() {
                                     findings.push(Finding {
                                         slug: "rule-paths-invalid".into(),
                                         severity: Severity::Major,
                                         location: Location::line(path.to_path_buf(), fm.begin_line),
                                         message: format!(
-                                            "`paths:` glob '{pattern}' does not compile, so it \
-                                             matches nothing and the rule never loads"
+                                            "`paths:` glob '{pattern}' cannot be compiled by \
+                                             the declared scope matcher; context resolution is refused"
                                         ),
-                                        hint: Some(
-                                            "escape a literal bracket as `\\[`; an unreadable \
-                                             pattern silently disables the rule"
-                                                .into(),
-                                        ),
+                                        hint: Some(SYNTAX_HINT.into()),
                                         auto_fixable: false,
                                         fix_command: None,
                                     });
@@ -353,5 +306,18 @@ impl<'p> crate::validate::SurfaceValidator<'p> for RuleValidator<'p> {
 
     fn validate_path(&self, path: &Path) -> Vec<Finding> {
         self.validate_file(path)
+    }
+}
+
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+
+    #[test]
+    fn scope_directory_matches_validator_discovery() {
+        assert_eq!(
+            <RuleValidator as crate::validate::SurfaceValidator>::GLOB,
+            format!("{RULE_DIRECTORY}/**/*.md")
+        );
     }
 }

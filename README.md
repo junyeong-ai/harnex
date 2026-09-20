@@ -175,6 +175,8 @@ harnex validate commit-msg <path>                     # closed-enum trailer
 
 harnex governs resolve <paths...>                     # the rules that are truth
                                                       # about each path
+harnex context resolve [paths...]                     # instructions to read;
+                                                      # no paths = foundation
 
 harnex session index  [--since <t>] [--project <dir>] [--session <id>]
 harnex session facts  [--since <t>] [--with-text]      # counts + citations, no judgement
@@ -230,6 +232,24 @@ and `--session`, in any combination. Each emits one JSON envelope carrying the
 window's span, coverage, runtime versions and model mix, so a saved envelope is
 self-describing — that is the export, and two of them are readable side by side
 without the binary having to claim they measured the same work.
+
+`context resolve` returns normalized `targets` and `required_instructions` to
+read: root `CLAUDE.md` and `.claude/CLAUDE.md`, unconditional or matching rules,
+and ancestor `CLAUDE.md` files; `CLAUDE.local.md` follows memory in each
+directory. Paths are relative to the directory containing `harness.toml`, even
+from a nested working directory; future files are accepted.
+No targets asks for the foundation only. Internal target symlinks resolve rules
+and memories for both the logical path and its real target. Instruction paths
+are canonical and deduplicated at their first occurrence. Ancestor traversal
+visits canonical parent directories before their descendants.
+Absolute targets, target directories, traversal and instructions outside the
+repository are refused. Broken links and malformed rules fail instead of
+returning a partial instruction set. Rule globs share their parser with
+validation and use case-sensitive globset syntax, including dotfiles. The
+result describes declared scope, not Claude's runtime loading limits or
+brace-expansion budget. This is not Claude's memory runtime: imports, memory
+exclusions, user memory, output styles, native `AGENTS.md`, hooks and lifecycle
+orchestration remain the caller's responsibility.
 
 `baseline save` records what the window was measured under as well as what it
 measured: the build, the paragraph floor, and — where the window was scoped to
