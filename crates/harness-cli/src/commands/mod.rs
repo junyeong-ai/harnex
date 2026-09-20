@@ -2,6 +2,7 @@ pub mod audit;
 pub mod check;
 pub mod codegen;
 pub mod completions;
+pub mod context;
 pub mod evidence;
 pub mod export;
 pub mod governs;

@@ -36,6 +36,7 @@ use serde::Deserialize;
 use crate::config::SkillsPolicy;
 use crate::envelope::{Finding, Location, Severity};
 use crate::validate::frontmatter;
+use crate::validate::path_globs;
 use crate::validate::settings::KNOWN_HOOK_EVENTS;
 
 static NAME_PATTERN: LazyLock<Regex> =
@@ -436,12 +437,12 @@ impl<'a> SkillValidator<'a> {
         // non-sequence value.
         if let Some(ref val) = parsed.paths {
             let invalid_glob = |s: &str, label: String| -> Option<Finding> {
-                glob::Pattern::new(s).err().map(|_| Finding {
+                path_globs::compile_glob(s).err().map(|_| Finding {
                     slug: "skill-paths-invalid".into(),
                     severity: Severity::Major,
                     location: Location::line(path.to_path_buf(), fm.begin_line),
                     message: format!("paths {label} '{s}' is not a valid glob pattern"),
-                    hint: Some("fix the glob syntax".into()),
+                    hint: Some(path_globs::SYNTAX_HINT.into()),
                     auto_fixable: false,
                     fix_command: None,
                 })
@@ -461,11 +462,9 @@ impl<'a> SkillValidator<'a> {
                         }),
                     }
                 }
-            } else if let Some(s) = val.as_str() {
-                let segs: Vec<Finding> = s
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|p| !p.is_empty())
+            } else if val.is_string() {
+                let segs: Vec<Finding> = path_globs::globs(val)
+                    .iter()
                     .filter_map(|seg| invalid_glob(seg, format!("segment '{seg}'")))
                     .collect();
                 findings.extend(segs);

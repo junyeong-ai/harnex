@@ -25,6 +25,7 @@ pub mod agents;
 pub mod commit_msg;
 pub mod frontmatter;
 pub mod output_styles;
+pub(crate) mod path_globs;
 pub mod routines;
 pub mod rules;
 pub mod settings;

@@ -12,6 +12,9 @@ governs:
 Seven sub-validators. Each reads frontmatter or JSON, returns
 [`Finding`] list, never mutates input.
 
+`validate::path_globs` owns the `paths:` grammar shared by rule and skill
+validation and `context resolve`; compile these patterns through that owner.
+
 Rule validator — discovery is recursive (`.claude/rules/**/*.md`, per the
 memory spec), and every check keys on load scope, which is whether `paths:`
 carries at least one glob. A `paths:` key with no value, an empty list, or

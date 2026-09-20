@@ -33,6 +33,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Resolve instructions to read before working on explicit file targets
+    Context {
+        #[command(subcommand)]
+        cmd: commands::context::ContextCommand,
+    },
     /// Verify provenance markers in markdown
     Evidence {
         #[command(subcommand)]
@@ -150,6 +155,7 @@ fn main() -> ExitCode {
     };
 
     let result = match cli.command {
+        Command::Context { cmd } => commands::context::run(cmd, &mut out),
         Command::Evidence { cmd } => commands::evidence::run(cmd, &mut out),
         Command::Telemetry { cmd } => commands::telemetry::run(cmd, &mut out),
         Command::Codegen { cmd } => commands::codegen::run(cmd, &mut out),
