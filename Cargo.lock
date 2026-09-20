@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "harness-cli"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "harness-core"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "glob",
  "globset",
