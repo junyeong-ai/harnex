@@ -618,7 +618,7 @@ fn the_harness_side_separates_who_refused_and_what_each_hook_cost() {
 }
 
 #[test]
-fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
+fn an_attachment_is_a_context_row_and_an_unread_subtype_stays_visible_in_coverage() {
     let (_dir, config) = corpus(&[(
         "-Users-me-alpha/s1.jsonl",
         vec![
@@ -630,13 +630,12 @@ fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
 
     let facts = session::collect(&config, &CollectOptions::default()).unwrap();
 
-    assert_eq!(
-        facts
-            .coverage
-            .record_types_unconsumed
-            .get("attachment:hook_success"),
-        Some(&1)
-    );
+    let hook = facts
+        .context
+        .iter()
+        .find(|r| r.kind == "attachment" && r.name.as_deref() == Some("hook_success"))
+        .expect("the attachment is read under its own name");
+    assert_eq!((hook.entries, hook.measured, hook.chars), (1, 0, 0));
     assert_eq!(
         facts
             .coverage
@@ -645,6 +644,74 @@ fn an_attachment_this_binary_does_not_consume_stays_visible_in_coverage() {
         Some(&1)
     );
     assert_eq!(facts.coverage.records_malformed, 0);
+}
+
+#[test]
+fn a_window_says_what_entered_its_context_and_what_carried_it() {
+    let (_dir, config) = corpus(&[
+        (
+            "-Users-me-alpha/s1.jsonl",
+            vec![
+                typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                r#"{"type":"assistant","uuid":"g1","timestamp":"2026-08-01T09:00:01Z","sessionId":"s1","message":{"id":"m1","content":[{"type":"thinking","thinking":"","signature":"sig"}]}}"#.to_string(),
+                r#"{"type":"assistant","uuid":"g2","timestamp":"2026-08-01T09:00:02Z","sessionId":"s1","message":{"id":"m1","content":[{"type":"text","text":"reading"}]}}"#.to_string(),
+                r#"{"type":"assistant","uuid":"g3","timestamp":"2026-08-01T09:00:03Z","sessionId":"s1","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat a"}}]}}"#.to_string(),
+                r#"{"type":"user","uuid":"r1","timestamp":"2026-08-01T09:00:04Z","sessionId":"s1","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"0123456789"}]}}"#.to_string(),
+                r#"{"type":"attachment","uuid":"x1","timestamp":"2026-08-01T09:00:05Z","sessionId":"s1","rendered":[{"content":"Contents of CLAUDE.md: abc"}],"attachment":{"type":"nested_memory","path":"/p/CLAUDE.md","content":{"content":"abc"}}}"#.to_string(),
+                boundary("s1", "k1", "2026-08-01T09:00:06Z", "auto"),
+                r#"{"type":"user","uuid":"c1","timestamp":"2026-08-01T09:00:07Z","sessionId":"s1","isCompactSummary":true,"message":{"content":"summary"}}"#.to_string(),
+            ],
+        ),
+        (
+            "-Users-me-alpha/s1/subagents/agent-a.jsonl",
+            vec![
+                r#"{"type":"user","uuid":"r2","timestamp":"2026-08-01T09:00:08Z","sessionId":"s1","isSidechain":true,"message":{"content":[{"type":"tool_result","tool_use_id":"elsewhere","content":"xy"}]}}"#.to_string(),
+            ],
+        ),
+    ]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    let rows: Vec<_> = facts
+        .context
+        .iter()
+        .map(|r| {
+            (
+                r.kind.as_str(),
+                r.name.as_deref(),
+                r.sidechain,
+                r.entries,
+                r.measured,
+                r.chars,
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            (
+                "user-turn",
+                Some("authored"),
+                false,
+                1,
+                1,
+                STANDING.chars().count()
+            ),
+            ("attachment", Some("nested_memory"), false, 1, 1, 26),
+            ("tool-input", Some("Bash"), false, 1, 1, 19),
+            ("tool-result", Some("Bash"), false, 1, 1, 10),
+            ("agent-prose", None, false, 1, 1, 7),
+            ("compact-summary", None, false, 1, 1, 7),
+            ("tool-result", None, true, 1, 1, 2),
+            ("agent-thinking", None, false, 1, 0, 0),
+        ]
+    );
+    let prose = facts
+        .context
+        .iter()
+        .find(|r| r.kind == "agent-prose" && !r.sidechain)
+        .unwrap();
+    assert_eq!(prose.chars, facts.agent_chars, "one fact, two places");
 }
 
 /// A window that exercises every metric a baseline records, at values chosen so

@@ -21,6 +21,7 @@ governs:
   want opposite fixes |
 | `intervention` | steering and marked interrupts |
 | `harness` | what the project's harness did, and what it cost |
+| `context` | what entered a context window, by what carried it there |
 | `rework` | edits to a file after the commit that shipped it |
 | `repository` | what became of a commit, through git, project scope only |
 | `baseline` | frozen rates, the refusal to compare overlapping windows,

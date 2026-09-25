@@ -7,9 +7,11 @@
 //! parse failure, and a parse failure that is skipped reads as a shorter
 //! session — a *better* number, arrived at silently. So only the types this
 //! module consumes are closed; every other value is counted into [`Coverage`]
-//! under its own name, and the two types with a sub-vocabulary are counted
-//! under a qualified one (`attachment:hook_success`) so consuming one member
-//! does not hide the growth of the rest.
+//! under its own name, and `system`, whose subtypes are read only in part, is
+//! counted under a qualified one (`system:local_command`) so consuming one
+//! member does not hide the growth of the rest. An attachment is read whatever
+//! its type and keeps the runtime's name for it, so a type that arrives
+//! tomorrow is a row of its own rather than a gap.
 //!
 //! [`Authorship`] is the one classification made here, and it is made from the
 //! runtime's own attribution rather than from the text. `origin.kind` is the
@@ -68,7 +70,8 @@ const AUTHORED_PROMPT_SOURCES: &[&str] = &["typed", "queued"];
 /// [`UserTurn::follows_agent_output`].
 const QUEUED_PROMPT_SOURCE: &str = "queued";
 
-/// The attachment carrying a project memory file that entered context.
+/// The attachment carrying a project memory file that entered context. Its
+/// path and content are present on all 25,876 in the local corpus.
 const RULE_LOAD_ATTACHMENT: &str = "nested_memory";
 
 /// The system record carrying one Stop event's hook accounting.
@@ -285,16 +288,33 @@ pub struct ToolUse {
 
 /// One tool invocation, reduced to what this module reads.
 ///
-/// The arguments do not survive the record: a Bash input carries the
-/// operator's command text, and what a call did is read from the tool it
-/// named. [`ASSET_TOOL_KEYS`] is the one place a tool's argument vocabulary
-/// enters this crate, and it is one because a harness element's name is not
-/// operator text.
+/// The arguments do not survive the record beyond their size: a Bash input
+/// carries the operator's command text, and what a call did is read from the
+/// tool it named. [`ASSET_TOOL_KEYS`] is the one place a tool's argument
+/// vocabulary enters this crate, and it is one because a harness element's
+/// name is not operator text.
 #[derive(Debug, Clone)]
 pub struct ToolAction {
     pub tool: String,
     /// The harness element this call invoked, if it invoked one.
     pub asset: Option<AssetCall>,
+    /// Characters of the arguments as JSON — the call stays in the
+    /// conversation as the agent wrote it.
+    pub input_chars: usize,
+}
+
+/// A tool result as it entered context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolResult {
+    /// The tool whose call it answers, resolved through `tool_use_id`. `None`
+    /// when the call is not in the same transcript.
+    pub tool: Option<String>,
+    /// Characters of its text.
+    pub chars: usize,
+    /// Whether text is all it carried, so `chars` is its whole size. An image
+    /// or a tool reference enters context with no characters to count — 4,949
+    /// of the local corpus's 450,677 results carry one.
+    pub text_only: bool,
 }
 
 /// A user turn, reduced to what this module reads.
@@ -305,6 +325,16 @@ pub struct UserTurn {
     /// What the person wrote, joined from the message's text blocks. `None`
     /// when there are none: a tool result is a tool result, not a turn.
     pub text: Option<String>,
+    /// Whether the text is all the turn carried beside its tool results, so
+    /// its characters are the turn's whole size. A pasted image is not text —
+    /// 76 of the local corpus's 1,702 text turns sent as blocks carry one.
+    pub text_only: bool,
+    /// The tool results this record carried, in block order.
+    pub results: Vec<ToolResult>,
+    /// Whether the runtime marked this turn as the summary a compaction left
+    /// for the next window. All 913 in the local corpus carry no `origin`, so
+    /// without the mark each reads as an unclaimed turn.
+    pub compact_summary: bool,
     /// Whether the runtime marked this turn as submitted while the agent was
     /// working. Only meaningful on an [`Authorship::Authored`] turn.
     pub queued: bool,
@@ -370,6 +400,9 @@ pub struct AssistantTurn {
     /// content block, so a turn that narrated and then called a tool wrote its
     /// prose in the record before the one that closes the message.
     pub chars: usize,
+    /// Thinking blocks this record carried — counted, never sized, for the
+    /// reason [`super::context::ContextSourceKind::AgentThinking`] gives.
+    pub thinking: usize,
 }
 
 /// Where a session's context was compacted, and what it cost.
@@ -456,18 +489,32 @@ impl TokenUse {
     }
 }
 
-/// A project memory file that entered context.
+/// Something the runtime attached to a window on its own, and the memory files
+/// it carried.
 #[derive(Debug, Clone)]
-pub struct RuleLoad {
+pub struct Attachment {
     pub citation: Citation,
-    pub path: PathBuf,
-    /// Characters of the file as it entered context.
-    pub chars: usize,
+    /// The runtime's name for it, kept as a string because the vocabulary is
+    /// upstream and grows: 48 names over the local corpus.
+    pub kind: String,
+    /// Characters the runtime recorded rendering into context. Present on every
+    /// memory attachment from runtime 2.1.263 and on none before 2.1.261, so
+    /// `None` says the size is not recorded, not that nothing entered.
+    pub rendered: Option<usize>,
+    /// Memory files it carried. Empty for every attachment that is not memory.
+    pub memory: Vec<LoadedFile>,
     /// Whether a subagent's window received it rather than the main thread's.
-    /// Measured over the local corpus, 71.2% of the characters were a
+    /// Measured over the local corpus, 71.2% of memory characters were a
     /// subagent's, and 601 of 1,722 files entered both — so which window a
     /// load reached is most of what a total hides.
     pub sidechain: bool,
+}
+
+/// A memory file as it entered context.
+#[derive(Debug, Clone)]
+pub struct LoadedFile {
+    pub path: PathBuf,
+    pub chars: usize,
 }
 
 /// One hook run inside a Stop event.
@@ -491,7 +538,7 @@ pub struct StopSummary {
 pub enum Record {
     User(UserTurn),
     Assistant(AssistantTurn),
-    RuleLoad(RuleLoad),
+    Attachment(Attachment),
     StopSummary(StopSummary),
     Compaction(Compaction),
 }
@@ -501,7 +548,7 @@ impl Record {
         match self {
             Self::User(u) => &u.citation,
             Self::Assistant(a) => &a.citation,
-            Self::RuleLoad(r) => &r.citation,
+            Self::Attachment(a) => &a.citation,
             Self::StopSummary(s) => &s.citation,
             Self::Compaction(c) => &c.citation,
         }
@@ -694,6 +741,9 @@ struct RawRecord {
     #[serde(rename = "toolDenialKind")]
     tool_denial_kind: Option<String>,
     attachment: Option<serde_json::Value>,
+    rendered: Option<serde_json::Value>,
+    #[serde(rename = "isCompactSummary")]
+    is_compact_summary: Option<bool>,
     subtype: Option<String>,
     #[serde(rename = "hookInfos")]
     hook_infos: Option<Vec<RawHookInfo>>,
@@ -753,15 +803,86 @@ fn text_of(content: &serde_json::Value) -> Option<String> {
     match content {
         serde_json::Value::String(s) => Some(s.clone()),
         serde_json::Value::Array(blocks) => {
-            let out: Vec<String> = blocks
-                .iter()
-                .filter(|b| b.get("type").and_then(serde_json::Value::as_str) == Some("text"))
-                .filter_map(|b| Some(b.get("text")?.as_str()?.to_string()))
-                .collect();
+            let out: Vec<&str> = blocks.iter().filter_map(text_block).collect();
             (!out.is_empty()).then(|| out.join("\n"))
         }
         _ => None,
     }
+}
+
+/// The text of a block that is a text block.
+fn text_block(block: &serde_json::Value) -> Option<&str> {
+    match block.get("type").and_then(serde_json::Value::as_str) {
+        Some("text") => block.get("text").and_then(serde_json::Value::as_str),
+        _ => None,
+    }
+}
+
+/// Whether a message carries text alongside its tool results and nothing else.
+fn text_only(content: &serde_json::Value) -> bool {
+    match content {
+        serde_json::Value::String(_) => true,
+        serde_json::Value::Array(blocks) => blocks.iter().all(|b| {
+            matches!(
+                b.get("type").and_then(serde_json::Value::as_str),
+                Some("text" | "tool_result")
+            )
+        }),
+        _ => false,
+    }
+}
+
+/// A result block's size, and the tool whose call it answers.
+fn tool_result(
+    block: &serde_json::Value,
+    calls: &HashMap<String, (String, serde_json::Value)>,
+) -> ToolResult {
+    let tool = block
+        .get("tool_use_id")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|id| calls.get(id))
+        .map(|(tool, _)| tool.clone());
+    let (chars, text_only) = match block.get("content") {
+        Some(serde_json::Value::String(text)) => (text.chars().count(), true),
+        Some(serde_json::Value::Array(parts)) => {
+            parts.iter().fold((0, true), |(chars, text_only), part| {
+                match text_block(part) {
+                    Some(text) => (chars + text.chars().count(), text_only),
+                    None => (chars, false),
+                }
+            })
+        }
+        _ => (0, false),
+    };
+    ToolResult {
+        tool,
+        chars,
+        text_only,
+    }
+}
+
+/// Characters of what a record says it rendered into context, or `None` where
+/// `rendered` is in a shape this reader does not know. Every one in the local
+/// corpus is a list of `{content}` strings.
+fn rendered_chars(rendered: &serde_json::Value) -> Option<usize> {
+    rendered
+        .as_array()?
+        .iter()
+        .map(|part| Some(part.get("content")?.as_str()?.chars().count()))
+        .sum()
+}
+
+/// The memory file a `nested_memory` attachment carried.
+fn nested_memory_file(attachment: &serde_json::Value) -> Option<LoadedFile> {
+    Some(LoadedFile {
+        path: PathBuf::from(attachment.get("path")?.as_str()?),
+        chars: attachment
+            .get("content")?
+            .get("content")?
+            .as_str()?
+            .chars()
+            .count(),
+    })
 }
 
 fn blocks_of(content: Option<&serde_json::Value>) -> &[serde_json::Value] {
@@ -938,10 +1059,20 @@ pub fn read_transcript(
                             .map(|(tool, _)| tool.clone())
                     })
                     .flatten();
+                let results = blocks_of(content)
+                    .iter()
+                    .filter(|b| {
+                        b.get("type").and_then(serde_json::Value::as_str) == Some("tool_result")
+                    })
+                    .map(|b| tool_result(b, &tool_calls))
+                    .collect();
                 out.push(Record::User(UserTurn {
                     citation,
                     authorship,
                     text,
+                    text_only: content.is_some_and(text_only),
+                    results,
+                    compact_summary: raw.is_compact_summary.unwrap_or(false),
                     queued: raw.prompt_source.as_deref() == Some(QUEUED_PROMPT_SOURCE),
                     follows_agent_output: agent_output_since_user_turn,
                     interrupted: raw.interrupted_message_id.is_some(),
@@ -962,13 +1093,20 @@ pub fn read_transcript(
             ConsumedType::Assistant => {
                 let mut actions = Vec::new();
                 let mut chars = 0;
+                let mut thinking = 0;
                 for block in blocks_of(content) {
-                    if block.get("type").and_then(serde_json::Value::as_str) != Some("tool_use") {
-                        chars += block
-                            .get("text")
-                            .and_then(serde_json::Value::as_str)
-                            .map_or(0, |t| t.chars().count());
-                        continue;
+                    match block.get("type").and_then(serde_json::Value::as_str) {
+                        Some("tool_use") => {}
+                        // `redacted_thinking` is the API's other thinking
+                        // block; none is in the local corpus.
+                        Some("thinking" | "redacted_thinking") => {
+                            thinking += 1;
+                            continue;
+                        }
+                        _ => {
+                            chars += text_block(block).map_or(0, |t| t.chars().count());
+                            continue;
+                        }
                     }
                     let Some(tool) = block.get("name").and_then(serde_json::Value::as_str) else {
                         continue;
@@ -980,6 +1118,7 @@ pub fn read_transcript(
                     actions.push(ToolAction {
                         tool: tool.to_string(),
                         asset: asset_of(tool, &input),
+                        input_chars: input.to_string().chars().count(),
                     });
                     if let Some(id) = block.get("id").and_then(serde_json::Value::as_str) {
                         tool_calls.insert(id.to_string(), (tool.to_string(), input));
@@ -1005,6 +1144,7 @@ pub fn read_transcript(
                     model,
                     sidechain: raw.is_sidechain.unwrap_or(false),
                     chars,
+                    thinking,
                 }));
                 // The latest record of a message holds it, and the two counts
                 // reach it differently. `usage` is the message's running total
@@ -1038,32 +1178,37 @@ pub fn read_transcript(
                 }
             }
             ConsumedType::Attachment => {
-                let attachment = raw.attachment.as_ref();
-                let subtype = attachment
-                    .and_then(|a| a.get("type"))
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default();
-                if subtype != RULE_LOAD_ATTACHMENT {
-                    coverage.count_unconsumed(format!("{kind}:{subtype}"));
-                    continue;
-                }
-                let Some(loaded) = attachment
-                    .and_then(|a| a.get("path"))
-                    .and_then(serde_json::Value::as_str)
-                else {
+                let Some(attachment) = raw.attachment.as_ref() else {
                     coverage.records_malformed += 1;
                     continue;
                 };
-                let chars = attachment
-                    .and_then(|a| a.get("content"))
-                    .and_then(|c| c.get("content"))
-                    .and_then(serde_json::Value::as_str)
-                    .map(|s| s.chars().count())
-                    .unwrap_or(0);
-                out.push(Record::RuleLoad(RuleLoad {
+                let Some(name) = attachment.get("type").and_then(serde_json::Value::as_str) else {
+                    coverage.records_malformed += 1;
+                    continue;
+                };
+                let rendered = match raw.rendered.as_ref().map(rendered_chars) {
+                    None => None,
+                    Some(Some(chars)) => Some(chars),
+                    Some(None) => {
+                        coverage.records_malformed += 1;
+                        continue;
+                    }
+                };
+                let memory = match name {
+                    RULE_LOAD_ATTACHMENT => match nested_memory_file(attachment) {
+                        Some(file) => vec![file],
+                        None => {
+                            coverage.records_malformed += 1;
+                            continue;
+                        }
+                    },
+                    _ => Vec::new(),
+                };
+                out.push(Record::Attachment(Attachment {
                     citation,
-                    path: PathBuf::from(loaded),
-                    chars,
+                    kind: name.to_string(),
+                    rendered,
+                    memory,
                     sidechain: raw.is_sidechain.unwrap_or(false),
                 }));
             }
@@ -1218,21 +1363,48 @@ mod tests {
     #[test]
     fn an_unconsumed_subtype_is_counted_under_its_qualified_name() {
         let (recs, cov) = rec(&format!(
-            "{}\n{}",
-            format_args!(
-                r#"{{"type":"attachment",{BASE},"attachment":{{"type":"hook_success"}}}}"#
-            ),
-            format_args!(r#"{{"type":"system",{BASE},"subtype":"local_command"}}"#)
+            r#"{{"type":"system",{BASE},"subtype":"local_command"}}"#
         ));
         assert!(recs.is_empty());
-        assert_eq!(
-            cov.record_types_unconsumed.get("attachment:hook_success"),
-            Some(&1)
-        );
         assert_eq!(
             cov.record_types_unconsumed.get("system:local_command"),
             Some(&1)
         );
+    }
+
+    #[test]
+    fn an_attachment_of_any_type_is_read_with_what_it_rendered() {
+        let (recs, cov) = rec(&format!(
+            "{}\n{}",
+            format_args!(
+                r#"{{"type":"attachment",{BASE},"rendered":[{{"content":"ab"}},{{"content":"cde"}}],"attachment":{{"type":"shipped_tomorrow"}}}}"#
+            ),
+            format_args!(
+                r#"{{"type":"attachment","uuid":"u2","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{{"type":"hook_success"}}}}"#
+            )
+        ));
+        let read: Vec<(&str, Option<usize>)> = recs
+            .iter()
+            .map(|r| match r {
+                Record::Attachment(a) => (a.kind.as_str(), a.rendered),
+                _ => panic!("expected an attachment"),
+            })
+            .collect();
+        assert_eq!(
+            read,
+            [("shipped_tomorrow", Some(5)), ("hook_success", None)],
+            "an absent `rendered` is an unrecorded size, not a size of zero"
+        );
+        assert!(cov.record_types_unconsumed.is_empty());
+    }
+
+    #[test]
+    fn a_rendered_shape_this_reader_does_not_know_is_malformed_not_zero() {
+        let (recs, cov) = rec(&format!(
+            r#"{{"type":"attachment",{BASE},"rendered":"flat text","attachment":{{"type":"file"}}}}"#
+        ));
+        assert!(recs.is_empty());
+        assert_eq!(cov.records_malformed, 1);
     }
 
     #[test]
@@ -1315,12 +1487,16 @@ mod tests {
             r#"{{"type":"attachment",{BASE},"attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/testing.md","content":{{"content":"abcde"}}}}}}"#
         ));
         match &recs[0] {
-            Record::RuleLoad(r) => {
-                assert_eq!(r.path, PathBuf::from("/repo/.claude/rules/testing.md"));
-                assert_eq!(r.chars, 5);
-                assert!(!r.sidechain);
+            Record::Attachment(a) => {
+                assert_eq!(a.memory.len(), 1);
+                assert_eq!(
+                    a.memory[0].path,
+                    PathBuf::from("/repo/.claude/rules/testing.md")
+                );
+                assert_eq!(a.memory[0].chars, 5);
+                assert!(!a.sidechain);
             }
-            _ => panic!("expected a rule load"),
+            _ => panic!("expected an attachment"),
         }
     }
 
@@ -1330,8 +1506,85 @@ mod tests {
             r#"{{"type":"attachment",{BASE},"isSidechain":true,"attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/testing.md","content":{{"content":"abcde"}}}}}}"#
         ));
         match &recs[0] {
-            Record::RuleLoad(r) => assert!(r.sidechain),
-            _ => panic!("expected a rule load"),
+            Record::Attachment(a) => assert!(a.sidechain),
+            _ => panic!("expected an attachment"),
+        }
+    }
+
+    #[test]
+    fn a_rule_load_without_its_content_is_malformed_rather_than_free() {
+        let (recs, cov) = rec(&format!(
+            r#"{{"type":"attachment",{BASE},"attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/testing.md"}}}}"#
+        ));
+        assert!(recs.is_empty());
+        assert_eq!(cov.records_malformed, 1);
+    }
+
+    #[test]
+    fn a_tool_result_is_sized_by_its_text_and_says_when_that_is_not_all_of_it() {
+        let (recs, _) = rec(&format!(
+            "{}\n{}",
+            format_args!(
+                r#"{{"type":"assistant",{BASE},"message":{{"content":[{{"type":"tool_use","id":"t1","name":"Read","input":{{"file_path":"/a"}}}},{{"type":"tool_use","id":"t2","name":"Read","input":{{"file_path":"/b.png"}}}}]}}}}"#
+            ),
+            format_args!(
+                r#"{{"type":"user","uuid":"u2","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","message":{{"content":[{{"type":"tool_result","tool_use_id":"t1","content":"한글 text"}},{{"type":"tool_result","tool_use_id":"t2","content":[{{"type":"text","text":"ab"}},{{"type":"image","source":{{}}}}]}},{{"type":"tool_result","tool_use_id":"gone","content":[{{"type":"text","text":"xyz"}}]}}]}}}}"#
+            )
+        ));
+        match &recs[1] {
+            Record::User(u) => assert_eq!(
+                u.results,
+                [
+                    ToolResult {
+                        tool: Some("Read".into()),
+                        chars: 7,
+                        text_only: true
+                    },
+                    ToolResult {
+                        tool: Some("Read".into()),
+                        chars: 2,
+                        text_only: false
+                    },
+                    ToolResult {
+                        tool: None,
+                        chars: 3,
+                        text_only: true
+                    },
+                ]
+            ),
+            _ => panic!("expected a user turn"),
+        }
+    }
+
+    #[test]
+    fn an_assistant_record_carries_its_call_sizes_and_counts_thinking_it_cannot_size() {
+        let (recs, _) = rec(&format!(
+            r#"{{"type":"assistant",{BASE},"message":{{"content":[{{"type":"thinking","thinking":"","signature":"s"}},{{"type":"redacted_thinking","data":"d"}},{{"type":"text","text":"ok"}},{{"type":"tool_use","name":"Bash","input":{{"command":"ls"}}}}]}}}}"#
+        ));
+        match &recs[0] {
+            Record::Assistant(a) => {
+                assert_eq!(a.thinking, 2);
+                assert_eq!(a.chars, 2);
+                assert_eq!(
+                    a.actions[0].input_chars,
+                    r#"{"command":"ls"}"#.chars().count()
+                );
+            }
+            _ => panic!("expected an assistant turn"),
+        }
+    }
+
+    #[test]
+    fn a_compaction_summary_is_marked_as_one() {
+        let (recs, _) = rec(&format!(
+            r#"{{"type":"user",{BASE},"isCompactSummary":true,"message":{{"content":"This session is being continued"}}}}"#
+        ));
+        match &recs[0] {
+            Record::User(u) => {
+                assert!(u.compact_summary);
+                assert_eq!(u.authorship, Authorship::Unclaimed);
+            }
+            _ => panic!("expected a user turn"),
         }
     }
 

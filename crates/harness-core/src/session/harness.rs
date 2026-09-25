@@ -39,7 +39,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::record::{Citation, Record, RuleLoad};
+use super::record::{Citation, LoadedFile, Record};
 
 /// A call that met a refusal more than once.
 ///
@@ -262,11 +262,11 @@ pub(crate) struct RuleLoadTally {
 }
 
 impl RuleLoadTally {
-    pub(crate) fn observe(&mut self, load: &RuleLoad) {
+    pub(crate) fn observe(&mut self, file: &LoadedFile, citation: &Citation, sidechain: bool) {
         self.groups
-            .entry((load.path.clone(), load.sidechain))
+            .entry((file.path.clone(), sidechain))
             .or_default()
-            .observe(&load.citation, load.chars as u64);
+            .observe(citation, file.chars as u64);
     }
 
     pub(crate) fn finish(self) -> Vec<RuleLoadGroup> {
@@ -327,7 +327,12 @@ impl HarnessAnalyzer {
                     }
                 }
             }
-            Record::RuleLoad(load) => self.rules.observe(load),
+            Record::Attachment(attachment) => {
+                for file in &attachment.memory {
+                    self.rules
+                        .observe(file, &attachment.citation, attachment.sidechain);
+                }
+            }
             Record::StopSummary(stop) => {
                 self.stops += 1;
                 self.hook_errors += stop.errors;
@@ -482,7 +487,7 @@ mod canonical_tests {
 mod tests {
     use super::*;
     use crate::session::record::{
-        AssetCall, AssistantTurn, Authorship, Denial, HookRun, RuleLoad, StopSummary, TokenUse,
+        AssetCall, AssistantTurn, Attachment, Authorship, Denial, HookRun, StopSummary, TokenUse,
         ToolAction, UserTurn,
     };
 
@@ -500,6 +505,9 @@ mod tests {
             citation: cite(uuid, seconds),
             authorship: Authorship::Unclaimed,
             text: None,
+            text_only: false,
+            results: Vec::new(),
+            compact_summary: false,
             queued: false,
             follows_agent_output: false,
             interrupted: false,
@@ -520,10 +528,14 @@ mod tests {
     }
 
     fn loaded_into(uuid: &str, seconds: i64, path: &str, chars: usize, sidechain: bool) -> Record {
-        Record::RuleLoad(RuleLoad {
+        Record::Attachment(Attachment {
             citation: cite(uuid, seconds),
-            path: PathBuf::from(path),
-            chars,
+            kind: "nested_memory".into(),
+            rendered: None,
+            memory: vec![LoadedFile {
+                path: PathBuf::from(path),
+                chars,
+            }],
             sidechain,
         })
     }
@@ -696,12 +708,14 @@ mod tests {
                     name: name.into(),
                     chars,
                 }),
+                input_chars: 0,
             }],
             tokens: TokenUse::default(),
             message: None,
             model: None,
             sidechain: false,
             chars: 0,
+            thinking: 0,
         })
     }
 

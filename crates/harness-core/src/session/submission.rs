@@ -241,9 +241,12 @@ impl SubmissionAnalyzer {
                         .max(0) as u64;
                 }
             }
-            Record::RuleLoad(load) => {
+            Record::Attachment(attachment) => {
                 if let Some((_, at)) = self.active.get(session).copied() {
-                    self.loads.entry(at).or_default().observe(load);
+                    let tally = self.loads.entry(at).or_default();
+                    for file in &attachment.memory {
+                        tally.observe(file, &attachment.citation, attachment.sidechain);
+                    }
                 }
             }
             Record::StopSummary(_) | Record::Compaction(_) => {}
@@ -379,6 +382,9 @@ mod boundary_tests {
             },
             authorship: Authorship::Authored,
             text: Some("resolve the root cause".into()),
+            text_only: true,
+            results: Vec::new(),
+            compact_summary: false,
             queued: false,
             follows_agent_output: false,
             interrupted: false,
