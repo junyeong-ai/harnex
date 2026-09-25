@@ -363,6 +363,17 @@ the last event and never summed. A boundary whose `Compaction.sidechain` is set
 compacted a subagent's window and carries no `resumed_tokens`; leave it out of
 anything said about the operator's own context.
 
+**Say what fills the window before what emptying it cost.** `context` is what
+entered a window, by what carried it: tool results and the agent's own call
+arguments by tool, its prose and thinking, user turns by authorship, compaction
+summaries, and attachments by type. Report the main thread's largest carriers as
+shares of its characters; a `sidechain` row adds up windows that never met.
+Where `measured` is short of `entries`, that row's characters are a floor —
+thinking is never sized, and an attachment written before runtime 2.1.261
+records no size. Compare carriers within a window and never against `tokens`:
+a token holds more characters of English prose than of code or Korean, so a
+character share is not a token share.
+
 **Report what a compaction cost only as a pair.** `recovery.after_compaction`
 counts the main-thread turns a summary had to carry alone and the corrections
 the operator made inside them; `recovery.elsewhere` counts the same two things

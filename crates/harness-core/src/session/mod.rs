@@ -41,6 +41,7 @@
 //! - Never reach the network. Every input is a local file.
 
 pub mod baseline;
+pub mod context;
 pub mod discovery;
 pub mod harness;
 pub mod intervention;
@@ -63,6 +64,7 @@ pub use baseline::{
     Baseline, BaselineDiff, BaselineLedger, BaselineTrend, HarnessChange, Measured, Measurement,
     MetricDelta, MetricPoint, MetricSeries, SessionMetric,
 };
+pub use context::{ContextSource, ContextSourceKind};
 pub use harness::{
     AssetInvocation, BlockedCall, DenialGroup, HarnessFacts, HookCost, RuleLoadGroup,
 };
@@ -207,6 +209,9 @@ pub struct SessionFacts {
     /// how broad a rule is, and a call the harness refused is counted there
     /// rather than here.
     pub tools: BTreeMap<String, ToolUse>,
+    /// What entered a context window, by what carried it there, most
+    /// characters first. `agent_chars` is the main thread's `agent-prose` row.
+    pub context: Vec<ContextSource>,
     /// What became of the commits the window produced. Present only for a
     /// window scoped to a project, and only when that project is a git work
     /// tree — nothing else can be asked what survived.
@@ -278,6 +283,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
     let mut sessions: BTreeSet<String> = BTreeSet::new();
     let mut rework = rework::ReworkAnalyzer::new();
     let mut harness = harness::HarnessAnalyzer::new();
+    let mut context = context::ContextAnalyzer::new();
     // A uuid is one event. The runtime replays a session's records into other
     // files — into a fork's transcript, into each subagent dispatched at once,
     // and into a resumed session under a new id — so the same event reaches
@@ -421,6 +427,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
             }
             submissions.observe(rec, assigned);
             harness.observe(rec);
+            context.observe(rec);
         }
         rework.observe(&records);
         // After the loop, because this sorts the slice `resuming` held
@@ -476,6 +483,7 @@ pub fn collect(config: &SessionConfig, options: &CollectOptions) -> Result<Sessi
         tokens,
         agent_chars,
         tools,
+        context: context.finish(),
         repository,
         rework: rework.finish(),
         harness: harness.finish(options.with_text),
@@ -574,15 +582,16 @@ mod tests {
         uuid_and_second
             .iter()
             .map(|(uuid, second)| {
-                record::Record::RuleLoad(record::RuleLoad {
+                record::Record::Attachment(record::Attachment {
                     citation: record::Citation {
                         session: "s1".into(),
                         file: PathBuf::from("/corpus/s1.jsonl"),
                         uuid: (*uuid).into(),
                         timestamp: Timestamp::from_second(*second).unwrap(),
                     },
-                    path: PathBuf::from("/repo/CLAUDE.md"),
-                    chars: 1,
+                    kind: "date".into(),
+                    rendered: None,
+                    memory: Vec::new(),
                     sidechain: false,
                 })
             })
