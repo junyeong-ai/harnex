@@ -55,6 +55,7 @@ wire_enum! {
         GuardSpawnFailure => "GUARD_SPAWN_FAILURE",
         GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
         GraphSpawnFailure => "GRAPH_SPAWN_FAILURE",
+        AuditGitFailure => "AUDIT_GIT_FAILURE",
         CheckGitFailure => "CHECK_GIT_FAILURE",
         LifecycleGitFailure => "LIFECYCLE_GIT_FAILURE",
         GovernsQueryUnresolvable => "GOVERNS_QUERY_UNRESOLVABLE",
@@ -188,6 +189,9 @@ pub enum Error {
     GraphSpawnFailure { message: String },
 
     #[error("git command failed: {message}")]
+    AuditGitFailure { message: String },
+
+    #[error("git command failed: {message}")]
     CheckGitFailure { message: String },
 
     #[error("git command failed: {message}")]
@@ -260,6 +264,7 @@ impl Error {
             Self::GuardSpawnFailure { .. } => ErrorCode::GuardSpawnFailure,
             Self::GraphResponseInvalid { .. } => ErrorCode::GraphResponseInvalid,
             Self::GraphSpawnFailure { .. } => ErrorCode::GraphSpawnFailure,
+            Self::AuditGitFailure { .. } => ErrorCode::AuditGitFailure,
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
             Self::LifecycleGitFailure { .. } => ErrorCode::LifecycleGitFailure,
             Self::GovernsQueryUnresolvable { .. } => ErrorCode::GovernsQueryUnresolvable,
@@ -325,6 +330,9 @@ impl Error {
                 Some("check nodex output format — expected a JSON envelope")
             }
             Self::GraphSpawnFailure { .. } => Some("ensure nodex is installed and on PATH"),
+            Self::AuditGitFailure { .. } => Some(
+                "the fill-marker scan reads the files git says the project owns; ensure git is installed and the working directory is a repository",
+            ),
             Self::CheckGitFailure { .. } => {
                 Some("ensure git is installed and the working directory is a repository")
             }
