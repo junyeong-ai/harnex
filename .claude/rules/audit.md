@@ -61,7 +61,10 @@ Sub-auditor slugs (current):
   older plugin version — and the collision rule *instructs* the first, so a
   gating finding would make the manifest contradict itself.
 - `fill-marker` — a fill marker the generating step left behind
-  (`audit-fill-marker-unresolved`), over `CLAUDE.md` and `.claude/**/*.md`.
+  (`audit-fill-marker-unresolved`), over `CLAUDE.md` and `.claude/**/*.md` as
+  far as git says the project owns them. `.claude/` is also where Claude Code
+  puts a linked worktree, so walking the surface would read a second checkout
+  of this same harness and report its copy of a marker as this project's.
   Three reserved grammars now exist — the managed sentinel, the fill marker,
   and the evidence `file:` claim — and each is an exact-match token. Writing one
   literally in prose that a scan reaches makes that file a finding, so an

@@ -18,9 +18,13 @@
 //!   template asked for and stops; filling it needs the project, and a
 //!   default invented here would be the free-generation the templates exist
 //!   to prevent.
-//! - Never read outside the harness surface. A marker in the project's own
-//!   source is the project's business; only `CLAUDE.md` and `.claude/` are
-//!   places harnex writes.
+//! - Never read outside the harness surface, or outside what the project
+//!   owns. A marker in the project's own source is the project's business;
+//!   only `CLAUDE.md` and `.claude/` are places harnex writes. Which files
+//!   under those are this project's is [`crate::git::owned_files`]' answer,
+//!   because `.claude/` is also where Claude Code puts a linked worktree:
+//!   walking it would read another checkout's copy of the harness and report
+//!   a placeholder in a file nobody here wrote.
 //! - Never rank one marker above another. Every one is the same defect —
 //!   a file that reads finished and is not.
 
@@ -29,12 +33,16 @@ use std::path::{Path, PathBuf};
 use crate::audit::AuditFindingSlug;
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
+use crate::git;
 use crate::sentinel;
 
-/// Where harnex writes markdown. A marker anywhere else belongs to the
-/// project, and the auditor has no standing to judge it.
-const HARNESS_SURFACE: &[&str] = &["CLAUDE.md", ".claude/**/*.md"];
+/// Where harnex writes markdown, as git pathspecs. A marker anywhere else
+/// belongs to the project, and the auditor has no standing to judge it.
+/// `:(glob)` is the magic that makes `*` stop at a path separator and `**`
+/// cross one, which is the reading the surface is written in.
+const HARNESS_SURFACE: &[&str] = &[":(glob)CLAUDE.md", ":(glob).claude/**/*.md"];
 
+#[derive(Debug)]
 pub(crate) struct FillMarkerOutcome {
     pub findings: Vec<Finding>,
     pub files_scanned: usize,
@@ -52,8 +60,14 @@ impl FillMarkerAuditor {
         let mut files_scanned = 0usize;
 
         for path in surface_files(project_root)? {
-            let Ok(body) = std::fs::read_to_string(&path) else {
-                continue;
+            let body = match std::fs::read_to_string(&path) {
+                Ok(body) => body,
+                // git lists a tracked file whether or not it is still on
+                // disk, and one that is gone carries no marker. Any other
+                // failure is a file left unread, which must not report as a
+                // file read clean.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(source) => return Err(Error::IoFailure { path, source }),
             };
             files_scanned += 1;
             for marker in sentinel::fill_markers(&body) {
@@ -84,33 +98,14 @@ impl FillMarkerAuditor {
 }
 
 fn surface_files(project_root: &Path) -> Result<Vec<PathBuf>> {
-    let mut out = Vec::new();
-    for pattern in HARNESS_SURFACE {
-        let rooted = crate::glob_root::rooted(project_root, pattern)?;
-        let entries = glob::glob(&rooted).map_err(|e| Error::IoFailure {
-            path: project_root.join(pattern),
-            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("glob: {e}")),
-        })?;
-        for entry in entries {
-            // A traversal error is not "no marker here" — surfacing it keeps a
-            // permission-denied directory from reading as a clean file.
-            let path = entry.map_err(|e| Error::IoFailure {
-                path: e.path().to_path_buf(),
-                source: e.into(),
-            })?;
-            if path.is_file() {
-                out.push(path);
-            }
-        }
-    }
-    out.sort();
-    out.dedup();
-    Ok(out)
+    git::owned_files(project_root, HARNESS_SURFACE)
+        .map_err(|git::Failure(message)| Error::AuditGitFailure { message })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorCode;
     use tempfile::TempDir;
 
     fn write(dir: &Path, rel: &str, body: &str) {
@@ -119,9 +114,26 @@ mod tests {
         std::fs::write(p, body).unwrap();
     }
 
+    fn git(root: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?}");
+    }
+
+    /// A repository holding no commit — the state a scaffold leaves behind,
+    /// and the one every case below but the worktree runs in.
+    fn repo() -> TempDir {
+        let dir = TempDir::new().unwrap();
+        git(dir.path(), &["init", "-q"]);
+        dir
+    }
+
     #[test]
     fn flags_a_marker_the_generating_step_left_behind() {
-        let dir = TempDir::new().unwrap();
+        let dir = repo();
         write(
             dir.path(),
             "CLAUDE.md",
@@ -140,7 +152,7 @@ mod tests {
 
     #[test]
     fn a_finished_harness_is_silent() {
-        let dir = TempDir::new().unwrap();
+        let dir = repo();
         write(dir.path(), "CLAUDE.md", "# realproject\n\nreal content\n");
         write(
             dir.path(),
@@ -157,7 +169,7 @@ mod tests {
         // The reason the marker is a reserved token. Every line below is
         // ordinary content in a real rule file, and a shape-matching scan
         // would flag all of them.
-        let dir = TempDir::new().unwrap();
+        let dir = repo();
         write(
             dir.path(),
             ".claude/rules/typescript-conventions.md",
@@ -173,7 +185,7 @@ mod tests {
 
     #[test]
     fn a_marker_in_the_projects_own_source_is_not_this_auditors_business() {
-        let dir = TempDir::new().unwrap();
+        let dir = repo();
         write(dir.path(), "src/main.rs", "// <!-- harnex-fill: nope -->\n");
         write(dir.path(), "docs/guide.md", "<!-- harnex-fill: nope -->\n");
         let outcome = FillMarkerAuditor::new().audit(dir.path()).unwrap();
@@ -185,8 +197,111 @@ mod tests {
     fn a_project_path_carrying_glob_syntax_is_still_scanned() {
         let dir = TempDir::new().unwrap();
         let root = dir.path().join("repo [backup]");
+        std::fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q"]);
         write(&root, "CLAUDE.md", "<!-- harnex-fill: the name -->\n");
         let outcome = FillMarkerAuditor::new().audit(&root).unwrap();
         assert_eq!(outcome.findings.len(), 1);
+    }
+
+    #[test]
+    fn a_marker_in_a_linked_worktree_belongs_to_that_checkout() {
+        // Claude Code puts a worktree under `.claude/`, so the harness
+        // surface glob reaches a second checkout of this same harness. Both
+        // copies carry the marker here; only this project's is the finding.
+        let dir = repo();
+        let root = dir.path();
+        write(
+            root,
+            "CLAUDE.md",
+            "<!-- harnex-fill: the project name -->\n",
+        );
+        git(root, &["add", "-A"]);
+        git(
+            root,
+            &[
+                "-c",
+                "user.email=t@example.com",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-qm",
+                "initial",
+            ],
+        );
+        git(
+            root,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                ".claude/worktrees/agent",
+                "-b",
+                "agent",
+            ],
+        );
+
+        let outcome = FillMarkerAuditor::new().audit(root).unwrap();
+        assert_eq!(outcome.files_scanned, 1);
+        assert_eq!(outcome.findings.len(), 1, "{:?}", outcome.findings);
+        assert_eq!(outcome.findings[0].location.path, root.join("CLAUDE.md"));
+    }
+
+    #[test]
+    fn an_ignored_path_under_dot_claude_is_not_this_projects() {
+        let dir = repo();
+        let root = dir.path();
+        write(root, ".gitignore", ".claude/scratch/\n");
+        write(
+            root,
+            ".claude/scratch/notes.md",
+            "<!-- harnex-fill: nope -->\n",
+        );
+        write(
+            root,
+            ".claude/rules/python-conventions.md",
+            "<!-- harnex-fill: the type checker -->\n",
+        );
+
+        let outcome = FillMarkerAuditor::new().audit(root).unwrap();
+        assert_eq!(outcome.files_scanned, 1);
+        assert_eq!(outcome.findings.len(), 1, "{:?}", outcome.findings);
+        assert!(
+            outcome.findings[0].message.contains("the type checker"),
+            "{}",
+            outcome.findings[0].message
+        );
+    }
+
+    #[test]
+    fn a_harness_below_the_repository_root_answers_for_its_own_directory() {
+        // A package carrying its own `harness.toml` audits from there, so the
+        // pathspecs are read against that directory rather than the
+        // repository root.
+        let dir = repo();
+        let root = dir.path();
+        write(root, "CLAUDE.md", "<!-- harnex-fill: the repository -->\n");
+        let package = root.join("packages/app");
+        write(&package, "CLAUDE.md", "<!-- harnex-fill: the package -->\n");
+
+        let outcome = FillMarkerAuditor::new().audit(&package).unwrap();
+        assert_eq!(outcome.files_scanned, 1);
+        assert!(
+            outcome.findings[0].message.contains("the package"),
+            "{}",
+            outcome.findings[0].message
+        );
+    }
+
+    #[test]
+    fn a_tree_git_cannot_read_is_a_failure_not_a_clean_gate() {
+        let dir = TempDir::new().unwrap();
+        write(
+            dir.path(),
+            "CLAUDE.md",
+            "<!-- harnex-fill: the project name -->\n",
+        );
+        let error = FillMarkerAuditor::new().audit(dir.path()).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::AuditGitFailure);
     }
 }
