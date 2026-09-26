@@ -11,8 +11,23 @@
 //!
 //! - Unterminated quoting and an ANSI-C code point the shell cannot deliver
 //!   are [`SplitError`]s.
-//! - `$(…)` / backtick substitution text stays inside its enclosing word and
-//!   is not re-parsed.
+//! - `$(…)` text stays inside its enclosing word, which is where it
+//!   expands, and its body is also read as the command list it is. A
+//!   substitution runs its body whatever encloses it, so
+//!   `o=$(git commit --no-verify -m x)` is that command spelled on this
+//!   line rather than a mention of it. Single-quoted text is inert and is
+//!   not read; `\$(…)` inside double quotes is the literal characters and
+//!   is not read either.
+//! - A backtick body is *not* read, and the asymmetry is measured rather
+//!   than stylistic: a backtick is also the code-span mark, so every
+//!   document this parser meets is full of pairs, and pairing runs across
+//!   the whole text — whether a mention lands inside one depends on how
+//!   many backticks precede it. Reading them refused 2 of this
+//!   repository's 200 most recent commit bodies where `$(…)` refused none,
+//!   and the operator cannot read that refusal back to a cause. What stays
+//!   open is the legacy spelling of a form `$(…)` now covers; the module
+//!   is a tripwire for the bypass a session writes by hand, and the
+//!   server-side re-run is the backstop for the one it does not.
 //! - Redirections are read as the shell reads them (maximal munch, optional
 //!   fd prefix): the operator terminates the current word and its target is
 //!   dropped, so `2>&1` binds as one redirection rather than splitting at its
@@ -29,7 +44,8 @@
 //!   script. This takes the block, which surfaces, over the pass, which does
 //!   not. A mention inside the line rather than at its head — the shape a
 //!   document that quotes the flag actually takes — is not a command and
-//!   passes.
+//!   passes, unless it is wrapped in a live substitution, which is a command
+//!   wherever it sits. Quote such a mention to leave it inert.
 
 use std::fmt;
 
@@ -45,6 +61,8 @@ pub enum SplitError {
     /// A code point the shell cannot deliver as a character — past the
     /// Unicode maximum, or a surrogate no Rust string can carry.
     AnsiCCodePoint,
+    /// Substitution nested past [`MAX_SUBSTITUTION_DEPTH`].
+    SubstitutionTooDeep,
 }
 
 impl fmt::Display for SplitError {
@@ -56,6 +74,7 @@ impl fmt::Display for SplitError {
             Self::UnterminatedSubstitution => "unterminated command substitution",
             Self::UnterminatedBacktick => "unterminated backtick substitution",
             Self::AnsiCCodePoint => "ANSI-C code point the shell cannot deliver",
+            Self::SubstitutionTooDeep => "command substitution nested past the parser's bound",
         };
         f.write_str(text)
     }
@@ -194,6 +213,57 @@ fn decode_numeric_escape(rest: &str) -> Result<Option<(char, usize)>, SplitError
     Ok(Some((decoded, radix_len + digits)))
 }
 
+/// Nesting no command line reaches, and the depth at which recursing the
+/// parser would fault instead of answering. This module keeps every failure
+/// on the visible skip path, so the bound reports rather than crashes.
+const MAX_SUBSTITUTION_DEPTH: usize = 32;
+
+/// Byte index just past the `)` closing a `$(` that opened before `start`.
+///
+/// A paren inside quotes neither nests nor closes, so the scan carries the
+/// quoting state: `$(grep -c ')' f)` ends at its last paren. Counting the
+/// quoted one would cut the body short and leave the rest of the line to be
+/// read as something else.
+fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
+    let bytes = input.as_bytes();
+    let mut depth = 1usize;
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'\'' => {
+                let end = input[i + 1..]
+                    .find('\'')
+                    .ok_or(SplitError::UnterminatedSingleQuote)?;
+                i += end + 2;
+            }
+            b'"' => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                if i >= bytes.len() {
+                    return Err(SplitError::UnterminatedDoubleQuote);
+                }
+                i += 1;
+            }
+            b'(' => {
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+                if depth == 0 {
+                    return Ok(i);
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    Err(SplitError::UnterminatedSubstitution)
+}
+
 /// The argv under assembly. A redirection's target is consumed rather than
 /// pushed, and an fd prefix touching its operator is part of the redirection
 /// rather than a word of its own.
@@ -239,6 +309,13 @@ impl Accumulator {
         }
     }
 
+    /// Commands a substitution runs, kept apart from the word its output
+    /// expands into: the text belongs to the enclosing argv, the body is a
+    /// command list of its own.
+    fn push_substitution(&mut self, commands: Vec<Vec<String>>) {
+        self.commands.extend(commands);
+    }
+
     /// A pending word touching the operator is the fd prefix — a digit run
     /// (`2>&1`) or a varname allocation (`{fd}>…`) — part of the redirection
     /// rather than an argument, and never the command word. A word separated
@@ -258,9 +335,16 @@ impl Accumulator {
 ///
 /// Handles single/double quotes and backslash escapes; treats unquoted
 /// `&& || ; | & \n ( )` and a brace-group `{` (a standalone `{` followed by
-/// whitespace) as command separators; keeps `$(…)` / backtick substitution
-/// text inside the enclosing word (module boundary note).
+/// whitespace) as command separators; reads a `$(…)` body as the commands
+/// it runs while its text stays in the enclosing word.
 pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
+    split_nested(input, 0)
+}
+
+fn split_nested(input: &str, depth: usize) -> Result<Vec<Vec<String>>, SplitError> {
+    if depth > MAX_SUBSTITUTION_DEPTH {
+        return Err(SplitError::SubstitutionTooDeep);
+    }
     let bytes = input.as_bytes();
     let mut acc = Accumulator::default();
     let mut i = 0;
@@ -296,8 +380,23 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
         if b == b'"' {
             i += 1;
             let mut buf = String::new();
+            let mut inner = Vec::new();
             while i < bytes.len() && bytes[i] != b'"' {
-                if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\n') {
+                // Double quotes stop word splitting, not substitution: the
+                // two forms below still run their bodies here, so the scan
+                // reads them rather than copying them as text.
+                if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'(') {
+                    let end = substitution_end(input, i + 2)?;
+                    buf.push_str(&input[i..end]);
+                    inner.extend(split_nested(&input[i + 2..end - 1], depth + 1)?);
+                    i = end;
+                } else if bytes[i] == b'`' {
+                    let end = input[i + 1..]
+                        .find('`')
+                        .ok_or(SplitError::UnterminatedBacktick)?;
+                    buf.push_str(&input[i..i + end + 2]);
+                    i += end + 2;
+                } else if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\n') {
                     i += 2; // line continuation — removed inside double quotes too
                 } else if bytes[i] == b'\\'
                     && matches!(bytes.get(i + 1), Some(b'"' | b'\\' | b'$' | b'`'))
@@ -315,6 +414,7 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
             }
             i += 1;
             acc.push_str(&buf);
+            acc.push_substitution(inner);
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'\'') {
@@ -336,21 +436,10 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'(') {
-            let mut depth = 1;
-            let mut j = i + 2;
-            while j < bytes.len() && depth > 0 {
-                match bytes[j] {
-                    b'(' => depth += 1,
-                    b')' => depth -= 1,
-                    _ => {}
-                }
-                j += 1;
-            }
-            if depth > 0 {
-                return Err(SplitError::UnterminatedSubstitution);
-            }
-            acc.push_str(&input[i..j]);
-            i = j;
+            let end = substitution_end(input, i + 2)?;
+            acc.push_str(&input[i..end]);
+            acc.push_substitution(split_nested(&input[i + 2..end - 1], depth + 1)?);
+            i = end;
             continue;
         }
         if b == b'`' {
@@ -462,13 +551,88 @@ mod tests {
         );
     }
 
+    /// The text expands into the enclosing word, and the body is a command
+    /// list the shell runs — so the split answers with both.
     #[test]
-    fn keeps_command_substitution_inside_the_enclosing_word() {
+    fn reads_a_substitution_body_and_keeps_its_text_in_the_enclosing_word() {
         assert_eq!(
             split("echo $(git commit --no-verify)"),
+            owned(&[
+                &["git", "commit", "--no-verify"],
+                &["echo", "$(git commit --no-verify)"]
+            ])
+        );
+    }
+
+    /// A backtick body stays one word (module note): the mark is the
+    /// code-span mark, so reading it turns a document into a refusal.
+    #[test]
+    fn keeps_a_backtick_body_inside_the_enclosing_word() {
+        assert_eq!(
+            split("echo `git commit --no-verify`"),
+            owned(&[&["echo", "`git commit --no-verify`"]])
+        );
+    }
+
+    /// Capturing output is the shape this reaches git in: `o=$(…)` is an
+    /// assignment to the enclosing shell and a git command to git, and only
+    /// the second of those skips a hook.
+    #[test]
+    fn reads_a_substitution_the_enclosing_command_only_assigns() {
+        assert_eq!(
+            split("o=$(git commit --no-verify -m x)"),
+            owned(&[
+                &["git", "commit", "--no-verify", "-m", "x"],
+                &["o=$(git commit --no-verify -m x)"]
+            ])
+        );
+    }
+
+    /// Double quotes stop word splitting, not substitution.
+    #[test]
+    fn reads_a_substitution_inside_double_quotes() {
+        assert_eq!(
+            split("echo \"$(git commit --no-verify)\""),
+            owned(&[
+                &["git", "commit", "--no-verify"],
+                &["echo", "$(git commit --no-verify)"]
+            ])
+        );
+    }
+
+    /// Single quotes make the text inert, and a backslash inside double
+    /// quotes makes it literal characters. Neither runs, so reading either
+    /// as a command is what turns a document into a refusal.
+    #[test]
+    fn leaves_inert_substitution_text_as_text() {
+        assert_eq!(
+            split("echo '$(git commit --no-verify)'"),
             owned(&[&["echo", "$(git commit --no-verify)"]])
         );
-        assert_eq!(split("echo `git log`"), owned(&[&["echo", "`git log`"]]));
+        assert_eq!(
+            split("echo \"\\$(git commit --no-verify)\""),
+            owned(&[&["echo", "$(git commit --no-verify)"]])
+        );
+    }
+
+    /// A paren inside quotes neither nests nor closes. Ending the body at it
+    /// would cut the command short and leave the rest to be read as another.
+    #[test]
+    fn ends_a_substitution_at_the_paren_that_closes_it() {
+        assert_eq!(
+            split("echo $(grep -c ')' f)"),
+            owned(&[&["grep", "-c", ")", "f"], &["echo", "$(grep -c ')' f)"]])
+        );
+    }
+
+    #[test]
+    fn refuses_substitution_nested_past_the_bound() {
+        let deep = format!(
+            "{}git commit --no-verify{}",
+            "$(".repeat(MAX_SUBSTITUTION_DEPTH + 2),
+            ")".repeat(MAX_SUBSTITUTION_DEPTH + 2)
+        );
+        assert_eq!(split_commands(&deep), Err(SplitError::SubstitutionTooDeep));
     }
 
     #[test]
