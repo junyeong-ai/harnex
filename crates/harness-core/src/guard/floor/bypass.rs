@@ -930,6 +930,11 @@ mod tests {
             "GIT_CONFIG_PARAMETERS=\"'alias.x=core.hooksPath'\" git commit -m x",
             "GIT_CONFIG_PARAMETERS=\"'user.name=a core.hooksPath=b'\" git commit -m x",
             "GIT_CONFIG_PARAMETERS=\"'user.name=O'\\''Brien'\" git commit -m x",
+            // An escape in the first pair, before any key. git reads the
+            // quote it yields as part of the key and refuses the list
+            // (`invalid key: 'core.hooksPath`), so nothing is set — and the
+            // scan has to reach that verdict rather than walk off the front.
+            "GIT_CONFIG_PARAMETERS=\"''\\''core.hooksPath=x'\" git commit -m x",
             "git --config-env=user.name=UN commit -m x",
             "git --config-env user.name=UN commit -m x",
             "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_X=core.hooksPath git commit -m x",
