@@ -316,11 +316,12 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
     Err(SplitError::UnterminatedSubstitution)
 }
 
-/// The span a `$(…)` covered before its body was read: parens counted, quoting
-/// ignored. [`substitution_end`] reads the body the shell would; where it
-/// cannot, the scan falls back here so the substitution stays the opaque word
-/// it used to be rather than costing the line the verdict on everything
-/// outside it.
+/// The span a `$(…)` covered before its body was read: parens counted, and
+/// the quoting and comments that could hide one ignored, so a `)` written
+/// inside either still closes the span. [`substitution_end`] reads the body
+/// the shell would; where it cannot, the scan falls back here so the
+/// substitution stays the opaque word it used to be rather than costing the
+/// line the verdict on everything outside it.
 fn opaque_substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
     let bytes = input.as_bytes();
     let mut depth = 1usize;
