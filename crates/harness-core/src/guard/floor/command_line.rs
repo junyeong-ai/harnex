@@ -773,12 +773,15 @@ mod tests {
 
     /// A `)` the body only carries does not end it, whichever quoting holds
     /// it. Ending there drops the rest of the body — which is exactly where
-    /// a command that follows the quoted paren sits.
+    /// a command that follows the quoted paren sits. The paren stands between
+    /// characters rather than alone, because a one-character run is short
+    /// enough that a scan resuming at the wrong quote still lands past it and
+    /// reads the same either way.
     #[test]
     fn does_not_end_a_substitution_at_a_paren_it_only_carries() {
         for body in [
-            "grep -c \')\' f; git commit --no-verify",
-            "grep -c \")\" f; git commit --no-verify",
+            "grep -c \'ab)c\' f; git commit --no-verify",
+            "grep -c \"ab)c\" f; git commit --no-verify",
             "printf a \\); git commit --no-verify",
         ] {
             let commands = split(&format!("x=$({body})"));
@@ -831,6 +834,7 @@ mod tests {
         for line in [
             "x=$(cat <<'EOF'\ndon't\nEOF\n) ; git commit --no-verify -m x",
             "x=$(echo a # don't\n) ; git commit --no-verify -m x",
+            "x=$(echo a # comment) ; git commit --no-verify -m x",
             "x=$(case y in y) echo z;; esac) ; git commit --no-verify -m x",
             "x=$(echo $'abc) ; git commit --no-verify -m x",
         ] {
