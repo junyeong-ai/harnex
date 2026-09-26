@@ -51,11 +51,15 @@ where the gate files are not the work product.
   cannot evaluate allows with a visible `[floor-check skipped: …]` notice
   (not proven guilty); an override that cannot be read is an absent one (not
   proven authorised). Do not "fix" either direction into the other.
-- **Tripwire, not boundary.** A shell is Turing-complete: a write smuggled
-  through Bash (`sed -i`, redirection, heredoc) and an obfuscated bypass (a
-  git alias, `sh -c`, env-var config injection) are out of scope. The
-  authoritative backstop is the server-side CI re-run of the same gates —
-  keep it green and un-bypassed.
+- **Tripwire, not boundary.** A shell is Turing-complete, so these stay out
+  of scope: a write smuggled through Bash (`sed -i`, redirection, heredoc),
+  an obfuscated bypass (a git alias, `sh -c`), a reroute that hands git a
+  file instead of naming the key (`include.path`, `GIT_CONFIG_GLOBAL`), and
+  a backtick substitution, whose mark is the code-span mark — reading it
+  refuses documents that quote a flag. Config carried in through the
+  environment, and a `$(…)` the line runs git inside, are read rather than
+  excused. The authoritative backstop is the server-side CI re-run of the
+  same gates — keep it green and un-bypassed.
 - **A block is a message, not a wall.** Fix the failing gate at its cause. A
   bypass the operator truly needs is theirs to run, outside the agent, and the
   block names no way around itself: the loop the gate bounds is what reads it
