@@ -970,6 +970,83 @@ pub struct Window<'a> {
     pub session: Option<&'a str>,
 }
 
+/// What a transcript's thread holds, read from every record in the file.
+///
+/// A transcript is one thread: every record in the local corpus's subagent
+/// files is marked sidechain, and none in a main file. Its context carries what
+/// a window leaves out — records before `since`, records outside `project`,
+/// and the conversation a fork replays — so what it holds is taken from all of
+/// them, and only what is emitted is filtered.
+#[derive(Default)]
+struct Thread {
+    /// Each tool call by id. A call always precedes its result inside one
+    /// transcript, so a single forward pass resolves every result to its tool.
+    calls: HashMap<String, (String, serde_json::Value)>,
+    /// Memory texts loaded since the last compaction.
+    held: HashSet<u64>,
+    /// Whether the agent produced anything since the last turn a person was
+    /// behind.
+    spoke: bool,
+}
+
+impl Thread {
+    /// Take in a record the window does not emit.
+    fn remember(&mut self, raw: &RawRecord) {
+        match raw.kind.as_deref().and_then(ConsumedType::from_str) {
+            Some(ConsumedType::User) => {
+                if classify(raw).claims_a_person() {
+                    self.spoke = false;
+                }
+            }
+            Some(ConsumedType::Assistant) => {
+                let content = raw.message.as_ref().and_then(|m| m.content.as_ref());
+                for block in blocks_of(content) {
+                    self.note_call(block);
+                }
+                self.spoke = true;
+            }
+            Some(ConsumedType::Attachment) => {
+                let memory = raw
+                    .attachment
+                    .as_ref()
+                    .and_then(|a| memory_files(a.get("type")?.as_str()?, a));
+                if let Some(mut memory) = memory {
+                    self.hold(&mut memory);
+                }
+            }
+            Some(ConsumedType::System)
+                if raw.subtype.as_deref() == Some(COMPACT_BOUNDARY_SUBTYPE) =>
+            {
+                self.held.clear();
+            }
+            Some(ConsumedType::System) | None => {}
+        }
+    }
+
+    /// Keep a tool call so the result that answers it can name its tool.
+    fn note_call(&mut self, block: &serde_json::Value) {
+        if block.get("type").and_then(serde_json::Value::as_str) != Some("tool_use") {
+            return;
+        }
+        let id = block.get("id").and_then(serde_json::Value::as_str);
+        let tool = block.get("name").and_then(serde_json::Value::as_str);
+        if let (Some(id), Some(tool)) = (id, tool) {
+            let input = block
+                .get("input")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            self.calls.insert(id.to_string(), (tool.to_string(), input));
+        }
+    }
+
+    /// Mark each file whose text the thread already holds, and hold them all.
+    fn hold(&mut self, memory: &mut [LoadedFile]) {
+        for file in memory {
+            file.reload = !self.held.insert(file.fingerprint);
+        }
+    }
+}
+
 /// Read one transcript, appending what it understood into `coverage`.
 ///
 /// A malformed line, a record without the identity a citation needs, and a
@@ -986,19 +1063,12 @@ pub fn read_transcript(
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     let mut out = Vec::new();
-    // A tool call always precedes its result inside one transcript, so a single
-    // forward pass resolves every denial to the tool it answered.
-    let mut tool_calls: HashMap<String, (String, serde_json::Value)> = HashMap::new();
+    let mut thread = Thread::default();
     // Which record currently carries each assistant message's spend. The
     // runtime writes one record per content block and repeats the message's
     // usage on every one, so the charge belongs to the message and is held by
     // exactly one of its records.
     let mut charged: HashMap<String, usize> = HashMap::new();
-    let mut agent_output_since_user_turn = false;
-    // Memory texts this transcript's thread has loaded since its last
-    // compaction. A transcript is one thread: every record in the local
-    // corpus's subagent files is marked sidechain, and none in a main file.
-    let mut held: HashSet<u64> = HashSet::new();
 
     for line in reader.lines() {
         let line = line?;
@@ -1018,6 +1088,7 @@ pub fn read_transcript(
             .since
             .is_some_and(|s| raw.timestamp.is_some_and(|t| t < s))
         {
+            thread.remember(&raw);
             continue;
         }
         // A worktree runs under a directory below the project it belongs to,
@@ -1027,7 +1098,10 @@ pub fn read_transcript(
         if let Some(project) = window.project {
             match &raw.cwd {
                 Some(cwd) if cwd.starts_with(project) => {}
-                _ => continue,
+                _ => {
+                    thread.remember(&raw);
+                    continue;
+                }
             }
         }
         if let Some(session) = window.session {
@@ -1043,6 +1117,7 @@ pub fn read_transcript(
         // again here would report one instruction as two.
         if raw.forked_from.is_some() {
             coverage.records_forked += 1;
+            thread.remember(&raw);
             continue;
         }
         if let Some(t) = raw.timestamp {
@@ -1087,7 +1162,7 @@ pub fn read_transcript(
                 }
                 let result = raw.tool_use_result.as_ref();
                 let denial = raw.tool_denial_kind.as_ref().map(|k| {
-                    let call = tool_use_id_of(content).and_then(|id| tool_calls.get(id));
+                    let call = tool_use_id_of(content).and_then(|id| thread.calls.get(id));
                     Denial {
                         kind: k.clone(),
                         tool: call.map(|(tool, _)| tool.clone()),
@@ -1097,7 +1172,7 @@ pub fn read_transcript(
                 let failed_tool = (raw.tool_denial_kind.is_none() && content.is_some_and(errored))
                     .then(|| {
                         tool_use_id_of(content)
-                            .and_then(|id| tool_calls.get(id))
+                            .and_then(|id| thread.calls.get(id))
                             .map(|(tool, _)| tool.clone())
                     })
                     .flatten();
@@ -1106,7 +1181,7 @@ pub fn read_transcript(
                     .filter(|b| {
                         b.get("type").and_then(serde_json::Value::as_str) == Some("tool_result")
                     })
-                    .map(|b| tool_result(b, &tool_calls))
+                    .map(|b| tool_result(b, &thread.calls))
                     .collect();
                 out.push(Record::User(UserTurn {
                     citation,
@@ -1116,7 +1191,7 @@ pub fn read_transcript(
                     results,
                     compact_summary: raw.is_compact_summary.unwrap_or(false),
                     queued: raw.prompt_source.as_deref() == Some(QUEUED_PROMPT_SOURCE),
-                    follows_agent_output: agent_output_since_user_turn,
+                    follows_agent_output: thread.spoke,
                     interrupted: raw.interrupted_message_id.is_some(),
                     commit: result.and_then(commit_of),
                     edited_file: result.and_then(edited_file_of),
@@ -1129,7 +1204,7 @@ pub fn read_transcript(
                 // one reset this would report the operator as having spoken
                 // when the protocol did.
                 if authorship.claims_a_person() {
-                    agent_output_since_user_turn = false;
+                    thread.spoke = false;
                 }
             }
             ConsumedType::Assistant => {
@@ -1162,11 +1237,9 @@ pub fn read_transcript(
                         asset: asset_of(tool, &input),
                         input_chars: input.to_string().chars().count(),
                     });
-                    if let Some(id) = block.get("id").and_then(serde_json::Value::as_str) {
-                        tool_calls.insert(id.to_string(), (tool.to_string(), input));
-                    }
+                    thread.note_call(block);
                 }
-                agent_output_since_user_turn = true;
+                thread.spoke = true;
                 let message = raw.message.as_ref();
                 let model = message.and_then(|m| m.model.clone());
                 if let Some(model) = &model {
@@ -1240,9 +1313,7 @@ pub fn read_transcript(
                     coverage.records_malformed += 1;
                     continue;
                 };
-                for file in &mut memory {
-                    file.reload = !held.insert(file.fingerprint);
-                }
+                thread.hold(&mut memory);
                 out.push(Record::Attachment(Attachment {
                     citation,
                     kind: name.to_string(),
@@ -1258,7 +1329,7 @@ pub fn read_transcript(
                         coverage.records_malformed += 1;
                         continue;
                     };
-                    held.clear();
+                    thread.held.clear();
                     out.push(Record::Compaction(Compaction {
                         citation,
                         trigger: meta.trigger.unwrap_or_default(),
