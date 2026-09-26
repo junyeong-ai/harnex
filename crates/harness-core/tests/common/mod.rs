@@ -12,6 +12,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use tempfile::TempDir;
+
 /// The tracked files under `pathspec`, as absolute paths.
 pub fn tracked(root: &Path, pathspec: &str) -> Vec<PathBuf> {
     let listing = git(root)
@@ -25,6 +27,15 @@ pub fn tracked(root: &Path, pathspec: &str) -> Vec<PathBuf> {
         .filter(|path| !path.is_empty())
         .map(|path| root.join(path))
         .collect()
+}
+
+/// A project a harness lives in: a git repository by construction, since the
+/// gates ask git which files are the project's own.
+pub fn project() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    let status = git(dir.path()).args(["init", "-q"]).status().unwrap();
+    assert!(status.success(), "git init");
+    dir
 }
 
 /// A git command that answers about `root` and nothing else: no global or

@@ -9,22 +9,11 @@ use tempfile::TempDir;
 
 mod common;
 
+use common::project;
+
 fn write(p: &Path, contents: &str) {
     fs::create_dir_all(p.parent().unwrap()).unwrap();
     fs::write(p, contents).unwrap();
-}
-
-/// A project the gate can run over: a harness is a git repository by
-/// construction, and the evidence arm asks git which `CLAUDE.md` files are
-/// the project's own.
-fn project() -> TempDir {
-    let dir = TempDir::new().unwrap();
-    let status = common::git(dir.path())
-        .args(["init", "-q"])
-        .status()
-        .unwrap();
-    assert!(status.success(), "git init");
-    dir
 }
 
 fn minimal_config_toml() -> String {
