@@ -998,7 +998,8 @@ struct Arrival {
     spoke: bool,
     /// The memory files an attachment carried, each marked with whether the
     /// thread already held its text. `None` for a record that is not an
-    /// attachment or a memory attachment missing a file's path or content.
+    /// attachment carrying a type, and for a memory attachment missing a file's
+    /// path or content.
     memory: Option<Vec<LoadedFile>>,
 }
 
