@@ -648,6 +648,142 @@ fn a_rule_loaded_from_a_second_checkout_is_the_same_row_and_a_reload() {
     assert_eq!((row.loads, row.reloads, row.chars), (2, 1, 10));
 }
 
+/// What a thread holds is the thread's, not the query's: a window that opens
+/// after a load, or a fork that replays one, still reads the text as held.
+#[test]
+fn a_reload_is_a_reload_whatever_window_or_fork_reads_it() {
+    let first = rule_load(
+        "s1",
+        "m1",
+        "2026-08-01T09:00:01Z",
+        "/repo/.claude/rules/core.md",
+        "abcde",
+    );
+    let checkout = |session: &str, uuid: &str| {
+        rule_load(
+            session,
+            uuid,
+            "2026-08-01T09:00:03Z",
+            "/repo/.claude/worktrees/fix/.claude/rules/core.md",
+            "abcde",
+        )
+    };
+    let (_dir, config) = corpus(&[
+        (
+            "-repo/s1.jsonl",
+            vec![
+                typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                first.clone(),
+                checkout("s1", "m2"),
+            ],
+        ),
+        (
+            "-repo/s2.jsonl",
+            vec![
+                forked(
+                    "s1",
+                    "s2",
+                    &typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+                ),
+                forked("s1", "s2", &first),
+                typed("s2", "b1", "2026-08-01T09:00:02Z", STANDING),
+                checkout("s2", "f2"),
+            ],
+        ),
+    ]);
+    let reloads = |options: &CollectOptions| {
+        let facts = session::collect(&config, options).unwrap();
+        facts
+            .harness
+            .rule_loads
+            .iter()
+            .map(|r| (r.loads, r.reloads))
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        reloads(&CollectOptions {
+            session: Some("s1".into()),
+            ..CollectOptions::default()
+        }),
+        [(2, 1)]
+    );
+    assert_eq!(
+        reloads(&CollectOptions {
+            session: Some("s1".into()),
+            since: Some("2026-08-01T09:00:02Z".parse().unwrap()),
+            ..CollectOptions::default()
+        }),
+        [(1, 1)],
+        "the load before the window is still in the thread"
+    );
+    assert_eq!(
+        reloads(&CollectOptions {
+            session: Some("s2".into()),
+            ..CollectOptions::default()
+        }),
+        [(1, 1)],
+        "the fork's replayed load is in the fork's context"
+    );
+}
+
+#[test]
+fn a_load_made_outside_the_project_is_still_held_by_the_thread() {
+    let load = |uuid: &str, second: u32, cwd: &str, path: &str| {
+        format!(
+            r#"{{"type":"attachment","uuid":"{uuid}","timestamp":"2026-08-01T09:00:{second:02}Z","sessionId":"s1","cwd":"{cwd}","attachment":{{"type":"nested_memory","path":"{path}","content":{{"content":"abcde"}}}}}}"#
+        )
+    };
+    let (_dir, config) = corpus(&[(
+        "-repo/s1.jsonl",
+        vec![
+            typed_in("s1", "a1", "2026-08-01T09:00:00Z", "/repo", STANDING),
+            load("m1", 1, "/elsewhere", "/elsewhere/.claude/rules/core.md"),
+            load("m2", 2, "/repo", "/repo/.claude/rules/core.md"),
+        ],
+    )]);
+
+    let facts = session::collect(
+        &config,
+        &CollectOptions {
+            project: Some("/repo".into()),
+            ..CollectOptions::default()
+        },
+    )
+    .unwrap();
+
+    let row = &facts.harness.rule_loads[0];
+    assert_eq!((row.loads, row.reloads), (1, 1));
+}
+
+#[test]
+fn a_result_whose_call_came_before_the_window_still_names_its_tool() {
+    let (_dir, config) = corpus(&[(
+        "-repo/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            r#"{"type":"assistant","uuid":"g1","timestamp":"2026-08-01T09:00:01Z","sessionId":"s1","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"sleep 5"}}]}}"#.to_string(),
+            r#"{"type":"user","uuid":"r1","timestamp":"2026-08-01T09:00:06Z","sessionId":"s1","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"done"}]}}"#.to_string(),
+        ],
+    )]);
+
+    let facts = session::collect(
+        &config,
+        &CollectOptions {
+            since: Some("2026-08-01T09:00:02Z".parse().unwrap()),
+            ..CollectOptions::default()
+        },
+    )
+    .unwrap();
+
+    let result = facts
+        .context
+        .iter()
+        .find(|r| r.kind == "tool-result")
+        .expect("the result is in the window");
+    assert_eq!(result.name.as_deref(), Some("Bash"));
+}
+
 #[test]
 fn an_attachment_is_a_context_row_and_an_unread_subtype_stays_visible_in_coverage() {
     let (_dir, config) = corpus(&[(
