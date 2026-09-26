@@ -1681,6 +1681,40 @@ mod tests {
     }
 
     #[test]
+    fn an_attachment_without_its_body_or_its_type_is_malformed() {
+        let (recs, cov) = rec(&format!(
+            "{}\n{}",
+            format_args!(r#"{{"type":"attachment",{BASE}}}"#),
+            format_args!(
+                r#"{{"type":"attachment","uuid":"u2","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{{"path":"/repo/CLAUDE.md"}}}}"#
+            )
+        ));
+        assert!(recs.is_empty());
+        assert_eq!(cov.records_malformed, 2);
+    }
+
+    #[test]
+    fn a_turn_carrying_an_image_beside_its_text_is_not_sized_by_its_text() {
+        let (recs, _) = rec(&format!(
+            "{}\n{}",
+            format_args!(
+                r#"{{"type":"user",{BASE},"origin":{{"kind":"human"}},"promptSource":"typed","message":{{"content":[{{"type":"image","source":{{}}}},{{"type":"text","text":"look"}}]}}}}"#
+            ),
+            format_args!(
+                r#"{{"type":"user","uuid":"u2","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","origin":{{"kind":"human"}},"promptSource":"typed","message":{{"content":[{{"type":"text","text":"read"}},{{"type":"tool_result","tool_use_id":"t","content":"x"}}]}}}}"#
+            )
+        ));
+        let sized: Vec<bool> = recs
+            .iter()
+            .map(|r| match r {
+                Record::User(u) => u.text_only,
+                _ => panic!("expected a user turn"),
+            })
+            .collect();
+        assert_eq!(sized, [false, true]);
+    }
+
+    #[test]
     fn a_rule_load_without_its_content_is_malformed_rather_than_free() {
         let (recs, cov) = rec(&format!(
             r#"{{"type":"attachment",{BASE},"attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/testing.md"}}}}"#
