@@ -337,28 +337,21 @@ fn opaque_substitution_end(input: &str, start: usize) -> Result<usize, SplitErro
     Err(SplitError::UnterminatedSubstitution)
 }
 
-/// The span a `$(…)` covers, and the commands its body runs.
+/// The span a `$(…)` covers and the commands its body runs, or `None` where
+/// the scan cannot follow the shell's grammar far enough to say — a `case`
+/// pattern's `)`, a heredoc written inside the body.
 ///
-/// Reading the body is an addition to what this parser used to do. Where the
-/// scan cannot delimit or split it — a `case` pattern, a heredoc inside the
-/// body — the substitution stays the opaque word it was before, so an
-/// unreadable body costs the line nothing it already judged. Where even the
-/// paren count cannot close it this reports, and each caller returns to what
-/// it did with a `$(` before: unquoted that was this same error, and inside
-/// double quotes it was two ordinary characters.
-fn read_substitution(
-    input: &str,
-    start: usize,
-    depth: usize,
-) -> Result<(usize, Vec<Vec<String>>), SplitError> {
-    let Ok(end) = substitution_end(input, start) else {
-        return Ok((opaque_substitution_end(input, start)?, Vec::new()));
-    };
+/// Reading a body is an addition to what this parser used to do, so `None`
+/// returns each caller to what it did with a `$(` before there was one:
+/// unquoted, the span the paren count gives; inside double quotes, two
+/// ordinary characters. Neither costs the line a verdict it already had.
+fn read_substitution(input: &str, start: usize, depth: usize) -> Option<(usize, Vec<Vec<String>>)> {
+    let end = substitution_end(input, start).ok()?;
     if depth >= MAX_SUBSTITUTION_DEPTH {
-        return Ok((end, Vec::new()));
+        return Some((end, Vec::new()));
     }
     let (commands, _) = split_nested(&input[start..end - 1], depth + 1);
-    Ok((end, commands))
+    Some((end, commands))
 }
 
 /// The argv under assembly. A redirection's target is consumed rather than
@@ -486,18 +479,17 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
                 // Double quotes stop word splitting, not substitution, so
                 // a `$(…)` still runs its body here and the scan reads it.
                 if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'(') {
-                    // Neither scan could find where this one ends. Inside
-                    // double quotes it was ordinary text before a body was
-                    // ever read, and text it stays — costing the line its
-                    // verdict over it is the subtraction this reading must
-                    // not make.
+                    // Where the body cannot be read, this stays the two
+                    // characters it was: the paren count the unquoted branch
+                    // falls back to would run past the quote that ends this
+                    // string, and take the rest of the line with it.
                     match read_substitution(input, i + 2, depth) {
-                        Ok((end, commands)) => {
+                        Some((end, commands)) => {
                             buf.push_str(&input[i..end]);
                             inner.extend(commands);
                             i = end;
                         }
-                        Err(_) => {
+                        None => {
                             buf.push('$');
                             i += 1;
                         }
@@ -542,7 +534,10 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'(') {
-            let (end, commands) = read_substitution(input, i + 2, depth)?;
+            let (end, commands) = match read_substitution(input, i + 2, depth) {
+                Some(read) => read,
+                None => (opaque_substitution_end(input, i + 2)?, Vec::new()),
+            };
             acc.push_str(&input[i..end]);
             acc.push_substitution(commands);
             i = end;
