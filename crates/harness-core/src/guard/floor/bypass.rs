@@ -55,8 +55,10 @@ const HOOKED_SUBCOMMANDS: [(&str, &str, &str); 6] = [
 /// precede the command word, skipped through to reach the real command:
 /// `env` / `command` / `nice` / `nohup` / `time` / `setsid`, the builtins
 /// `exec` / `eval` (`exec git …` replaces the shell with it, `eval git …`
-/// re-runs the already-split words), and the privilege wrappers `sudo` /
-/// `doas`. A wrapper carrying its own options (`nice -n10 git …`,
+/// re-runs the already-split words), `builtin`, the privilege wrappers
+/// `sudo` / `doas`, and zsh's precommand modifiers `noglob` / `nocorrect`,
+/// which this session's own shell honours. A wrapper carrying its own options
+/// (`nice -n10 git …`,
 /// `sudo -u x git …`), or `eval` given a single quoted string it re-parses
 /// (`eval "git commit --no-verify"`, the `sh -c` class), is out of scope —
 /// the option or the re-parse breaks the skip, and modelling every wrapper's
@@ -531,6 +533,18 @@ mod tests {
         assert!(line("o=$(git -c core.hooksPath=/dev/null commit -m x)").is_some());
         assert!(line("echo '$(git commit --no-verify)'").is_none());
         assert!(line("o=$(git log --oneline -20)").is_none());
+    }
+
+    /// A modifier that only changes how the shell reaches git still reaches
+    /// git, with the same argv. Measured on zsh 5.9, where each of these
+    /// commits with the hook skipped.
+    #[test]
+    fn flags_a_bypass_behind_a_bare_command_modifier() {
+        assert!(line("noglob git commit --no-verify -m x").is_some());
+        assert!(line("nocorrect git commit --no-verify -m x").is_some());
+        assert!(line("builtin command git commit --no-verify -m x").is_some());
+        assert!(line("noglob git -c core.hooksPath=/dev/null commit -m x").is_some());
+        assert!(line("o=$(noglob git commit --no-verify -m x)").is_some());
     }
 
     /// A quote late on the line does not un-judge what was read before it.
