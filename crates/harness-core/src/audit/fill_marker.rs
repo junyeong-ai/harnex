@@ -308,6 +308,11 @@ mod tests {
         );
         let error = FillMarkerAuditor::new().audit(dir.path()).unwrap_err();
         assert_eq!(error.code(), ErrorCode::AuditGitFailure);
+        assert!(
+            error.hint().is_some_and(|hint| hint.contains("git")),
+            "the operator is told what the scan needs: {:?}",
+            error.hint()
+        );
     }
 
     #[test]
