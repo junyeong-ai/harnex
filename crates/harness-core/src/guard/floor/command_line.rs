@@ -747,8 +747,9 @@ mod tests {
     }
 
     /// Single quotes make the text inert, and a backslash inside double
-    /// quotes makes it literal characters. Neither runs, so reading either
-    /// as a command is what turns a document into a refusal.
+    /// quotes makes it literal characters. A paren no `$` opens is not a
+    /// substitution wherever it sits. None of the three runs, so reading any
+    /// of them as a command is what turns a document into a refusal.
     #[test]
     fn leaves_inert_substitution_text_as_text() {
         assert_eq!(
@@ -758,6 +759,10 @@ mod tests {
         assert_eq!(
             split("echo \"\\$(git commit --no-verify)\""),
             owned(&[&["echo", "$(git commit --no-verify)"]])
+        );
+        assert_eq!(
+            split("echo \"x(git commit --no-verify)\""),
+            owned(&[&["echo", "x(git commit --no-verify)"]])
         );
     }
 
@@ -837,6 +842,8 @@ mod tests {
             "x=$(echo a # comment) ; git commit --no-verify -m x",
             "x=$(case y in y) echo z;; esac) ; git commit --no-verify -m x",
             "x=$(echo $'abc) ; git commit --no-verify -m x",
+            "x=$(echo a #) ; git commit --no-verify -m x)",
+            "result=$($(echo a) # c) ; git commit --no-verify -m x",
         ] {
             let commands = split(line);
             assert!(
@@ -863,18 +870,32 @@ mod tests {
 
     /// Past the bound the body stops being read, which is what an unreadable
     /// body already is. The line keeps its own commands either way, and the
-    /// recursion stays off the stack.
+    /// recursion stays off the stack. Both halves are read from the outside,
+    /// because a bound that stopped counting would look the same from here
+    /// until the nesting is deep enough to fault instead of answering.
     #[test]
     fn stops_reading_a_substitution_nested_past_the_bound() {
+        let nest = MAX_SUBSTITUTION_DEPTH + 2;
         let deep = format!(
             "x={}echo a{} ; git commit --no-verify -m x",
-            "$(".repeat(MAX_SUBSTITUTION_DEPTH + 2),
-            ")".repeat(MAX_SUBSTITUTION_DEPTH + 2)
+            "$(".repeat(nest),
+            ")".repeat(nest)
         );
         let commands = split(&deep);
         assert!(
             commands.contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
             "the line lost its verdict: {commands:?}"
+        );
+
+        let buried = format!(
+            "x={}git commit --no-verify{} ; echo done",
+            "$(".repeat(nest),
+            ")".repeat(nest)
+        );
+        let commands = split(&buried);
+        assert!(
+            !commands.contains(&owned(&[&["git", "commit", "--no-verify"]])[0]),
+            "a body past the bound was read: {commands:?}"
         );
     }
 
