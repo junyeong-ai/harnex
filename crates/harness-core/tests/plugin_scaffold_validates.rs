@@ -20,7 +20,7 @@ use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
 use harness_core::validate::{
     AgentValidator, RuleValidator, SettingsScope, SettingsValidator, SkillValidator,
 };
-use tempfile::TempDir;
+mod common;
 
 fn plugin_templates() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/templates")
@@ -229,7 +229,7 @@ fn set_executable(_path: &Path) {}
 fn run_scaffold_validation(lang: &str) {
     let templates = plugin_templates();
     let manifest = ScaffoldManifest::load(&templates).unwrap();
-    let project = TempDir::new().unwrap();
+    let project = common::project();
     let proj_root = project.path();
 
     let mut settings = serde_json::json!({});
@@ -557,7 +557,7 @@ fn assert_no_findings(lang: &str, ctx: &str, findings: &[Finding]) {
 fn foundation_only_scaffold_is_coherent_without_a_language() {
     let templates = plugin_templates();
     let manifest = ScaffoldManifest::load(&templates).unwrap();
-    let project = TempDir::new().unwrap();
+    let project = common::project();
     let proj_root = project.path();
 
     let mut settings = serde_json::json!({});
@@ -661,7 +661,7 @@ fn a_fragment_never_replaces_an_incumbent_of_a_different_shape() {
 fn scaffolding_over_an_incumbent_preserves_it() {
     let templates = plugin_templates();
     let manifest = ScaffoldManifest::load(&templates).unwrap();
-    let project = TempDir::new().unwrap();
+    let project = common::project();
     let proj_root = project.path();
 
     let claude_md = "# acme\n\nProject notes live in `.acme/memories`.\n";
@@ -789,7 +789,7 @@ fn scaffolding_over_an_incumbent_preserves_it() {
 fn a_two_stack_repo_gets_both_language_tiers() {
     let templates = plugin_templates();
     let manifest = ScaffoldManifest::load(&templates).unwrap();
-    let project = TempDir::new().unwrap();
+    let project = common::project();
     let proj_root = project.path();
 
     let mut settings = serde_json::json!({});
