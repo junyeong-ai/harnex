@@ -114,10 +114,15 @@ mod tests {
         std::fs::write(p, body).unwrap();
     }
 
+    /// A git command answering about `root` and nothing else: no global or
+    /// system configuration, so a signing or hooks setting on this machine
+    /// cannot reach the repository a test builds.
     fn git(root: &Path, args: &[&str]) {
         let status = std::process::Command::new("git")
             .args(args)
             .current_dir(root)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
             .status()
             .expect("git");
         assert!(status.success(), "git {args:?}");
@@ -303,5 +308,30 @@ mod tests {
         );
         let error = FillMarkerAuditor::new().audit(dir.path()).unwrap_err();
         assert_eq!(error.code(), ErrorCode::AuditGitFailure);
+    }
+
+    #[test]
+    fn a_tracked_file_gone_from_disk_carries_no_marker() {
+        let dir = repo();
+        write(
+            dir.path(),
+            "CLAUDE.md",
+            "<!-- harnex-fill: the project name -->\n",
+        );
+        git(dir.path(), &["add", "CLAUDE.md"]);
+        std::fs::remove_file(dir.path().join("CLAUDE.md")).unwrap();
+
+        let outcome = FillMarkerAuditor::new().audit(dir.path()).unwrap();
+        assert!(outcome.findings.is_empty(), "{:?}", outcome.findings);
+        assert_eq!(outcome.files_scanned, 0);
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_fails_the_audit_rather_than_passing_it() {
+        let dir = repo();
+        std::fs::write(dir.path().join("CLAUDE.md"), [0xff, 0xfe, 0x00]).unwrap();
+
+        let error = FillMarkerAuditor::new().audit(dir.path()).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::IoFailure);
     }
 }
