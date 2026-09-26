@@ -382,20 +382,13 @@ fn split_nested(input: &str, depth: usize) -> Result<Vec<Vec<String>>, SplitErro
             let mut buf = String::new();
             let mut inner = Vec::new();
             while i < bytes.len() && bytes[i] != b'"' {
-                // Double quotes stop word splitting, not substitution: the
-                // two forms below still run their bodies here, so the scan
-                // reads them rather than copying them as text.
+                // Double quotes stop word splitting, not substitution, so
+                // a `$(…)` still runs its body here and the scan reads it.
                 if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'(') {
                     let end = substitution_end(input, i + 2)?;
                     buf.push_str(&input[i..end]);
                     inner.extend(split_nested(&input[i + 2..end - 1], depth + 1)?);
                     i = end;
-                } else if bytes[i] == b'`' {
-                    let end = input[i + 1..]
-                        .find('`')
-                        .ok_or(SplitError::UnterminatedBacktick)?;
-                    buf.push_str(&input[i..i + end + 2]);
-                    i += end + 2;
                 } else if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\n') {
                     i += 2; // line continuation — removed inside double quotes too
                 } else if bytes[i] == b'\\'
