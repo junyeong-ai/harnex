@@ -1325,11 +1325,14 @@ pub fn read_transcript(
             ConsumedType::System => {
                 let subtype = raw.subtype.as_deref().unwrap_or_default();
                 if subtype == COMPACT_BOUNDARY_SUBTYPE {
+                    // The subtype says the context was compacted; the metadata
+                    // only carries its figures, so a boundary missing them still
+                    // ends what the thread held.
+                    thread.held.clear();
                     let Some(meta) = raw.compact_metadata else {
                         coverage.records_malformed += 1;
                         continue;
                     };
-                    thread.held.clear();
                     out.push(Record::Compaction(Compaction {
                         citation,
                         trigger: meta.trigger.unwrap_or_default(),
@@ -1712,6 +1715,34 @@ mod tests {
             })
             .collect();
         assert_eq!(sized, [false, true]);
+    }
+
+    #[test]
+    fn a_boundary_missing_its_figures_still_ends_what_the_thread_held_whatever_the_window() {
+        let lines = [
+            r#"{"type":"attachment","uuid":"m1","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#.to_string(),
+            r#"{"type":"system","uuid":"k1","timestamp":"2026-08-26T00:00:02Z","sessionId":"s1","subtype":"compact_boundary"}"#.to_string(),
+            r#"{"type":"attachment","uuid":"m2","timestamp":"2026-08-26T00:00:03Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#.to_string(),
+        ]
+        .join("\n");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(&path, lines).unwrap();
+        let last_reload = |since: &str| {
+            let mut cov = Coverage::default();
+            let window = Window {
+                since: Some(since.parse().unwrap()),
+                ..Window::default()
+            };
+            let recs = read_transcript(&path, window, &mut cov).unwrap();
+            match recs.last() {
+                Some(Record::Attachment(a)) => a.memory[0].reload,
+                _ => panic!("expected the last load"),
+            }
+        };
+
+        assert!(!last_reload("2026-08-26T00:00:00Z"));
+        assert!(!last_reload("2026-08-26T00:00:03Z"));
     }
 
     #[test]
