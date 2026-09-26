@@ -1,7 +1,8 @@
 //! Detection of git invocations that skip the hook stack.
 //!
-//! Three forms: `git commit|push|merge|pull --no-verify` (plus the `commit -n`
-//! shorthand), the direct `core.hooksPath` reroutes (`git -c
+//! Three forms: `--no-verify` on a subcommand that runs hooks (plus the `-n`
+//! shorthand where that is what it means), the direct `core.hooksPath`
+//! reroutes (`git -c
 //! core.hooksPath=…`, `git config … core.hooksPath …`), and the same key
 //! carried in through the environment (`GIT_CONFIG_PARAMETERS`, the
 //! `GIT_CONFIG_KEY_<n>` triple, `git --config-env`). `--no-verify` skips
@@ -14,9 +15,12 @@
 //! Out of scope — obfuscated bypass, left to the project's own server-side
 //! re-run: a git/shell alias whose value carries the flag, argument
 //! indirection (`xargs git …`), a wrapper carrying its own options
-//! (`nice -n10 git …`), `sh -c` / `$(…)` nesting, and an environment that was
-//! already exported in an earlier session — a value this command line does
-//! not carry is state a syntactic check cannot read. A *subcommand* option's
+//! (`mise exec -- git …`, `npx … git …`), `sh -c` / `$(…)` nesting, and an
+//! environment already exported in an earlier session — a value this command
+//! line does not carry is state a syntactic check cannot read. A reroute that
+//! never names the key is the same shape and is out for the same reason:
+//! `include.path` and `GIT_CONFIG_GLOBAL` hand git a file, and what that file
+//! sets is not on the command line. A *subcommand* option's
 //! value is not modelled either, so a value that is literally `--no-verify`
 //! (`git commit -m --no-verify`) blocks too — accepted: contrived input, and
 //! the failure direction is a block that surfaces to the operator, never a
@@ -24,8 +28,26 @@
 
 use super::command_line::{SplitError, split_commands};
 
-/// git subcommands whose hook execution `--no-verify` skips.
-const HOOKED_SUBCOMMANDS: [&str; 4] = ["commit", "push", "merge", "pull"];
+/// git subcommands whose hook execution `--no-verify` skips: the hooks each
+/// one skips, and the short options that take a value there — empty where `-n`
+/// is not `--no-verify`, which is what stops it being read as one.
+///
+/// Settled by running each subcommand against a hook that exits, on git
+/// 2.55.0, because `-h` answers neither question reliably: `git pull` does not
+/// list the flag it honours, and `git rebase` describes it as "allow pre-rebase
+/// hook to run", which is the reverse of what it does.
+const HOOKED_SUBCOMMANDS: [(&str, &str, &str); 6] = [
+    (
+        "commit",
+        "pre-commit stack (secret scan included) and commit-msg",
+        "FmcCtUSu",
+    ),
+    ("push", "pre-push gate stack", ""),
+    ("merge", "pre-merge-commit and commit-msg", ""),
+    ("pull", "pre-merge-commit and commit-msg", ""),
+    ("rebase", "pre-rebase hook", ""),
+    ("am", "pre-applypatch and applypatch-msg hooks", "CpS"),
+];
 
 /// Bare (option-less) wrappers and command-position builtins that may
 /// precede the command word, skipped through to reach the real command:
@@ -70,23 +92,26 @@ fn is_no_verify_option(word: &str) -> bool {
 /// `-n -m x` (measured: the pre-commit hook does not run) while `-mn` is
 /// `-m` with the message "n" (measured: it does).
 ///
-/// The value-consuming set is `git commit`'s — mandatory for `-F -m -c -C -t
-/// -U`, optional-but-attached for `-S -u` (measured against `git commit -h`).
-/// `-n` means `--no-verify` on `commit` alone — on `push` it is `--dry-run`
-/// and on `merge` it suppresses the diffstat, which is why the caller
-/// scopes it.
-fn is_short_no_verify(word: &str) -> bool {
+/// Which characters take a value differs per subcommand, so the set arrives
+/// with the caller from [`HOOKED_SUBCOMMANDS`]; empty means `-n` is something
+/// else there and no cluster requests anything. Nothing is assumed about the
+/// characters in between — a digit is a flag on one subcommand (`am -3`) and a
+/// value on another, and skipping a cluster for holding one is how `-3n` gets
+/// read as carrying no flag at all.
+fn is_short_no_verify(word: &str, value_opts: &str) -> bool {
     let Some(cluster) = word.strip_prefix('-') else {
         return false;
     };
-    if cluster.is_empty() || !cluster.bytes().all(|b| b.is_ascii_alphabetic()) {
+    // A cluster is one `-` and the flags after it. A second `-` makes the
+    // token a long option, whose spelling [`is_no_verify_option`] decides.
+    if cluster.is_empty() || cluster.starts_with('-') || value_opts.is_empty() {
         return false;
     }
     for c in cluster.chars() {
         if c == 'n' {
             return true;
         }
-        if matches!(c, 'F' | 'm' | 'c' | 'C' | 't' | 'U' | 'S' | 'u') {
+        if value_opts.contains(c) {
             return false;
         }
     }
@@ -114,8 +139,8 @@ fn is_hooks_path_key(word: &str) -> bool {
 /// optionally single-quoted, so `'core.hooksPath=x'` and `'core.hooksPath'='x'`
 /// name the same key and git applies both. Dequoting before the split is what
 /// makes them converge, and it is why the key has to be read rather than
-/// matched — `'alias.x=core.hooksPath'` and `'include.path=…/core.hooksPath'`
-/// name the key in a *value* and reroute nothing.
+/// matched — `'alias.x=core.hooksPath'` names the key in a *value*, which git
+/// sets nothing by.
 ///
 /// Quoting decides where a pair ends, so it is tracked: `'user.name=a
 /// core.hooksPath=b'` is one pair keyed `user.name` and sets nothing, while
@@ -125,18 +150,40 @@ fn is_hooks_path_key(word: &str) -> bool {
 /// environment are not replayed here, so a spelling that arrives stripped and
 /// one that was never quoted are the same input, and only one of them fails.
 fn sets_hooks_path(parameters: &str) -> bool {
+    let chars: Vec<char> = parameters.chars().collect();
     let mut pairs = Vec::new();
     let mut pair = String::new();
     let mut quoted = false;
-    for c in parameters.chars() {
-        match c {
-            '\'' => quoted = !quoted,
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            // An apostrophe inside a value is written `'\''`: the run closes,
+            // the `\'` stands for one literal quote, and the quote after it
+            // opens the run again. Counting those three as ordinary delimiters
+            // leaves the quoting inverted for everything that follows.
+            '\'' if quoted && chars[i + 1..].starts_with(&['\\', '\'']) => {
+                pair.push('\'');
+                quoted = false;
+                i += 3;
+            }
+            '\'' => {
+                quoted = !quoted;
+                i += 1;
+            }
+            // git separates pairs on C-locale `isspace`, which this is a
+            // superset of. So the split can only be finer than git's, never
+            // coarser — and coarser is the direction that buries a key inside
+            // the pair before it, where the match no longer reaches it.
             c if c.is_whitespace() && !quoted => {
                 if !pair.is_empty() {
                     pairs.push(std::mem::take(&mut pair));
                 }
+                i += 1;
             }
-            c => pair.push(c),
+            c => {
+                pair.push(c);
+                i += 1;
+            }
         }
     }
     if quoted {
@@ -153,6 +200,12 @@ fn sets_hooks_path(parameters: &str) -> bool {
 /// index. Variable names are matched exactly, as the environment is
 /// case-sensitive; the config key inside is not, which [`is_hooks_path_key`]
 /// honours.
+///
+/// An indexed key is read without its `GIT_CONFIG_COUNT`, which git reads the
+/// triple only up to. So a key standing past the count, or with no count at
+/// all, blocks a command git would have ignored. Counting instead would put a
+/// second number between the key and the verdict, and getting that one wrong
+/// passes a key git does apply.
 fn env_config_reroute(word: &str) -> Option<String> {
     let (name, value) = word.split_once('=')?;
     let indexed_key = name
@@ -264,26 +317,16 @@ pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
         return detect_config_reroute(&words[sub_idx + 1..]);
     }
 
-    if !HOOKED_SUBCOMMANDS.contains(&sub) {
-        return None;
-    }
+    let (_, skipped, value_opts) = HOOKED_SUBCOMMANDS.iter().find(|(name, ..)| *name == sub)?;
     for w in &words[sub_idx + 1..] {
         if w == "--" {
             break; // pathspec terminator — flags cannot follow
         }
         if is_no_verify_option(w) {
-            let skipped = if sub == "push" {
-                "pre-push gate stack"
-            } else {
-                "pre-commit stack (secret scan included) and commit-msg"
-            };
             return Some(format!("`git {sub} {w}` skips the {skipped}"));
         }
-        if sub == "commit" && is_short_no_verify(w) {
-            return Some(format!(
-                "`git commit {w}` (--no-verify) skips the pre-commit stack \
-                 (secret scan included) and commit-msg"
-            ));
+        if is_short_no_verify(w, value_opts) {
+            return Some(format!("`git {sub} {w}` (--no-verify) skips the {skipped}"));
         }
     }
     None
@@ -464,11 +507,53 @@ mod tests {
         assert!(detect_hook_bypass(&words(&["git", "merge", "--no-verify", "topic"])).is_some());
     }
 
+    /// `-n` is `--no-verify` on `commit` and `am`, the dry run on `push`, and
+    /// the suppressed diffstat on `merge` and `rebase` — measured on 2.55.0.
     #[test]
-    fn flags_the_short_n_on_commit_only_because_push_n_is_dry_run() {
+    fn flags_the_short_n_only_where_git_reads_it_as_no_verify() {
         assert!(detect_hook_bypass(&words(&["git", "commit", "-n"])).is_some());
+        assert!(detect_hook_bypass(&words(&["git", "am", "-n", "p.patch"])).is_some());
         assert!(detect_hook_bypass(&words(&["git", "push", "-n"])).is_none());
         assert!(detect_hook_bypass(&words(&["git", "merge", "-n", "topic"])).is_none());
+        assert!(detect_hook_bypass(&words(&["git", "rebase", "-n", "main"])).is_none());
+    }
+
+    /// Each of these skipped `pre-applypatch` and applied the patch when
+    /// measured, so a cluster carries the flag as surely as the bare token.
+    /// `-3` is `am`'s three-way merge, a flag that happens to be a digit.
+    #[test]
+    fn reads_an_am_cluster_the_way_am_parses_it() {
+        for cluster in ["-3n", "-kn", "-qn", "-n3"] {
+            assert!(
+                detect_hook_bypass(&words(&["git", "am", cluster, "p.patch"])).is_some(),
+                "missed: git am {cluster}"
+            );
+        }
+        // `-p` and `-C` take the rest of the token as their value, so the `n`
+        // is that value: git refuses both for a non-numeric one and applies
+        // nothing, which is why letting them through costs nothing.
+        assert!(detect_hook_bypass(&words(&["git", "am", "-pn", "p.patch"])).is_none());
+        assert!(detect_hook_bypass(&words(&["git", "am", "-Cn", "p.patch"])).is_none());
+    }
+
+    /// Every subcommand measured to accept `--no-verify`, each naming the hooks
+    /// its own `-h` says it bypasses.
+    #[test]
+    fn flags_no_verify_on_every_subcommand_that_runs_hooks() {
+        for (sub, expected) in [
+            ("commit", "commit-msg"),
+            ("push", "pre-push"),
+            ("merge", "pre-merge-commit"),
+            ("rebase", "pre-rebase"),
+            ("am", "pre-applypatch"),
+        ] {
+            let found = detect_hook_bypass(&words(&["git", sub, "--no-verify", "x"]))
+                .unwrap_or_else(|| panic!("missed: git {sub} --no-verify"));
+            assert!(
+                found.contains(expected),
+                "{sub} named the wrong hooks: {found}"
+            );
+        }
     }
 
     #[test]
@@ -666,7 +751,7 @@ mod tests {
     fn never_flags_a_clean_invocation_or_an_unhooked_subcommand() {
         assert!(detect_hook_bypass(&words(&["git", "status"])).is_none());
         assert!(detect_hook_bypass(&words(&["git", "commit", "-m", "ok"])).is_none());
-        assert!(detect_hook_bypass(&words(&["git", "rebase", "--no-verify"])).is_none());
+        assert!(detect_hook_bypass(&words(&["git", "stash", "--no-verify"])).is_none());
         assert!(detect_hook_bypass(&words(&["ls", "--no-verify"])).is_none());
     }
 
@@ -797,6 +882,13 @@ mod tests {
             "GIT_CONFIG_PARAMETERS=\"'user.name=t' 'core.hooksPath=/dev/null'\" git commit -m x",
             "GIT_CONFIG_PARAMETERS=\"'Core.HooksPath=/dev/null'\" git commit -m x",
             "GIT_CONFIG_PARAMETERS=\"'user.name=a' 'core.hooksPath=b'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/tmp/o'\\''brien'\" git commit -m x",
+            // Two escapes, one on each side of the separator that starts the
+            // key's pair. Counting quotes rather than reading the escape puts
+            // that separator inside a run, which joins the pairs and buries the
+            // key mid-value — and an even number of escapes clears the
+            // unterminated-quote fail-safe on the way out.
+            "GIT_CONFIG_PARAMETERS=\"'a.b='\\''v' 'core.hooksPath=/tmp/x'\\''z'\" git commit -m x",
             "GIT_CONFIG_PARAMETERS=core.hooksPath=/dev/null git commit -m x",
             "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
             "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=Core.HooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
@@ -824,18 +916,20 @@ mod tests {
         }
     }
 
-    /// The environment variables a harness legitimately sets around git, and
-    /// the pairs that name core.hooksPath somewhere git does not read a key.
-    /// This crate's own tests run git under `GIT_CONFIG_GLOBAL`, and both
-    /// pairs below were measured to leave core.hooksPath unset.
+    /// Commands that name no key git would read one from. The pair lists were
+    /// each measured to leave core.hooksPath unset: a key in a *value* position,
+    /// a key joined into the pair before it by quoting, an index git rejects.
+    /// `GIT_CONFIG_GLOBAL` passes for the reason the module doc gives — what a
+    /// file it names contains is not on this command line — not because naming
+    /// that variable is safe.
     #[test]
     fn does_not_block_an_environment_that_reroutes_nothing() {
         for command in [
             "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null git status",
             "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=t git commit -m x",
             "GIT_CONFIG_PARAMETERS=\"'alias.x=core.hooksPath'\" git commit -m x",
-            "GIT_CONFIG_PARAMETERS=\"'include.path=/tmp/core.hooksPath.conf'\" git commit -m x",
             "GIT_CONFIG_PARAMETERS=\"'user.name=a core.hooksPath=b'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'user.name=O'\\''Brien'\" git commit -m x",
             "git --config-env=user.name=UN commit -m x",
             "git --config-env user.name=UN commit -m x",
             "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_X=core.hooksPath git commit -m x",
