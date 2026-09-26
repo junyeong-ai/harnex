@@ -22,6 +22,13 @@ second entry, `Edit|Write|MultiEdit`, which freezes the files that define what
 the gates verify. A failing gate is fixed at its cause, never by weakening what
 the gate verifies.
 
+What the tripwire reads is the command line, as the shell composes it. So it
+answers about a git invocation spelled there, and a command that reaches git
+through another program — `mise exec -- git …`, `npx … git …`, a shell alias,
+`sh -c` — is not one. Those are the permission surface's, and a session running
+without permission checks has neither. Wire this pattern for what it is: the
+floor under a command typed directly, not a boundary around the capability.
+
 The freeze is the half with a price: it covers `harness.toml` and
 `.claude/settings.json`, so in a repository where the harness is the work
 product it fires on most commits, and a grant left standing to answer that
