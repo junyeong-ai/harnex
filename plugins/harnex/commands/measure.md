@@ -73,7 +73,7 @@ it for the same window, check its own wiring first, and add:
 | wall-clock per tool | the runtime times a whole run, not the calls inside it |
 | money, split by model and by main / subagent | pricing is not in the record and is not this plugin's to know |
 | active time per session | the transcript has timestamps, not attention |
-| memory loaded eagerly — at session start and again at a compaction — and the read that triggered a lazy load | the runtime reports those only to its `InstructionsLoaded` hook |
+| why a memory file loaded, and the read that triggered a lazy load | the runtime reports those only to its `InstructionsLoaded` hook |
 
 A collector often carries more than price: domain kinds the project itself
 emits — gates, deploys, rule blocks — keyed by the same session. Take the
@@ -244,12 +244,11 @@ typed twice, which a pasted error, a spec excerpt and a code block all are.
 Open the citations and read the text before calling any of them a rule.
 
 **Then check whether the constraint is already installed before prescribing
-that it be.** `rule_loads` lists the project memory the runtime attached to a
-turn, which is the path-scoped kind; a rule loaded on every turn is in the
-prompt from the start and appears nowhere in the transcript. Read the
-project's own rule files before naming a paragraph uninstalled — measured over
-one window, the largest of these paragraphs were that project's always-loaded
-rule file in translation, in force the whole time.
+that it be.** `rule_loads` lists the memory the transcript records the runtime
+attaching, the always-loaded set among it. Read the files its rows name before
+calling a paragraph uninstalled — measured over one window, the largest of
+these paragraphs were that project's always-loaded rule file in translation, in
+force the whole time.
 
 **Then write what survived into the ledger, so the next window can count it.**
 A judged finding is a reading and never enters a baseline — but a constraint
@@ -369,8 +368,10 @@ arguments by tool, its prose and thinking, user turns by authorship, compaction
 summaries, and attachments by type. Report the main thread's largest carriers as
 shares of its characters; a `sidechain` row adds up windows that never met.
 Where `measured` is short of `entries`, that row's characters are a floor —
-thinking is never sized, and an attachment written before runtime 2.1.261
-records no size. Compare carriers within a window and never against `tokens`:
+thinking is never sized, and an attachment is sized only where its record
+carries what it rendered — none before runtime 2.1.261 does, and some types,
+`hook_success` among them, rarely do. An unsized attachment may have put
+nothing into context; the record does not say. Compare carriers within a window and never against `tokens`:
 a token holds more characters of English prose than of code or Korean, so a
 character share is not a token share.
 
@@ -423,8 +424,9 @@ wall-clock against the `elapsed_ms` of the instructions in the window, which is
 what says whether it is worth anything: a hook holding two seconds is most of a
 ten-second instruction and none of a ten-minute one. Then rule-load characters,
 and `reloads` beside them: a text loaded into a thread that already held it put
-nothing new in front of the agent, and its `paths` say whether a second
-checkout or the up-front set arriving again brought it.
+nothing new in front of the agent. The envelope does not say through which of a
+row's `paths` each reload came; a row with several is the same text loaded from
+each of them.
 
 Relativise against the operator, never against other people: "this instruction
 ran 27 times your median" names an outlier without a population.
