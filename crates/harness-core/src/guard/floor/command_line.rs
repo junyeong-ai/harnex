@@ -785,6 +785,30 @@ mod tests {
         }
     }
 
+    /// Inside double quotes the body must be read to the paren that really
+    /// ends it. End it anywhere else and the rest of the body becomes string
+    /// text, where a command standing there is never seen — the one place
+    /// getting the scan wrong hides something rather than merely skipping.
+    #[test]
+    fn reads_a_double_quoted_body_to_the_paren_that_ends_it() {
+        for body in [
+            // a nested substitution's paren closes it, not this one
+            "echo $(echo a) ; git commit --no-verify",
+            // `#` inside a word is not a comment
+            "echo a#b ; git commit --no-verify",
+            // `#` at a word boundary is, so the paren it carries is not one
+            "echo x # )\ngit commit --no-verify",
+            // `$` is an ANSI-C quote only before a quote
+            "echo $x ; git commit --no-verify",
+        ] {
+            let commands = split(&format!("v=\"$({body})\""));
+            assert!(
+                commands.contains(&owned(&[&["git", "commit", "--no-verify"]])[0]),
+                "the body ended early: {body} gave {commands:?}"
+            );
+        }
+    }
+
     /// A body with no closing paren anywhere is the one shape the fallback
     /// cannot cover: there is no span to keep as a word.
     #[test]
