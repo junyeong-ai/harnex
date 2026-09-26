@@ -970,13 +970,15 @@ pub struct Window<'a> {
     pub session: Option<&'a str>,
 }
 
-/// What a transcript's thread holds, read from every record in the file.
+/// What a transcript's thread holds, taken from every record in the file before
+/// any is filtered.
 ///
 /// A transcript is one thread: every record in the local corpus's subagent
-/// files is marked sidechain, and none in a main file. Its context carries what
-/// a window leaves out — records before `since`, records outside `project`,
-/// and the conversation a fork replays — so what it holds is taken from all of
-/// them, and only what is emitted is filtered.
+/// files is marked sidechain, and none in a main file. Its context carries
+/// records a window leaves out — those before `since`, outside `project`, the
+/// conversation a fork replays — and records this reader cannot emit, so each
+/// record is taken in once, in file order, and what is read off the thread does
+/// not depend on which window asked.
 #[derive(Default)]
 struct Thread {
     /// Each tool call by id. A call always precedes its result inside one
@@ -989,10 +991,27 @@ struct Thread {
     spoke: bool,
 }
 
+/// What the thread held when a record arrived.
+struct Arrival {
+    /// Whether the agent had produced anything since the last turn a person
+    /// was behind.
+    spoke: bool,
+    /// The memory files an attachment carried, each marked with whether the
+    /// thread already held its text. `None` for a record that is not an
+    /// attachment or a memory attachment missing a file's path or content.
+    memory: Option<Vec<LoadedFile>>,
+}
+
 impl Thread {
-    /// Take in a record the window does not emit.
-    fn remember(&mut self, raw: &RawRecord) {
+    /// Take in one record and say what the thread held when it arrived.
+    fn take(&mut self, raw: &RawRecord) -> Arrival {
+        let spoke = self.spoke;
+        let mut memory = None;
         match raw.kind.as_deref().and_then(ConsumedType::from_str) {
+            // Only a turn the runtime attributed to a person closes the
+            // interval. A tool result is also a `user` record, and letting one
+            // reset this would report the operator as having spoken when the
+            // protocol did.
             Some(ConsumedType::User) => {
                 if classify(raw).claims_a_person() {
                     self.spoke = false;
@@ -1006,14 +1025,17 @@ impl Thread {
                 self.spoke = true;
             }
             Some(ConsumedType::Attachment) => {
-                let memory = raw
+                memory = raw
                     .attachment
                     .as_ref()
                     .and_then(|a| memory_files(a.get("type")?.as_str()?, a));
-                if let Some(mut memory) = memory {
-                    self.hold(&mut memory);
+                if let Some(files) = &mut memory {
+                    self.hold(files);
                 }
             }
+            // The subtype says the context was compacted; the metadata only
+            // carries its figures, so a boundary missing them still ends what
+            // the thread held.
             Some(ConsumedType::System)
                 if raw.subtype.as_deref() == Some(COMPACT_BOUNDARY_SUBTYPE) =>
             {
@@ -1021,6 +1043,7 @@ impl Thread {
             }
             Some(ConsumedType::System) | None => {}
         }
+        Arrival { spoke, memory }
     }
 
     /// Keep a tool call so the result that answers it can name its tool.
@@ -1080,6 +1103,7 @@ pub fn read_transcript(
             coverage.records_malformed += 1;
             continue;
         };
+        let arrival = thread.take(&raw);
         // Coverage counts the window, not the file: the ratio it publishes is
         // the one `require_coverage` gates on. A record too damaged to carry a
         // timestamp cannot be placed in time and is counted here rather than
@@ -1088,7 +1112,6 @@ pub fn read_transcript(
             .since
             .is_some_and(|s| raw.timestamp.is_some_and(|t| t < s))
         {
-            thread.remember(&raw);
             continue;
         }
         // A worktree runs under a directory below the project it belongs to,
@@ -1098,10 +1121,7 @@ pub fn read_transcript(
         if let Some(project) = window.project {
             match &raw.cwd {
                 Some(cwd) if cwd.starts_with(project) => {}
-                _ => {
-                    thread.remember(&raw);
-                    continue;
-                }
+                _ => continue,
             }
         }
         if let Some(session) = window.session {
@@ -1117,7 +1137,6 @@ pub fn read_transcript(
         // again here would report one instruction as two.
         if raw.forked_from.is_some() {
             coverage.records_forked += 1;
-            thread.remember(&raw);
             continue;
         }
         if let Some(t) = raw.timestamp {
@@ -1191,7 +1210,7 @@ pub fn read_transcript(
                     results,
                     compact_summary: raw.is_compact_summary.unwrap_or(false),
                     queued: raw.prompt_source.as_deref() == Some(QUEUED_PROMPT_SOURCE),
-                    follows_agent_output: thread.spoke,
+                    follows_agent_output: arrival.spoke,
                     interrupted: raw.interrupted_message_id.is_some(),
                     commit: result.and_then(commit_of),
                     edited_file: result.and_then(edited_file_of),
@@ -1199,13 +1218,6 @@ pub fn read_transcript(
                     failed_tool,
                     prompt_id: raw.prompt_id.clone(),
                 }));
-                // Only a turn the runtime attributed to a person closes the
-                // interval. A tool result is also a `user` record, and letting
-                // one reset this would report the operator as having spoken
-                // when the protocol did.
-                if authorship.claims_a_person() {
-                    thread.spoke = false;
-                }
             }
             ConsumedType::Assistant => {
                 let mut actions = Vec::new();
@@ -1237,9 +1249,7 @@ pub fn read_transcript(
                         asset: asset_of(tool, &input),
                         input_chars: input.to_string().chars().count(),
                     });
-                    thread.note_call(block);
                 }
-                thread.spoke = true;
                 let message = raw.message.as_ref();
                 let model = message.and_then(|m| m.model.clone());
                 if let Some(model) = &model {
@@ -1309,11 +1319,10 @@ pub fn read_transcript(
                         continue;
                     }
                 };
-                let Some(mut memory) = memory_files(name, attachment) else {
+                let Some(memory) = arrival.memory else {
                     coverage.records_malformed += 1;
                     continue;
                 };
-                thread.hold(&mut memory);
                 out.push(Record::Attachment(Attachment {
                     citation,
                     kind: name.to_string(),
@@ -1325,10 +1334,6 @@ pub fn read_transcript(
             ConsumedType::System => {
                 let subtype = raw.subtype.as_deref().unwrap_or_default();
                 if subtype == COMPACT_BOUNDARY_SUBTYPE {
-                    // The subtype says the context was compacted; the metadata
-                    // only carries its figures, so a boundary missing them still
-                    // ends what the thread held.
-                    thread.held.clear();
                     let Some(meta) = raw.compact_metadata else {
                         coverage.records_malformed += 1;
                         continue;
@@ -1720,29 +1725,67 @@ mod tests {
     #[test]
     fn a_boundary_missing_its_figures_still_ends_what_the_thread_held_whatever_the_window() {
         let lines = [
-            r#"{"type":"attachment","uuid":"m1","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#.to_string(),
-            r#"{"type":"system","uuid":"k1","timestamp":"2026-08-26T00:00:02Z","sessionId":"s1","subtype":"compact_boundary"}"#.to_string(),
-            r#"{"type":"attachment","uuid":"m2","timestamp":"2026-08-26T00:00:03Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#.to_string(),
-        ]
-        .join("\n");
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("s.jsonl");
-        std::fs::write(&path, lines).unwrap();
-        let last_reload = |since: &str| {
-            let mut cov = Coverage::default();
-            let window = Window {
-                since: Some(since.parse().unwrap()),
-                ..Window::default()
-            };
-            let recs = read_transcript(&path, window, &mut cov).unwrap();
-            match recs.last() {
-                Some(Record::Attachment(a)) => a.memory[0].reload,
-                _ => panic!("expected the last load"),
-            }
+            r#"{"type":"attachment","uuid":"m1","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#,
+            r#"{"type":"system","uuid":"k1","timestamp":"2026-08-26T00:00:02Z","sessionId":"s1","subtype":"compact_boundary"}"#,
+            r#"{"type":"attachment","uuid":"m2","timestamp":"2026-08-26T00:00:03Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#,
+        ];
+        let last_reload = |since: &str| match read_since(&lines, since).0.last() {
+            Some(Record::Attachment(a)) => a.memory[0].reload,
+            _ => panic!("expected the last load"),
         };
 
         assert!(!last_reload("2026-08-26T00:00:00Z"));
         assert!(!last_reload("2026-08-26T00:00:03Z"));
+    }
+
+    /// Every line of `lines` read under a window opening at `since`.
+    fn read_since(lines: &[&str], since: &str) -> (Vec<Record>, Coverage) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(&path, lines.join("\n")).unwrap();
+        let mut cov = Coverage::default();
+        let window = Window {
+            since: Some(since.parse().unwrap()),
+            ..Window::default()
+        };
+        let recs = read_transcript(&path, window, &mut cov).unwrap();
+        (recs, cov)
+    }
+
+    #[test]
+    fn whether_the_agent_had_spoken_crosses_the_window_edge() {
+        let spoke = r#"{"type":"assistant","uuid":"g1","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","message":{"id":"m1","content":[{"type":"text","text":"working"}]}}"#;
+        let typed = r#"{"type":"user","uuid":"a1","timestamp":"2026-08-26T00:00:02Z","sessionId":"s1","origin":{"kind":"human"},"promptSource":"typed","message":{"content":"next"}}"#;
+        let queued = r#"{"type":"user","uuid":"a2","timestamp":"2026-08-26T00:00:04Z","sessionId":"s1","origin":{"kind":"human"},"promptSource":"queued","message":{"content":"also"}}"#;
+        let follows = |lines: &[&str]| match read_since(lines, "2026-08-26T00:00:03Z").0.last() {
+            Some(Record::User(u)) => u.follows_agent_output,
+            _ => panic!("expected the queued turn"),
+        };
+
+        assert!(
+            follows(&[spoke, queued]),
+            "the agent spoke before the window"
+        );
+        assert!(
+            !follows(&[spoke, typed, queued]),
+            "and a person answered it before the window too"
+        );
+    }
+
+    #[test]
+    fn a_record_this_reader_cannot_emit_is_still_held_by_the_thread() {
+        let unplaced = r#"{"type":"attachment","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#;
+        let load = r#"{"type":"attachment","uuid":"m2","timestamp":"2026-08-26T00:00:03Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/.claude/worktrees/w/CLAUDE.md","content":{"content":"same"}}}"#;
+        let reload = |since: &str| {
+            let (recs, _) = read_since(&[unplaced, load], since);
+            match recs.last() {
+                Some(Record::Attachment(a)) => a.memory[0].reload,
+                _ => panic!("expected the second load"),
+            }
+        };
+
+        assert!(reload("2026-08-26T00:00:00Z"));
+        assert!(reload("2026-08-26T00:00:02Z"));
     }
 
     #[test]
@@ -1751,18 +1794,8 @@ mod tests {
             r#"{"type":"attachment","uuid":"m1","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#,
             r#"{"type":"system","uuid":"x1","timestamp":"2026-08-26T00:00:02Z","sessionId":"s1","subtype":"local_command"}"#,
             r#"{"type":"attachment","uuid":"m2","timestamp":"2026-08-26T00:00:03Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#,
-        ]
-        .join("\n");
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("s.jsonl");
-        std::fs::write(&path, lines).unwrap();
-        let mut cov = Coverage::default();
-        let window = Window {
-            since: Some("2026-08-26T00:00:03Z".parse().unwrap()),
-            ..Window::default()
-        };
-        let recs = read_transcript(&path, window, &mut cov).unwrap();
-        match recs.last() {
+        ];
+        match read_since(&lines, "2026-08-26T00:00:03Z").0.last() {
             Some(Record::Attachment(a)) => assert!(a.memory[0].reload),
             _ => panic!("expected the last load"),
         }
