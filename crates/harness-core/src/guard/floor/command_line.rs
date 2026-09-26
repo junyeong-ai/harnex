@@ -832,6 +832,7 @@ mod tests {
             "x=$(cat <<'EOF'\ndon't\nEOF\n) ; git commit --no-verify -m x",
             "x=$(echo a # don't\n) ; git commit --no-verify -m x",
             "x=$(case y in y) echo z;; esac) ; git commit --no-verify -m x",
+            "x=$(echo $'abc) ; git commit --no-verify -m x",
         ] {
             let commands = split(line);
             assert!(
