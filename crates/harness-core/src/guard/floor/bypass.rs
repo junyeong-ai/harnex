@@ -500,6 +500,21 @@ mod tests {
         detect_command_line_bypass(command).expect("parses")
     }
 
+    /// Capturing git's output is an everyday idiom, and the substitution
+    /// runs git itself — nothing stands between this line and git — so a
+    /// bypass inside one is a bypass this line spells. Text the shell does
+    /// not run is not.
+    #[test]
+    fn flags_a_bypass_the_line_runs_inside_a_substitution() {
+        assert!(line("o=$(git commit --no-verify -m x)").is_some());
+        assert!(line("echo \"$(git commit -n -m x)\"").is_some());
+        // The backtick spelling stays open, measured (module note).
+        assert!(line("o=`git rebase --no-verify main`").is_none());
+        assert!(line("o=$(git -c core.hooksPath=/dev/null commit -m x)").is_some());
+        assert!(line("echo '$(git commit --no-verify)'").is_none());
+        assert!(line("o=$(git log --oneline -20)").is_none());
+    }
+
     #[test]
     fn flags_no_verify_on_commit_push_and_merge() {
         assert!(detect_hook_bypass(&words(&["git", "commit", "--no-verify"])).is_some());
