@@ -1,8 +1,10 @@
 //! Detection of git invocations that skip the hook stack.
 //!
-//! Two forms: `git commit|push|merge|pull --no-verify` (plus the `commit -n`
-//! shorthand), and the direct `core.hooksPath` reroutes (`git -c
-//! core.hooksPath=…`, `git config … core.hooksPath …`). `--no-verify` skips
+//! Three forms: `git commit|push|merge|pull --no-verify` (plus the `commit -n`
+//! shorthand), the direct `core.hooksPath` reroutes (`git -c
+//! core.hooksPath=…`, `git config … core.hooksPath …`), and the same key
+//! carried in through the environment (`GIT_CONFIG_PARAMETERS`, the
+//! `GIT_CONFIG_KEY_<n>` triple, `git --config-env`). `--no-verify` skips
 //! the entire pre-commit stack *including the secret scan*; a hook's own
 //! escape hatch skips one check and never the stack. Detection reaches into
 //! compound commands (`&&` / `;` chains, subshells, brace groups) — its value
@@ -12,12 +14,13 @@
 //! Out of scope — obfuscated bypass, left to the project's own server-side
 //! re-run: a git/shell alias whose value carries the flag, argument
 //! indirection (`xargs git …`), a wrapper carrying its own options
-//! (`nice -n10 git …`), `sh -c` / `$(…)` nesting, and env-var config
-//! injection (`GIT_CONFIG_KEY_n`, `--config-env`). Value-consuming git
-//! options are not modelled either, so a flag *value* that is literally
-//! `--no-verify` (`git commit -m --no-verify`) blocks too — accepted:
-//! contrived input, and the failure direction is a block that surfaces to
-//! the operator, never a silent pass.
+//! (`nice -n10 git …`), `sh -c` / `$(…)` nesting, and an environment that was
+//! already exported in an earlier session — a value this command line does
+//! not carry is state a syntactic check cannot read. A *subcommand* option's
+//! value is not modelled either, so a value that is literally `--no-verify`
+//! (`git commit -m --no-verify`) blocks too — accepted: contrived input, and
+//! the failure direction is a block that surfaces to the operator, never a
+//! silent pass.
 
 use super::command_line::{SplitError, split_commands};
 
@@ -105,6 +108,66 @@ fn is_hooks_path_key(word: &str) -> bool {
     lower == "core.hookspath" || lower.starts_with("core.hookspath=")
 }
 
+/// Whether a `GIT_CONFIG_PARAMETERS` value sets `core.hooksPath`.
+///
+/// The value is git's own pair list: pairs separated by whitespace, each side
+/// optionally single-quoted, so `'core.hooksPath=x'` and `'core.hooksPath'='x'`
+/// name the same key and git applies both. Dequoting before the split is what
+/// makes them converge, and it is why the key has to be read rather than
+/// matched — `'alias.x=core.hooksPath'` and `'include.path=…/core.hooksPath'`
+/// name the key in a *value* and reroute nothing.
+///
+/// Quoting decides where a pair ends, so it is tracked: `'user.name=a
+/// core.hooksPath=b'` is one pair keyed `user.name` and sets nothing, while
+/// the same text as two quoted pairs sets the key. An unterminated quote, and
+/// an unquoted list git refuses outright (`bogus format`), are read for their
+/// keys all the same — the shell layers between a command line and git's
+/// environment are not replayed here, so a spelling that arrives stripped and
+/// one that was never quoted are the same input, and only one of them fails.
+fn sets_hooks_path(parameters: &str) -> bool {
+    let mut pairs = Vec::new();
+    let mut pair = String::new();
+    let mut quoted = false;
+    for c in parameters.chars() {
+        match c {
+            '\'' => quoted = !quoted,
+            c if c.is_whitespace() && !quoted => {
+                if !pair.is_empty() {
+                    pairs.push(std::mem::take(&mut pair));
+                }
+            }
+            c => pair.push(c),
+        }
+    }
+    if quoted {
+        return true;
+    }
+    pairs.push(pair);
+    pairs.iter().any(|pair| is_hooks_path_key(pair))
+}
+
+/// The reroute an environment assignment commits, or `None`. Two spellings
+/// reach git's configuration exactly where `-c` does: `GIT_CONFIG_PARAMETERS`
+/// holds the pair list above, and the `GIT_CONFIG_COUNT` /
+/// `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>` triple holds one pair per
+/// index. Variable names are matched exactly, as the environment is
+/// case-sensitive; the config key inside is not, which [`is_hooks_path_key`]
+/// honours.
+fn env_config_reroute(word: &str) -> Option<String> {
+    let (name, value) = word.split_once('=')?;
+    let indexed_key = name
+        .strip_prefix("GIT_CONFIG_KEY_")
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+    if (name == "GIT_CONFIG_PARAMETERS" && sets_hooks_path(value))
+        || (indexed_key && is_hooks_path_key(value))
+    {
+        return Some(format!(
+            "`{name}` carries core.hooksPath into git's configuration, rerouting the git hook stack"
+        ));
+    }
+    None
+}
+
 /// The floor violation a single simple command would commit, or `None`.
 /// Returns a human-readable reason naming the exact bypass detected.
 pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
@@ -114,9 +177,18 @@ pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
             || COMMAND_PREFIX_WORDS.contains(&words[idx].as_str())
             || RESERVED_PREFIX_WORDS.contains(&words[idx].as_str()))
     {
+        if let Some(reason) = env_config_reroute(&words[idx]) {
+            return Some(reason);
+        }
         idx += 1;
     }
     let cmd = words.get(idx)?;
+    // A builtin that publishes an assignment to every later command carries
+    // the same reroute one word further along, where the prefix scan above
+    // stops. What an earlier session exported is state, not a word here.
+    if matches!(cmd.as_str(), "export" | "declare" | "typeset") {
+        return words[idx + 1..].iter().find_map(|w| env_config_reroute(w));
+    }
     if cmd.rsplit('/').next() != Some("git") {
         return None;
     }
@@ -148,8 +220,34 @@ pub fn detect_hook_bypass(words: &[String]) -> Option<String> {
             j += 1;
             continue;
         }
-        if matches!(w, "--git-dir" | "--work-tree" | "--namespace") {
-            j += 2; // separated value — skip it so it is not read as the subcommand
+        if let Some(attached) = w.strip_prefix("--config-env=") {
+            if is_hooks_path_key(attached) {
+                return Some(format!(
+                    "`git {w}` sets core.hooksPath from the environment, \
+                     rerouting the git hook stack"
+                ));
+            }
+            j += 1;
+            continue;
+        }
+        // Global options whose value is a separate word. Skipping the value is
+        // what keeps it from being read as the subcommand — and a subcommand
+        // read off a value ends the scan, so an option missing here hides the
+        // `--no-verify` that follows it. git rejects an abbreviation of these,
+        // so the full spelling is the whole set to carry.
+        if matches!(
+            w,
+            "--git-dir" | "--work-tree" | "--namespace" | "--config-env" | "--attr-source"
+        ) {
+            if w == "--config-env" && is_hooks_path_key(words.get(j + 1).map_or("", |v| v.as_str()))
+            {
+                return Some(format!(
+                    "`git --config-env {}` sets core.hooksPath from the environment, \
+                     rerouting the git hook stack",
+                    words[j + 1]
+                ));
+            }
+            j += 2;
             continue;
         }
         if w.starts_with('-') {
@@ -682,6 +780,67 @@ mod tests {
             "git pull origin main",
             "git commit $'--no-\\verify' -m x",
             "git status",
+        ] {
+            assert!(line(command).is_none(), "false-blocked: {command}");
+        }
+    }
+
+    /// Every spelling measured to apply core.hooksPath on git 2.55.0 — the
+    /// pair list in both its quotings and at any position, the indexed triple,
+    /// and `--config-env` attached or separated. The separated one also hid a
+    /// `--no-verify`, because its value read as the subcommand.
+    #[test]
+    fn flags_core_hooks_path_carried_in_through_the_environment() {
+        for command in [
+            "GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'core.hooksPath'='/dev/null'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'user.name=t' 'core.hooksPath=/dev/null'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'Core.HooksPath=/dev/null'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'user.name=a' 'core.hooksPath=b'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=core.hooksPath=/dev/null git commit -m x",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=Core.HooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
+            "git --config-env=core.hooksPath=HP commit -m x",
+            "git --config-env core.hooksPath=HP commit -m x",
+            "export GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\"",
+        ] {
+            assert!(line(command).is_some(), "missed: {command}");
+        }
+    }
+
+    /// A global option must not end the subcommand scan short of the
+    /// subcommand — separated, its value would read as one, and attached, a
+    /// scan that failed to step over it would restart before the git word.
+    /// Either way the flag behind it goes unreported.
+    #[test]
+    fn an_option_before_the_subcommand_does_not_hide_the_flag_behind_it() {
+        for command in [
+            "git --config-env sendemail.smtpuser=SU commit --no-verify -m x",
+            "git --config-env=sendemail.smtpuser=SU commit --no-verify -m x",
+            "git --attr-source HEAD commit --no-verify -m x",
+            "git --namespace n commit --no-verify -m x",
+        ] {
+            assert!(line(command).is_some(), "missed: {command}");
+        }
+    }
+
+    /// The environment variables a harness legitimately sets around git, and
+    /// the pairs that name core.hooksPath somewhere git does not read a key.
+    /// This crate's own tests run git under `GIT_CONFIG_GLOBAL`, and both
+    /// pairs below were measured to leave core.hooksPath unset.
+    #[test]
+    fn does_not_block_an_environment_that_reroutes_nothing() {
+        for command in [
+            "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null git status",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=t git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'alias.x=core.hooksPath'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'include.path=/tmp/core.hooksPath.conf'\" git commit -m x",
+            "GIT_CONFIG_PARAMETERS=\"'user.name=a core.hooksPath=b'\" git commit -m x",
+            "git --config-env=user.name=UN commit -m x",
+            "git --config-env user.name=UN commit -m x",
+            "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_X=core.hooksPath git commit -m x",
+            "GIT_AUTHOR_NAME=t git commit -m x",
+            "export GIT_CONFIG_GLOBAL=/dev/null",
         ] {
             assert!(line(command).is_none(), "false-blocked: {command}");
         }
