@@ -152,11 +152,10 @@ pub struct Submission {
     /// Present only where the window was scoped to a project and that project
     /// is a git work tree.
     pub committed: Vec<PathBuf>,
-    /// Project memory that entered context while it stood, grouped and ranked
-    /// as `harness.rule_loads` is. The runtime attaches a file again only
-    /// after a compaction or a resume clears its record of what it attached,
-    /// and never attaches one loaded on every turn, so this is what arrived
-    /// under the instruction rather than everything in force.
+    /// Memory that entered context while it stood, grouped and ranked as
+    /// `harness.rule_loads` is. The runtime attaches a file again only after a
+    /// compaction or a resume clears its record of what it attached, so this is
+    /// what arrived under the instruction rather than everything in force.
     pub rule_loads: Vec<RuleLoadGroup>,
     /// Interruptions the runtime marked while it stood — a floor, for the
     /// reason [`super::InterventionKind`] gives.

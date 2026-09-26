@@ -84,10 +84,10 @@ id can sit in two consecutive instructions, so such a row belongs to either.
 A row without one joins at the session and no finer.
 
 **Memory-load rows answer what `rule_loads` cannot, and are read with their own
-load reason.** The oracle sees a file the runtime attached lazily, after a read,
-including the re-attachments that follow a compaction; it never sees memory
-loaded eagerly, at session start or at the compaction itself, and never the
-read that triggered a lazy load. The `InstructionsLoaded` event carries both, so
+load reason.** The oracle sees every file the transcript records the runtime
+attaching — what a session is given without reaching a path and what work
+reached by path — but not why a file loaded or which read triggered it. The
+`InstructionsLoaded` event carries both, so
 a collector's rows hold whichever of them it keeps — read what its rows carry
 before relying on either. The runtime stamps its last submitted prompt id on an
 eager load too, so a `prompt_id` does not make a load lazy; the load reason
@@ -478,12 +478,13 @@ describing the change. Everything else goes in an appendix.
   instructions are still counted and their work still attributed; only the two
   rates taken over the text are withheld, and the window answers about
   everything else
-- `rule_loads` is the project memory the runtime attached to a turn. A rule
-  loaded on every turn is never attached and is absent here, so this is a floor
+- `rule_loads` is the memory the transcript records the runtime attaching. A
+  window whose up-front set went unrecorded — 8 of 235 sessions and 109 of 886
+  compacted windows over the local corpus — leaves it out, so this is a floor
   on what was in force. `sidechain` says whether a subagent's window received
   it, and every subagent lands in the one row, so no row is any single context's
   size — rank the two sides apart and read either as what the file cost the run.
-  The rate over them, `rule_load_chars_per_submission`, does add both sides, and
+  The rate over them, `memory_chars_per_submission`, does add both sides, and
   its doc comment says why
 - `files_discovered` is the corpus the run opened; `files_in_window` is what it
   answered about

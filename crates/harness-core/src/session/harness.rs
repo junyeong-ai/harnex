@@ -147,7 +147,8 @@ pub struct DenialGroup {
     pub span: Span,
 }
 
-/// A project memory file, and what loading it cost.
+/// A memory file — a `CLAUDE.md` or a rule, the operator's own among them —
+/// and what loading it cost.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RuleLoadGroup {
     pub path: PathBuf,

@@ -70,9 +70,18 @@ const AUTHORED_PROMPT_SOURCES: &[&str] = &["typed", "queued"];
 /// [`UserTurn::follows_agent_output`].
 const QUEUED_PROMPT_SOURCE: &str = "queued";
 
-/// The attachment carrying a project memory file that entered context. Its
-/// path and content are present on all 25,876 in the local corpus.
-const RULE_LOAD_ATTACHMENT: &str = "nested_memory";
+/// The attachment carrying a memory file the runtime loaded because work
+/// reached its path. Its path and content are present on all 25,876 in the
+/// local corpus.
+const NESTED_MEMORY_ATTACHMENT: &str = "nested_memory";
+
+/// The attachment carrying the memory a session is given without reaching a
+/// path — the operator's `CLAUDE.md`, the project's, and every rule without
+/// `paths:`. Over the local corpus's main threads it arrives before the first
+/// answer of 227 of 235 sessions and of 777 of 886 compacted windows, and 223
+/// times inside a window; all 14,931 of its file entries carry a path and
+/// content.
+const INSTRUCTIONS_ATTACHMENT: &str = "instructions";
 
 /// The system record carrying one Stop event's hook accounting.
 const STOP_SUMMARY_SUBTYPE: &str = "stop_hook_summary";
@@ -872,17 +881,34 @@ fn rendered_chars(rendered: &serde_json::Value) -> Option<usize> {
         .sum()
 }
 
-/// The memory file a `nested_memory` attachment carried.
-fn nested_memory_file(attachment: &serde_json::Value) -> Option<LoadedFile> {
+/// A memory file from its path and its content.
+fn loaded_file(
+    path: Option<&serde_json::Value>,
+    content: Option<&serde_json::Value>,
+) -> Option<LoadedFile> {
     Some(LoadedFile {
-        path: PathBuf::from(attachment.get("path")?.as_str()?),
-        chars: attachment
-            .get("content")?
-            .get("content")?
-            .as_str()?
-            .chars()
-            .count(),
+        path: PathBuf::from(path?.as_str()?),
+        chars: content?.as_str()?.chars().count(),
     })
+}
+
+/// The memory files an attachment carried: `Some(empty)` for an attachment
+/// that is not memory, `None` for a memory attachment missing a file's path or
+/// content.
+fn memory_files(name: &str, attachment: &serde_json::Value) -> Option<Vec<LoadedFile>> {
+    match name {
+        NESTED_MEMORY_ATTACHMENT => Some(vec![loaded_file(
+            attachment.get("path"),
+            attachment.get("content").and_then(|c| c.get("content")),
+        )?]),
+        INSTRUCTIONS_ATTACHMENT => attachment
+            .get("files")?
+            .as_array()?
+            .iter()
+            .map(|file| loaded_file(file.get("path"), file.get("content")))
+            .collect(),
+        _ => Some(Vec::new()),
+    }
 }
 
 fn blocks_of(content: Option<&serde_json::Value>) -> &[serde_json::Value] {
@@ -1194,15 +1220,9 @@ pub fn read_transcript(
                         continue;
                     }
                 };
-                let memory = match name {
-                    RULE_LOAD_ATTACHMENT => match nested_memory_file(attachment) {
-                        Some(file) => vec![file],
-                        None => {
-                            coverage.records_malformed += 1;
-                            continue;
-                        }
-                    },
-                    _ => Vec::new(),
+                let Some(memory) = memory_files(name, attachment) else {
+                    coverage.records_malformed += 1;
+                    continue;
                 };
                 out.push(Record::Attachment(Attachment {
                     citation,
@@ -1509,6 +1529,39 @@ mod tests {
             Record::Attachment(a) => assert!(a.sidechain),
             _ => panic!("expected an attachment"),
         }
+    }
+
+    #[test]
+    fn an_instructions_attachment_carries_every_file_it_gave_the_window() {
+        let (recs, _) = rec(&format!(
+            r#"{{"type":"attachment",{BASE},"attachment":{{"type":"instructions","files":[{{"path":"/home/me/.claude/CLAUDE.md","content":"ab","type":"User"}},{{"path":"/repo/.claude/rules/constitution.md","content":"cdefg","type":"Project"}}]}}}}"#
+        ));
+        match &recs[0] {
+            Record::Attachment(a) => {
+                let files: Vec<(&str, usize)> = a
+                    .memory
+                    .iter()
+                    .map(|f| (f.path.to_str().unwrap(), f.chars))
+                    .collect();
+                assert_eq!(
+                    files,
+                    [
+                        ("/home/me/.claude/CLAUDE.md", 2),
+                        ("/repo/.claude/rules/constitution.md", 5)
+                    ]
+                );
+            }
+            _ => panic!("expected an attachment"),
+        }
+    }
+
+    #[test]
+    fn an_instructions_file_without_its_content_makes_the_record_malformed() {
+        let (recs, cov) = rec(&format!(
+            r#"{{"type":"attachment",{BASE},"attachment":{{"type":"instructions","files":[{{"path":"/repo/CLAUDE.md","content":"ab"}},{{"path":"/repo/.claude/rules/x.md"}}]}}}}"#
+        ));
+        assert!(recs.is_empty());
+        assert_eq!(cov.records_malformed, 1);
     }
 
     #[test]
