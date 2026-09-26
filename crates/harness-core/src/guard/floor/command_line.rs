@@ -21,14 +21,18 @@
 //!   not read; `\$(…)` inside double quotes is the literal characters and
 //!   is not read either.
 //! - What a body's own grammar hides is not read either. The scan follows
-//!   quoting and comments; it does not model a `case` pattern's `)` or a
-//!   heredoc written inside the body, and both end the body early. Where
-//!   the substitution is unquoted that costs nothing — the remainder is
-//!   read as the commands it is — but inside a double-quoted capture the
-//!   remainder is string text, and a bypass standing there passes unread.
-//!   Measured on zsh 5.9 and bash 5.3, which run both forms; bash 3.2
-//!   rejects them. A body the scan cannot delimit at all is left opaque
-//!   instead, so the line keeps its verdict on everything outside it.
+//!   quoting and comments; it models neither a `case` pattern's `)`, nor a
+//!   heredoc written inside the body, nor a `${…}` carrying an unbalanced
+//!   paren, and each ends the body early or not at all. What the remainder
+//!   becomes then belongs to the enclosing word, not to a command of its
+//!   own: after an assignment the prefix scan walks through to the git word
+//!   and the bypass is still caught, after a command word it becomes that
+//!   command's arguments, and inside double quotes it becomes string text.
+//!   Only the first of those three still refuses. Measured on zsh 5.9 and
+//!   bash 5.3, which run these lines; bash 3.2 rejects them, and the `${…}`
+//!   shape ends in a visible skip rather than a silent pass. A body the
+//!   scan cannot delimit at all is left opaque instead, so the line keeps
+//!   its verdict on everything outside it.
 //! - A backtick body is *not* read, and the asymmetry is measured rather
 //!   than stylistic: a backtick is also the code-span mark, so every
 //!   document this parser meets is full of pairs, and pairing runs across
