@@ -63,6 +63,18 @@
 
 use std::fmt;
 
+/// What a command line read as, and the error that stopped the scan.
+///
+/// A scan that fails partway has still read the commands before it. Dropping
+/// those would let a quote late on the line un-judge a bypass spelled out
+/// early on it — a verdict lost rather than one never formed. The caller
+/// judges what was read first and only then answers for the error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Split {
+    pub commands: Vec<Vec<String>>,
+    pub error: Option<SplitError>,
+}
+
 /// The command line could not be read as the shell would read it. The caller
 /// fails open with a visible skip note.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -342,7 +354,7 @@ fn read_substitution(
     if depth >= MAX_SUBSTITUTION_DEPTH {
         return Ok((end, Vec::new()));
     }
-    let commands = split_nested(&input[start..end - 1], depth + 1).unwrap_or_default();
+    let (commands, _) = split_nested(&input[start..end - 1], depth + 1);
     Ok((end, commands))
 }
 
@@ -419,13 +431,20 @@ impl Accumulator {
 /// `&& || ; | & \n ( )` and a brace-group `{` (a standalone `{` followed by
 /// whitespace) as command separators; reads a `$(…)` body as the commands
 /// it runs while its text stays in the enclosing word.
-pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
-    split_nested(input, 0)
+pub fn split_commands(input: &str) -> Split {
+    let (commands, error) = split_nested(input, 0);
+    Split { commands, error }
 }
 
-fn split_nested(input: &str, depth: usize) -> Result<Vec<Vec<String>>, SplitError> {
-    let bytes = input.as_bytes();
+fn split_nested(input: &str, depth: usize) -> (Vec<Vec<String>>, Option<SplitError>) {
     let mut acc = Accumulator::default();
+    let error = scan(input, depth, &mut acc).err();
+    acc.push_command();
+    (acc.commands, error)
+}
+
+fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitError> {
+    let bytes = input.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         let b = bytes[i];
@@ -583,8 +602,7 @@ fn split_nested(input: &str, depth: usize) -> Result<Vec<Vec<String>>, SplitErro
         acc.push_char(ch);
         i += ch.len_utf8();
     }
-    acc.push_command();
-    Ok(acc.commands)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -592,7 +610,7 @@ mod tests {
     use super::*;
 
     fn split(input: &str) -> Vec<Vec<String>> {
-        split_commands(input).expect("splits")
+        split_commands(input).commands
     }
 
     fn owned(words: &[&[&str]]) -> Vec<Vec<String>> {
@@ -762,8 +780,8 @@ mod tests {
     #[test]
     fn reports_a_substitution_with_no_end() {
         assert_eq!(
-            split_commands("o=$(echo abc"),
-            Err(SplitError::UnterminatedSubstitution)
+            split_commands("o=$(echo abc").error,
+            Some(SplitError::UnterminatedSubstitution)
         );
     }
 
@@ -881,24 +899,24 @@ mod tests {
     #[test]
     fn reports_unterminated_quoting() {
         assert_eq!(
-            split_commands("echo 'oops"),
-            Err(SplitError::UnterminatedSingleQuote)
+            split_commands("echo 'oops").error,
+            Some(SplitError::UnterminatedSingleQuote)
         );
         assert_eq!(
-            split_commands("echo \"oops"),
-            Err(SplitError::UnterminatedDoubleQuote)
+            split_commands("echo \"oops").error,
+            Some(SplitError::UnterminatedDoubleQuote)
         );
         assert_eq!(
-            split_commands("echo $(oops"),
-            Err(SplitError::UnterminatedSubstitution)
+            split_commands("echo $(oops").error,
+            Some(SplitError::UnterminatedSubstitution)
         );
         assert_eq!(
-            split_commands("echo `oops"),
-            Err(SplitError::UnterminatedBacktick)
+            split_commands("echo `oops").error,
+            Some(SplitError::UnterminatedBacktick)
         );
         assert_eq!(
-            split_commands("echo $'oops"),
-            Err(SplitError::UnterminatedAnsiCQuote)
+            split_commands("echo $'oops").error,
+            Some(SplitError::UnterminatedAnsiCQuote)
         );
     }
 
@@ -1024,12 +1042,12 @@ mod tests {
     #[test]
     fn reports_an_undeliverable_code_point_as_unparseable_not_a_crash() {
         assert_eq!(
-            split_commands("git commit -m $'\\UFFFFFFFF'"),
-            Err(SplitError::AnsiCCodePoint)
+            split_commands("git commit -m $'\\UFFFFFFFF'").error,
+            Some(SplitError::AnsiCCodePoint)
         );
         assert_eq!(
-            split_commands("git commit -m $'\\uD800'"),
-            Err(SplitError::AnsiCCodePoint)
+            split_commands("git commit -m $'\\uD800'").error,
+            Some(SplitError::AnsiCCodePoint)
         );
     }
 
