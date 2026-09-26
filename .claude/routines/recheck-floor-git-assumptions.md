@@ -32,8 +32,9 @@ prompt: |
   - `GIT_CONFIG_KEY_<n>` applies the key whatever its case.
 
   A claim that moved is a floor that no longer holds: fix the module in the
-  same pass and name the git version in the record, because the next reader
-  compares against it.
+  same pass. Name the git version in the file produces: points at, and add a
+  dated line to the record below, because that is where the next tick reads
+  what the last one measured against.
 ---
 
 # Record
