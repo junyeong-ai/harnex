@@ -24,7 +24,10 @@
 //!   the whole text — whether a mention lands inside one depends on how
 //!   many backticks precede it. Reading them refused 2 of this
 //!   repository's 200 most recent commit bodies where `$(…)` refused none,
-//!   and the operator cannot read that refusal back to a cause. What stays
+//!   and the operator cannot read that refusal back to a cause. Read those
+//!   counts against their population: 43 of the same 200 reach no verdict
+//!   on either reading, because an apostrophe in prose leaves the line
+//!   unparseable and an unparseable line is a skip. What stays
 //!   open is the legacy spelling of a form `$(…)` now covers; the module
 //!   is a tripwire for the bypass a session writes by hand, and the
 //!   server-side re-run is the backstop for the one it does not.
@@ -220,10 +223,10 @@ const MAX_SUBSTITUTION_DEPTH: usize = 32;
 
 /// Byte index just past the `)` closing a `$(` that opened before `start`.
 ///
-/// A paren inside quotes neither nests nor closes, so the scan carries the
-/// quoting state: `$(grep -c ')' f)` ends at its last paren. Counting the
-/// quoted one would cut the body short and leave the rest of the line to be
-/// read as something else.
+/// A paren inside quoting neither nests nor closes, so the scan carries the
+/// quoting state — single, double and ANSI-C alike: `$(grep -c ')' f)` ends
+/// at its last paren. Counting the quoted one would cut the body short and
+/// leave the rest of the line to be read as something else.
 fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
     let bytes = input.as_bytes();
     let mut depth = 1usize;
@@ -231,6 +234,19 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
     while i < bytes.len() {
         match bytes[i] {
             b'\\' => i += 2,
+            // ANSI-C quoting, where `\'` does not close: reading this body as
+            // ordinary single quotes leaves the quoting inverted from here to
+            // the end, and the paren that ends the substitution is past it.
+            b'$' if bytes.get(i + 1) == Some(&b'\'') => {
+                i += 2;
+                while i < bytes.len() && bytes[i] != b'\'' {
+                    i += if bytes[i] == b'\\' { 2 } else { 1 };
+                }
+                if i >= bytes.len() {
+                    return Err(SplitError::UnterminatedAnsiCQuote);
+                }
+                i += 1;
+            }
             b'\'' => {
                 let end = input[i + 1..]
                     .find('\'')
@@ -557,6 +573,48 @@ mod tests {
         );
     }
 
+    /// A backslash escapes the next character inside a body too. Read as an
+    /// opening quote instead, an escaped quote puts the rest of the body
+    /// inside one, and the command standing after it is never reached.
+    #[test]
+    fn reads_an_escape_inside_a_substitution_body() {
+        for body in [
+            "echo a\\' ; git commit --no-verify",
+            "git commit --no-verify ; echo a\\'",
+        ] {
+            let commands = split(&format!("o=$({body})"));
+            assert!(
+                commands.contains(&owned(&[&["git", "commit", "--no-verify"]])[0]),
+                "the escape ended the body: {body} gave {commands:?}"
+            );
+        }
+    }
+
+    /// ANSI-C quoting inside a body: `\'` does not close it, so counting it
+    /// as an ordinary quote inverts the quoting for the rest of the body and
+    /// the paren that ends the substitution falls on the wrong side.
+    #[test]
+    fn carries_ansi_c_quoting_through_a_substitution_body() {
+        for body in [
+            "echo $'\\'' ; git commit --no-verify",
+            "echo $'a)b' ; git commit --no-verify",
+        ] {
+            let commands = split(&format!("o=$({body})"));
+            assert!(
+                commands.contains(&owned(&[&["git", "commit", "--no-verify"]])[0]),
+                "body ended early: {body} gave {commands:?}"
+            );
+        }
+    }
+
+    /// Double quotes hold a backtick as a character. The parser does not read
+    /// a backtick body anywhere, so demanding a partner for one here would
+    /// only make an ordinary string unreadable.
+    #[test]
+    fn holds_a_lone_backtick_in_double_quotes_as_a_character() {
+        assert_eq!(split("echo \"a ` b\""), owned(&[&["echo", "a ` b"]]));
+    }
+
     /// A backtick body stays one word (module note): the mark is the
     /// code-span mark, so reading it turns a document into a refusal.
     #[test]
@@ -615,6 +673,46 @@ mod tests {
         assert_eq!(
             split("echo $(grep -c ')' f)"),
             owned(&[&["grep", "-c", ")", "f"], &["echo", "$(grep -c ')' f)"]])
+        );
+    }
+
+    /// A `)` the body only carries does not end it, whichever quoting holds
+    /// it. Ending there drops the rest of the body — which is exactly where
+    /// a command that follows the quoted paren sits.
+    #[test]
+    fn does_not_end_a_substitution_at_a_paren_it_only_carries() {
+        for body in [
+            "grep -c \')\' f; git commit --no-verify",
+            "grep -c \")\" f; git commit --no-verify",
+            "printf a \\); git commit --no-verify",
+        ] {
+            let commands = split(&format!("x=$({body})"));
+            assert!(
+                commands.contains(&owned(&[&["git", "commit", "--no-verify"]])[0]),
+                "body ended early: {body} gave {commands:?}"
+            );
+        }
+    }
+
+    /// Running off the end of a body is reported, not indexed past. Each of
+    /// these ends inside something the scan is still in.
+    #[test]
+    fn reports_a_body_that_never_ends() {
+        assert_eq!(
+            split_commands("o=$(echo $'abc)"),
+            Err(SplitError::UnterminatedAnsiCQuote)
+        );
+        assert_eq!(
+            split_commands("o=$(echo abc"),
+            Err(SplitError::UnterminatedSubstitution)
+        );
+        assert_eq!(
+            split_commands("o=$(echo \"abc)"),
+            Err(SplitError::UnterminatedDoubleQuote)
+        );
+        assert_eq!(
+            split_commands("o=$(echo 'abc)"),
+            Err(SplitError::UnterminatedSingleQuote)
         );
     }
 
