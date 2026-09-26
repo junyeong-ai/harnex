@@ -12,6 +12,12 @@
 # policy and codegen stay absent: this repo runs neither loop on itself, and
 # `harnex check` reporting them skipped with a reason is the honest answer.
 #
+# validate.routines is ON: the one routine here holds the measurements the
+# hook-bypass floor is built on, which the suite cannot hold — a test asserts
+# harnex's verdict on a command line, never that git still reads that line the
+# way the verdict assumes. `spec` stamps Claude Code's surface and nothing
+# stamps git's, so the cadence is the whole mechanism.
+#
 # guard.floor stays absent, and the tripwire it used to hold back is armed:
 # the Bash PreToolUse entry refuses a command that would skip the hook stack,
 # and it reads nothing from here. What the section would arm is the freeze,
@@ -73,6 +79,8 @@ require_governs = true
 [validate.agents]
 
 [validate.output_styles]
+
+[validate.routines]
 
 [session]
 roots = ["~/.claude/projects"]
