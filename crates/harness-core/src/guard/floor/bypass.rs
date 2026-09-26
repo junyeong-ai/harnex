@@ -547,6 +547,16 @@ mod tests {
         assert!(line("o=$(noglob git commit --no-verify -m x)").is_some());
     }
 
+    /// A `$(` that neither scan can close was ordinary text inside double
+    /// quotes before bodies were read, so it stays text. The bypass standing
+    /// after it keeps the verdict it already had, and a line carrying no
+    /// bypass keeps its silence.
+    #[test]
+    fn keeps_a_verdict_past_a_substitution_that_cannot_be_closed() {
+        assert!(line("x=\"$(echo ${x:-(})\" ; git commit --no-verify -m x").is_some());
+        assert!(line("echo \"$(echo ${x:-(})\" ; git status").is_none());
+    }
+
     /// A quote late on the line does not un-judge what was read before it.
     /// The bypass here is the first command and parses cleanly; dropping it
     /// because of what follows is a verdict lost, not one never formed.

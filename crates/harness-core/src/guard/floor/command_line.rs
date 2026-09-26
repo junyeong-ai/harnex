@@ -342,7 +342,10 @@ fn opaque_substitution_end(input: &str, start: usize) -> Result<usize, SplitErro
 /// Reading the body is an addition to what this parser used to do. Where the
 /// scan cannot delimit or split it — a `case` pattern, a heredoc inside the
 /// body — the substitution stays the opaque word it was before, so an
-/// unreadable body costs the line nothing it already judged.
+/// unreadable body costs the line nothing it already judged. Where even the
+/// paren count cannot close it this reports, and each caller returns to what
+/// it did with a `$(` before: unquoted that was this same error, and inside
+/// double quotes it was two ordinary characters.
 fn read_substitution(
     input: &str,
     start: usize,
@@ -483,10 +486,22 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
                 // Double quotes stop word splitting, not substitution, so
                 // a `$(…)` still runs its body here and the scan reads it.
                 if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'(') {
-                    let (end, commands) = read_substitution(input, i + 2, depth)?;
-                    buf.push_str(&input[i..end]);
-                    inner.extend(commands);
-                    i = end;
+                    // Neither scan could find where this one ends. Inside
+                    // double quotes it was ordinary text before a body was
+                    // ever read, and text it stays — costing the line its
+                    // verdict over it is the subtraction this reading must
+                    // not make.
+                    match read_substitution(input, i + 2, depth) {
+                        Ok((end, commands)) => {
+                            buf.push_str(&input[i..end]);
+                            inner.extend(commands);
+                            i = end;
+                        }
+                        Err(_) => {
+                            buf.push('$');
+                            i += 1;
+                        }
+                    }
                 } else if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\n') {
                     i += 2; // line continuation — removed inside double quotes too
                 } else if bytes[i] == b'\\'
