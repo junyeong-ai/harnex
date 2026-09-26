@@ -6,8 +6,10 @@
 //! `$'\x6e'` would read as the literal `x6e` while the shell delivers `n`,
 //! which is a silent pass rather than a visible skip.
 //!
-//! Parsing boundaries (deliberate, all fail-safe — the caller turns a
-//! [`SplitError`] into a visible skip, never a block or a silent pass):
+//! Parsing boundaries, deliberate. A [`SplitError`] is the fail-safe one:
+//! the caller turns it into a visible skip, never a block. The others end
+//! in something passing unread, which is what a tripwire for the bypass a
+//! session writes by hand buys its low false-refusal rate with.
 //!
 //! - Unterminated quoting and an ANSI-C code point the shell cannot deliver
 //!   are [`SplitError`]s.
@@ -18,6 +20,15 @@
 //!   line rather than a mention of it. Single-quoted text is inert and is
 //!   not read; `\$(…)` inside double quotes is the literal characters and
 //!   is not read either.
+//! - What a body's own grammar hides is not read either. The scan follows
+//!   quoting and comments; it does not model a `case` pattern's `)` or a
+//!   heredoc written inside the body, and both end the body early. Where
+//!   the substitution is unquoted that costs nothing — the remainder is
+//!   read as the commands it is — but inside a double-quoted capture the
+//!   remainder is string text, and a bypass standing there passes unread.
+//!   Measured on zsh 5.9 and bash 5.3, which run both forms; bash 3.2
+//!   rejects them. A body the scan cannot delimit at all is left opaque
+//!   instead, so the line keeps its verdict on everything outside it.
 //! - A backtick body is *not* read, and the asymmetry is measured rather
 //!   than stylistic: a backtick is also the code-span mark, so every
 //!   document this parser meets is full of pairs, and pairing runs across
@@ -64,8 +75,6 @@ pub enum SplitError {
     /// A code point the shell cannot deliver as a character — past the
     /// Unicode maximum, or a surrogate no Rust string can carry.
     AnsiCCodePoint,
-    /// Substitution nested past [`MAX_SUBSTITUTION_DEPTH`].
-    SubstitutionTooDeep,
 }
 
 impl fmt::Display for SplitError {
@@ -77,7 +86,6 @@ impl fmt::Display for SplitError {
             Self::UnterminatedSubstitution => "unterminated command substitution",
             Self::UnterminatedBacktick => "unterminated backtick substitution",
             Self::AnsiCCodePoint => "ANSI-C code point the shell cannot deliver",
-            Self::SubstitutionTooDeep => "command substitution nested past the parser's bound",
         };
         f.write_str(text)
     }
@@ -217,8 +225,8 @@ fn decode_numeric_escape(rest: &str) -> Result<Option<(char, usize)>, SplitError
 }
 
 /// Nesting no command line reaches, and the depth at which recursing the
-/// parser would fault instead of answering. This module keeps every failure
-/// on the visible skip path, so the bound reports rather than crashes.
+/// parser would fault instead of answering. Past it the body is left unread,
+/// which is what every body this scan cannot follow already is.
 const MAX_SUBSTITUTION_DEPTH: usize = 32;
 
 /// Byte index just past the `)` closing a `$(` that opened before `start`.
@@ -231,8 +239,14 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
     let bytes = input.as_bytes();
     let mut depth = 1usize;
     let mut i = start;
+    let mut in_word = false;
     while i < bytes.len() {
         match bytes[i] {
+            // A comment runs to the newline, and the shell drops it before it
+            // is anything: a quote or a paren written there is neither.
+            b'#' if !in_word => {
+                i += input[i..].find('\n').unwrap_or(input.len() - i);
+            }
             b'\\' => i += 2,
             // ANSI-C quoting, where `\'` does not close: reading this body as
             // ordinary single quotes leaves the quoting inverted from here to
@@ -276,8 +290,60 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
             }
             _ => i += 1,
         }
+        // `#` opens a comment only at a word boundary, as it does one level
+        // up: `echo a#b` is one word and comments nothing.
+        in_word = !matches!(
+            bytes[i - 1],
+            b' ' | b'\t' | b'\n' | b';' | b'&' | b'|' | b'(' | b')'
+        );
     }
     Err(SplitError::UnterminatedSubstitution)
+}
+
+/// The span a `$(…)` covered before its body was read: parens counted, quoting
+/// ignored. [`substitution_end`] reads the body the shell would; where it
+/// cannot, the scan falls back here so the substitution stays the opaque word
+/// it used to be rather than costing the line the verdict on everything
+/// outside it.
+fn opaque_substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
+    let bytes = input.as_bytes();
+    let mut depth = 1usize;
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Ok(i + 1);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    Err(SplitError::UnterminatedSubstitution)
+}
+
+/// The span a `$(…)` covers, and the commands its body runs.
+///
+/// Reading the body is an addition to what this parser used to do. Where the
+/// scan cannot delimit or split it — a `case` pattern, a heredoc inside the
+/// body — the substitution stays the opaque word it was before, so an
+/// unreadable body costs the line nothing it already judged.
+fn read_substitution(
+    input: &str,
+    start: usize,
+    depth: usize,
+) -> Result<(usize, Vec<Vec<String>>), SplitError> {
+    let Ok(end) = substitution_end(input, start) else {
+        return Ok((opaque_substitution_end(input, start)?, Vec::new()));
+    };
+    if depth >= MAX_SUBSTITUTION_DEPTH {
+        return Ok((end, Vec::new()));
+    }
+    let commands = split_nested(&input[start..end - 1], depth + 1).unwrap_or_default();
+    Ok((end, commands))
 }
 
 /// The argv under assembly. A redirection's target is consumed rather than
@@ -358,9 +424,6 @@ pub fn split_commands(input: &str) -> Result<Vec<Vec<String>>, SplitError> {
 }
 
 fn split_nested(input: &str, depth: usize) -> Result<Vec<Vec<String>>, SplitError> {
-    if depth > MAX_SUBSTITUTION_DEPTH {
-        return Err(SplitError::SubstitutionTooDeep);
-    }
     let bytes = input.as_bytes();
     let mut acc = Accumulator::default();
     let mut i = 0;
@@ -401,9 +464,9 @@ fn split_nested(input: &str, depth: usize) -> Result<Vec<Vec<String>>, SplitErro
                 // Double quotes stop word splitting, not substitution, so
                 // a `$(…)` still runs its body here and the scan reads it.
                 if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'(') {
-                    let end = substitution_end(input, i + 2)?;
+                    let (end, commands) = read_substitution(input, i + 2, depth)?;
                     buf.push_str(&input[i..end]);
-                    inner.extend(split_nested(&input[i + 2..end - 1], depth + 1)?);
+                    inner.extend(commands);
                     i = end;
                 } else if bytes[i] == b'\\' && bytes.get(i + 1) == Some(&b'\n') {
                     i += 2; // line continuation — removed inside double quotes too
@@ -445,9 +508,9 @@ fn split_nested(input: &str, depth: usize) -> Result<Vec<Vec<String>>, SplitErro
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'(') {
-            let end = substitution_end(input, i + 2)?;
+            let (end, commands) = read_substitution(input, i + 2, depth)?;
             acc.push_str(&input[i..end]);
-            acc.push_substitution(split_nested(&input[i + 2..end - 1], depth + 1)?);
+            acc.push_substitution(commands);
             i = end;
             continue;
         }
@@ -694,36 +757,49 @@ mod tests {
         }
     }
 
-    /// Running off the end of a body is reported, not indexed past. Each of
-    /// these ends inside something the scan is still in.
+    /// A body with no closing paren anywhere is the one shape the fallback
+    /// cannot cover: there is no span to keep as a word.
     #[test]
-    fn reports_a_body_that_never_ends() {
-        assert_eq!(
-            split_commands("o=$(echo $'abc)"),
-            Err(SplitError::UnterminatedAnsiCQuote)
-        );
+    fn reports_a_substitution_with_no_end() {
         assert_eq!(
             split_commands("o=$(echo abc"),
             Err(SplitError::UnterminatedSubstitution)
         );
-        assert_eq!(
-            split_commands("o=$(echo \"abc)"),
-            Err(SplitError::UnterminatedDoubleQuote)
-        );
-        assert_eq!(
-            split_commands("o=$(echo 'abc)"),
-            Err(SplitError::UnterminatedSingleQuote)
-        );
     }
 
+    /// A body the read cannot follow leaves the substitution opaque, and the
+    /// commands standing beside it are still judged. Losing them is how
+    /// reading a body turns from an addition into a subtraction.
     #[test]
-    fn refuses_substitution_nested_past_the_bound() {
+    fn keeps_the_rest_of_the_line_when_a_body_cannot_be_read() {
+        for line in [
+            "x=$(cat <<'EOF'\ndon't\nEOF\n) ; git commit --no-verify -m x",
+            "x=$(echo a # don't\n) ; git commit --no-verify -m x",
+            "x=$(case y in y) echo z;; esac) ; git commit --no-verify -m x",
+        ] {
+            let commands = split(line);
+            assert!(
+                commands.contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
+                "the line lost its verdict: {line} gave {commands:?}"
+            );
+        }
+    }
+
+    /// Past the bound the body stops being read, which is what an unreadable
+    /// body already is. The line keeps its own commands either way, and the
+    /// recursion stays off the stack.
+    #[test]
+    fn stops_reading_a_substitution_nested_past_the_bound() {
         let deep = format!(
-            "{}git commit --no-verify{}",
+            "x={}echo a{} ; git commit --no-verify -m x",
             "$(".repeat(MAX_SUBSTITUTION_DEPTH + 2),
             ")".repeat(MAX_SUBSTITUTION_DEPTH + 2)
         );
-        assert_eq!(split_commands(&deep), Err(SplitError::SubstitutionTooDeep));
+        let commands = split(&deep);
+        assert!(
+            commands.contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
+            "the line lost its verdict: {commands:?}"
+        );
     }
 
     #[test]
