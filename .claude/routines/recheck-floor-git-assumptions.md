@@ -31,6 +31,12 @@ prompt: |
     position, and refuses an unquoted list outright.
   - `GIT_CONFIG_KEY_<n>` applies the key whatever its case.
 
+  This measurement runs the bypasses it measures, and this repository's own
+  floor refuses them — correctly, because they are git commands spelled in a
+  session's Bash call. Prepare the runs, hand them to the operator to run
+  outside the agent, and record what comes back. Collecting the output is
+  not worth routing around the floor for.
+
   A claim that moved is a floor that no longer holds: fix the module in the
   same pass. Name the git version in the file produces: points at, and add a
   dated line to the record below, because that is where the next tick reads
