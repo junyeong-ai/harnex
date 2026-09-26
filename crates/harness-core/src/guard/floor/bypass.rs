@@ -15,9 +15,11 @@
 //! Out of scope — obfuscated bypass, left to the project's own server-side
 //! re-run: a git/shell alias whose value carries the flag, argument
 //! indirection (`xargs git …`), a wrapper carrying its own options
-//! (`mise exec -- git …`, `npx … git …`), `sh -c` / `$(…)` nesting, and an
-//! environment already exported in an earlier session — a value this command
-//! line does not carry is state a syntactic check cannot read. A reroute that
+//! (`mise exec -- git …`, `npx … git …`), `sh -c`, and an environment already
+//! exported in an earlier session — a value this command line does not carry
+//! is state a syntactic check cannot read. A `$(…)` is not in this list: its
+//! body runs as the commands it spells, and [`split_commands`] reads it as
+//! far as it can follow the shell's own grammar. A reroute that
 //! never names the key is the same shape and is out for the same reason:
 //! `include.path` and `GIT_CONFIG_GLOBAL` hand git a file, and what that file
 //! sets is not on the command line. A *subcommand* option's
@@ -59,8 +61,20 @@ const HOOKED_SUBCOMMANDS: [(&str, &str, &str); 6] = [
 /// (`eval "git commit --no-verify"`, the `sh -c` class), is out of scope —
 /// the option or the re-parse breaks the skip, and modelling every wrapper's
 /// grammar is the arms race this avoids.
-const COMMAND_PREFIX_WORDS: [&str; 10] = [
-    "env", "command", "nice", "nohup", "time", "setsid", "exec", "eval", "sudo", "doas",
+const COMMAND_PREFIX_WORDS: [&str; 13] = [
+    "env",
+    "command",
+    "builtin",
+    "nice",
+    "nohup",
+    "time",
+    "setsid",
+    "exec",
+    "eval",
+    "sudo",
+    "doas",
+    "noglob",
+    "nocorrect",
 ];
 
 /// Shell reserved words that stand where a command does and are followed by
@@ -480,12 +494,16 @@ fn reroute_reason() -> String {
 /// `None`. A [`SplitError`] is the caller's cue to fail open with a visible
 /// skip, never to block.
 pub fn detect_command_line_bypass(command_line: &str) -> Result<Option<String>, SplitError> {
-    for words in split_commands(command_line)? {
-        if let Some(reason) = detect_hook_bypass(&words) {
+    // What the scan read is judged before the error that stopped it. A quote
+    // late on the line would otherwise un-judge a bypass spelled out early on
+    // it, turning a verdict already reached into a skip.
+    let split = split_commands(command_line);
+    for words in &split.commands {
+        if let Some(reason) = detect_hook_bypass(words) {
             return Ok(Some(reason));
         }
     }
-    Ok(None)
+    split.error.map_or(Ok(None), Err)
 }
 
 #[cfg(test)]
@@ -513,6 +531,15 @@ mod tests {
         assert!(line("o=$(git -c core.hooksPath=/dev/null commit -m x)").is_some());
         assert!(line("echo '$(git commit --no-verify)'").is_none());
         assert!(line("o=$(git log --oneline -20)").is_none());
+    }
+
+    /// A quote late on the line does not un-judge what was read before it.
+    /// The bypass here is the first command and parses cleanly; dropping it
+    /// because of what follows is a verdict lost, not one never formed.
+    #[test]
+    fn keeps_a_verdict_reached_before_the_scan_failed() {
+        assert!(line("git commit --no-verify -m x && echo it's done").is_some());
+        assert!(line("git commit --no-verify -m x ; echo \"oops").is_some());
     }
 
     #[test]
