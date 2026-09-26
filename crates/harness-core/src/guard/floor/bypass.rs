@@ -553,7 +553,18 @@ mod tests {
     /// bypass keeps its silence.
     #[test]
     fn keeps_a_verdict_past_a_substitution_that_cannot_be_closed() {
-        assert!(line("x=\"$(echo ${x:-(})\" ; git commit --no-verify -m x").is_some());
+        for text in [
+            "$(",
+            "the $( operator",
+            "a $( b",
+            "$(echo ${x:-(})",
+            "== B$( here",
+        ] {
+            assert!(
+                line(&format!("echo \"{text}\" ; git commit --no-verify -m x")).is_some(),
+                "the line lost its verdict over: {text}"
+            );
+        }
         assert!(line("echo \"$(echo ${x:-(})\" ; git status").is_none());
     }
 
