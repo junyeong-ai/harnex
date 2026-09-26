@@ -96,10 +96,11 @@ wire_enum! {
         /// text that was in context and did not survive it. Denominated in
         /// submissions, which is where that repetition happens.
         WithinSessionCharsPerSubmission => "within_session_chars_per_submission",
-        /// Characters of project memory the runtime loaded, the subagent's
-        /// windows counted with the main one: a rate is what an instruction
-        /// cost, not what any single context held.
-        RuleLoadCharsPerSubmission => "rule_load_chars_per_submission",
+        /// Characters of memory the runtime loaded — what a session is given
+        /// without reaching a path and what work reached by path — the
+        /// subagents' windows counted with the main one: a rate is what an
+        /// instruction cost, not what any single context held.
+        MemoryCharsPerSubmission => "memory_chars_per_submission",
         /// Context discarded to keep a session going. The count rather than
         /// the number of compactions: what a compaction costs is the tokens it
         /// dropped, and that is the same cost whether the operator asked for
@@ -196,7 +197,7 @@ impl SessionMetric {
             Self::WithinSessionCharsPerSubmission => {
                 Measurement::new(facts.prompts.within_sessions.chars, submissions)
             }
-            Self::RuleLoadCharsPerSubmission => Measurement::new(
+            Self::MemoryCharsPerSubmission => Measurement::new(
                 facts.harness.rule_loads.iter().map(|r| r.chars).sum(),
                 submissions,
             ),

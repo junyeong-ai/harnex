@@ -727,6 +727,7 @@ fn every_metric_corpus() -> (TempDir, SessionConfig) {
             "/p/.claude/rules/a.md",
             "abcde",
         ),
+        r#"{"type":"attachment","uuid":"r2","timestamp":"2026-08-01T09:00:02Z","sessionId":"s1","attachment":{"type":"instructions","files":[{"path":"/home/me/.claude/CLAUDE.md","content":"ab","type":"User"},{"path":"/p/CLAUDE.md","content":"cdefg","type":"Project"}]}}"#.to_string(),
         edit("s1", "e1", "2026-08-01T09:00:03Z", "/p/src/lib.rs"),
         commit("s1", "c1", "2026-08-01T09:00:04Z", "abc1234"),
         edit("s1", "e2", "2026-08-01T09:00:05Z", "/p/src/lib.rs"),
@@ -771,7 +772,8 @@ fn every_recorded_metric_computes_what_it_computed() {
     let pinned = [
         ("cross_session_chars_per_session", 72, 2),
         ("within_session_chars_per_submission", 144, 4),
-        ("rule_load_chars_per_submission", 5, 4),
+        // A file reached by path, and the two a session is given up front.
+        ("memory_chars_per_submission", 12, 4),
         // 250 and 40, the running total each session reached — not 350, which
         // is what adding both of s1's boundaries would give.
         ("dropped_tokens_per_submission", 290, 4),
