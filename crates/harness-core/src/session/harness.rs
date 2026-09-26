@@ -147,17 +147,32 @@ pub struct DenialGroup {
     pub span: Span,
 }
 
-/// A memory file — a `CLAUDE.md` or a rule, the operator's own among them —
+/// A memory text — a `CLAUDE.md` or a rule, the operator's own among them —
 /// and what loading it cost.
+///
+/// Grouped by text rather than by path. A linked worktree checks the
+/// repository out under another root, so one file loads under a path per
+/// checkout, and a checkout is usually gone by the time a window is read —
+/// over one consumer's week, 2,397 of the 2,553 paths its memory loaded from no
+/// longer existed — so a path cannot be traced back to the file it copies. An
+/// edit makes a new text, so a file edited inside the window is a row per
+/// version it was loaded at.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RuleLoadGroup {
-    pub path: PathBuf,
+    /// Every path this text was loaded from, most loads first. More than one
+    /// where one file entered from several checkouts, or two files hold the
+    /// same text.
+    pub paths: Vec<PathBuf>,
     /// Whether the loads counted here entered a subagent's window rather than
-    /// the main thread's. The same file appears under both where both read it.
-    /// One row holds every subagent that read the file, since a subagent's
-    /// window has no identity the transcript carries.
+    /// the main thread's. The same text appears under both where both read it.
+    /// One row holds every subagent that read it, since a subagent's window
+    /// has no identity the transcript carries.
     pub sidechain: bool,
     pub loads: usize,
+    /// Loads into a thread that already held this text since its last
+    /// compaction — the same file from a second checkout, or the up-front set
+    /// attached again inside a window.
+    pub reloads: usize,
     /// Characters entering context across every load. A row on the subagent
     /// side adds up windows that never saw each other, so read it as what the
     /// file cost the run and not as what any one context held.
@@ -255,38 +270,57 @@ impl Group {
     }
 }
 
-/// Rule loads by file and window, most characters first. The window and each
+#[derive(Default)]
+struct TextLoads {
+    loads: Group,
+    reloads: usize,
+    paths: HashMap<PathBuf, usize>,
+}
+
+/// Memory loads by text and window, most characters first. The window and each
 /// instruction group through this one tally, so a row means the same in both.
 #[derive(Default)]
 pub(crate) struct RuleLoadTally {
-    groups: HashMap<(PathBuf, bool), Group>,
+    groups: HashMap<(u64, bool), TextLoads>,
 }
 
 impl RuleLoadTally {
     pub(crate) fn observe(&mut self, file: &LoadedFile, citation: &Citation, sidechain: bool) {
-        self.groups
-            .entry((file.path.clone(), sidechain))
-            .or_default()
-            .observe(citation, file.chars as u64);
+        let text = self
+            .groups
+            .entry((file.fingerprint, sidechain))
+            .or_default();
+        text.loads.observe(citation, file.chars as u64);
+        text.reloads += usize::from(file.reload);
+        *text.paths.entry(file.path.clone()).or_default() += 1;
     }
 
     pub(crate) fn finish(self) -> Vec<RuleLoadGroup> {
         let mut rows: Vec<RuleLoadGroup> = self
             .groups
             .into_iter()
-            .map(|((path, sidechain), g)| RuleLoadGroup {
-                path,
-                sidechain,
-                loads: g.count,
-                chars: g.weight as usize,
-                span: g.span(),
+            .map(|((_, sidechain), text)| {
+                let mut paths: Vec<(PathBuf, usize)> = text.paths.into_iter().collect();
+                paths.sort_by(|(a, an), (b, bn)| bn.cmp(an).then(a.cmp(b)));
+                RuleLoadGroup {
+                    paths: paths.into_iter().map(|(path, _)| path).collect(),
+                    sidechain,
+                    loads: text.loads.count,
+                    reloads: text.reloads,
+                    chars: text.loads.weight as usize,
+                    span: text.loads.span(),
+                }
             })
             .collect();
+        // Two versions of one file can share a length and a path, so the order
+        // ends on where each was first loaded rather than on hash iteration.
         rows.sort_by(|a, b| {
             b.chars
                 .cmp(&a.chars)
-                .then(a.path.cmp(&b.path))
+                .then(a.paths.cmp(&b.paths))
                 .then(a.sidechain.cmp(&b.sidechain))
+                .then(a.span.first.timestamp.cmp(&b.span.first.timestamp))
+                .then(a.span.first.uuid.cmp(&b.span.first.uuid))
         });
         rows
     }
@@ -528,7 +562,31 @@ mod tests {
         loaded_into(uuid, seconds, path, chars, false)
     }
 
+    /// A load whose text the test does not care about: one path, one text.
     fn loaded_into(uuid: &str, seconds: i64, path: &str, chars: usize, sidechain: bool) -> Record {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::hash::DefaultHasher::new();
+        path.hash(&mut hasher);
+        memory_load(
+            uuid,
+            seconds,
+            path,
+            hasher.finish(),
+            chars,
+            sidechain,
+            false,
+        )
+    }
+
+    fn memory_load(
+        uuid: &str,
+        seconds: i64,
+        path: &str,
+        fingerprint: u64,
+        chars: usize,
+        sidechain: bool,
+        reload: bool,
+    ) -> Record {
         Record::Attachment(Attachment {
             citation: cite(uuid, seconds),
             kind: "nested_memory".into(),
@@ -536,6 +594,8 @@ mod tests {
             memory: vec![LoadedFile {
                 path: PathBuf::from(path),
                 chars,
+                fingerprint,
+                reload,
             }],
             sidechain,
         })
@@ -594,10 +654,49 @@ mod tests {
             loaded("r3", 300, "/repo/.claude/rules/huge.md", 90_000),
         ]);
 
-        assert_eq!(facts.rule_loads[0].path.file_name().unwrap(), "huge.md");
+        assert_eq!(
+            facts.rule_loads[0].paths,
+            [PathBuf::from("/repo/.claude/rules/huge.md")]
+        );
         assert_eq!(facts.rule_loads[0].chars, 90_000);
         assert_eq!(facts.rule_loads[1].loads, 2);
         assert_eq!(facts.rule_loads[1].chars, 200);
+    }
+
+    #[test]
+    fn one_text_from_two_checkouts_is_one_row_that_lists_both_paths() {
+        let main = "/repo/.claude/rules/observability.md";
+        let checkout = "/repo/.claude/worktrees/fix/.claude/rules/observability.md";
+        let facts = run(&[
+            memory_load("r1", 100, main, 7, 500, false, false),
+            memory_load("r2", 200, checkout, 7, 500, false, true),
+            memory_load("r3", 300, checkout, 7, 500, false, false),
+        ]);
+
+        assert_eq!(facts.rule_loads.len(), 1);
+        let row = &facts.rule_loads[0];
+        assert_eq!(
+            row.paths,
+            [PathBuf::from(checkout), PathBuf::from(main)],
+            "most loads first"
+        );
+        assert_eq!((row.loads, row.reloads, row.chars), (3, 1, 1_500));
+    }
+
+    #[test]
+    fn a_file_edited_inside_the_window_is_a_row_per_version_in_a_fixed_order() {
+        let path = "/repo/CLAUDE.md";
+        let facts = run(&[
+            memory_load("r1", 100, path, 1, 40, false, false),
+            memory_load("r2", 200, path, 2, 40, false, false),
+        ]);
+
+        let firsts: Vec<&str> = facts
+            .rule_loads
+            .iter()
+            .map(|r| r.span.first.uuid.as_str())
+            .collect();
+        assert_eq!(firsts, ["r1", "r2"]);
     }
 
     #[test]

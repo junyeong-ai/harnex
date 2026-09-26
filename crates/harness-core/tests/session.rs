@@ -520,7 +520,7 @@ fn an_instruction_carries_the_prompt_ids_it_spans_and_the_memory_that_arrived_un
     let loads: Vec<(&str, bool, usize, usize)> = subs[0]
         .rule_loads
         .iter()
-        .map(|r| (r.path.to_str().unwrap(), r.sidechain, r.loads, r.chars))
+        .map(|r| (r.paths[0].to_str().unwrap(), r.sidechain, r.loads, r.chars))
         .collect();
     assert_eq!(
         loads,
@@ -615,6 +615,37 @@ fn the_harness_side_separates_who_refused_and_what_each_hook_cost() {
 
     assert_eq!(h.rule_loads[0].loads, 1);
     assert_eq!(h.rule_loads[0].chars, 10);
+}
+
+#[test]
+fn a_rule_loaded_from_a_second_checkout_is_the_same_row_and_a_reload() {
+    let (_dir, config) = corpus(&[(
+        "-repo/s1.jsonl",
+        vec![
+            typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
+            rule_load(
+                "s1",
+                "m1",
+                "2026-08-01T09:00:01Z",
+                "/repo/.claude/rules/core.md",
+                "abcde",
+            ),
+            rule_load(
+                "s1",
+                "m2",
+                "2026-08-01T09:00:02Z",
+                "/repo/.claude/worktrees/fix/.claude/rules/core.md",
+                "abcde",
+            ),
+        ],
+    )]);
+
+    let facts = session::collect(&config, &CollectOptions::default()).unwrap();
+
+    assert_eq!(facts.harness.rule_loads.len(), 1);
+    let row = &facts.harness.rule_loads[0];
+    assert_eq!(row.paths.len(), 2);
+    assert_eq!((row.loads, row.reloads, row.chars), (2, 1, 10));
 }
 
 #[test]
@@ -2504,14 +2535,14 @@ fn a_groups_span_is_its_earliest_and_latest_whatever_order_the_files_arrive_in()
             "-Users-me-alpha/zzz.jsonl",
             vec![
                 typed("s1", "a1", "2026-08-01T09:00:00Z", STANDING),
-                rule_load("s1", "r1", "2026-08-01T09:00:01Z", "/p/CLAUDE.md", "old"),
+                rule_load("s1", "r1", "2026-08-01T09:00:01Z", "/p/CLAUDE.md", "same"),
             ],
         ),
         (
             "-Users-me-alpha/aaa.jsonl",
             vec![
                 typed("s2", "b1", "2026-08-20T09:00:00Z", STANDING),
-                rule_load("s2", "r2", "2026-08-20T09:00:01Z", "/p/CLAUDE.md", "new"),
+                rule_load("s2", "r2", "2026-08-20T09:00:01Z", "/p/CLAUDE.md", "same"),
             ],
         ),
     ]);

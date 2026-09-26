@@ -421,7 +421,10 @@ distinct calls), because diffuse friction points at a broad rule and repeated
 friction points at a habit, and the prescriptions are opposite. Then hook
 wall-clock against the `elapsed_ms` of the instructions in the window, which is
 what says whether it is worth anything: a hook holding two seconds is most of a
-ten-second instruction and none of a ten-minute one. Then rule-load characters.
+ten-second instruction and none of a ten-minute one. Then rule-load characters,
+and `reloads` beside them: a text loaded into a thread that already held it put
+nothing new in front of the agent, and its `paths` say whether a second
+checkout or the up-front set arriving again brought it.
 
 Relativise against the operator, never against other people: "this instruction
 ran 27 times your median" names an outlier without a population.
@@ -485,7 +488,9 @@ describing the change. Everything else goes in an appendix.
   it, and every subagent lands in the one row, so no row is any single context's
   size — rank the two sides apart and read either as what the file cost the run.
   The rate over them, `memory_chars_per_submission`, does add both sides, and
-  its doc comment says why
+  its doc comment says why. A row is one text: a file loaded from several
+  checkouts is one row listing each of its `paths`, and an edit starts a new
+  row
 - `files_discovered` is the corpus the run opened; `files_in_window` is what it
   answered about
 - `by_fate` counts the commits the transcript recorded, which is a floor

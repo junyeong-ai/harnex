@@ -40,7 +40,8 @@
 //! - Never treat "read nothing" as "found nothing". A discovered file that
 //!   cannot be opened is counted, and the caller is told.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use crate::wire_enum::wire_enum;
@@ -524,6 +525,12 @@ pub struct Attachment {
 pub struct LoadedFile {
     pub path: PathBuf,
     pub chars: usize,
+    /// Identity of the text, which tells two loads of one text from loads of
+    /// two. Held in memory only: the hash is not stable across builds.
+    pub fingerprint: u64,
+    /// Whether the thread that loaded it had already loaded this text since
+    /// its last compaction.
+    pub reload: bool,
 }
 
 /// One hook run inside a Stop event.
@@ -886,9 +893,14 @@ fn loaded_file(
     path: Option<&serde_json::Value>,
     content: Option<&serde_json::Value>,
 ) -> Option<LoadedFile> {
+    let text = content?.as_str()?;
+    let mut hasher = std::hash::DefaultHasher::new();
+    text.hash(&mut hasher);
     Some(LoadedFile {
         path: PathBuf::from(path?.as_str()?),
-        chars: content?.as_str()?.chars().count(),
+        chars: text.chars().count(),
+        fingerprint: hasher.finish(),
+        reload: false,
     })
 }
 
@@ -983,6 +995,10 @@ pub fn read_transcript(
     // exactly one of its records.
     let mut charged: HashMap<String, usize> = HashMap::new();
     let mut agent_output_since_user_turn = false;
+    // Memory texts this transcript's thread has loaded since its last
+    // compaction. A transcript is one thread: every record in the local
+    // corpus's subagent files is marked sidechain, and none in a main file.
+    let mut held: HashSet<u64> = HashSet::new();
 
     for line in reader.lines() {
         let line = line?;
@@ -1220,10 +1236,13 @@ pub fn read_transcript(
                         continue;
                     }
                 };
-                let Some(memory) = memory_files(name, attachment) else {
+                let Some(mut memory) = memory_files(name, attachment) else {
                     coverage.records_malformed += 1;
                     continue;
                 };
+                for file in &mut memory {
+                    file.reload = !held.insert(file.fingerprint);
+                }
                 out.push(Record::Attachment(Attachment {
                     citation,
                     kind: name.to_string(),
@@ -1239,6 +1258,7 @@ pub fn read_transcript(
                         coverage.records_malformed += 1;
                         continue;
                     };
+                    held.clear();
                     out.push(Record::Compaction(Compaction {
                         citation,
                         trigger: meta.trigger.unwrap_or_default(),
@@ -1562,6 +1582,31 @@ mod tests {
         ));
         assert!(recs.is_empty());
         assert_eq!(cov.records_malformed, 1);
+    }
+
+    #[test]
+    fn a_text_the_thread_already_holds_is_a_reload_until_a_compaction_clears_it() {
+        let load = |uuid: &str, second: u32, path: &str, text: &str| {
+            format!(
+                r#"{{"type":"attachment","uuid":"{uuid}","timestamp":"2026-08-26T00:00:{second:02}Z","sessionId":"s1","attachment":{{"type":"nested_memory","path":"{path}","content":{{"content":"{text}"}}}}}}"#
+            )
+        };
+        let (recs, _) = rec(&[
+            load("m1", 1, "/repo/CLAUDE.md", "same"),
+            load("m2", 2, "/repo/.claude/worktrees/w/CLAUDE.md", "same"),
+            load("m3", 3, "/repo/pkg/CLAUDE.md", "other"),
+            r#"{"type":"system","uuid":"k1","timestamp":"2026-08-26T00:00:04Z","sessionId":"s1","subtype":"compact_boundary","compactMetadata":{"trigger":"auto","preTokens":9,"postTokens":1}}"#.to_string(),
+            load("m4", 5, "/repo/CLAUDE.md", "same"),
+        ]
+        .join("\n"));
+        let reloads: Vec<bool> = recs
+            .iter()
+            .filter_map(|r| match r {
+                Record::Attachment(a) => Some(a.memory[0].reload),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reloads, [false, true, false, false]);
     }
 
     #[test]

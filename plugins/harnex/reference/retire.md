@@ -79,12 +79,18 @@ equality is used rather than anything looser.
 
 ## `retire drop-rule <path>`
 
-**Evidence:** the rule's absolute path does not appear in
-`facts.harness.rule_loads` — it entered context zero times across the window.
+**Evidence:** no row of `facts.harness.rule_loads` lists the rule among its
+`paths` — at its own path, or under another checkout of this repository, which
+is what a linked worktree is. Match a checkout's copy by the part of its path
+from `.claude/rules/` on. A row is one text, so a rule loaded only from a
+worktree is found there and nowhere under the project's own path. Absent from
+every row, it entered context zero times across the window. A copy taken for
+this rule when it is another only keeps a rule, which is the direction this
+comparison is allowed to fail in.
 
-**Window (invariant 2):** at least one rule of this project appears in
-`rule_loads`. If none do, the window carries no evidence about this project and
-every rule would look unloaded. Refuse and say so.
+**Window (invariant 2):** at least one rule of this project appears in a
+`rule_loads` row. If none do, the window carries no evidence about this project
+and every rule would look unloaded. Refuse and say so.
 
 **The limit to state (invariant 5):** a path-scoped rule loads only when a file
 it governs is read. A window in which nothing it governs was touched is a
