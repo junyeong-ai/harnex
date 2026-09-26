@@ -846,6 +846,21 @@ mod tests {
         }
     }
 
+    /// An unreadable body keeps the span the paren count gives it, which is
+    /// the span it had before any body was read. The count has to carry the
+    /// pairs the body only holds: end the word at the first `)` and what
+    /// follows starts a command inside what was one word.
+    #[test]
+    fn holds_an_unreadable_body_to_the_span_the_paren_count_gives() {
+        assert_eq!(
+            split("x=$(echo $'a (b) c) ; git commit --no-verify -m x"),
+            owned(&[
+                &["x=$(echo $'a (b) c)"],
+                &["git", "commit", "--no-verify", "-m", "x"],
+            ])
+        );
+    }
+
     /// Past the bound the body stops being read, which is what an unreadable
     /// body already is. The line keeps its own commands either way, and the
     /// recursion stays off the stack.
