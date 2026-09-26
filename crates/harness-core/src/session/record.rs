@@ -1746,6 +1746,29 @@ mod tests {
     }
 
     #[test]
+    fn a_system_record_that_is_not_a_boundary_leaves_what_the_thread_held() {
+        let lines = [
+            r#"{"type":"attachment","uuid":"m1","timestamp":"2026-08-26T00:00:01Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#,
+            r#"{"type":"system","uuid":"x1","timestamp":"2026-08-26T00:00:02Z","sessionId":"s1","subtype":"local_command"}"#,
+            r#"{"type":"attachment","uuid":"m2","timestamp":"2026-08-26T00:00:03Z","sessionId":"s1","attachment":{"type":"nested_memory","path":"/repo/CLAUDE.md","content":{"content":"same"}}}"#,
+        ]
+        .join("\n");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        std::fs::write(&path, lines).unwrap();
+        let mut cov = Coverage::default();
+        let window = Window {
+            since: Some("2026-08-26T00:00:03Z".parse().unwrap()),
+            ..Window::default()
+        };
+        let recs = read_transcript(&path, window, &mut cov).unwrap();
+        match recs.last() {
+            Some(Record::Attachment(a)) => assert!(a.memory[0].reload),
+            _ => panic!("expected the last load"),
+        }
+    }
+
+    #[test]
     fn a_rule_load_without_its_content_is_malformed_rather_than_free() {
         let (recs, cov) = rec(&format!(
             r#"{{"type":"attachment",{BASE},"attachment":{{"type":"nested_memory","path":"/repo/.claude/rules/testing.md"}}}}"#
