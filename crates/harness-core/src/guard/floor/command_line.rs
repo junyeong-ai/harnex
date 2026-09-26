@@ -779,13 +779,16 @@ mod tests {
 
     /// A `)` the body only carries does not end it, whichever quoting holds
     /// it. Ending there drops the rest of the body — which is exactly where
-    /// a command that follows the quoted paren sits. The paren stands between
-    /// characters rather than alone, because a one-character run is short
-    /// enough that a scan resuming at the wrong quote still lands past it and
-    /// reads the same either way.
+    /// a command that follows the quoted paren sits. The paren appears alone
+    /// and between characters because the two lengths break differently: a
+    /// scan resuming at the wrong quote still reads a one-character run
+    /// correctly, and a scan stepping by the wrong amount still reads an
+    /// even-length one correctly.
     #[test]
     fn does_not_end_a_substitution_at_a_paren_it_only_carries() {
         for body in [
+            "grep -c \')\' f; git commit --no-verify",
+            "grep -c \")\" f; git commit --no-verify",
             "grep -c \'ab)c\' f; git commit --no-verify",
             "grep -c \"ab)c\" f; git commit --no-verify",
             "printf a \\); git commit --no-verify",
