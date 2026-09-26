@@ -10,6 +10,7 @@ mutants.out.old/
 !.harness/observations/
 !.harness/decisions/
 !.harness/harvest/
+!.harness/records/
 *.swp
 .DS_Store
 .claude/scheduled_tasks.lock
