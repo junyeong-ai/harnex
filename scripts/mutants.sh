@@ -54,11 +54,24 @@ watch_ceiling() {
   done
 }
 
+# Job control gives the run a process group of its own, which is what lets the
+# cleanup reach a mutant through it. Signalling the run alone leaves that
+# mutant running and no longer watched: the watch ends with its root, and a
+# mutant that allocates without end has nothing left to stop it.
+set -m
+
+cleanup() {
+  kill "$WATCHER" 2>/dev/null || true
+  kill -- "-$RUN" 2>/dev/null || true
+}
+
 cargo mutants "$@" &
 readonly RUN=$!
 step "ceiling ${CEILING_MB} MB, watching the tree under ${RUN}"
 watch_ceiling "$RUN" &
 readonly WATCHER=$!
-trap 'kill "$WATCHER" "$RUN" 2>/dev/null || true' EXIT
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 wait "$RUN"
