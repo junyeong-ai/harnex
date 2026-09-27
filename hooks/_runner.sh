@@ -33,30 +33,56 @@
 # wrapper exists to prevent. `harnex audit` reports the absence as coverage.
 set -euo pipefail
 
-HOOKS="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)" || { echo "[harnex-skipped: cannot locate the hooks directory]" >&2; exit 0; }
+# Every exit below is 0, so the notice is the whole of what the operator gets
+# and it has to go where an exit of 0 is read: the control JSON on stdout. A
+# hook's stderr reaches a reader only where it exits 2, so a skip written
+# there is a verifier that quietly did not run.
+#
+# A reason carries a path, and a JSON string body admits neither of the two
+# characters that end it nor anything below 0x20. The class and not a range:
+# bash 3.2 orders `[\001-\037]` by collation and leaves tab and CR in.
+skip() {
+  local reason=$1
+  reason=${reason//[[:cntrl:]]/ }
+  reason=${reason//\\/\\\\}
+  reason=${reason//\"/\\\"}
+  printf '{"systemMessage":"[harnex-skipped: %s]","suppressOutput":true}\n' "$reason"
+  exit 0
+}
+
+# The directory is taken with parameter expansion rather than `dirname`. An
+# external command here is one the wrapper cannot be sure of, and its absence
+# does not announce itself: the substitution comes back empty, `cd ""` is a
+# no-op that succeeds, and the wrapper anchors on whatever directory the hook
+# happened to fire in — the one anchor this file exists to stop reading.
+case "$0" in
+  */*) SELF="${0%/*}" ;;
+  *) SELF="." ;;
+esac
+HOOKS="$(CDPATH='' cd -- "$SELF" && pwd -P)" || skip "cannot locate the hooks directory: $SELF"
 ROOT="${CLAUDE_PROJECT_DIR:-$(git -C "${HOOKS}" rev-parse --show-toplevel 2>/dev/null || echo "${HOOKS%/*}")}"
 # A root is an absolute path. Relative, it would resolve against the directory
 # the hook happened to fire in — the anchor this wrapper exists to stop reading.
 case "$ROOT" in
   /*) ;;
-  *) echo "[harnex-skipped: project root is not an absolute path: ${ROOT}]" >&2; exit 0 ;;
+  *) skip "project root is not an absolute path: ${ROOT}" ;;
 esac
 # Explicit, because the two shells disagree on the default: under `set -e` an
 # unguarded failure ends the hook non-zero, which is the blocked edit this
 # wrapper exists to prevent.
-cd "${ROOT}" 2>/dev/null || { echo "[harnex-skipped: cannot enter project root: ${ROOT}]" >&2; exit 0; }
+cd "${ROOT}" 2>/dev/null || skip "cannot enter project root: ${ROOT}"
 
-[[ $# -eq 0 ]] && { echo "[harnex-skipped: no script argument]" >&2; exit 0; }
+[[ $# -eq 0 ]] && skip "no script argument"
 SCRIPT="$1"; shift
 
 case "$SCRIPT" in
-  *..*) echo "[harnex-skipped: path traversal refused: $SCRIPT]" >&2; exit 0 ;;
+  *..*) skip "path traversal refused: $SCRIPT" ;;
 esac
 
 # Beside this wrapper, never under the root: the two are the same directory in
 # a scaffolded harness, and where they are not, the verifiers are still here.
 VERIFIER="${HOOKS}/${SCRIPT}"
-[[ -f "${VERIFIER}" ]] || { echo "[harnex-skipped: verifier not found: ${VERIFIER}]" >&2; exit 0; }
+[[ -f "${VERIFIER}" ]] || skip "verifier not found: ${VERIFIER}"
 
 case "$SCRIPT" in
   *.sh)
@@ -66,14 +92,14 @@ case "$SCRIPT" in
     # `--frozen` never mutates the lockfile: re-locking as a side effect of a
     # hook firing is a surprise, so drift skips and the developer re-syncs
     # deliberately.
-    uv run --frozen python -c "" 2>/dev/null || { echo "[harnex-skipped: uv env unavailable — run 'uv sync']" >&2; exit 0; }
+    uv run --frozen python -c "" 2>/dev/null || skip "uv env unavailable — run 'uv sync'"
     exec uv run --frozen python "${VERIFIER}" "$@"
     ;;
   *.ts|*.js|*.mjs)
-    command -v node >/dev/null 2>&1 || { echo "[harnex-skipped: node not found]" >&2; exit 0; }
+    command -v node >/dev/null 2>&1 || skip "node not found"
     exec node "${VERIFIER}" "$@"
     ;;
   *)
-    echo "[harnex-skipped: unsupported verifier extension: $SCRIPT]" >&2; exit 0
+    skip "unsupported verifier extension: $SCRIPT"
     ;;
 esac
