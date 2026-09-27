@@ -7,9 +7,10 @@
 //! adopters receive; this repository's copy is held byte-identical to it by
 //! `adopted_scaffold_matches_templates`.
 
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 fn arm() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -49,6 +50,30 @@ fn run(path: &str, cwd: &Path) -> Output {
         .env("PATH", path)
         .output()
         .expect("run the arm")
+}
+
+/// What the runtime writes to a PreToolUse hook, for the cases that care what
+/// reaches the far side of the arm.
+const TOOL_CALL: &str =
+    r#"{"tool_name":"Bash","tool_input":{"command":"git commit --no-verify -m x"}}"#;
+
+fn run_with_stdin(path: &str, cwd: &Path, input: &str) -> Output {
+    let mut child = Command::new(bash())
+        .arg(arm())
+        .current_dir(cwd)
+        .env("PATH", path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run the arm");
+    child
+        .stdin
+        .take()
+        .expect("stdin is piped")
+        .write_all(input.as_bytes())
+        .expect("write the tool call");
+    child.wait_with_output().expect("the arm finishes")
 }
 
 #[test]
@@ -115,13 +140,15 @@ fn an_oracle_that_does_not_run_says_so_on_the_operators_channel() {
     );
 }
 
-/// A path is interpolated into that JSON, and a directory name may hold the
-/// characters that end a JSON string. Malformed control output is discarded by
-/// the runtime, which would make the notice silent exactly where it is needed.
+/// A path is interpolated into that JSON, and a directory name may hold any
+/// byte but `/` and NUL. Malformed control output is discarded by the runtime,
+/// which would make the notice silent exactly where it is needed.
 #[test]
 fn a_path_that_could_break_the_json_does_not() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let bin = dir.path().join(r#"say "hi"\ok"#);
+    // Both characters that end a JSON string, and control characters from
+    // either side of the ones with a short escape.
+    let bin = dir.path().join("say \"hi\"\\ok\u{1}and\tthen\rmore");
     std::fs::create_dir_all(&bin).expect("bin");
     let stub = bin.join("harnex");
     std::fs::write(&stub, "#!/bin/sh\nexit 1\n").expect("write stub");
@@ -131,12 +158,42 @@ fn a_path_that_could_break_the_json_does_not() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let notice: serde_json::Value =
         serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{stdout:?}: {e}"));
+    let message = notice["systemMessage"].as_str().expect("a string");
     assert!(
-        notice["systemMessage"]
-            .as_str()
-            .unwrap_or_default()
-            .contains(r#"say "hi"\ok"#),
-        "the path survives escaping: {stdout}"
+        message.contains("say \"hi\"\\ok"),
+        "what only needs escaping survives it: {message:?}"
+    );
+    assert!(
+        !message.chars().any(|c| (c as u32) < 0x20),
+        "what a string body cannot carry at all is gone: {message:?}"
+    );
+}
+
+/// Both probes run before the oracle does, and the oracle reads the tool call
+/// off stdin. A probe that consumed it, or a redirection that replaced it,
+/// would hand the floor an empty command — and a floor shown no command has
+/// nothing to refuse.
+#[test]
+fn the_probes_leave_stdin_for_the_oracle() {
+    // A real oracle answers either `--help` from its parser without reading
+    // stdin. This one does the same, then reports what reached it: 2 where the
+    // tool call arrived whole, 3 where stdin was already at end. Shell
+    // builtins only — a case runs with a `PATH` that answers for the oracle
+    // and for nothing else.
+    // What it read, not whether `read` returned true: a tool call carries no
+    // trailing newline, so `read` reports the end of input having filled the
+    // variable, and a status test here would fail on a stdin that arrived.
+    let (dir, path) = with_oracle(
+        "case \"${1:-} ${3:-}\" in *--help*) exit 0 ;; esac\n\
+         read -r line\n\
+         case \"$line\" in *--no-verify*) exit 2 ;; \"\") exit 3 ;; *) exit 4 ;; esac",
+    );
+    let output = run_with_stdin(&path, dir.path(), TOOL_CALL);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the oracle read the whole tool call off stdin; 3 is a stdin already \
+         spent by a probe, 4 is one that arrived altered"
     );
 }
 

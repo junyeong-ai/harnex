@@ -182,3 +182,22 @@ fn stdin_that_is_not_a_hook_event_allows_and_says_so() {
     );
     assert!(text(&output.stdout).contains("floor-check skipped"));
 }
+
+/// The shell arm every scaffold ships asks this exact question before handing
+/// a tool call over, and stands down silently where it does not parse. The
+/// cases above spell the subcommand and so would catch a rename; the help flag
+/// they never pass is the part the arm actually depends on.
+#[test]
+fn the_question_the_shipped_arm_asks_first_parses() {
+    let output = Command::new(env!("CARGO_BIN_EXE_harnex"))
+        .args(["guard", "floor", "--help"])
+        .output()
+        .expect("run the oracle");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "`harnex guard floor --help` is the probe in \
+         plugins/harnex/templates/common/check-floor.sh; anything else there \
+         leaves every floor it fronts standing down without a word"
+    );
+}
