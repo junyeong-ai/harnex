@@ -2130,15 +2130,27 @@ mod tests {
         );
     }
 
+    /// Every spelling of the allocation form, because each character class in
+    /// it decides whether the word is dropped or becomes the command word —
+    /// and the command word is what the bypass check reads. Measured on bash
+    /// 5.3, which is where the form runs at all: `{_fd}` and `{a1}` allocate
+    /// and git runs, `{9x}` is no varname so the word stands and nothing runs.
     #[test]
     fn binds_an_fd_prefix_to_its_redirection() {
         assert_eq!(
             split("git commit 2>&1 --no-verify"),
             owned(&[&["git", "commit", "--no-verify"]])
         );
+        for prefix in ["{fd}", "{_fd}", "{a1}"] {
+            assert_eq!(
+                split(&format!("{prefix}>/dev/null git commit --no-verify -m x")),
+                owned(&[&["git", "commit", "--no-verify", "-m", "x"]]),
+                "{prefix}"
+            );
+        }
         assert_eq!(
-            split("{fd}>/dev/null git commit --no-verify -m x"),
-            owned(&[&["git", "commit", "--no-verify", "-m", "x"]])
+            split("{9x}>/dev/null git commit --no-verify -m x"),
+            owned(&[&["{9x}", "git", "commit", "--no-verify", "-m", "x"]])
         );
     }
 
