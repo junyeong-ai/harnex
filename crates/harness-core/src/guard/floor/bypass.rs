@@ -17,11 +17,15 @@
 //! indirection (`xargs git …`), a wrapper carrying its own options
 //! (`mise exec -- git …`, `npx … git …`), `sh -c`, a word the shell rewrites
 //! before git sees it (brace expansion — `--no-verify{,}`, `{commit,
-//! --no-verify}` — and a glob standing for the git path, `gi[t] commit …`),
-//! and an environment already exported in an earlier session — a value this
-//! command line does not carry is state a syntactic check cannot read. A `$(…)` is not in this list: its
-//! body runs as the commands it spells, and [`split_commands`] reads it as
-//! far as it can follow the shell's own grammar. A reroute that
+//! --no-verify}` — a glob standing for the git path, `gi[t] commit …`, and an
+//! expansion's value standing in for a flag — `--no-verify$(true)`,
+//! `$(echo --no-verify)`, `F=--no-verify; git commit $F`), and an environment
+//! already exported in an earlier session — a value this command line does
+//! not carry is state a syntactic check cannot read. A `$(…)` body is not in
+//! this list: it runs as the commands it spells, and [`split_commands`] reads
+//! it as far as it can follow the shell's own grammar, which stops at a `#`
+//! glued to the `)` of a process substitution or an array and reads it as a
+//! comment (`<(true)#x; git commit --no-verify`). A reroute that
 //! never names the key is the same shape and is out for the same reason:
 //! `include.path` and `GIT_CONFIG_GLOBAL` hand git a file, and what that file
 //! sets is not on the command line. A *subcommand* option's
