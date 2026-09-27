@@ -34,48 +34,52 @@
 //!   scan cannot delimit at all is left opaque instead, so the line keeps
 //!   its verdict on everything outside it.
 //! - A backtick body is *not* read, and the asymmetry is measured rather
-//!   than stylistic: a backtick is also the code-span mark, so every
-//!   document this parser meets is full of pairs, and pairing runs across
-//!   the whole text — whether a mention lands inside one depends on how
-//!   many backticks precede it. Reading them refused 2 of this
-//!   repository's 200 most recent commit bodies where `$(…)` refused none,
-//!   and the operator cannot read that refusal back to a cause. Read those
-//!   counts against their population: 43 of the same 200 reach no verdict
-//!   on either reading, because an apostrophe in prose leaves the line
-//!   unparseable and an unparseable line is a skip. What stays
-//!   open is the legacy spelling of a form `$(…)` now covers; the module
-//!   is a tripwire for the bypass a session writes by hand, and the
+//!   than stylistic: a backtick is also the code-span
+//!   mark, so every document this parser meets is full of pairs, and
+//!   pairing runs across the whole text — whether a mention lands inside
+//!   one depends on how many backticks precede it. Reading them refused 2
+//!   of this repository's 200 most recent commit bodies where `$(…)`
+//!   refused none, and the operator cannot read that refusal back to a
+//!   cause. Read those counts against their population: 43 of the same 200
+//!   reach no verdict on either reading, because an apostrophe in prose
+//!   leaves the line unparseable and an unparseable line is a skip. What
+//!   stays open is the legacy spelling of a form `$(…)` now covers; the
+//!   module is a tripwire for the bypass a session writes by hand, and the
 //!   server-side re-run is the backstop for the one it does not.
 //! - Redirections are read as the shell reads them (maximal munch, optional
 //!   fd prefix): the operator terminates the current word and its target is
 //!   dropped, so `2>&1` binds as one redirection rather than splitting at its
 //!   `&`, and `--no-verify>log` reads as a flag plus a redirection rather
 //!   than one opaque word.
-//! - A heredoc's delimiter is read; its body is not. `<<` / `<<-` are
-//!   recognised whole and the delimiter word is consumed as the operator's
-//!   target — except inside a body, where a `<<` is that body's own text and
-//!   opens nothing, expanding body or not: the scan walks a body looking for
-//!   commands and would otherwise end the outer body at the inner delimiter.
-//!   Each newline remains a separator, so a prose line beginning
-//!   `git commit --no-verify` inside `cat <<EOF` still false-blocks. Whether
-//!   a body is a document or a script is the receiving program's to decide,
-//!   not the delimiter's: `bash <<'EOF'` runs every line of it, quoted
-//!   delimiter and all, so no rule reading the command line can tell the two
-//!   apart. Scanning the body false-blocks a document; skipping it passes a
-//!   script. This takes the block, which surfaces, over the pass, which does
-//!   not. A mention inside the line rather than at its head — the shape a
-//!   document that quotes the flag actually takes — is not a command and
-//!   passes. What the delimiter does settle is expansion: quote any
-//!   character of it and the body is literal, so a `$(…)` written there is a
-//!   mention and is read only under a bare delimiter. Reading it under a
-//!   quoted one refused the documents that explain this module, and what
-//!   that costs is a bypass wrapped in an assignment inside `bash <<'EOF'` —
-//!   a second shell running a script, which is out of scope however it is
-//!   spelled.
+//! - A heredoc's delimiter is read as the operator's target, and its body is
+//!   read twice because two programs read it. The shell expands a body under
+//!   a bare delimiter before the receiving program sees a byte, and only
+//!   `\`, `$` and a backtick act there — an apostrophe quotes nothing and a
+//!   `#` comments nothing — so a `$(…)` written in one stands however it is
+//!   surrounded. The receiving program then reads what it was handed and may
+//!   be a shell: `bash <<'EOF'` runs every line of it, quoted delimiter and
+//!   all, so no rule reading the command line can tell a document from a
+//!   script. That second reading is the command-line one, obeying the quoting
+//!   the first does not, and each answers for one program: substitutions are
+//!   the first reading's and everything else the second's, so neither repeats
+//!   the other's commands. Neither reaches past the body either — a quote or
+//!   a `$(` opened in body text is that body's, the command line after the
+//!   delimiter line keeps its verdict, and a `<<` written in a body or in a
+//!   delimiter line opens nothing on the line that carried the operator.
+//!   Scanning the body false-blocks a document; skipping it passes a script.
+//!   This takes the block, which surfaces, over the pass, which does not, so
+//!   a prose line beginning `git commit --no-verify` inside `cat <<EOF` still
+//!   false-blocks, while a mention inside the line rather than at its head —
+//!   the shape a document that quotes the flag actually takes — is not a
+//!   command and passes. What the delimiter settles is the first reading:
+//!   quote any character of it and nothing expands, so a `$(…)` there is a
+//!   mention. Reading it under a quoted delimiter refused the documents that
+//!   explain this module, and what that costs is a bypass wrapped in an
+//!   assignment inside `bash <<'EOF'` — a second shell running a script,
+//!   which is out of scope however it is spelled.
 
 use std::collections::HashMap;
 use std::fmt;
-use std::ops::Range;
 
 /// What a command line read as, and the error that stopped the scan.
 ///
@@ -230,15 +234,92 @@ fn heredoc_body(input: &str, start: usize, heredoc: &Heredoc) -> (usize, usize) 
     (input.len(), input.len())
 }
 
-/// Whether `i` falls in one of `ranges`, which the scan keeps two of: every
-/// heredoc body, against which a `<<` is text rather than an operator, and the
-/// literal ones alone, in which the shell expands nothing so a `$(…)` is text
-/// rather than a command this line runs.
-fn inside_body(ranges: &[Range<usize>], i: usize) -> bool {
-    // Ascending and disjoint, which the push site holds them to. Reading them
-    // all costs a line one pass per `$(` over every heredoc written before it.
-    let next = ranges.partition_point(|range| range.end <= i);
-    ranges.get(next).is_some_and(|range| range.contains(&i))
+/// Both readings of a heredoc `body`, into `acc`, and the error the line
+/// keeps. `expanded` says whether the shell expanded this body before the
+/// receiving program saw it, which is a bare delimiter under text that expands
+/// at all.
+///
+/// Neither reading is given the input, only the body, so neither can reach
+/// past it: a quote or a `$(` opened in body text is the body's, and the
+/// command line after the delimiter line keeps the verdict it had. That is
+/// also what makes a `<<` written in a body or in a delimiter line open
+/// nothing on the line that carried the operator — the scan never walks
+/// either.
+///
+/// A body either reading cannot read is a body whose commands are unknown, so
+/// the error is the line's and the line is a visible skip. That a reading
+/// stopped is no evidence that a shell stops there: where this scan's grammar
+/// is the weaker of the two it stops early, and a span ended by counting
+/// parens leaves a quote loose that pairs with one further down the body and
+/// swallows the command between. Most heredocs carry prose, whose apostrophe
+/// ends the reading on the first line, so the skips this costs are many —
+/// and every one of them is a line whose body this scan did not read.
+fn heredoc_commands(
+    body: &str,
+    expanded: bool,
+    depth: usize,
+    acc: &mut Accumulator,
+) -> Option<SplitError> {
+    if depth >= MAX_NESTING_DEPTH {
+        return None;
+    }
+    // What the receiving program makes of the body if it is a shell. The other
+    // reading holds the substitutions, so this one leaves them the text they
+    // are and no command is found twice.
+    let (commands, script) = split_nested(body, depth + 1, Expansion::Mention);
+    acc.push_substitution(commands);
+    // What the shell already did to the body, which no quoting in it answers
+    // to.
+    let expansion = expanded
+        .then(|| expanded_substitutions(body, depth + 1, acc).err())
+        .flatten();
+    script.or(expansion)
+}
+
+/// The commands an expanding heredoc `body` runs by expansion alone.
+///
+/// Only `\`, `$` and a backtick act in a body the shell expands: an
+/// apostrophe quotes nothing and a `#` comments nothing, so `it's $(…) isn't`
+/// and `# built at $(…)` both run the substitution. Reading the body as the
+/// command list it might also be obeys those characters, and so cannot answer
+/// for this.
+fn expanded_substitutions(
+    body: &str,
+    depth: usize,
+    acc: &mut Accumulator,
+) -> Result<(), SplitError> {
+    let bytes = body.as_bytes();
+    let mut settled = Settled::default();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            // A backslash escapes only these here; before anything else it
+            // is one of the body's own characters.
+            b'\\' if matches!(bytes.get(i + 1), Some(b'$' | b'`' | b'\\' | b'\n')) => i += 2,
+            b'$' if bytes.get(i + 1) == Some(&b'(') => {
+                // A span this reading cannot delimit is a command list it has
+                // not read, and the shell runs it either way. The paren count
+                // the command line falls back to would end the span somewhere
+                // and report nothing from it, which is that list passing in
+                // silence.
+                let (end, commands) =
+                    read_substitution(body, i, depth, Expansion::Runs, &mut settled)
+                        .ok_or(SplitError::UnterminatedSubstitution)?;
+                acc.push_substitution(commands);
+                i = end;
+            }
+            // A backtick body is not read here either, for the reason the
+            // module note records.
+            b'`' => {
+                let end = body[i + 1..]
+                    .find('`')
+                    .ok_or(SplitError::UnterminatedBacktick)?;
+                i += end + 2;
+            }
+            _ => i += 1,
+        }
+    }
+    Ok(())
 }
 
 /// Decode a `$'…'` body starting at `start` (just past the opening quote),
@@ -347,8 +428,16 @@ fn decode_numeric_escape(rest: &str) -> Result<Option<(char, usize)>, SplitError
 
 /// Nesting no command line reaches, and the depth at which recursing the
 /// parser would fault instead of answering. Past it the body is left unread,
-/// which is what every body this scan cannot follow already is.
-const MAX_SUBSTITUTION_DEPTH: usize = 32;
+/// which is what every body this scan cannot follow already is. A substitution
+/// body and a heredoc body both count, being the two texts this module reads
+/// as commands of their own.
+///
+/// It bounds what a line costs as well as the stack: each level reads its own
+/// text, so a byte nested `d` deep is read `d` times. Measured on a release
+/// build over 250 KB of `"$(#)"` repeated, 0.011 s at depth 0 and 0.679 s at
+/// depth 32 — linear in the depth, and the cap is what keeps that a multiple
+/// rather than a ladder.
+const MAX_NESTING_DEPTH: usize = 32;
 
 /// Byte index just past the `)` closing a `$(` that opened before `start`.
 ///
@@ -673,10 +762,15 @@ fn opaque_substitution_end(input: &str, start: usize) -> Result<usize, SplitErro
 }
 
 /// The span the `$(…)` at `dollar` covers and the commands its body runs, or
-/// `None` where it is not a body this line runs: the scan cannot follow the
-/// shell's grammar far enough to say — a `case` pattern's `)`, a heredoc
-/// written inside the body — or the `$(` stands in a literal heredoc body,
-/// where the shell expands nothing.
+/// `None` where the scan cannot follow the shell's grammar far enough to
+/// delimit the span at all — a `case` pattern's `)`, a heredoc written inside
+/// the body.
+///
+/// Where nothing expands the span is still the substitution's, because a span
+/// is grammar: the receiving shell reading a literal body delimits it the same
+/// way, and an expanded body had the whole of it replaced before that shell
+/// saw a byte. Only what is reported differs, and there the text is a mention
+/// and runs nothing.
 ///
 /// Reading a body is an addition to what this parser used to do, so `None`
 /// returns each caller to what it did with a `$(` before there was one:
@@ -686,19 +780,26 @@ fn read_substitution(
     input: &str,
     dollar: usize,
     depth: usize,
-    literal: &[Range<usize>],
+    expansion: Expansion,
     settled: &mut Settled,
 ) -> Option<(usize, Vec<Vec<String>>)> {
-    if inside_body(literal, dollar) {
-        return None;
-    }
     let start = dollar + 2;
     let end = substitution_end(input, start, settled).ok()?;
-    if depth >= MAX_SUBSTITUTION_DEPTH {
+    if expansion == Expansion::Mention || depth >= MAX_NESTING_DEPTH {
         return Some((end, Vec::new()));
     }
-    let (commands, _) = split_nested(&input[start..end - 1], depth + 1);
+    let (commands, _) = split_nested(&input[start..end - 1], depth + 1, Expansion::Runs);
     Some((end, commands))
+}
+
+/// Whether the shell expands the text being scanned before anything reads it.
+/// A command line and a substitution body expand; a heredoc body does not,
+/// having reached the receiving program byte for byte, so what expands in it
+/// is that program's to do and a `$(…)` there is a mention.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Expansion {
+    Runs,
+    Mention,
 }
 
 /// The argv under assembly. A redirection's target is consumed rather than
@@ -775,27 +876,35 @@ impl Accumulator {
 /// whitespace) as command separators; reads a `$(…)` body as the commands
 /// it runs while its text stays in the enclosing word.
 pub fn split_commands(input: &str) -> Split {
-    let (commands, error) = split_nested(input, 0);
+    let (commands, error) = split_nested(input, 0, Expansion::Runs);
     Split { commands, error }
 }
 
-fn split_nested(input: &str, depth: usize) -> (Vec<Vec<String>>, Option<SplitError>) {
+fn split_nested(
+    input: &str,
+    depth: usize,
+    expansion: Expansion,
+) -> (Vec<Vec<String>>, Option<SplitError>) {
     let mut acc = Accumulator::default();
-    let error = scan(input, depth, &mut acc).err();
+    let error = scan(input, depth, expansion, &mut acc).err();
     acc.push_command();
     (acc.commands, error)
 }
 
-fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitError> {
+fn scan(
+    input: &str,
+    depth: usize,
+    expansion: Expansion,
+    acc: &mut Accumulator,
+) -> Result<(), SplitError> {
     let bytes = input.as_bytes();
     let mut settled = Settled::default();
     let mut i = 0;
     let mut queued: Vec<Heredoc> = Vec::new();
-    // Every body, and the literal ones again. Nothing is queued from inside a
-    // body, so both lists stay ascending and disjoint, which is what lets a
-    // `$(` find its range without reading the ones before it.
-    let mut bodies: Vec<Range<usize>> = Vec::new();
-    let mut literal: Vec<Range<usize>> = Vec::new();
+    // A heredoc body is read where it ends rather than where it stops being
+    // readable, so an error inside one is the line's only if nothing else
+    // stopped the scan, and a bypass standing after the body is still judged.
+    let mut deferred: Option<SplitError> = None;
     while i < bytes.len() {
         let b = bytes[i];
         if b == b'\\' {
@@ -837,7 +946,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
                     // characters it was: the paren count the unquoted branch
                     // falls back to would run past the quote that ends this
                     // string, and take the rest of the line with it.
-                    match read_substitution(input, i, depth, &literal, &mut settled) {
+                    match read_substitution(input, i, depth, expansion, &mut settled) {
                         Some((end, commands)) => {
                             buf.push_str(&input[i..end]);
                             inner.extend(commands);
@@ -888,7 +997,8 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'(') {
-            let (end, commands) = match read_substitution(input, i, depth, &literal, &mut settled) {
+            let (end, commands) = match read_substitution(input, i, depth, expansion, &mut settled)
+            {
                 Some(read) => read,
                 None => (opaque_substitution_end(input, i + 2)?, Vec::new()),
             };
@@ -906,13 +1016,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             continue;
         }
         if let Some(redirection) = redirection_at(input, i) {
-            // A `<<` standing inside a heredoc body is that body's own text
-            // and opens nothing, whether or not the body expands. The scan
-            // walks a body's text, so it meets one, and queuing there would end
-            // the outer body at the inner delimiter and read every line between
-            // as the shell never reads it.
             if matches!(redirection, "<<" | "<<-")
-                && !inside_body(&bodies, i)
                 && let Some(heredoc) =
                     heredoc_at(input, i + redirection.len(), redirection == "<<-")
             {
@@ -926,19 +1030,12 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             acc.push_command();
             i += 1;
             if b == b'\n' {
-                let mut at = i;
                 for heredoc in queued.drain(..) {
-                    let (body_end, resume) = heredoc_body(input, at, &heredoc);
-                    debug_assert!(
-                        bodies.last().is_none_or(|last| last.end <= at),
-                        "heredoc bodies out of order: {:?} then {at}..{body_end}",
-                        bodies.last()
-                    );
-                    bodies.push(at..body_end);
-                    if heredoc.literal {
-                        literal.push(at..body_end);
-                    }
-                    at = resume;
+                    let (body_end, resume) = heredoc_body(input, i, &heredoc);
+                    let expanded = expansion == Expansion::Runs && !heredoc.literal;
+                    deferred =
+                        deferred.or(heredoc_commands(&input[i..body_end], expanded, depth, acc));
+                    i = resume;
                 }
             }
             continue;
@@ -994,7 +1091,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
         acc.push_char(ch);
         i += ch.len_utf8();
     }
-    Ok(())
+    deferred.map_or(Ok(()), Err)
 }
 
 #[cfg(test)]
@@ -1386,7 +1483,7 @@ mod tests {
     /// Lines that used to cost a pass over the rest of the line for every `$(`
     /// written on it. They differ in what stood between one pass and the next
     /// — a quote and a subshell paren, a comment reaching for a newline that is
-    /// not there, a heredoc range list read from the front, a body neither
+    /// not there, a heredoc drained before every substitution, a body neither
     /// reading closes — and each was found by measuring rather than by reading
     /// the code, so each stays as its own case.
     ///
@@ -1395,10 +1492,9 @@ mod tests {
     /// any machine and under either build profile, where a wall-clock bound
     /// would show it only on a long enough line and a fast enough build — and
     /// tests here run unoptimised. What it cannot see is work done inside one
-    /// step: reaching for a comment's end without the newline index, or reading
-    /// the heredoc ranges from the front, each stay one step however far they
-    /// scan. Those two are held by their own shapes being here at all, and the
-    /// commit carries what they measured.
+    /// step: reaching for a comment's end without the newline index stays one
+    /// step however far it scans. That one is held by its own shape being here
+    /// at all, and the commit carries what it measured.
     #[test]
     fn a_line_is_stepped_once_however_many_substitutions_it_carries() {
         let dense = vec!["\"$(#)\"".repeat(13); 400].join("\n");
@@ -1412,7 +1508,7 @@ mod tests {
                 "\"$( #\"".repeat(4_000),
             ),
             (
-                "a heredoc range list read from the front",
+                "a heredoc drained before every substitution",
                 format!("{}{}", "cat <<'E'\nE\n".repeat(2_000), "$(x)".repeat(2_000)),
             ),
             ("a body neither reading closes", format!("echo \"{dense}")),
@@ -1493,37 +1589,176 @@ mod tests {
         }
     }
 
-    /// A `<<` written inside a heredoc body is that body's own text. The scan
-    /// walks a body looking for commands, so it meets one, and a heredoc queued
-    /// there ends the outer body at the inner delimiter — leaving the lines
+    /// A `<<` is an operator only on a line the shell reads as a command line.
+    /// Body text and a delimiter line are neither, and a heredoc queued from
+    /// one ends the outer body at the inner delimiter — leaving the lines
     /// between read as the shell never reads them, or, under a quoted inner
     /// delimiter, not read at all. The second is the silent pass.
     ///
     /// Measured with `$(echo RAN >&2)` in place of the bypass: bash 5.3, bash
-    /// 3.2 and zsh 5.9 all print RAN, because `<<'C'` is a line of A's body and
-    /// so is the line after it.
+    /// 3.2 and zsh 5.9 all print RAN.
     #[test]
-    fn a_heredoc_operator_inside_a_body_opens_nothing() {
+    fn a_heredoc_operator_off_the_command_line_opens_nothing() {
         let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
         for line in [
             "cat <<A <<'B'\n<<'C'\no=$(git commit --no-verify -m x)\nC\nA\nbody\nB",
             "cat <<A\n<<'C'\no=$(git commit --no-verify -m x)\nC\nA",
             "cat <<A\n<<C\no=$(git commit --no-verify -m x)\nC\nA",
+            // Spelled in the delimiter word, so the line that ends the body
+            // carries it and the command after that line is the next command.
+            "cat <<\"<<'C'\"\nhello\n<<'C'\necho $(git commit --no-verify -m x)\nC",
         ] {
             assert!(
                 split(line).contains(&bypass),
-                "a `<<` inside a body opened one and hid the command after it: {line} gave {:?}",
+                "a `<<` off the command line opened one: {line} gave {:?}",
                 split(line)
             );
         }
-        // The outer body still ends where its own delimiter says, so what
-        // follows the heredoc keeps its verdict.
-        let after = "cat <<A\n<<'C'\ntext\nC\nA\ngit commit --no-verify -m x";
+        for after in [
+            // The outer body still ends where its own delimiter says, so what
+            // follows the heredoc keeps its verdict.
+            "cat <<A\n<<'C'\ntext\nC\nA\ngit commit --no-verify -m x",
+            // Two heredocs whose first delimiter spells an operator: the
+            // second body starts after the first delimiter line, not before it.
+            "cat <<'<<X' <<'B'\nbody1\n<<X\nbody2\nB\ngit commit --no-verify -m x",
+        ] {
+            assert!(
+                split(after).contains(&bypass),
+                "the line after the body lost its verdict: {after} gave {:?}",
+                split(after)
+            );
+        }
+    }
+
+    /// What acts inside a body the shell expands. A backslash escapes only
+    /// `$`, a backtick, itself and a newline there, so `\$(…)` is text while
+    /// `\\$(…)` is an escaped backslash in front of a substitution. The
+    /// spellings are quoted because only then does the escape decide the
+    /// verdict: unquoted, reading the body as a script finds the same command
+    /// either way.
+    ///
+    /// Measured on bash 5.3, bash 3.2 and zsh 5.9, with `cat` and with `bash`
+    /// receiving the body: none runs git on the first, all run it on the
+    /// second and on the backtick.
+    #[test]
+    fn reads_a_body_the_way_the_shell_expands_one() {
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        for line in [
+            "cat <<EOF\n'\\$(git commit --no-verify -m x)'\nEOF",
+            // A backtick body is left unread here too, as on the command line
+            // and for the reason the module note measures. The shells run this
+            // one; pairing across prose refused more than it caught.
+            "cat <<EOF\ncost `$(git commit --no-verify -m x)`\nEOF",
+        ] {
+            assert!(
+                !split(line).contains(&bypass),
+                "a mention was read as a command: {line} gave {:?}",
+                split(line)
+            );
+        }
+        let escaped = "cat <<EOF\n'\\\\$(git commit --no-verify -m x)'\nEOF";
         assert!(
-            split(after).contains(&bypass),
-            "the line after the body lost its verdict: {:?}",
-            split(after)
+            split(escaped).contains(&bypass),
+            "an escaped backslash swallowed the substitution after it: {:?}",
+            split(escaped)
         );
+    }
+
+    /// A body the scan cannot read leaves the line a skip, and leaves the
+    /// command line alone: what stands after the delimiter line is read and
+    /// judged all the same, because the body's quote is bounded to the body.
+    #[test]
+    fn keeps_the_command_line_past_a_heredoc_body_it_cannot_read() {
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        for line in [
+            "cat <<'EOF'\nit's done\nEOF\ngit commit --no-verify -m x",
+            "cat <<EOF\ncost $(x\nEOF\ngit commit --no-verify -m x",
+            "cat <<'EOF'\ncost $(x\nEOF\ngit commit --no-verify -m x",
+        ] {
+            let read = split_commands(line);
+            assert!(
+                read.error.is_some(),
+                "an unreadable body reported nothing: {line}"
+            );
+            assert!(
+                read.commands.contains(&bypass),
+                "the line after the body lost its verdict: {line} gave {:?}",
+                read.commands
+            );
+        }
+    }
+
+    /// The two readings of a body stop in different places, so the line keeps
+    /// whichever error it meets. Quoting and a `#` end the script reading
+    /// before a `$(` the shell expands regardless, and a substitution nothing
+    /// can close is a command list nothing has read.
+    ///
+    /// Measured: all three shells report a syntax error on the first two, so
+    /// what the floor cannot read is not something they run either.
+    #[test]
+    fn keeps_the_error_of_whichever_reading_meets_one() {
+        for line in ["cat <<EOF\n'cost $(x'\nEOF", "cat <<EOF\n# cost $(x\nEOF"] {
+            assert!(
+                split_commands(line).error.is_some(),
+                "the reading that meets an error was not the one asked: {line}"
+            );
+        }
+        // Under a quoted delimiter nothing expands, so the reading that would
+        // meet it never runs and the same text is the body's own.
+        assert!(
+            split_commands("cat <<'EOF'\n'cost $(x'\nEOF")
+                .error
+                .is_none()
+        );
+    }
+
+    /// A span is grammar, so the reading that reports no command from a `$(…)`
+    /// still ends it where the shell ends it. Reading the span by paren count
+    /// instead leaves the quoting inside it loose, and the quote left over
+    /// pairs with one further down the body and swallows the command between.
+    ///
+    /// Measured: bash 5.3, bash 3.2 and zsh 5.9 run git on every line here.
+    #[test]
+    fn ends_a_mentioned_substitution_where_its_own_grammar_ends_it() {
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        for line in [
+            "bash <<EOF\nv=\"$(echo \"it's\")\"\ngit commit --no-verify -m x\nEOF",
+            "bash <<EOF\nn=\"$(grep -c \"'\" /dev/null)\"\ngit commit --no-verify -m x\necho 'done'\nEOF",
+            "sh <<'EOF'\nx=$(echo \")\")\ngit commit --no-verify -m x\nEOF",
+            "sh <<'EOF'\nx=$(echo \"(\")\ngit commit --no-verify -m x\nEOF",
+        ] {
+            assert!(
+                split(line).contains(&bypass),
+                "a mentioned substitution ran past its own end: {line} gave {:?}",
+                split(line)
+            );
+        }
+    }
+
+    /// Two programs read a body, and neither reading may reach past it. The
+    /// shell expands a bare-delimiter body with only `\\`, `$` and a backtick
+    /// special, so quoting and `#` in the text hide nothing from it; the
+    /// receiving program reads what it was handed, and a quote opened in that
+    /// text is the body's rather than the command line's.
+    ///
+    /// Measured: bash 5.3, bash 3.2 and zsh 5.9 all run git on each of these.
+    #[test]
+    fn neither_reading_of_a_body_reaches_past_it() {
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        for line in [
+            "cat <<EOF\nit's $(git commit --no-verify -m x) isn't\nEOF",
+            "cat <<EOF\n# built at $(git commit --no-verify -m x)\nEOF",
+            "cat <<'EOF'\nit's done\nEOF\ngit commit --no-verify -m x",
+            "cat <<EOF\nit's done\nEOF\ngit commit --no-verify -m x",
+            "cat <<'EOF'\nopen (\nEOF\ngit commit --no-verify -m x",
+            "cat <<EOF\n$(echo one\nEOF\ngit commit --no-verify -m x",
+        ] {
+            assert!(
+                split(line).contains(&bypass),
+                "a body reached past itself: {line} gave {:?}",
+                split(line)
+            );
+        }
     }
 
     /// A quoted delimiter leaves the whole body literal, so a `$(…)` written
@@ -1541,6 +1776,12 @@ mod tests {
             "bash <<'EOF'\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
             "git commit -q -F - <<'EOF'\no=$(git commit --no-verify -m x)\nEOF",
             "cat <<'A' <<'A'\nfirst\nA\nwrap it (o=$(git commit --no-verify -m x))\nA",
+            // Nothing expands inside a literal body, the heredoc written in
+            // one included. All three shells run git on this one; it is a
+            // second shell running a script, which is out of scope however
+            // deep the spelling goes, and reading it is what refused the
+            // documents that explain this module.
+            "bash <<'OUTER'\ncat <<INNER\no=$(git commit --no-verify -m x)\nINNER\nOUTER",
         ] {
             assert!(
                 !split(line).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
@@ -1599,6 +1840,31 @@ mod tests {
         );
     }
 
+    /// A heredoc body is read as commands of its own, so a heredoc written in
+    /// one recurses the parser exactly as a substitution does and answers to
+    /// the same bound. Without it a line short enough for any shell faults
+    /// instead of answering.
+    #[test]
+    fn stops_reading_a_heredoc_nested_past_the_bound() {
+        let nest = MAX_NESTING_DEPTH + 2;
+        let open: String = (0..nest).map(|d| format!("cat <<'E{d}'\n")).collect();
+        let deep = format!("{open}git commit --no-verify -m x\n");
+        assert!(
+            !split(&deep).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
+            "a body past the bound was read: {:?}",
+            split(&deep)
+        );
+
+        // Well inside the bound the same nesting is read, so the bound is what
+        // stops the deep one rather than the nesting being unread throughout.
+        let shallow = "cat <<'A'\ncat <<'B'\ngit commit --no-verify -m x\nB\nA";
+        assert!(
+            split(shallow).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
+            "a body inside the bound went unread: {:?}",
+            split(shallow)
+        );
+    }
+
     /// Past the bound the body stops being read, which is what an unreadable
     /// body already is. The line keeps its own commands either way, and the
     /// recursion stays off the stack. Both halves are read from the outside,
@@ -1606,7 +1872,7 @@ mod tests {
     /// until the nesting is deep enough to fault instead of answering.
     #[test]
     fn stops_reading_a_substitution_nested_past_the_bound() {
-        let nest = MAX_SUBSTITUTION_DEPTH + 2;
+        let nest = MAX_NESTING_DEPTH + 2;
         let deep = format!(
             "x={}echo a{} ; git commit --no-verify -m x",
             "$(".repeat(nest),
@@ -1752,17 +2018,14 @@ mod tests {
     #[test]
     fn keeps_a_heredoc_body_in_the_scan_whatever_its_delimiter() {
         // `bash <<'EOF'` runs every line of the body, so a quoted delimiter is
-        // no evidence that the body is a document.
+        // no evidence that the body is a document. The delimiter line itself
+        // is the operator's target and no command.
         for delimiter in ["EOF", "'EOF'", "\"EOF\"", "\\EOF"] {
             assert_eq!(
                 split(&format!(
                     "bash <<{delimiter}\ngit commit --no-verify -m x\nEOF"
                 )),
-                owned(&[
-                    &["bash"],
-                    &["git", "commit", "--no-verify", "-m", "x"],
-                    &["EOF"]
-                ]),
+                owned(&[&["bash"], &["git", "commit", "--no-verify", "-m", "x"]]),
                 "{delimiter}"
             );
         }
