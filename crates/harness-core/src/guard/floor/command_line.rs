@@ -33,8 +33,8 @@
 //!   shape ends in a visible skip rather than a silent pass. A body the
 //!   scan cannot delimit at all is left opaque instead, so the line keeps
 //!   its verdict on everything outside it.
-//! - A backtick body is *not* read, and the asymmetry is measured rather
-//!   than stylistic: a backtick is also the code-span
+//! - A backtick body is *not* read on the command line, and the asymmetry
+//!   is measured rather than stylistic: a backtick is also the code-span
 //!   mark, so every document this parser meets is full of pairs, and
 //!   pairing runs across the whole text — whether a mention lands inside
 //!   one depends on how many backticks precede it. Reading them refused 2
@@ -46,6 +46,13 @@
 //!   stays open is the legacy spelling of a form `$(…)` now covers; the
 //!   module is a tripwire for the bypass a session writes by hand, and the
 //!   server-side re-run is the backstop for the one it does not.
+//!   Inside a heredoc body the shell expands, the pairing is the shell's
+//!   own and it runs what the pair holds, so there the body is read: what
+//!   a refusal costs is a line the shell already runs, and the accident
+//!   the command-line count measured cannot arise. Where the span itself
+//!   is written, an escaped backtick is the span's text and not its end —
+//!   ending it at the first backtick found is the same defect as ending a
+//!   `$(…)` by counting parens.
 //! - Redirections are read as the shell reads them (maximal munch, optional
 //!   fd prefix): the operator terminates the current word and its target is
 //!   dropped, so `2>&1` binds as one redirection rather than splitting at its
@@ -142,6 +149,46 @@ fn is_fd_prefix(word: &str) -> bool {
     let mut chars = inner.chars();
     matches!(chars.next(), Some(c) if c == '_' || c.is_ascii_alphabetic())
         && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
+/// The byte just past the backtick closing the one before `start`.
+///
+/// A backslash escapes the next character inside a backtick body, which is how
+/// the legacy spelling nests: `` \` `` does not close the span. Searching for
+/// the next backtick alone ends the span early and leaves the rest of the text
+/// to be read as something else — the same defect as ending a `$(…)` by
+/// counting parens.
+fn backtick_end(input: &str, start: usize) -> Result<usize, SplitError> {
+    let bytes = input.as_bytes();
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if i + 1 < bytes.len() => i += 2,
+            b'`' => return Ok(i + 1),
+            _ => i += 1,
+        }
+    }
+    Err(SplitError::UnterminatedBacktick)
+}
+
+/// A backtick body as the shell hands it on: a backslash before a backtick, a
+/// `$` or another backslash is removed, and any other backslash is one of the
+/// body's own characters.
+fn unescaped_backtick_body(body: &str) -> String {
+    let bytes = body.as_bytes();
+    let mut out = String::with_capacity(body.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' && matches!(bytes.get(i + 1), Some(b'`' | b'$' | b'\\')) {
+            out.push(char::from(bytes[i + 1]));
+            i += 2;
+        } else {
+            let ch = body[i..].chars().next().expect("in-bounds char");
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
 }
 
 fn redirection_at(input: &str, i: usize) -> Option<&'static str> {
@@ -308,13 +355,20 @@ fn expanded_substitutions(
                 acc.push_substitution(commands);
                 i = end;
             }
-            // A backtick body is not read here either, for the reason the
-            // module note records.
+            // Read, unlike on the command line. There a backtick is also the
+            // code-span mark and pairing runs across prose, so a mention lands
+            // inside a pair by accident; here the shell pairs the body's
+            // backticks the same way this search does and runs what it finds,
+            // so reading one refuses only what the line already runs.
             b'`' => {
-                let end = body[i + 1..]
-                    .find('`')
-                    .ok_or(SplitError::UnterminatedBacktick)?;
-                i += end + 2;
+                let end = backtick_end(body, i + 1)?;
+                let (commands, _) = split_nested(
+                    &unescaped_backtick_body(&body[i + 1..end - 1]),
+                    depth + 1,
+                    Expansion::Runs,
+                );
+                acc.push_substitution(commands);
+                i = end;
             }
             _ => i += 1,
         }
@@ -1008,11 +1062,9 @@ fn scan(
             continue;
         }
         if b == b'`' {
-            let end = input[i + 1..]
-                .find('`')
-                .ok_or(SplitError::UnterminatedBacktick)?;
-            acc.push_str(&input[i..i + end + 2]);
-            i += end + 2;
+            let end = backtick_end(input, i + 1)?;
+            acc.push_str(&input[i..end]);
+            i = end;
             continue;
         }
         if let Some(redirection) = redirection_at(input, i) {
@@ -1630,6 +1682,29 @@ mod tests {
         }
     }
 
+    /// An escaped backtick inside a span is the span's own text, not its end.
+    /// Ending the span at the first backtick found leaves the rest to be read
+    /// as something else, and the command standing after the escape goes with
+    /// it — in a body the shell expands and on the command line alike.
+    ///
+    /// Measured: bash 5.3, bash 3.2 and zsh 5.9 run git on both of these.
+    #[test]
+    fn ends_a_backtick_span_where_an_escape_does_not() {
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        let body = "cat <<EOF\ncost `echo \\`z\\` ; git commit --no-verify -m x`\nEOF";
+        assert!(
+            split(body).contains(&bypass),
+            "a span ended at an escaped backtick: {:?}",
+            split(body)
+        );
+        let line = "o=`x \\`y\\`` ; git commit --no-verify -m x";
+        assert!(
+            split(line).contains(&bypass),
+            "a span ended at an escaped backtick: {:?}",
+            split(line)
+        );
+    }
+
     /// What acts inside a body the shell expands. A backslash escapes only
     /// `$`, a backtick, itself and a newline there, so `\$(…)` is text while
     /// `\\$(…)` is an escaped backslash in front of a substitution. The
@@ -1637,30 +1712,45 @@ mod tests {
     /// verdict: unquoted, reading the body as a script finds the same command
     /// either way.
     ///
-    /// Measured on bash 5.3, bash 3.2 and zsh 5.9, with `cat` and with `bash`
-    /// receiving the body: none runs git on the first, all run it on the
-    /// second and on the backtick.
+    /// A backtick pair is read here, unlike on the command line. There the
+    /// mark is also the code span's and pairing runs across prose, so a
+    /// mention lands inside a pair by accident; a body the shell expands has
+    /// its backticks paired by the shell the same way and run, so what is
+    /// refused is what the line runs. What that pair holds is then a command
+    /// line, and a backtick written inside it keeps the command line's answer.
+    ///
+    /// Measured on bash 5.3, bash 3.2 and zsh 5.9: none runs git on the
+    /// escaped `$`, and all run it on every other line here, the last one
+    /// included.
     #[test]
     fn reads_a_body_the_way_the_shell_expands_one() {
         let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        let mention = "cat <<EOF\n'\\$(git commit --no-verify -m x)'\nEOF";
+        assert!(
+            !split(mention).contains(&bypass),
+            "a mention was read as a command: {:?}",
+            split(mention)
+        );
         for line in [
-            "cat <<EOF\n'\\$(git commit --no-verify -m x)'\nEOF",
-            // A backtick body is left unread here too, as on the command line
-            // and for the reason the module note measures. The shells run this
-            // one; pairing across prose refused more than it caught.
-            "cat <<EOF\ncost `$(git commit --no-verify -m x)`\nEOF",
+            "cat <<EOF\n'\\\\$(git commit --no-verify -m x)'\nEOF",
+            "cat <<EOF\ncost `git commit --no-verify -m x`\nEOF",
+            // An escaped backtick is one of the body's own characters and
+            // opens no span, so the pair after it is where one begins.
+            "cat <<EOF\ncost \\`x\\` and `git commit --no-verify -m x`\nEOF",
         ] {
             assert!(
-                !split(line).contains(&bypass),
-                "a mention was read as a command: {line} gave {:?}",
+                split(line).contains(&bypass),
+                "a body the shell expands went unread: {line} gave {:?}",
                 split(line)
             );
         }
-        let escaped = "cat <<EOF\n'\\\\$(git commit --no-verify -m x)'\nEOF";
+        // Inside the pair the command line's reading takes over, and there a
+        // backtick body is not read. The shells run this one.
+        let nested = "cat <<EOF\ncost `echo \\`git commit --no-verify -m x\\``\nEOF";
         assert!(
-            split(escaped).contains(&bypass),
-            "an escaped backslash swallowed the substitution after it: {:?}",
-            split(escaped)
+            !split(nested).contains(&bypass),
+            "the inner backtick was read after all: {:?}",
+            split(nested)
         );
     }
 
