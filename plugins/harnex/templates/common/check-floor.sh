@@ -31,6 +31,9 @@ command -v harnex >/dev/null 2>&1 || exit 0
 # character below 0x20, so a path is cleared of that whole class before the two
 # characters that could still end the string are escaped. The class and not a
 # range: bash 3.2 orders `[\001-\037]` by collation and leaves tab and CR in.
+# A path that is not valid UTF-8, which some filesystems allow, ends the object
+# all the same and the notice is dropped rather than mangled. Clearing every
+# non-ASCII byte would buy that back by mangling every path that is not English.
 harnex guard floor --help >/dev/null 2>&1 || {
   if ! harnex --help >/dev/null 2>&1; then
     where=$(command -v harnex)

@@ -40,7 +40,10 @@ set -euo pipefail
 #
 # A reason carries a path, and a JSON string body admits neither of the two
 # characters that end it nor anything below 0x20. The class and not a range:
-# bash 3.2 orders `[\001-\037]` by collation and leaves tab and CR in.
+# bash 3.2 orders `[\001-\037]` by collation and leaves tab and CR in. A path
+# that is not valid UTF-8, which some filesystems allow, ends the object all the
+# same and the notice is dropped; clearing every non-ASCII byte to buy that back
+# would mangle every path that is not English.
 skip() {
   local reason=$1
   reason=${reason//[[:cntrl:]]/ }
