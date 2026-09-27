@@ -137,7 +137,9 @@ A floor slow enough to reach its hook timeout is a floor that has stopped
 holding: the hook is killed, the tool call proceeds, and neither the operator
 nor the model is told (`plugins/harnex/reference/spec-facts.md`). What the scan
 spends over a command line is therefore a correctness property, and
-`command_line.rs` holds it to one pass per reading.
+`command_line.rs` holds it to one pass per reading, with the readings one line
+can demand bounded by `MAX_NESTING_DEPTH` — a heredoc body costs two, and what
+nests inside one recurses under that same cap.
 
 `guard::telemetry` (`harnex guard telemetry-emit`) handles PostToolUse /
 PostToolUseFailure: it records one `harness_invocation` event — the invoked
