@@ -30,10 +30,11 @@ const BODY_RESTATEMENTS: [&str; 1] = [".claude/rules/envelope.md"];
 const CHANNEL_RESTATEMENTS: [&str; 2] = [".claude/rules/envelope.md", ".claude/rules/guard.md"];
 
 /// The source that owns the choice, the sites that write it, and the cases
-/// that run one and read the key back off its stdout. The hook arm is among
-/// the writers because it speaks for the binary in the states the binary
-/// cannot reach, and a stand-in on another channel would be silent.
-const OWNER: [&str; 7] = [
+/// that run one and read the key back off its stdout. The hook arms are among
+/// the writers: each reports where the binary could not — because it never
+/// ran, or because it was never reached — and an arm on another channel
+/// reports to no one.
+const OWNER: [&str; 10] = [
     "crates/harness-core/src/guard/mod.rs",
     "crates/harness-cli/src/commands/guard.rs",
     "crates/harness-cli/tests/guard_stop_audit.rs",
@@ -41,6 +42,9 @@ const OWNER: [&str; 7] = [
     "crates/harness-core/tests/floor_arm.rs",
     "hooks/check-floor.sh",
     "plugins/harnex/templates/common/check-floor.sh",
+    "crates/harness-core/tests/runner_arm.rs",
+    "hooks/_runner.sh",
+    "plugins/harnex/templates/common/_runner.sh",
 ];
 
 /// Files naming the same field for a reason of their own. A rename here would
