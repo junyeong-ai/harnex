@@ -133,6 +133,12 @@ oracle absent or predating the subcommand says nothing, and one answering
 neither probe is a floor down behind a name that still resolves, which the arm
 reports on `systemMessage`.
 
+A floor slow enough to reach its hook timeout is a floor that has stopped
+holding: the hook is killed, the tool call proceeds, and neither the operator
+nor the model is told (`plugins/harnex/reference/spec-facts.md`). What the scan
+spends over a command line is therefore a correctness property, and
+`command_line.rs` holds it to one pass per reading.
+
 `guard::telemetry` (`harnex guard telemetry-emit`) handles PostToolUse /
 PostToolUseFailure: it records one `harness_invocation` event — the invoked
 element's slug and the outcome — through `session::asset_of`, the one owner

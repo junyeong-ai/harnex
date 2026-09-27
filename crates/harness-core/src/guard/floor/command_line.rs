@@ -53,7 +53,10 @@
 //!   than one opaque word.
 //! - A heredoc's delimiter is read; its body is not. `<<` / `<<-` are
 //!   recognised whole and the delimiter word is consumed as the operator's
-//!   target, but each newline remains a separator, so a prose line beginning
+//!   target — except inside a body, where a `<<` is that body's own text and
+//!   opens nothing, expanding body or not: the scan walks a body looking for
+//!   commands and would otherwise end the outer body at the inner delimiter.
+//!   Each newline remains a separator, so a prose line beginning
 //!   `git commit --no-verify` inside `cat <<EOF` still false-blocks. Whether
 //!   a body is a document or a script is the receiving program's to decide,
 //!   not the delimiter's: `bash <<'EOF'` runs every line of it, quoted
