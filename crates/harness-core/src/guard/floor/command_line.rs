@@ -226,10 +226,11 @@ fn heredoc_body(input: &str, start: usize, heredoc: &Heredoc) -> (usize, usize) 
     (input.len(), input.len())
 }
 
-/// Whether `i` falls in a literal heredoc body, where the shell expands
-/// nothing and a `$(…)` is therefore text rather than a command this line
-/// runs.
-fn inside_literal(ranges: &[Range<usize>], i: usize) -> bool {
+/// Whether `i` falls in one of `ranges`, which the scan keeps two of: every
+/// heredoc body, against which a `<<` is text rather than an operator, and the
+/// literal ones alone, in which the shell expands nothing so a `$(…)` is text
+/// rather than a command this line runs.
+fn inside_body(ranges: &[Range<usize>], i: usize) -> bool {
     ranges.iter().any(|range| range.contains(&i))
 }
 
@@ -520,7 +521,7 @@ fn read_substitution(
     depth: usize,
     literal: &[Range<usize>],
 ) -> Option<(usize, Vec<Vec<String>>)> {
-    if inside_literal(literal, dollar) {
+    if inside_body(literal, dollar) {
         return None;
     }
     let start = dollar + 2;
@@ -621,6 +622,10 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
     let bytes = input.as_bytes();
     let mut i = 0;
     let mut queued: Vec<Heredoc> = Vec::new();
+    // Every body, and the literal ones again. Both stay ascending and
+    // disjoint: nothing is queued from inside a body, so the bodies drained at
+    // one newline follow each other and the next drain starts past them all.
+    let mut bodies: Vec<Range<usize>> = Vec::new();
     let mut literal: Vec<Range<usize>> = Vec::new();
     while i < bytes.len() {
         let b = bytes[i];
@@ -732,11 +737,15 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             continue;
         }
         if let Some(redirection) = redirection_at(input, i) {
-            // A `<<` standing inside a literal body is that body's own text
-            // and opens nothing, so no second body runs past the delimiter
-            // and leaves the rest of the line unread.
+            // A `<<` standing inside a heredoc body is that body's own text
+            // and opens nothing, whether or not the body expands. The scan
+            // walks a body's text, so it meets one; queuing there ends the
+            // outer body early at the inner delimiter, and every line between
+            // is read as the shell never reads it. Measured on bash 5.3, bash
+            // 3.2 and zsh 5.9: all three run a `$(…)` written after a `<<'C'`
+            // line inside an expanding body, which this scan used to skip.
             if matches!(redirection, "<<" | "<<-")
-                && !inside_literal(&literal, i)
+                && !inside_body(&bodies, i)
                 && let Some(heredoc) =
                     heredoc_at(input, i + redirection.len(), redirection == "<<-")
             {
@@ -753,6 +762,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
                 let mut at = i;
                 for heredoc in queued.drain(..) {
                     let (body_end, resume) = heredoc_body(input, at, &heredoc);
+                    bodies.push(at..body_end);
                     if heredoc.literal {
                         literal.push(at..body_end);
                     }
@@ -1124,6 +1134,39 @@ mod tests {
                 "the line lost its verdict: {line} gave {commands:?}"
             );
         }
+    }
+
+    /// A `<<` written inside a heredoc body is that body's own text. The scan
+    /// walks a body looking for commands, so it meets one, and a heredoc queued
+    /// there ends the outer body at the inner delimiter — leaving the lines
+    /// between read as the shell never reads them, or, under a quoted inner
+    /// delimiter, not read at all. The second is the silent pass.
+    ///
+    /// Measured with `$(echo RAN >&2)` in place of the bypass: bash 5.3, bash
+    /// 3.2 and zsh 5.9 all print RAN, because `<<'C'` is a line of A's body and
+    /// so is the line after it.
+    #[test]
+    fn a_heredoc_operator_inside_a_body_opens_nothing() {
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        for line in [
+            "cat <<A <<'B'\n<<'C'\no=$(git commit --no-verify -m x)\nC\nA\nbody\nB",
+            "cat <<A\n<<'C'\no=$(git commit --no-verify -m x)\nC\nA",
+            "cat <<A\n<<C\no=$(git commit --no-verify -m x)\nC\nA",
+        ] {
+            assert!(
+                split(line).contains(&bypass),
+                "a `<<` inside a body opened one and hid the command after it: {line} gave {:?}",
+                split(line)
+            );
+        }
+        // The outer body still ends where its own delimiter says, so what
+        // follows the heredoc keeps its verdict.
+        let after = "cat <<A\n<<'C'\ntext\nC\nA\ngit commit --no-verify -m x";
+        assert!(
+            split(after).contains(&bypass),
+            "the line after the body lost its verdict: {:?}",
+            split(after)
+        );
     }
 
     /// A quoted delimiter leaves the whole body literal, so a `$(…)` written
