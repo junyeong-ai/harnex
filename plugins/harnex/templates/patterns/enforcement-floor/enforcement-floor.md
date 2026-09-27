@@ -60,6 +60,14 @@ where the gate files are not the work product.
   environment, and a `$(…)` the line runs git inside, are read rather than
   excused. The authoritative backstop is the server-side CI re-run of the
   same gates — keep it green and un-bypassed.
+- **Writing about the bypass is not running it.** The tripwire reads the line
+  the shell assembled, so what the shell would not expand is a mention: text
+  in single quotes, and a heredoc body whose delimiter carries any quoting
+  (`<<'EOF'`, `<<"EOF"`, `<<\EOF`). A commit message or a document written
+  that way may name the flag freely. Two spellings the shell *does* expand
+  are read and refuse: a bare delimiter (`<<EOF`), and double quotes around
+  a live `$(…)`. A line whose **first** word is the bypass is refused inside
+  any heredoc, because the body may be a script rather than a document.
 - **A block is a message, not a wall.** Fix the failing gate at its cause. A
   bypass the operator truly needs is theirs to run, outside the agent, and the
   block names no way around itself: the loop the gate bounds is what reads it
