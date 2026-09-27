@@ -23,6 +23,16 @@ ignore = true
 [bans]
 multiple-versions = "warn"
 
+# The constitution picks `jiff` and `std::sync::LazyLock` as the time and lazy
+# primitives. Naming the alternatives here is what makes that a decision to
+# argue for rather than a dependency to inherit unnoticed. `once_cell` reaches
+# the tree through a dev dependency, which is not this workspace reading it.
+deny = [
+  { name = "chrono" },
+  { name = "time" },
+  { name = "once_cell", wrappers = ["tempfile"] },
+]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
