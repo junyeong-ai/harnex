@@ -7,8 +7,16 @@
 # two stops it: one run reached 780 GB of address space and put the machine
 # into swap before its timeout came round.
 #
-# Arguments are passed through. `MUTANTS_CEILING_MB` sets the ceiling per test
-# process.
+# The watch walks the run's own process tree. cargo-mutants builds and tests
+# each mutant in a copy of the source under `$TMPDIR`, so a watch keyed on the
+# target directory sees none of them, and one keyed on a name would reach a
+# build running beside this one.
+#
+# `ps` reports resident pages, so memory already compressed or swapped does not
+# count toward the ceiling. Keep the ceiling well under free RAM or a runaway
+# is swapped faster than it is seen.
+#
+# Arguments are passed through. `MUTANTS_CEILING_MB` sets the ceiling.
 set -Eeuo pipefail
 
 readonly CEILING_MB="${MUTANTS_CEILING_MB:-4096}"
@@ -24,18 +32,21 @@ warn() { printf '%s!%s   %s\n' "$RED" "$RESET" "$*" >&2; }
 command -v cargo-mutants >/dev/null 2>&1 \
   || { warn "cargo-mutants is not installed"; exit 1; }
 
-# The test binaries cargo-mutants builds are what grow. Matching on the target
-# directory rather than on a crate name stays true as crates are added, and
-# keeps the watch off a build of this repository running beside it.
-readonly TARGET="${CARGO_TARGET_DIR:-$PWD/target}"
+descendants() {
+  local parent=$1 child
+  for child in $(pgrep -P "$parent" 2>/dev/null || true); do
+    printf '%s\n' "$child"
+    descendants "$child"
+  done
+}
 
 watch_ceiling() {
-  local pid rss
-  while :; do
-    for pid in $(pgrep -f "^${TARGET}/" 2>/dev/null || true); do
+  local root=$1 pid rss
+  while kill -0 "$root" 2>/dev/null; do
+    for pid in $(descendants "$root"); do
       rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' ')
       if [ -n "$rss" ] && [ "$rss" -gt $((CEILING_MB * 1024)) ]; then
-        warn "mutant ${pid} passed ${CEILING_MB} MB and was killed"
+        warn "mutant process ${pid} passed ${CEILING_MB} MB and was killed"
         kill -9 "$pid" 2>/dev/null || true
       fi
     done
@@ -43,9 +54,11 @@ watch_ceiling() {
   done
 }
 
-step "ceiling ${CEILING_MB} MB per test process, watching ${TARGET}"
-watch_ceiling &
+cargo mutants "$@" &
+readonly RUN=$!
+step "ceiling ${CEILING_MB} MB, watching the tree under ${RUN}"
+watch_ceiling "$RUN" &
 readonly WATCHER=$!
-trap 'kill "$WATCHER" 2>/dev/null || true' EXIT
+trap 'kill "$WATCHER" "$RUN" 2>/dev/null || true' EXIT
 
-cargo mutants "$@"
+wait "$RUN"
