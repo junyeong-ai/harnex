@@ -1,0 +1,5 @@
+# A test past this bound is ended and reported as a timeout instead of running
+# on. The bound sits far above the slowest test on a loaded machine, so what it
+# ends is a hung test, not a slow one.
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 2 }

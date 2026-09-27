@@ -75,6 +75,11 @@ skill composes templates — it never free-generates safety-critical code.
   work inside that crate.
 - `schemas/harness.schema.json` — JSON Schema for `harness.toml` (regen
   via `harnex export schema config --raw`).
+- `.github/workflows/ci.yml` — the gates a change passes, and what a local run
+  answers to. Tests run under `cargo nextest`, which ends a test past the bound
+  in `.config/nextest.toml` and, on SIGINT or SIGTERM, the tests it started;
+  `cargo test` does neither, so a hung test it started keeps running when the
+  runner alone is killed.
 
 For the full command surface, run `harnex --help` or read `README.md`.
 
