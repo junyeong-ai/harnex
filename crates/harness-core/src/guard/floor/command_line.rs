@@ -350,7 +350,13 @@ const MAX_SUBSTITUTION_DEPTH: usize = 32;
 /// leave the rest of the line to be read as something else.
 fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
     let bytes = input.as_bytes();
-    let mut depth = 1usize;
+    // One entry per open paren, `true` where `$(` opened it. The paren closing
+    // a substitution ends part of a word, so a `#` right after it is word text;
+    // every other paren is taken for a subshell's, whose close ends a command,
+    // so a `#` after it comments. `<(…)`, `>(…)`, bash's array `a=(…)` and
+    // zsh's `=(…)` also end only part of a word, and `scan` misreads them the
+    // same way: a `#` glued to one hides the commands after it.
+    let mut open = vec![true];
     let mut i = start;
     let mut in_word = false;
     while i < bytes.len() {
@@ -360,7 +366,17 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
             b'#' if !in_word => {
                 i += input[i..].find('\n').unwrap_or(input.len() - i);
             }
-            b'\\' => i += 2,
+            // An escaped character is word text whatever its byte, and a
+            // backslash-newline is removed outright, leaving the state as it was:
+            // `a\ #b` is one word, while `echo \⏎#c` still opens a comment. The
+            // boundary read below would take the escaped byte for a separator.
+            b'\\' => {
+                if bytes.get(i + 1) != Some(&b'\n') {
+                    in_word = true;
+                }
+                i += 2;
+                continue;
+            }
             // ANSI-C quoting, where `\'` does not close: reading this body as
             // ordinary single quotes leaves the quoting inverted from here to
             // the end, and the paren that ends the substitution is past it.
@@ -373,6 +389,10 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
                     return Err(SplitError::UnterminatedAnsiCQuote);
                 }
                 i += 1;
+            }
+            b'$' if bytes.get(i + 1) == Some(&b'(') => {
+                open.push(true);
+                i += 2;
             }
             b'\'' => {
                 let end = input[i + 1..]
@@ -391,15 +411,17 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
                 i += 1;
             }
             b'(' => {
-                depth += 1;
+                open.push(false);
                 i += 1;
             }
             b')' => {
-                depth -= 1;
+                let closes_substitution = open.pop() == Some(true);
                 i += 1;
-                if depth == 0 {
+                if open.is_empty() {
                     return Ok(i);
                 }
+                in_word = closes_substitution;
+                continue;
             }
             _ => i += 1,
         }
@@ -816,6 +838,40 @@ mod tests {
         }
     }
 
+    /// Inside a body a `#` comments only where it starts a word, as it does one
+    /// level up. An escaped character and a closed substitution are word text,
+    /// so a `#` after either belongs to the word and the command after it is
+    /// read. A line continuation at a word boundary and a closed subshell leave
+    /// the boundary, so a `#` there still comments out the paren that would have
+    /// ended the body.
+    #[test]
+    fn reads_a_hash_in_a_body_as_the_shell_does() {
+        let bypass = owned(&[&["git", "commit", "--no-verify"]]).remove(0);
+        for body in [
+            "echo a\\ #b; git commit --no-verify",
+            "echo a\\;#b; git commit --no-verify",
+            "echo a\\\n#b; git commit --no-verify",
+            "echo $(echo x)#b; git commit --no-verify",
+            "echo $((1+1))#b; git commit --no-verify",
+        ] {
+            let commands = split(&format!("o=$({body})"));
+            assert!(
+                commands.contains(&bypass),
+                "the body went unread: {body:?} gave {commands:?}"
+            );
+        }
+        for line in [
+            "o=$(echo \\\n#c) ; git commit --no-verify\n)",
+            "o=$( (true)#c) ; git commit --no-verify\n)",
+        ] {
+            let commands = split(line);
+            assert!(
+                !commands.contains(&bypass),
+                "a comment read as a command: {line:?} gave {commands:?}"
+            );
+        }
+    }
+
     /// ANSI-C quoting inside a body: `\'` does not close it, so counting it
     /// as an ordinary quote inverts the quoting for the rest of the body and
     /// the paren that ends the substitution falls on the wrong side.
@@ -959,10 +1015,13 @@ mod tests {
     /// cannot cover: there is no span to keep as a word.
     #[test]
     fn reports_a_substitution_with_no_end() {
-        assert_eq!(
-            split_commands("o=$(echo abc").error,
-            Some(SplitError::UnterminatedSubstitution)
-        );
+        for line in ["o=$(echo abc", "o=$(echo abc \\", "echo $(\\"] {
+            assert_eq!(
+                split_commands(line).error,
+                Some(SplitError::UnterminatedSubstitution),
+                "{line:?}"
+            );
+        }
     }
 
     /// A body the read cannot follow leaves the substitution opaque, and the
@@ -1333,5 +1392,34 @@ mod tests {
     #[test]
     fn keeps_an_unrecognised_ansi_c_escape_with_its_backslash() {
         assert_eq!(split("echo $'a\\qb'"), owned(&[&["echo", "a\\qb"]]));
+    }
+
+    /// Every line of up to five symbols drawn from what the scan branches on
+    /// returns a split. The scan walks byte offsets by hand, and what breaks
+    /// such a walk is an edge no example names — a step past the end, an offset
+    /// inside a multi-byte character — while the hook runs it on every command
+    /// a session writes. Five symbols reach a heredoc closed by its delimiter
+    /// (`<<x⏎x`) and every escape standing last in a substitution or a quote.
+    #[test]
+    fn split_commands_answers_every_short_line() {
+        const SYMBOLS: [&str; 19] = [
+            "\\", "'", "\"", "$", "(", ")", "`", "<", ">", "-", "&", "\n", "#", "{", " ", "x", "u",
+            "7", "é",
+        ];
+        let mut digits = Vec::new();
+        loop {
+            let line: String = digits.iter().map(|&d| SYMBOLS[d]).collect();
+            let answered = std::panic::catch_unwind(|| split_commands(&line));
+            assert!(answered.is_ok(), "split_commands panicked on {line:?}");
+            let Some(position) = digits.iter().rposition(|&d| d + 1 < SYMBOLS.len()) else {
+                if digits.len() == 5 {
+                    break;
+                }
+                digits = vec![0; digits.len() + 1];
+                continue;
+            };
+            digits[position] += 1;
+            digits[position + 1..].fill(0);
+        }
     }
 }
