@@ -33,6 +33,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::config` | `harness.toml` load + cross-section validate |
 | `harness-core::envelope` | JSON envelope contract every command emits |
 | `harness-core::error` | typed `Error` + stable `ErrorCode` wire codes |
+| `harness-core::wire_enum` | the macro every closed vocabulary is declared with — variants, `ALL`, `as_str` and `from_str` from one list |
 | `harness-core::path_guard` | safe write paths: `write_atomic` + `append_line` |
 | `harness-core::glob_root` | the one place a declared pattern meets a project root — the root is escaped so it matches itself, and only the caller's pattern stays a pattern |
 | `harness-core::git` | the files a project owns, as git answers it — what `check`'s memory set and the grep consumer detector read |
