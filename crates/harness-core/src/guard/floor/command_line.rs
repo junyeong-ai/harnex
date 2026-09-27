@@ -882,11 +882,11 @@ mod tests {
     }
 
     /// Inside a body a `#` comments only where it starts a word, as it does one
-    /// level up. An escaped character and a closed substitution are word text,
-    /// so a `#` after either belongs to the word and the command after it is
-    /// read. A line continuation at a word boundary and a closed subshell leave
-    /// the boundary, so a `#` there still comments out the paren that would have
-    /// ended the body.
+    /// level up. An escaped character, a closed quote and a closed substitution
+    /// are word text, so a `#` after any of them belongs to the word and the
+    /// command after it is read. A line continuation at a word boundary and a
+    /// closed subshell leave the boundary, so a `#` there still comments out the
+    /// paren that would have ended the body.
     #[test]
     fn reads_a_hash_in_a_body_as_the_shell_does() {
         let bypass = owned(&[&["git", "commit", "--no-verify"]]).remove(0);
@@ -894,6 +894,8 @@ mod tests {
             "echo a\\ #b; git commit --no-verify",
             "echo a\\;#b; git commit --no-verify",
             "echo a\\\n#b; git commit --no-verify",
+            "echo \"a\"#b; git commit --no-verify",
+            "echo 'a'#b; git commit --no-verify",
             "echo $(echo x)#b; git commit --no-verify",
             "echo $((1+1))#b; git commit --no-verify",
         ] {
