@@ -163,7 +163,7 @@ fn backtick_end(input: &str, start: usize) -> Result<usize, SplitError> {
     let mut i = start;
     while i < bytes.len() {
         match bytes[i] {
-            b'\\' if i + 1 < bytes.len() => i += 2,
+            b'\\' => i += 2,
             b'`' => return Ok(i + 1),
             _ => i += 1,
         }
@@ -1685,23 +1685,58 @@ mod tests {
     /// An escaped backtick inside a span is the span's own text, not its end.
     /// Ending the span at the first backtick found leaves the rest to be read
     /// as something else, and the command standing after the escape goes with
-    /// it — in a body the shell expands and on the command line alike.
+    /// it — in a body the shell expands and on the command line alike. The
+    /// third line is where the span ends somewhere else entirely rather than
+    /// one character out, which is what a step that is not two bytes does.
     ///
-    /// Measured: bash 5.3, bash 3.2 and zsh 5.9 run git on both of these.
+    /// Measured: bash 5.3 and bash 3.2 run git on all three, zsh on the first
+    /// two.
     #[test]
     fn ends_a_backtick_span_where_an_escape_does_not() {
         let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
-        let body = "cat <<EOF\ncost `echo \\`z\\` ; git commit --no-verify -m x`\nEOF";
+        for line in [
+            "cat <<EOF\ncost `echo \\`z\\` ; git commit --no-verify -m x`\nEOF",
+            "o=`x \\`y\\`` ; git commit --no-verify -m x",
+            "o=`abc\\`x` ; git commit --no-verify -m x",
+        ] {
+            assert!(
+                split(line).contains(&bypass),
+                "a span ended at an escaped backtick: {line} gave {:?}",
+                split(line)
+            );
+        }
+    }
+
+    /// A backtick body reaches its own parser with the three escapes the shell
+    /// removes removed and every other backslash still standing. Removing one
+    /// the shell keeps opens a quote the text never opened; keeping one the
+    /// shell removes leaves a `$` that never expands.
+    ///
+    /// Measured: bash 5.3, bash 3.2 and zsh 5.9 run git on the first two and
+    /// on none of the third.
+    #[test]
+    fn hands_a_backtick_body_on_as_the_shell_does() {
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        for line in [
+            // The escape stands first in the body, and `\$` is one the shell
+            // removes.
+            "cat <<EOF\ncost `\\$(git commit --no-verify -m x)`\nEOF",
+            // `\'` is one it keeps, so the quote is a character and the
+            // substitution beside it still expands.
+            "cat <<EOF\ncost `echo \\'$(git commit --no-verify -m x)\\'`\nEOF",
+        ] {
+            assert!(
+                split(line).contains(&bypass),
+                "a body was handed on wrong: {line} gave {:?}",
+                split(line)
+            );
+        }
+        // An unescaped quote does open one, and what it holds is text.
+        let quoted = "cat <<EOF\ncost `echo '$(git commit --no-verify -m x)'`\nEOF";
         assert!(
-            split(body).contains(&bypass),
-            "a span ended at an escaped backtick: {:?}",
-            split(body)
-        );
-        let line = "o=`x \\`y\\`` ; git commit --no-verify -m x";
-        assert!(
-            split(line).contains(&bypass),
-            "a span ended at an escaped backtick: {:?}",
-            split(line)
+            !split(quoted).contains(&bypass),
+            "a quoted mention was read as a command: {:?}",
+            split(quoted)
         );
     }
 
