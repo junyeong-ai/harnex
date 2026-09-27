@@ -116,6 +116,7 @@ No 1-impl trait exists outside of a documented process/test boundary.
 
 ## Module rules
 
-Every `mod.rs` ships a `//!` doc with WHAT + WHAT-REFUSED sections.
-See `.claude/rules/module-doc.md` for the contract; lib.rs is exempt
-because it only declares modules.
+Every `mod.rs` ships a `//!` doc. `.claude/rules/module-doc.md` owns what
+it carries and the `module_doc` test fails on a module that ships none or
+records no boundary. `lib.rs` is exempt — it declares modules and
+documents no behavior.
