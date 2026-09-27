@@ -304,7 +304,20 @@ patterns covered out of the box:
   cannot fail open while the harness reads as wired
 - Generated-artifact integrity — edits inside a managed region, a `copy`
   artifact whose bytes drifted from its template, a fill marker the generating
-  step left behind
+  step left behind, a `.claude/settings.json` value that stopped matching what
+  the profile declares
+- The enforcement floor (`guard floor`, PreToolUse) — a git command that skips
+  the hook stack: `--no-verify` and the prefixes git resolves to it, a
+  `core.hooksPath` reroute through `-c` / `--config-env` / the `GIT_CONFIG_*`
+  environment, a shell modifier in front of the git word, and any of those
+  inside a `$(…)` the line runs. Writes to the enforcement surface itself are
+  frozen, and a break-glass grant read live from the main checkout is how the
+  operator opens them. It is a tripwire, not a boundary. These stay out of
+  scope: a second shell (`sh -c`), a backtick body, a git alias, and a word
+  the shell rewrites before git sees it — brace expansion (`--no-verify{,}`),
+  a glob standing for the git path (`gi[t]`), and anything the check cannot
+  evaluate without running it, so `--no-verify$(true)` and `$F` reach git as
+  the flag and pass. The server-side re-run of the same gates is the backstop
 - The spec-workflow review floor — an open Critical/Blocker row, a row
   deleted, reworded or downgraded instead of gaining its terminal
   disposition, a commit adding finding rows without the decision line that
