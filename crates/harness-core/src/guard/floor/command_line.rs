@@ -200,6 +200,9 @@ fn heredoc_at(input: &str, start: usize, strip_tabs: bool) -> Option<Heredoc> {
 /// Where a heredoc body starting at `start` ends, and where the text after its
 /// delimiter line resumes. A delimiter that never arrives runs the body to the
 /// end of the input, which is the unterminated heredoc the shell reports.
+///
+/// A delimiter is never empty, so a `start` landing mid-line or past the end
+/// matches nothing there and the walk reaches the next line start regardless.
 fn heredoc_body(input: &str, start: usize, heredoc: &Heredoc) -> (usize, usize) {
     let mut line_start = start;
     while line_start < input.len() {
@@ -995,7 +998,10 @@ mod tests {
             "git commit -q -F - <<'EOF'\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
             "cat > f.md <<\"EOF\"\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
             "cat > f.md <<\\EOF\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
+            "cat > f.md << 'EOF'\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
             "bash <<'EOF'\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
+            "git commit -q -F - <<'EOF'\no=$(git commit --no-verify -m x)\nEOF",
+            "cat <<'A' <<'A'\nfirst\nA\nwrap it (o=$(git commit --no-verify -m x))\nA",
         ] {
             assert!(
                 !split(line).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
@@ -1017,13 +1023,19 @@ mod tests {
 
     /// The body ends at its delimiter line, so a substitution standing after
     /// the heredoc is read again. Running the literal region past the end
-    /// would leave the rest of the command line unjudged.
+    /// would leave the rest of the command line unjudged — which is what a
+    /// delimiter read wrong does, so the spellings here are the ones whose
+    /// quoting has to come off for the body to end at all.
     #[test]
     fn resumes_reading_substitutions_after_the_delimiter_line() {
         for line in [
             "cat <<'EOF'\nmention (o=$(x))\nEOF\no=$(git commit --no-verify -m x)",
             "cat <<-'EOF'\n\tmention (o=$(x))\n\tEOF\no=$(git commit --no-verify -m x)",
             "cat <<'EOF'\nnot the end: <<'Z'\nEOF\no=$(git commit --no-verify -m x)",
+            "cat << 'EOF'\nmention (o=$(x))\nEOF\no=$(git commit --no-verify -m x)",
+            "cat <<\\EOF\nmention (o=$(x))\nEOF\no=$(git commit --no-verify -m x)",
+            "cat <<E'O'F\nmention (o=$(x))\nEOF\no=$(git commit --no-verify -m x)",
+            "cat <<\"E\"OF\nmention (o=$(x))\nEOF\no=$(git commit --no-verify -m x)",
         ] {
             assert!(
                 split(line).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
