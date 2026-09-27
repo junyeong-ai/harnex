@@ -72,6 +72,14 @@ Sub-auditor slugs (current):
   the parsers skip, or is paraphrased. The commit that introduced the claim
   grammar tripped over this in its own template.
 
+Coverage rides the envelope and is not a finding. Every artifact
+`plugins/harnex/templates/scaffold.toml` declares carries a `present` flag
+there, and an absent one leaves the exit code 0 and `findings` empty: a
+destination the project declined and one never generated produce the same
+absence, and the manifest cannot tell them apart. An upgrade therefore reads
+`coverage` for `present: false`; an empty `findings` says nothing about what a
+harness lacks.
+
 Spec-vocabulary staleness is deliberately not an audit finding: it describes
 this binary's knowledge, not the project under audit, so it rides the
 envelope's `warnings[]` on every command (`.claude/rules/spec.md`). As a
