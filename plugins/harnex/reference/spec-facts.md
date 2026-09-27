@@ -71,9 +71,17 @@ already contradicted both a page and the binary's own schema.
   (prompt), 60 (agent); UserPromptSubmit, PreModelSwitch and PostModelSwitch
   lower the command default to 30 — and a PreModelSwitch hook cancelled at its
   timeout BLOCKS the model switch (fail-closed), so a slow hook there breaks
-  switching rather than degrading quietly. The
-  Bash *tool's* `tool_input.timeout` in PreToolUse stdin is milliseconds — a
-  different field, opposite unit. Never emit a 4-digit "ms" timeout.
+  switching rather than degrading quietly. **PreToolUse goes the other way and
+  says nothing.** Measured against a hook sleeping past a 2-second timeout: the
+  hook is killed, the tool call runs, and the model is handed
+  `(Bash completed with no output)` — where the same hook allowed to finish and
+  exit 2 hands it `PreToolUse:Bash hook error: …`. Neither the transcript nor
+  the operator's channel carries the cancellation, so a gate wired there stops
+  holding once it is slow enough and reports that to no one. Budget a
+  PreToolUse hook against its timeout as a correctness property, not a
+  latency one. The Bash *tool's* `tool_input.timeout` in PreToolUse stdin is
+  milliseconds — a different field, opposite unit. Never emit a 4-digit "ms"
+  timeout.
 - **A hook ends when its stdout closes, not when its command returns.** The
   runtime reads that stream to EOF to parse the control JSON, so a child
   started with `&` that inherits stdout holds the hook open for as long as the
