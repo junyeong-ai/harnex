@@ -15,11 +15,11 @@
 //!   are [`SplitError`]s.
 //! - `$(…)` text stays inside its enclosing word, which is where it
 //!   expands, and its body is also read as the command list it is. A
-//!   substitution runs its body whatever encloses it, so
+//!   substitution runs its body wherever the shell expands it, so
 //!   `o=$(git commit --no-verify -m x)` is that command spelled on this
-//!   line rather than a mention of it. Single-quoted text is inert and is
-//!   not read; `\$(…)` inside double quotes is the literal characters and
-//!   is not read either.
+//!   line rather than a mention of it. Where the shell expands nothing the
+//!   text is not read: single-quoted, `\$(…)` inside double quotes, and a
+//!   heredoc body under a quoted delimiter.
 //! - What a body's own grammar hides is not read either. The scan follows
 //!   quoting and comments; it models neither a `case` pattern's `)`, nor a
 //!   heredoc written inside the body, nor a `${…}` carrying an unbalanced
@@ -51,9 +51,9 @@
 //!   dropped, so `2>&1` binds as one redirection rather than splitting at its
 //!   `&`, and `--no-verify>log` reads as a flag plus a redirection rather
 //!   than one opaque word.
-//! - Heredoc bodies are not modelled. `<<` / `<<-` are recognised whole and
-//!   the delimiter word is consumed as the operator's target — but each
-//!   newline remains a separator, so a prose line beginning
+//! - A heredoc's delimiter is read; its body is not. `<<` / `<<-` are
+//!   recognised whole and the delimiter word is consumed as the operator's
+//!   target, but each newline remains a separator, so a prose line beginning
 //!   `git commit --no-verify` inside `cat <<EOF` still false-blocks. Whether
 //!   a body is a document or a script is the receiving program's to decide,
 //!   not the delimiter's: `bash <<'EOF'` runs every line of it, quoted
@@ -62,10 +62,16 @@
 //!   script. This takes the block, which surfaces, over the pass, which does
 //!   not. A mention inside the line rather than at its head — the shape a
 //!   document that quotes the flag actually takes — is not a command and
-//!   passes, unless it is wrapped in a live substitution, which is a command
-//!   wherever it sits. Quote such a mention to leave it inert.
+//!   passes. What the delimiter does settle is expansion: quote any
+//!   character of it and the body is literal, so a `$(…)` written there is a
+//!   mention and is read only under a bare delimiter. Reading it under a
+//!   quoted one refused the documents that explain this module, and what
+//!   that costs is a bypass wrapped in an assignment inside `bash <<'EOF'` —
+//!   a second shell running a script, which is out of scope however it is
+//!   spelled.
 
 use std::fmt;
+use std::ops::Range;
 
 /// What a command line read as, and the error that stopped the scan.
 ///
@@ -134,6 +140,94 @@ fn redirection_at(input: &str, i: usize) -> Option<&'static str> {
     REDIRECTION_OPERATORS
         .into_iter()
         .find(|op| input[i..].starts_with(op))
+}
+
+/// A heredoc queued on the line being scanned: where its body ends, and
+/// whether the shell expands that body.
+///
+/// Quoting any character of the delimiter word makes the whole body literal —
+/// `<<'EOF'`, `<<"EOF"`, `<<\EOF` and `<<E"OF"` alike — and an unquoted one
+/// expands it before the receiving program sees a byte.
+struct Heredoc {
+    delimiter: String,
+    literal: bool,
+    /// `<<-`, which strips leading tabs from the line that ends the body.
+    strip_tabs: bool,
+}
+
+/// The heredoc a `<<` / `<<-` at `start` (just past the operator) opens.
+///
+/// The delimiter is read from the raw text because the word itself is consumed
+/// as the redirection's target and reaches no caller, and because the quoting
+/// that decides the body is what word assembly strips.
+fn heredoc_at(input: &str, start: usize, strip_tabs: bool) -> Option<Heredoc> {
+    let bytes = input.as_bytes();
+    let mut i = start;
+    while matches!(bytes.get(i), Some(b' ' | b'\t')) {
+        i += 1;
+    }
+    let mut delimiter = String::new();
+    let mut literal = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b' ' | b'\t' | b'\n' | b';' | b'&' | b'|' | b'(' | b')' | b'<' | b'>' => break,
+            b'\\' => {
+                literal = true;
+                let ch = input[i + 1..].chars().next()?;
+                delimiter.push(ch);
+                i += 1 + ch.len_utf8();
+            }
+            quote @ (b'\'' | b'"') => {
+                literal = true;
+                let end = input[i + 1..].find(char::from(quote))?;
+                delimiter.push_str(&input[i + 1..i + 1 + end]);
+                i += end + 2;
+            }
+            _ => {
+                let ch = input[i..].chars().next()?;
+                delimiter.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    (!delimiter.is_empty()).then_some(Heredoc {
+        delimiter,
+        literal,
+        strip_tabs,
+    })
+}
+
+/// Where a heredoc body starting at `start` ends, and where the text after its
+/// delimiter line resumes. A delimiter that never arrives runs the body to the
+/// end of the input, which is the unterminated heredoc the shell reports.
+fn heredoc_body(input: &str, start: usize, heredoc: &Heredoc) -> (usize, usize) {
+    let mut line_start = start;
+    while line_start < input.len() {
+        let line_end = input[line_start..]
+            .find('\n')
+            .map_or(input.len(), |n| line_start + n);
+        let line = &input[line_start..line_end];
+        let line = if heredoc.strip_tabs {
+            line.trim_start_matches('\t')
+        } else {
+            line
+        };
+        if line == heredoc.delimiter {
+            return (line_start, (line_end + 1).min(input.len()));
+        }
+        if line_end >= input.len() {
+            break;
+        }
+        line_start = line_end + 1;
+    }
+    (input.len(), input.len())
+}
+
+/// Whether `i` falls in a literal heredoc body, where the shell expands
+/// nothing and a `$(…)` is therefore text rather than a command this line
+/// runs.
+fn inside_literal(ranges: &[Range<usize>], i: usize) -> bool {
+    ranges.iter().any(|range| range.contains(&i))
 }
 
 /// Decode a `$'…'` body starting at `start` (just past the opening quote),
@@ -342,15 +436,26 @@ fn opaque_substitution_end(input: &str, start: usize) -> Result<usize, SplitErro
     Err(SplitError::UnterminatedSubstitution)
 }
 
-/// The span a `$(…)` covers and the commands its body runs, or `None` where
-/// the scan cannot follow the shell's grammar far enough to say — a `case`
-/// pattern's `)`, a heredoc written inside the body.
+/// The span the `$(…)` at `dollar` covers and the commands its body runs, or
+/// `None` where it is not a body this line runs: the scan cannot follow the
+/// shell's grammar far enough to say — a `case` pattern's `)`, a heredoc
+/// written inside the body — or the `$(` stands in a literal heredoc body,
+/// where the shell expands nothing.
 ///
 /// Reading a body is an addition to what this parser used to do, so `None`
 /// returns each caller to what it did with a `$(` before there was one:
 /// unquoted, the span the paren count gives; inside double quotes, two
 /// ordinary characters. Neither costs the line a verdict it already had.
-fn read_substitution(input: &str, start: usize, depth: usize) -> Option<(usize, Vec<Vec<String>>)> {
+fn read_substitution(
+    input: &str,
+    dollar: usize,
+    depth: usize,
+    literal: &[Range<usize>],
+) -> Option<(usize, Vec<Vec<String>>)> {
+    if inside_literal(literal, dollar) {
+        return None;
+    }
+    let start = dollar + 2;
     let end = substitution_end(input, start).ok()?;
     if depth >= MAX_SUBSTITUTION_DEPTH {
         return Some((end, Vec::new()));
@@ -447,6 +552,8 @@ fn split_nested(input: &str, depth: usize) -> (Vec<Vec<String>>, Option<SplitErr
 fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitError> {
     let bytes = input.as_bytes();
     let mut i = 0;
+    let mut queued: Vec<Heredoc> = Vec::new();
+    let mut literal: Vec<Range<usize>> = Vec::new();
     while i < bytes.len() {
         let b = bytes[i];
         if b == b'\\' {
@@ -488,7 +595,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
                     // characters it was: the paren count the unquoted branch
                     // falls back to would run past the quote that ends this
                     // string, and take the rest of the line with it.
-                    match read_substitution(input, i + 2, depth) {
+                    match read_substitution(input, i, depth, &literal) {
                         Some((end, commands)) => {
                             buf.push_str(&input[i..end]);
                             inner.extend(commands);
@@ -539,7 +646,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'(') {
-            let (end, commands) = match read_substitution(input, i + 2, depth) {
+            let (end, commands) = match read_substitution(input, i, depth, &literal) {
                 Some(read) => read,
                 None => (opaque_substitution_end(input, i + 2)?, Vec::new()),
             };
@@ -557,6 +664,16 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             continue;
         }
         if let Some(redirection) = redirection_at(input, i) {
+            // A `<<` standing inside a literal body is that body's own text
+            // and opens nothing, so no second body runs past the delimiter
+            // and leaves the rest of the line unread.
+            if matches!(redirection, "<<" | "<<-")
+                && !inside_literal(&literal, i)
+                && let Some(heredoc) =
+                    heredoc_at(input, i + redirection.len(), redirection == "<<-")
+            {
+                queued.push(heredoc);
+            }
             acc.start_redirection();
             i += redirection.len();
             continue;
@@ -564,6 +681,16 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
         if matches!(b, b'\n' | b';' | b'(' | b')') {
             acc.push_command();
             i += 1;
+            if b == b'\n' {
+                let mut at = i;
+                for heredoc in queued.drain(..) {
+                    let (body_end, resume) = heredoc_body(input, at, &heredoc);
+                    if heredoc.literal {
+                        literal.push(at..body_end);
+                    }
+                    at = resume;
+                }
+            }
             continue;
         }
         if b == b'&' || b == b'|' {
@@ -853,6 +980,55 @@ mod tests {
             assert!(
                 commands.contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
                 "the line lost its verdict: {line} gave {commands:?}"
+            );
+        }
+    }
+
+    /// A quoted delimiter leaves the whole body literal, so a `$(…)` written
+    /// there is a mention. An unquoted one expands the body before the
+    /// receiving program sees a byte, so the same text is a command. The
+    /// receiving program does not enter it: the quoting on the delimiter is
+    /// what the shell reads, whoever the body is for.
+    #[test]
+    fn reads_a_heredoc_body_only_where_the_shell_expands_it() {
+        for line in [
+            "git commit -q -F - <<'EOF'\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
+            "cat > f.md <<\"EOF\"\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
+            "cat > f.md <<\\EOF\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
+            "bash <<'EOF'\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
+        ] {
+            assert!(
+                !split(line).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
+                "a literal body was read: {line} gave {:?}",
+                split(line)
+            );
+        }
+        for line in [
+            "git commit -q -F - <<EOF\nwrap it (o=$(git commit --no-verify -m x))\nEOF",
+            "cat > f.md <<-EOF\n\twrap it (o=$(git commit --no-verify -m x))\n\tEOF",
+        ] {
+            assert!(
+                split(line).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
+                "an expanded body went unread: {line} gave {:?}",
+                split(line)
+            );
+        }
+    }
+
+    /// The body ends at its delimiter line, so a substitution standing after
+    /// the heredoc is read again. Running the literal region past the end
+    /// would leave the rest of the command line unjudged.
+    #[test]
+    fn resumes_reading_substitutions_after_the_delimiter_line() {
+        for line in [
+            "cat <<'EOF'\nmention (o=$(x))\nEOF\no=$(git commit --no-verify -m x)",
+            "cat <<-'EOF'\n\tmention (o=$(x))\n\tEOF\no=$(git commit --no-verify -m x)",
+            "cat <<'EOF'\nnot the end: <<'Z'\nEOF\no=$(git commit --no-verify -m x)",
+        ] {
+            assert!(
+                split(line).contains(&owned(&[&["git", "commit", "--no-verify", "-m", "x"]])[0]),
+                "the line lost its verdict past the heredoc: {line} gave {:?}",
+                split(line)
             );
         }
     }
