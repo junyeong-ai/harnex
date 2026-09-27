@@ -1438,6 +1438,47 @@ mod tests {
     /// an entry that disagreed would hand a later `$(` a body it does not have
     /// — the reading itself is untouched, so this equality is the whole of what
     /// the table has to be right about.
+    /// A table answer ends the frame on top, and what the frames under it
+    /// resume with is the word state that frame's kind implies: a substitution
+    /// or a quote closes part of a word, a subshell closes a command. Both
+    /// callers here open one frame, so an answer empties the stack and the walk
+    /// returns rather than resuming — the contract the walk states is wider
+    /// than its callers, and this is where the wider part is held.
+    #[test]
+    fn a_table_answer_resumes_in_the_word_state_its_frame_implies() {
+        // `#` after the answered span is a comment at a word boundary and word
+        // text inside one, and a comment swallows the paren that ends the
+        // frame beneath. So the answer's word state decides the return value.
+        let input = "ab#)";
+        let cases = [
+            ("substitution", Open::Substitution, Ok(4)),
+            ("double quote", Open::DoubleQuote, Ok(4)),
+            (
+                "subshell",
+                Open::Subshell,
+                Err(SplitError::UnterminatedSubstitution),
+            ),
+        ];
+        for (name, inner, expected) in cases {
+            let mut settled = Settled::default();
+            settled
+                .of(QuotedSubstitution::Read)
+                .insert((0, inner == Open::DoubleQuote, false), Ok(2));
+            let walked = walk_body(
+                input,
+                0,
+                false,
+                QuotedSubstitution::Read,
+                &mut vec![Frame::open(Open::Substitution), Frame::open(inner)],
+                &mut settled,
+            );
+            assert_eq!(
+                walked, expected,
+                "an answered {name} resumed in the wrong word state"
+            );
+        }
+    }
+
     #[test]
     fn the_table_answers_what_walking_that_state_alone_answers() {
         for input in [
