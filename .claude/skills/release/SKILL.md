@@ -23,10 +23,12 @@ Then, for every claim either returns:
   `making-changes.md § Verification` states. A guard that passes its own
   mutation is watching nothing, and the suite still reports green. For Rust,
   the set is computed rather than enumerated: diff the release range into a
-  file and run `cargo mutants --in-diff <file> --test-workspace=false
+  file and run `scripts/mutants.sh --in-diff <file> --test-workspace=false
   --copy-vcs=true` — the git directory is copied because integration tests
   read it, and without it the unmutated baseline fails before any mutant
-  runs. A missed mutant is an open claim until a test kills it; one another
+  runs. The wrapper is what bounds a mutant's memory; `cargo mutants` bounds
+  only its wall clock, and a mutant of a loop that allocates per turn takes
+  the machine before that comes round. A missed mutant is an open claim until a test kills it; one another
   package's test would kill is confirmed by re-running it with
   `--test-workspace=true`. Shell and template guards have no such tool and keep
   the manual form.
