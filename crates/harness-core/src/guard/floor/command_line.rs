@@ -313,12 +313,13 @@ fn heredoc_commands(
     // What the receiving program makes of the body if it is a shell. The other
     // reading holds the substitutions, so this one leaves them the text they
     // are and no command is found twice.
-    let (commands, script) = split_nested(body, depth + 1, Expansion::Mention);
+    let inner = depth + 1;
+    let (commands, script) = split_nested(body, inner, Expansion::Mention);
     acc.push_substitution(commands);
     // What the shell already did to the body, which no quoting in it answers
     // to.
     let expansion = expanded
-        .then(|| expanded_substitutions(body, depth + 1, acc).err())
+        .then(|| expanded_substitutions(body, inner, acc).err())
         .flatten();
     script.or(expansion)
 }
@@ -340,9 +341,10 @@ fn expanded_substitutions(
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
-            // A backslash escapes only these here; before anything else it
-            // is one of the body's own characters.
-            b'\\' if matches!(bytes.get(i + 1), Some(b'$' | b'`' | b'\\' | b'\n')) => i += 2,
+            // A backslash takes the character after it out of the walk,
+            // which is what keeps `\$(…)` from being a substitution. Before a
+            // character that opens nothing it changes nothing.
+            b'\\' => i += 2,
             b'$' if bytes.get(i + 1) == Some(&b'(') => {
                 // A span this reading cannot delimit is a command list it has
                 // not read, and the shell runs it either way. The paren count
@@ -362,12 +364,15 @@ fn expanded_substitutions(
             // so reading one refuses only what the line already runs.
             b'`' => {
                 let end = backtick_end(body, i + 1)?;
-                let (commands, _) = split_nested(
+                let (commands, unread) = split_nested(
                     &unescaped_backtick_body(&body[i + 1..end - 1]),
                     depth + 1,
                     Expansion::Runs,
                 );
                 acc.push_substitution(commands);
+                if let Some(error) = unread {
+                    return Err(error);
+                }
                 i = end;
             }
             _ => i += 1,
@@ -1738,6 +1743,24 @@ mod tests {
             "a quoted mention was read as a command: {:?}",
             split(quoted)
         );
+
+        // A `$` the shell expands into a value opens no command list, so a
+        // body full of them is read and not skipped. Taking every `$` for a
+        // substitution turns the commonest body there is into a line the
+        // floor says it could not read.
+        assert!(
+            split_commands("cat <<EOF\ncost $HOME and $1 and $\nEOF")
+                .error
+                .is_none()
+        );
+        // And a pair that closes where it closes leaves nothing unread. A span
+        // ending a character out carries the mark into the body, which is a
+        // pair the body never opened.
+        assert!(
+            split_commands("cat <<EOF\ncost `git commit --no-verify -m x` done\nEOF")
+                .error
+                .is_none()
+        );
     }
 
     /// What acts inside a body the shell expands. A backslash escapes only
@@ -1988,6 +2011,30 @@ mod tests {
             "a body inside the bound went unread: {:?}",
             split(shallow)
         );
+
+        // A body is one level in, so what the expansion reading finds there
+        // stops one level before the same nesting on the command line does,
+        // and a backtick pair inside the body is one level in again.
+        let bypass = owned(&[&["git", "commit", "--no-verify", "-m", "x"]]).remove(0);
+        for (shape, step) in [
+            ("cat <<EOF\n{}{}{}\nEOF", 1),
+            ("cat <<EOF\n`{}{}{}`\nEOF", 2),
+        ] {
+            for (levels, found) in [
+                (MAX_NESTING_DEPTH - step, true),
+                (MAX_NESTING_DEPTH - step + 1, false),
+            ] {
+                let line = shape
+                    .replacen("{}", &"$(".repeat(levels), 1)
+                    .replacen("{}", "git commit --no-verify -m x", 1)
+                    .replacen("{}", &")".repeat(levels), 1);
+                assert_eq!(
+                    split(&line).contains(&bypass),
+                    found,
+                    "the expansion reading stopped at the wrong level: {shape} {levels}"
+                );
+            }
+        }
     }
 
     /// Past the bound the body stops being read, which is what an unreadable
