@@ -348,18 +348,67 @@ const MAX_SUBSTITUTION_DEPTH: usize = 32;
 /// quoting state — single, double and ANSI-C alike: `$(grep -c ')' f)` ends
 /// at its last paren. Counting the quoted one would cut the body short and
 /// leave the rest of the line to be read as something else.
+///
+/// Double quotes stop neither a `$(` nor what it holds, so in
+/// `"$(cut -d'"' -f2 f)"` the middle quote is the inner body's and the string
+/// closes at the last one. Where a body cannot be read that way — a backtick
+/// carrying a quote, which this scan does not model, or a comment bash 3.2
+/// does not take for one — it is read again with each `$(` inside double
+/// quotes held as characters, the reading `scan` falls back to one level up.
 fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
+    body_end(input, start, QuotedSubstitution::Read)
+        .or_else(|_| body_end(input, start, QuotedSubstitution::Text))
+}
+
+/// How [`body_end`] reads a `$(` inside double quotes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum QuotedSubstitution {
+    /// As a substitution, whose quotes are its own.
+    Read,
+    /// As two characters, so the string closes at its next unescaped quote.
+    Text,
+}
+
+/// What a substitution body has open at a point of its scan.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Open {
+    /// `$(`. The paren closing it ends part of a word, so a `#` right after it
+    /// is word text.
+    Substitution,
+    /// Any other `(`, taken for a subshell's: the paren closing it ends a
+    /// command, so a `#` after it comments. `<(…)`, `>(…)`, bash's array
+    /// `a=(…)` and zsh's `=(…)` also end only part of a word, and `scan`
+    /// misreads them the same way: a `#` glued to one hides the commands after
+    /// it.
+    Subshell,
+    /// `"`, inside which only a backslash, a `$(` and the closing quote act —
+    /// the three `scan` reads there.
+    DoubleQuote,
+}
+
+fn body_end(input: &str, start: usize, quoted: QuotedSubstitution) -> Result<usize, SplitError> {
     let bytes = input.as_bytes();
-    // One entry per open paren, `true` where `$(` opened it. The paren closing
-    // a substitution ends part of a word, so a `#` right after it is word text;
-    // every other paren is taken for a subshell's, whose close ends a command,
-    // so a `#` after it comments. `<(…)`, `>(…)`, bash's array `a=(…)` and
-    // zsh's `=(…)` also end only part of a word, and `scan` misreads them the
-    // same way: a `#` glued to one hides the commands after it.
-    let mut open = vec![true];
+    let mut open = vec![Open::Substitution];
     let mut i = start;
     let mut in_word = false;
     while i < bytes.len() {
+        if open.last() == Some(&Open::DoubleQuote) {
+            match bytes[i] {
+                b'"' => {
+                    open.pop();
+                    in_word = true;
+                    i += 1;
+                }
+                b'\\' => i += 2,
+                b'$' if quoted == QuotedSubstitution::Read && bytes.get(i + 1) == Some(&b'(') => {
+                    open.push(Open::Substitution);
+                    in_word = false;
+                    i += 2;
+                }
+                _ => i += 1,
+            }
+            continue;
+        }
         match bytes[i] {
             // A comment runs to the newline, and the shell drops it before it
             // is anything: a quote or a paren written there is neither.
@@ -391,7 +440,7 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
                 i += 1;
             }
             b'$' if bytes.get(i + 1) == Some(&b'(') => {
-                open.push(true);
+                open.push(Open::Substitution);
                 i += 2;
             }
             b'\'' => {
@@ -401,21 +450,15 @@ fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
                 i += end + 2;
             }
             b'"' => {
-                i += 1;
-                while i < bytes.len() && bytes[i] != b'"' {
-                    i += if bytes[i] == b'\\' { 2 } else { 1 };
-                }
-                if i >= bytes.len() {
-                    return Err(SplitError::UnterminatedDoubleQuote);
-                }
+                open.push(Open::DoubleQuote);
                 i += 1;
             }
             b'(' => {
-                open.push(false);
+                open.push(Open::Subshell);
                 i += 1;
             }
             b')' => {
-                let closes_substitution = open.pop() == Some(true);
+                let closes_substitution = open.pop() == Some(Open::Substitution);
                 i += 1;
                 if open.is_empty() {
                     return Ok(i);
@@ -1009,6 +1052,41 @@ mod tests {
                 "the body ended early: {body} gave {commands:?}"
             );
         }
+    }
+
+    /// Double quotes inside a body stop neither a `$(` nor what it holds, so a
+    /// quote the inner body carries — `cut -d'"'`, `tr -d '"'`, or one a comment
+    /// holds, as in `"$(#"⏎)"` — does not close the string. Closing it there
+    /// leaves the rest of the body inside a string that never ends, and the
+    /// command after it goes unread. An inner body the scan cannot read — a
+    /// backtick holding a quote, a `#` bash 3.2 does not take for a comment —
+    /// leaves the string to close at its own quote, the reading `scan` falls
+    /// back to. At least one of bash 5.3, bash 3.2 and zsh 5.9 runs git in each
+    /// body below, and none of them runs the escaped `\$(` as a command.
+    #[test]
+    fn reads_a_body_past_a_substitution_in_double_quotes() {
+        let bypass = owned(&[&["git", "commit", "--no-verify"]]).remove(0);
+        for body in [
+            "echo \"$(cut -d'\"' -f2 f)\"; git commit --no-verify",
+            "echo \"$(echo \"$(printf %s '\"')\")\"; git commit --no-verify",
+            "echo \"a\\\"$(printf %s '\"')\"; git commit --no-verify",
+            "echo \"$(echo x)#c\"; git commit --no-verify",
+            "echo \"a)b\"; git commit --no-verify",
+            "echo \"$(#\"\n)\"; git commit --no-verify",
+            "echo \"$(`'`)\"; git commit --no-verify",
+            "echo \"$(#)\"; git commit --no-verify",
+        ] {
+            let commands = split(&format!("o=$({body})"));
+            assert!(
+                commands.contains(&bypass),
+                "the body went unread: {body:?} gave {commands:?}"
+            );
+        }
+        let escaped = split("o=$(echo \"\\$(git commit --no-verify)\")");
+        assert!(
+            !escaped.contains(&bypass),
+            "an escaped `$(` read as a command: {escaped:?}"
+        );
     }
 
     /// A body with no closing paren anywhere is the one shape the fallback
