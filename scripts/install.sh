@@ -263,10 +263,24 @@ printf '\n%s%s%s → %s\n' "$GREEN" "$("$INSTALLED" --version)" "$RESET" "$INSTA
 if ! have "$BINARY"; then
   warn "$BIN_DIR is not on PATH — add it, or the plugin will report the oracle as missing:"
   log "    export PATH=\"$BIN_DIR:\$PATH\""
-elif [ "$(command -v "$BINARY")" != "$INSTALLED" ]; then
-  # Two copies on PATH is a version the operator cannot explain later.
-  warn "PATH still resolves $BINARY to $(command -v "$BINARY"), not what was just installed:"
-  log "    rm $(command -v "$BINARY")"
+else
+  RESOLVED="$(command -v "$BINARY")"
+  if [ "$RESOLVED" != "$INSTALLED" ]; then
+    # Two copies on PATH is a version the operator cannot explain later, so
+    # both are named with what each answers. The remedy offered is PATH order,
+    # never deletion: what shadows a fresh install is commonly a version
+    # manager's shim, which this script does not own and which would be
+    # regenerated anyway.
+    #
+    # Only the shadow's version is read behind a guard. `place` already refused
+    # an install that does not run, so a failure on the other line is a wrong
+    # state rather than a diagnostic to soften.
+    warn "PATH resolves $BINARY to $RESOLVED, not what was just installed:"
+    log "    $RESOLVED → $("$RESOLVED" --version 2>/dev/null || echo 'does not run')"
+    log "    $INSTALLED → $("$INSTALLED" --version)"
+    log "    put $BIN_DIR first to prefer this one:"
+    log "        export PATH=\"$BIN_DIR:\$PATH\""
+  fi
 fi
 
 cat >&2 <<EOF
