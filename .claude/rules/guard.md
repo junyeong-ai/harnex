@@ -128,7 +128,10 @@ and reaches the tripwire not at all. The scaffold wires it through
 form with no shell: an absent oracle would fail the hook on every tool call,
 and one too old to carry the subcommand would exit 2 — the block code — on
 every command it was asked about. The arm probes the subcommand and leaves
-the call alone unless it parses.
+the call alone unless it parses. A second probe splits that silence: an
+oracle absent or predating the subcommand says nothing, and one answering
+neither probe is a floor down behind a name that still resolves, which the arm
+reports on `systemMessage`.
 
 `guard::telemetry` (`harnex guard telemetry-emit`) handles PostToolUse /
 PostToolUseFailure: it records one `harness_invocation` event — the invoked

@@ -11,7 +11,8 @@
 # and separate out the third: an oracle on PATH that does not run at all.
 #
 # The binary speaks the PreToolUse contract itself, notice channel included.
-# `exec` hands it this process, so its exit code and stdin are the arm's.
+# `exec` hands it this process, so its exit code and stdin are the arm's, and
+# neither probe may read stdin or the oracle would receive an empty one.
 set -uo pipefail
 
 # A machine that never installed the oracle is not told so on every tool call.
@@ -26,13 +27,16 @@ command -v harnex >/dev/null 2>&1 || exit 0
 #
 # The notice takes the channel the binary's own skips take. A hook that exits 0
 # is read for the control JSON on stdout and not for stderr, so a message
-# written to stderr here would reach no one.
+# written to stderr here would reach no one. A JSON string body admits no
+# character below 0x20, so a path is cleared of that whole class before the two
+# characters that could still end the string are escaped. The class and not a
+# range: bash 3.2 orders `[\001-\037]` by collation and leaves tab and CR in.
 harnex guard floor --help >/dev/null 2>&1 || {
   if ! harnex --help >/dev/null 2>&1; then
     where=$(command -v harnex)
+    where=${where//[[:cntrl:]]/ }
     where=${where//\\/\\\\}
     where=${where//\"/\\\"}
-    where=${where//$'\n'/ }
     printf '{"systemMessage":"[floor-check skipped: %s does not run]","suppressOutput":true}\n' "$where"
   fi
   exit 0
