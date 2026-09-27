@@ -70,6 +70,7 @@
 //!   a second shell running a script, which is out of scope however it is
 //!   spelled.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::Range;
 
@@ -231,7 +232,10 @@ fn heredoc_body(input: &str, start: usize, heredoc: &Heredoc) -> (usize, usize) 
 /// literal ones alone, in which the shell expands nothing so a `$(…)` is text
 /// rather than a command this line runs.
 fn inside_body(ranges: &[Range<usize>], i: usize) -> bool {
-    ranges.iter().any(|range| range.contains(&i))
+    // Ascending and disjoint, which the push site holds them to. Reading them
+    // all costs a line one pass per `$(` over every heredoc written before it.
+    let next = ranges.partition_point(|range| range.end <= i);
+    ranges.get(next).is_some_and(|range| range.contains(&i))
 }
 
 /// Decode a `$'…'` body starting at `start` (just past the opening quote),
@@ -356,9 +360,9 @@ const MAX_SUBSTITUTION_DEPTH: usize = 32;
 /// carrying a quote, which this scan does not model, or a comment bash 3.2
 /// does not take for one — it is read again with each `$(` inside double
 /// quotes held as characters, the reading `scan` falls back to one level up.
-fn substitution_end(input: &str, start: usize) -> Result<usize, SplitError> {
-    body_end(input, start, QuotedSubstitution::Read)
-        .or_else(|_| body_end(input, start, QuotedSubstitution::Text))
+fn substitution_end(input: &str, start: usize, settled: &mut Settled) -> Result<usize, SplitError> {
+    body_end(input, start, QuotedSubstitution::Read, settled)
+        .or_else(|_| body_end(input, start, QuotedSubstitution::Text, settled))
 }
 
 /// How [`body_end`] reads a `$(` inside double quotes.
@@ -387,22 +391,177 @@ enum Open {
     DoubleQuote,
 }
 
-fn body_end(input: &str, start: usize, quoted: QuotedSubstitution) -> Result<usize, SplitError> {
+/// The byte a walk is at, whether the frame on top there is a quote, and
+/// whether a word is open. These three settle what the walk does next and so
+/// everything after it: the frames beneath the top one cannot be reached
+/// before it closes, so they never enter.
+type Resume = (usize, bool, bool);
+
+/// What one reading of this input has already worked out, so that no walk
+/// works it out again.
+///
+/// Each entry answers a [`Resume`] with the byte just past where the frame on
+/// top there closes, or with the error the walk meets before it does. A walk
+/// stepping through a state has answered for every later walk that reaches the
+/// same one, and the states number with the bytes, so a line is stepped once
+/// per reading rather than once per `$(` written on it.
+///
+/// The difference is not only speed. A line is read inside a `PreToolUse`
+/// hook, and a hook cancelled at its timeout is killed while the tool call
+/// proceeds, with nothing said to the operator or the model
+/// (`plugins/harnex/reference/spec-facts.md`). A read that grows with the
+/// square of the line is a floor that stops holding once a line is long
+/// enough, and reports that to no one.
+#[derive(Default)]
+struct Settled {
+    read: HashMap<Resume, Result<usize, SplitError>>,
+    text: HashMap<Resume, Result<usize, SplitError>>,
+    /// Every newline in the input, ascending, built when a comment first needs
+    /// one. Searching from each `#` instead re-reads the rest of the line once
+    /// per comment, which is the same growth by another route.
+    newlines: Option<Vec<usize>>,
+    /// Bytes stepped across every walk of this input. A state is stepped once
+    /// and answered from the table afterwards, so this stays within a small
+    /// multiple of the input's length however many `$(` are written on it.
+    /// That is the property the table exists for, and the one a test can hold
+    /// at any size on any machine where a wall-clock bound could not.
+    steps: usize,
+}
+
+impl Settled {
+    fn of(
+        &mut self,
+        quoted: QuotedSubstitution,
+    ) -> &mut HashMap<Resume, Result<usize, SplitError>> {
+        match quoted {
+            QuotedSubstitution::Read => &mut self.read,
+            QuotedSubstitution::Text => &mut self.text,
+        }
+    }
+
+    /// The first newline at or after `i`, or the end of the input.
+    fn line_end(&mut self, input: &str, i: usize) -> usize {
+        let newlines = self.newlines.get_or_insert_with(|| {
+            input
+                .bytes()
+                .enumerate()
+                .filter_map(|(at, b)| (b == b'\n').then_some(at))
+                .collect()
+        });
+        let next = newlines.partition_point(|&at| at < i);
+        newlines.get(next).copied().unwrap_or(input.len())
+    }
+}
+
+/// A frame the walk holds open, and the resume states it stepped through while
+/// this frame was the top one. The byte that closes the frame is the answer to
+/// every one of them, so they are settled together the moment it arrives.
+struct Frame {
+    kind: Open,
+    pending: Vec<Resume>,
+}
+
+impl Frame {
+    fn open(kind: Open) -> Self {
+        Self {
+            kind,
+            pending: Vec::new(),
+        }
+    }
+}
+
+fn body_end(
+    input: &str,
+    start: usize,
+    quoted: QuotedSubstitution,
+    settled: &mut Settled,
+) -> Result<usize, SplitError> {
+    let mut open = vec![Frame::open(Open::Substitution)];
+    let outcome = walk_body(input, start, false, quoted, &mut open, settled);
+    // A frame still held is one the walk never closed, and a walk beginning at
+    // any state it stepped through under that frame ends the same way.
+    if let Err(ref error) = outcome {
+        let table = settled.of(quoted);
+        for frame in open.iter() {
+            for key in frame.pending.iter() {
+                table.insert(*key, Err(error.clone()));
+            }
+        }
+    }
+    outcome
+}
+
+/// Answer every state `frame` was waiting on, now that it has closed at `end`.
+fn close(frame: Frame, end: usize, quoted: QuotedSubstitution, settled: &mut Settled) {
+    let table = settled.of(quoted);
+    for key in frame.pending {
+        table.insert(key, Ok(end));
+    }
+}
+
+/// Steps from `start` until the frame on top of `open` closes, and answers with
+/// the byte just past it. Any frame will do: a walk reads the one on top, so
+/// what it answers is that frame's end whatever sits beneath it.
+fn walk_body(
+    input: &str,
+    start: usize,
+    word_open: bool,
+    quoted: QuotedSubstitution,
+    open: &mut Vec<Frame>,
+    settled: &mut Settled,
+) -> Result<usize, SplitError> {
     let bytes = input.as_bytes();
-    let mut open = vec![Open::Substitution];
     let mut i = start;
-    let mut in_word = false;
+    let mut in_word = word_open;
+    // No byte index equals the sentinel, so the first turn passes it.
+    let mut previous = usize::MAX;
     while i < bytes.len() {
-        if open.last() == Some(&Open::DoubleQuote) {
+        // Every turn advances, which is what bounds the states recorded below
+        // by the length of the input rather than leaving them to grow without
+        // end.
+        debug_assert!(
+            i != previous,
+            "the walk stalled at byte {i} of {}",
+            input.len()
+        );
+        previous = i;
+        settled.steps += 1;
+        let top = open.last().expect("the walk holds its own frame").kind;
+        let here = (i, top == Open::DoubleQuote, in_word);
+        match settled.of(quoted).get(&here).cloned() {
+            Some(Err(error)) => return Err(error),
+            Some(Ok(end)) => {
+                let frame = open.pop().expect("the frame just read");
+                close(frame, end, quoted, settled);
+                i = end;
+                if open.is_empty() {
+                    return Ok(end);
+                }
+                // A closed quote and a closed substitution both end part of a
+                // word; a closed subshell ends a command.
+                in_word = top != Open::Subshell;
+                continue;
+            }
+            None => open
+                .last_mut()
+                .expect("the walk holds its own frame")
+                .pending
+                .push(here),
+        }
+        if top == Open::DoubleQuote {
             match bytes[i] {
                 b'"' => {
-                    open.pop();
-                    in_word = true;
+                    let frame = open.pop().expect("the quote frame");
                     i += 1;
+                    close(frame, i, quoted, settled);
+                    if open.is_empty() {
+                        return Ok(i);
+                    }
+                    in_word = true;
                 }
                 b'\\' => i += 2,
                 b'$' if quoted == QuotedSubstitution::Read && bytes.get(i + 1) == Some(&b'(') => {
-                    open.push(Open::Substitution);
+                    open.push(Frame::open(Open::Substitution));
                     in_word = false;
                     i += 2;
                 }
@@ -412,9 +571,12 @@ fn body_end(input: &str, start: usize, quoted: QuotedSubstitution) -> Result<usi
         }
         match bytes[i] {
             // A comment runs to the newline, and the shell drops it before it
-            // is anything: a quote or a paren written there is neither.
+            // is anything: a quote or a paren written there is neither. Sought
+            // from past the `#`, which finds the same newline — this byte is
+            // not one — and leaves the turn advancing by arithmetic rather than
+            // by what the index holds.
             b'#' if !in_word => {
-                i += input[i..].find('\n').unwrap_or(input.len() - i);
+                i = settled.line_end(input, i + 1);
             }
             // An escaped character is word text whatever its byte, and a
             // backslash-newline is removed outright, leaving the state as it was:
@@ -441,7 +603,7 @@ fn body_end(input: &str, start: usize, quoted: QuotedSubstitution) -> Result<usi
                 i += 1;
             }
             b'$' if bytes.get(i + 1) == Some(&b'(') => {
-                open.push(Open::Substitution);
+                open.push(Frame::open(Open::Substitution));
                 i += 2;
             }
             b'\'' => {
@@ -451,16 +613,18 @@ fn body_end(input: &str, start: usize, quoted: QuotedSubstitution) -> Result<usi
                 i += end + 2;
             }
             b'"' => {
-                open.push(Open::DoubleQuote);
+                open.push(Frame::open(Open::DoubleQuote));
                 i += 1;
             }
             b'(' => {
-                open.push(Open::Subshell);
+                open.push(Frame::open(Open::Subshell));
                 i += 1;
             }
             b')' => {
-                let closes_substitution = open.pop() == Some(Open::Substitution);
+                let frame = open.pop().expect("the walk holds its own frame");
                 i += 1;
+                let closes_substitution = frame.kind == Open::Substitution;
+                close(frame, i, quoted, settled);
                 if open.is_empty() {
                     return Ok(i);
                 }
@@ -520,12 +684,13 @@ fn read_substitution(
     dollar: usize,
     depth: usize,
     literal: &[Range<usize>],
+    settled: &mut Settled,
 ) -> Option<(usize, Vec<Vec<String>>)> {
     if inside_body(literal, dollar) {
         return None;
     }
     let start = dollar + 2;
-    let end = substitution_end(input, start).ok()?;
+    let end = substitution_end(input, start, settled).ok()?;
     if depth >= MAX_SUBSTITUTION_DEPTH {
         return Some((end, Vec::new()));
     }
@@ -620,11 +785,12 @@ fn split_nested(input: &str, depth: usize) -> (Vec<Vec<String>>, Option<SplitErr
 
 fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitError> {
     let bytes = input.as_bytes();
+    let mut settled = Settled::default();
     let mut i = 0;
     let mut queued: Vec<Heredoc> = Vec::new();
-    // Every body, and the literal ones again. Both stay ascending and
-    // disjoint: nothing is queued from inside a body, so the bodies drained at
-    // one newline follow each other and the next drain starts past them all.
+    // Every body, and the literal ones again. Nothing is queued from inside a
+    // body, so both lists stay ascending and disjoint, which is what lets a
+    // `$(` find its range without reading the ones before it.
     let mut bodies: Vec<Range<usize>> = Vec::new();
     let mut literal: Vec<Range<usize>> = Vec::new();
     while i < bytes.len() {
@@ -668,7 +834,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
                     // characters it was: the paren count the unquoted branch
                     // falls back to would run past the quote that ends this
                     // string, and take the rest of the line with it.
-                    match read_substitution(input, i, depth, &literal) {
+                    match read_substitution(input, i, depth, &literal, &mut settled) {
                         Some((end, commands)) => {
                             buf.push_str(&input[i..end]);
                             inner.extend(commands);
@@ -719,7 +885,7 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
             continue;
         }
         if b == b'$' && bytes.get(i + 1) == Some(&b'(') {
-            let (end, commands) = match read_substitution(input, i, depth, &literal) {
+            let (end, commands) = match read_substitution(input, i, depth, &literal, &mut settled) {
                 Some(read) => read,
                 None => (opaque_substitution_end(input, i + 2)?, Vec::new()),
             };
@@ -739,11 +905,9 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
         if let Some(redirection) = redirection_at(input, i) {
             // A `<<` standing inside a heredoc body is that body's own text
             // and opens nothing, whether or not the body expands. The scan
-            // walks a body's text, so it meets one; queuing there ends the
-            // outer body early at the inner delimiter, and every line between
-            // is read as the shell never reads it. Measured on bash 5.3, bash
-            // 3.2 and zsh 5.9: all three run a `$(…)` written after a `<<'C'`
-            // line inside an expanding body, which this scan used to skip.
+            // walks a body's text, so it meets one, and queuing there would end
+            // the outer body at the inner delimiter and read every line between
+            // as the shell never reads it.
             if matches!(redirection, "<<" | "<<-")
                 && !inside_body(&bodies, i)
                 && let Some(heredoc) =
@@ -762,6 +926,11 @@ fn scan(input: &str, depth: usize, acc: &mut Accumulator) -> Result<(), SplitErr
                 let mut at = i;
                 for heredoc in queued.drain(..) {
                     let (body_end, resume) = heredoc_body(input, at, &heredoc);
+                    debug_assert!(
+                        bodies.last().is_none_or(|last| last.end <= at),
+                        "heredoc bodies out of order: {:?} then {at}..{body_end}",
+                        bodies.last()
+                    );
                     bodies.push(at..body_end);
                     if heredoc.literal {
                         literal.push(at..body_end);
@@ -1094,11 +1263,185 @@ mod tests {
                 "the body went unread: {body:?} gave {commands:?}"
             );
         }
+        let dense = split("o=$(echo \"$(#)\"\"$(#)\"\n\"$(#)\"; git commit --no-verify)");
+        assert!(
+            dense.contains(&bypass),
+            "a body holding several unclosed substitutions went unread: {dense:?}"
+        );
         let escaped = split("o=$(echo \"\\$(git commit --no-verify)\")");
         assert!(
             !escaped.contains(&bypass),
             "an escaped `$(` read as a command: {escaped:?}"
         );
+    }
+
+    /// Every entry [`Settled`] takes is the answer a walk of that state
+    /// alone gives. One walk answering for the next rests on nothing else, and
+    /// an entry that disagreed would hand a later `$(` a body it does not have
+    /// — the reading itself is untouched, so this equality is the whole of what
+    /// the table has to be right about.
+    #[test]
+    fn the_table_answers_what_walking_that_state_alone_answers() {
+        for input in [
+            "$(echo $(echo a) $(echo b))",
+            "$(echo \"$(echo a)\" $(echo b))",
+            "$(echo $(echo a) $(#)\n)",
+            "$(echo \"$(#)\"\"$(#)\"\n\"$(#)\")",
+            "$(echo '$(a)' $(b))",
+            "$(a\\)b $(c))",
+            "$(echo $'\\x28' $(b))",
+            "$(echo (a) $(b)",
+        ] {
+            let mut settled = Settled::default();
+            let _ = substitution_end(input, 2, &mut settled);
+            let mut checked = 0;
+            // The second reading runs only where the first fails, so a body the
+            // first reads settles nothing under it.
+            for (quoted, name) in [
+                (QuotedSubstitution::Read, "Read"),
+                (QuotedSubstitution::Text, "Text"),
+            ] {
+                let recorded: Vec<(Resume, Result<usize, SplitError>)> = settled
+                    .of(quoted)
+                    .iter()
+                    .map(|(key, value)| (*key, value.clone()))
+                    .collect();
+                checked += recorded.len();
+                for ((at, quote_on_top, in_word), answer) in recorded {
+                    let frame = if quote_on_top {
+                        Open::DoubleQuote
+                    } else {
+                        Open::Substitution
+                    };
+                    let mut alone = Settled::default();
+                    let walked = walk_body(
+                        input,
+                        at,
+                        in_word,
+                        quoted,
+                        &mut vec![Frame::open(frame)],
+                        &mut alone,
+                    );
+                    assert_eq!(
+                        walked, answer,
+                        "{input:?}: the table answers byte {at} (quote on top {quote_on_top}, \
+                         in_word {in_word}) under {name} differently from a walk that starts \
+                         there"
+                    );
+                }
+            }
+            assert!(
+                checked > 0,
+                "{input:?} settled nothing at all, so this case proves nothing"
+            );
+        }
+    }
+
+    /// Settling every `$(` on a line through one table answers what settling
+    /// each on a table of its own answers. The table is a shortcut, so sharing
+    /// it may not change a verdict, and a key that leaves out state breaks
+    /// exactly here: entries an earlier `$(` wrote are read by a later one that
+    /// is in a different state, and only the shared run is wrong.
+    ///
+    /// Checking each entry by re-walking it from its own key cannot see that —
+    /// the entry and the re-walk read the same key, so a key missing state
+    /// agrees with itself. This drives the table the way `scan` drives it
+    /// instead, over lines built from the constructs the scan branches on, to
+    /// the depth where two walks first reach one byte in different states.
+    #[test]
+    fn sharing_the_table_answers_what_settling_each_alone_answers() {
+        const FRAGMENTS: [&str; 12] = [
+            "$(", ")", "\"", "#", "\n", "\\\n", "'", "x", " ", "(", "$(x)", "`",
+        ];
+        let mut lines = vec![String::from("\"$(#$(x\\\n#)\"")];
+        let mut digits = [0usize; 4];
+        loop {
+            lines.push(digits.iter().map(|&d| FRAGMENTS[d]).collect());
+            let Some(place) = digits.iter().rposition(|&d| d + 1 < FRAGMENTS.len()) else {
+                break;
+            };
+            digits[place] += 1;
+            digits[place + 1..].fill(0);
+        }
+
+        for line in lines {
+            let mut shared = Settled::default();
+            let mut at = 0;
+            while let Some(found) = line[at..].find("$(") {
+                at += found + 2;
+                let together = substitution_end(&line, at, &mut shared);
+                let alone = substitution_end(&line, at, &mut Settled::default());
+                assert_eq!(
+                    together, alone,
+                    "sharing the table changed the body at byte {at} of {line:?}"
+                );
+            }
+        }
+    }
+
+    /// Lines that used to cost a pass over the rest of the line for every `$(`
+    /// written on it. They differ in what stood between one pass and the next
+    /// — a quote and a subshell paren, a comment reaching for a newline that is
+    /// not there, a heredoc range list read from the front, a body neither
+    /// reading closes — and each was found by measuring rather than by reading
+    /// the code, so each stays as its own case.
+    ///
+    /// The count holds the table and nothing else. A pass per `$(` is that
+    /// count rising with the square of the line, which shows at any size, on
+    /// any machine and under either build profile, where a wall-clock bound
+    /// would show it only on a long enough line and a fast enough build — and
+    /// tests here run unoptimised. What it cannot see is work done inside one
+    /// step: reaching for a comment's end without the newline index, or reading
+    /// the heredoc ranges from the front, each stay one step however far they
+    /// scan. Those two are held by their own shapes being here at all, and the
+    /// commit carries what they measured.
+    #[test]
+    fn a_line_is_stepped_once_however_many_substitutions_it_carries() {
+        let dense = vec!["\"$(#)\"".repeat(13); 400].join("\n");
+        let bodies = [
+            (
+                "a quote and a paren between the passes",
+                vec!["\"$(#\"("; 4_000].join("\n"),
+            ),
+            (
+                "no newline for the comment to end at",
+                "\"$( #\"".repeat(4_000),
+            ),
+            (
+                "a heredoc range list read from the front",
+                format!("{}{}", "cat <<'E'\nE\n".repeat(2_000), "$(x)".repeat(2_000)),
+            ),
+            ("a body neither reading closes", format!("echo \"{dense}")),
+        ];
+        let bypass = owned(&[&["git", "commit", "--no-verify"]]).remove(0);
+        for (name, body) in bodies {
+            let line = format!("git commit --no-verify; {body}");
+            assert!(
+                split(&line).contains(&bypass),
+                "the line ahead of {name} went unjudged"
+            );
+
+            // Driven the way `scan` drives it: one settling per `$(` on the
+            // line, all of them reading the same table.
+            let mut settled = Settled::default();
+            let mut at = 0;
+            while let Some(found) = line[at..].find("$(") {
+                at += found + 2;
+                let _ = substitution_end(&line, at, &mut settled);
+            }
+            // Four states to a byte under two readings bounds the steps that
+            // record one at 8n, and every step that instead reads the table
+            // closes a frame some earlier step opened, so 16n is the ceiling.
+            // These four measure under 4n.
+            let bound = 16 * line.len();
+            assert!(
+                settled.steps <= bound,
+                "{name}: stepped {} bytes of a {}-byte line, past {bound} — it is being read \
+                     once per `$(` again",
+                settled.steps,
+                line.len()
+            );
+        }
     }
 
     /// A body with no closing paren anywhere is the one shape the fallback
