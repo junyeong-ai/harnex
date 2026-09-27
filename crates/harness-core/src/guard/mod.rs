@@ -36,8 +36,10 @@
 ///
 /// Both `guard floor` and `guard stop-audit` speak this pair instead of the
 /// envelope, which `.claude/rules/envelope.md` records as its exception and
-/// `.claude/rules/guard.md` explains. `guard_channel_prose_sync` holds those
-/// two documents to these names.
+/// `.claude/rules/guard.md` explains. The shipped hook arms spell the pair a
+/// second time, because what they report is a binary that never ran; a
+/// rename here has to reach them or they report to no one.
+/// `guard_channel_prose_sync` holds every one of those to these names.
 pub const OPERATOR_CHANNEL_KEY: &str = "systemMessage";
 pub const SUPPRESS_OUTPUT_KEY: &str = "suppressOutput";
 
