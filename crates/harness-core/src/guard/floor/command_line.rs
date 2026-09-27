@@ -1080,6 +1080,7 @@ mod tests {
             "echo 'a'#b; git commit --no-verify",
             "echo $(echo x)#b; git commit --no-verify",
             "echo $((1+1))#b; git commit --no-verify",
+            "echo #\ngit commit --no-verify",
         ] {
             let commands = split(&format!("o=$({body})"));
             assert!(
@@ -1427,15 +1428,25 @@ mod tests {
             // Driven the way `scan` drives it: one settling per `$(` on the
             // line, all of them reading the same table.
             let mut settled = Settled::default();
+            let mut settlings = 0;
             let mut at = 0;
             while let Some(found) = line[at..].find("$(") {
                 at += found + 2;
                 let _ = substitution_end(&line, at, &mut settled);
+                settlings += 1;
             }
             // Four states to a byte under two readings bounds the steps that
             // record one at 8n, and every step that instead reads the table
             // closes a frame some earlier step opened, so 16n is the ceiling.
             // These four measure under 4n.
+            // A walk steps at least once before it can read the table, so the
+            // count is never under the settlings that drove it. Without a
+            // floor a count that never rose would pass the bound.
+            assert!(
+                settled.steps >= settlings,
+                "{name}: {settlings} settlings stepped {} bytes",
+                settled.steps
+            );
             let bound = 16 * line.len();
             assert!(
                 settled.steps <= bound,
