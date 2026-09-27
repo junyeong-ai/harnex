@@ -29,13 +29,18 @@ fn read(rel: &str) -> String {
 const BODY_RESTATEMENTS: [&str; 1] = [".claude/rules/envelope.md"];
 const CHANNEL_RESTATEMENTS: [&str; 2] = [".claude/rules/envelope.md", ".claude/rules/guard.md"];
 
-/// The source that owns the choice, the site that writes it, and the case that
-/// runs the command and reads the key back off its stdout.
-const OWNER: [&str; 4] = [
+/// The source that owns the choice, the sites that write it, and the cases
+/// that run one and read the key back off its stdout. The hook arm is among
+/// the writers because it speaks for the binary in the states the binary
+/// cannot reach, and a stand-in on another channel would be silent.
+const OWNER: [&str; 7] = [
     "crates/harness-core/src/guard/mod.rs",
     "crates/harness-cli/src/commands/guard.rs",
     "crates/harness-cli/tests/guard_stop_audit.rs",
     "crates/harness-cli/tests/guard_floor.rs",
+    "crates/harness-core/tests/floor_arm.rs",
+    "hooks/check-floor.sh",
+    "plugins/harnex/templates/common/check-floor.sh",
 ];
 
 /// Files naming the same field for a reason of their own. A rename here would
