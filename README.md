@@ -310,10 +310,13 @@ patterns covered out of the box:
   the hook stack: `--no-verify` and the prefixes git resolves to it, a
   `core.hooksPath` reroute through `-c` / `--config-env` / the `GIT_CONFIG_*`
   environment, a shell modifier in front of the git word, and any of those
-  inside a `$(…)` the line runs. Writes to the enforcement surface itself are
+  inside a `$(…)` the line runs or inside a heredoc body it feeds — a body is
+  read twice, for what the shell expands into it and for the script its
+  receiving program may run. Writes to the enforcement surface itself are
   frozen, and a break-glass grant read live from the main checkout is how the
   operator opens them. It is a tripwire, not a boundary. These stay out of
-  scope: a second shell (`sh -c`), a backtick body, a git alias, a `#` glued
+  scope: a second shell handed its script as an argument (`sh -c`), a backtick
+  body on the command line, a git alias, a `#` glued
   to the `)` of a process substitution or an array, which is read as a comment
   so the rest of the line goes unread (`<(true)#x; git commit --no-verify`),
   and a word the shell rewrites before git sees it — brace expansion

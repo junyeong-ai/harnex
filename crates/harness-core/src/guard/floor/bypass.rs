@@ -25,7 +25,10 @@
 //! this list: it runs as the commands it spells, and [`split_commands`] reads
 //! it as far as it can follow the shell's own grammar, which stops at a `#`
 //! glued to the `)` of a process substitution or an array and reads it as a
-//! comment (`<(true)#x; git commit --no-verify`). A reroute that
+//! comment (`<(true)#x; git commit --no-verify`). Nor is a heredoc body, read
+//! twice — for what the shell expands into it and for the script its receiving
+//! program may run — while a backtick body is in this list on the command line
+//! and read inside a body the shell expands; `command_line.rs` carries why. A reroute that
 //! never names the key is the same shape and is out for the same reason:
 //! `include.path` and `GIT_CONFIG_GLOBAL` hand git a file, and what that file
 //! sets is not on the command line. A *subcommand* option's

@@ -22,10 +22,10 @@ second entry, `Edit|Write|MultiEdit`, which freezes the files that define what
 the gates verify. A failing gate is fixed at its cause, never by weakening what
 the gate verifies.
 
-What the tripwire reads is the command line, as the shell composes it. So it
-answers about a git invocation spelled there, and a command that reaches git
-through another program — `mise exec -- git …`, `npx … git …`, a shell alias,
-`sh -c` — is not one. Those are the permission surface's, and a session running
+What the tripwire reads is the command line, as the shell composes it, and a
+heredoc body that line feeds. So it answers about a git invocation spelled in
+either, and a command that reaches git through another program's own argument
+— `mise exec -- git …`, `npx … git …`, a shell alias, `sh -c` — is not one. Those are the permission surface's, and a session running
 without permission checks has neither. Wire this pattern for what it is: the
 floor under a command typed directly, not a boundary around the capability.
 
@@ -55,19 +55,24 @@ where the gate files are not the work product.
   of scope: a write smuggled through Bash (`sed -i`, redirection, heredoc),
   an obfuscated bypass (a git alias, `sh -c`), a reroute that hands git a
   file instead of naming the key (`include.path`, `GIT_CONFIG_GLOBAL`), and
-  a backtick substitution, whose mark is the code-span mark — reading it
-  refuses documents that quote a flag. Config carried in through the
+  a backtick substitution on the command line, whose mark is also the
+  code-span mark — reading it there refuses documents that quote a flag,
+  while in a heredoc body the shell expands it is the shell that pairs the
+  backticks and runs what they hold, so there the body is read. Config
+  carried in through the
   environment, and a `$(…)` the line runs git inside, are read rather than
   excused. The authoritative backstop is the server-side CI re-run of the
   same gates — keep it green and un-bypassed.
-- **Writing about the bypass is not running it.** The tripwire reads the line
-  the shell assembled, so what the shell would not expand is a mention: text
-  in single quotes, and a heredoc body whose delimiter carries any quoting
-  (`<<'EOF'`, `<<"EOF"`, `<<\EOF`). A commit message or a document written
-  that way may name the flag freely. Two spellings the shell *does* expand
-  are read and refuse: a bare delimiter (`<<EOF`), and double quotes around
-  a live `$(…)`. A line whose **first** word is the bypass is refused inside
-  any heredoc, because the body may be a script rather than a document.
+- **Writing about the bypass is not running it.** The tripwire reads what the
+  shell expands, so a mention is text the shell leaves alone: single quotes on
+  the command line, and a heredoc body whose delimiter carries any quoting
+  (`<<'EOF'`, `<<"EOF"`, `<<\EOF`), where nothing expands at all. A commit
+  message or a document written that way may name the flag freely. Under a
+  bare delimiter the body expands, and only `\`, `$` and a backtick act
+  there — a quote or a `#` around a `$(…)` or a backtick pair hides neither
+  from the shell nor from the check. A line whose **first** word is the bypass
+  is refused inside any heredoc, because the body may be a script rather than
+  a document.
 - **A block is a message, not a wall.** Fix the failing gate at its cause. A
   bypass the operator truly needs is theirs to run, outside the agent, and the
   block names no way around itself: the loop the gate bounds is what reads it
