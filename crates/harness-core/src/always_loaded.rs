@@ -328,11 +328,29 @@ pub fn over_budget(loaded: &AlwaysLoaded, max_chars: usize, root: &Path) -> Opti
     })
 }
 
+/// `claudeMdExcludes` as the runtime reads it: glob patterns matched against
+/// the canonical absolute path of a memory file — `CLAUDE.md`, a rule or an
+/// import — so a relative pattern matches nothing.
+pub(crate) struct Excludes(Vec<globset::GlobMatcher>);
+
+impl Excludes {
+    /// The patterns in both project settings files.
+    pub(crate) fn read(root: &Path) -> Result<Self> {
+        Ok(ProjectSettings::read(root)?.excludes)
+    }
+
+    /// Whether the runtime skips the memory file at `path`, which exists.
+    pub(crate) fn matches(&self, path: &Path) -> bool {
+        std::fs::canonicalize(path)
+            .is_ok_and(|absolute| self.0.iter().any(|glob| glob.is_match(&absolute)))
+    }
+}
+
 /// The project settings the set depends on, merged as the runtime merges the
 /// two project scopes: the local file wins a key, and lists concatenate.
 struct ProjectSettings {
     output_style: Option<String>,
-    excludes: Vec<globset::GlobMatcher>,
+    excludes: Excludes,
 }
 
 impl ProjectSettings {
@@ -369,14 +387,14 @@ impl ProjectSettings {
         }
         Ok(Self {
             output_style,
-            excludes,
+            excludes: Excludes(excludes),
         })
     }
 }
 
 struct Walk<'a> {
     root: &'a Path,
-    excludes: &'a [globset::GlobMatcher],
+    excludes: &'a Excludes,
     seen: HashSet<PathBuf>,
     members: Vec<Member>,
     unmeasured: Vec<Unmeasured>,
@@ -401,13 +419,6 @@ impl Walk<'_> {
 
     fn unmeasured(&mut self, kind: MemberKind, name: String, reason: UnmeasuredReason) {
         self.unmeasured.push(Unmeasured { kind, name, reason });
-    }
-
-    /// The runtime matches its exclude patterns against the absolute path it
-    /// loaded from, which is the canonical one.
-    fn excluded(&self, path: &Path) -> bool {
-        std::fs::canonicalize(path)
-            .is_ok_and(|absolute| self.excludes.iter().any(|glob| glob.is_match(&absolute)))
     }
 
     fn rule(&mut self, path: &Path) {
@@ -439,7 +450,7 @@ impl Walk<'_> {
     }
 
     fn load_memory(&mut self, path: &Path, kind: MemberKind, body: &str, depth: usize) {
-        if !self.seen.insert(path.to_path_buf()) || self.excluded(path) {
+        if !self.seen.insert(path.to_path_buf()) || self.excludes.matches(path) {
             return;
         }
         let read = read_memory(body);
