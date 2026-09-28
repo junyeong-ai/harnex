@@ -118,6 +118,12 @@ impl SpecSurface {
             measured: "2026-09-28",
             digest: 0x0c8e_247a_dd0f_303f,
         },
+        Self {
+            name: "sandboxing",
+            doc: "/en/sandboxing",
+            measured: "2026-09-28",
+            digest: 0x6978_6b65_76ee_ad2b,
+        },
     ];
 
     /// Every closed set this surface stamps, labelled, as the owning validator
@@ -147,6 +153,7 @@ impl SpecSurface {
             "settings" => settings::SPEC_SETS,
             "permissions" => rule::SPEC_SETS,
             "memory" => crate::always_loaded::SPEC_SETS,
+            "sandboxing" => crate::guard::floor::sandbox::SPEC_SETS,
             _ => NONE,
         }
     }

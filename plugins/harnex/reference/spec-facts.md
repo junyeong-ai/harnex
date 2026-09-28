@@ -174,13 +174,17 @@ already contradicted both a page and the binary's own schema.
   trailing `/` was passed through and the entry guarded nothing; on Linux and
   WSL2 an entry with `*`, `?` or `[` is skipped. The sandbox also refuses,
   whatever `denyWrite` says, what configures a session in the working
-  directory and each one above it: `.mcp.json`, the two `.claude` settings
-  files, and `.claude`'s `skills`, `commands`, `agents`, `hooks`, `workflows`,
-  `routines`, `output-styles`, `launch.json`, `scheduled_tasks.json` and
-  `loop.md` (`guard::floor::sandbox::SANDBOX_PROTECTED`). The 2.1.283 CLI adds
-  them itself; with `denyWrite` empty, a sandboxed append to the settings
-  files, `.mcp.json` and a file under `hooks`, `skills`, `output-styles` and
-  `routines` was refused while one to `.claude/other/` landed. Two exits stay open: an
+  directory and each one above it (`guard::floor::sandbox::SANDBOX_PROTECTED`):
+  <!-- harnex-managed:start spec-facts-sandbox-protected -->
+  `.claude/settings.json`, `.claude/settings.local.json`, `.claude/skills`,
+  `.claude/commands`, `.claude/agents`, `.claude/hooks`, `.claude/workflows`,
+  `.claude/routines`, `.claude/output-styles`, `.claude/launch.json`,
+  `.claude/scheduled_tasks.json`, `.claude/loop.md`, `.mcp.json`
+  <!-- harnex-managed:end spec-facts-sandbox-protected -->
+  The 2.1.283 CLI adds them itself; with `denyWrite` empty, a sandboxed append
+  to the settings files, `.mcp.json` and a file under `hooks`, `skills`,
+  `output-styles` and `routines` was refused while one to `.claude/other/`
+  landed. Two exits stay open: an
   unsandboxed retry (`dangerouslyDisableSandbox`) goes through the permission
   flow, which a session skipping permission prompts passes unasked unless
   `sandbox.allowUnsandboxedCommands: false`; and a command in
@@ -322,8 +326,10 @@ already contradicted both a page and the binary's own schema.
   does NOT restrict.** `disallowed-tools` REMOVES tools from Claude's pool
   while the skill is active (the inverse). To deny outright, use
   `permissions.deny`.
-- Budgets: description + when_to_use ≤ 1536 chars; SKILL.md ≤ 500 lines (move
-  reference to supporting files, loaded on demand). After compaction,
+- Budgets: a listing entry is cut at 1,536 characters (§ Memory, "What loads
+  every session from a repository", says what it holds and how it counts);
+  SKILL.md ≤ 500 lines
+  (move reference to supporting files, loaded on demand). After compaction,
   skill content keeps first 5 000 tokens/skill and 25 000 tokens combined
   (most-recent-first).
 - **Dynamic context injection:** `` !`command` `` in SKILL.md body runs a shell
@@ -340,19 +346,19 @@ already contradicted both a page and the binary's own schema.
 ## Memory (/en/memory)
 
 - **CLAUDE.md** loads broad→specific, concatenated (not overriding): managed →
-  user → project (`./CLAUDE.md` or `./.claude/CLAUDE.md`) → local
+  user → project (`./CLAUDE.md` and `./.claude/CLAUDE.md`) → local
   (`CLAUDE.local.md`). Within the project tree it walks ancestors from cwd
   upward and orders them root→cwd (so the deepest, closest file is read last);
   within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`.
   Subdir CLAUDE.md (below cwd) loads lazily when Claude reads files there.
 - **Target ≤ 200 lines** per file; longer reduces adherence. A file over 4 MiB
   is skipped whole rather than truncated.
-- **Path-scoped rules:** `.claude/rules/*.md`; with `paths:` frontmatter (glob,
+- **Path-scoped rules:** `.claude/rules/**/*.md`; with `paths:` frontmatter (glob,
   brace expansion) they load only on matching files; without `paths:` they load
   every session. So does a `paths:` whose globs, each with a trailing `/**`
   removed, leave nothing or only `**` (`**`, `**/**`, `[]` — measured at
-  2.1.283), while `["**", "src/**"]` waits for a match. A foundation rule
-  (constitution) is the one that intentionally omits `paths:`.
+  2.1.283), while `["**", "src/**"]` waits for a match. Foundation rules are
+  the ones that intentionally omit `paths:`.
 - **A `paths:` list is bounded before it is matched.** Brace groups multiply,
   and the whole list shares one budget of 1,000 expanded patterns and 4 MiB
   (brace-free patterns do not count against it). A pattern that would exceed
