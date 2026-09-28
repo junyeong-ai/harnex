@@ -62,6 +62,12 @@ interface Served {
   readonly exit: Promise<{ code: number | null; envelope: any }>;
 }
 
+/** Every command a test started, ended after it so a failing test leaves none serving. */
+const running: ChildProcess[] = [];
+test.afterEach(() => {
+  for (const child of running.splice(0)) child.kill();
+});
+
 /** Start `harnex ask serve --no-open` over these files; resolves once it announces its address. */
 async function serve(
   html: string,
@@ -79,6 +85,7 @@ async function serve(
     writeFileSync(join(dir, path), text);
   }
   const child = spawn(HARNEX, ["ask", "serve", name, "asks.json", "--no-open"], { cwd: dir });
+  running.push(child);
   let stdout = "";
   child.stdout?.on("data", (chunk) => {
     stdout += chunk;
@@ -153,7 +160,6 @@ test("a page that breaks the promise says so and sends nothing", async ({ page: 
   await expect(tab.locator(".ask-send")).toBeDisabled();
   await expect(tab.getByLabel("지금")).toBeDisabled();
   expect(await tab.evaluate(() => (window as any).heard)).toEqual([]);
-  served.child.kill();
 });
 
 test("a source changed while the page was open closes it as stale", async ({ page: tab }) => {
