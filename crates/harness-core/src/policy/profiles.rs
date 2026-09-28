@@ -2,7 +2,7 @@
 //!
 //! Each profile contributes `deny`, `ask`, and `allow` rule lists. The
 //! `baseline` profile captures truly OS-universal hazards (secrets read,
-//! `sudo`, `rm -rf $HOME`); ecosystem profiles (git, gcp, aws) opt-in.
+//! `sudo`, `rm -rf $HOME`); ecosystem profiles (git, gcp, aws, infra) opt-in.
 
 use serde::Serialize;
 
@@ -21,6 +21,7 @@ impl PermissionProfile {
         "git-strict",
         "gcp-strict",
         "aws-strict",
+        "infra-strict",
         "rust-dev",
         "python-dev",
         "typescript-dev",
@@ -42,6 +43,7 @@ impl PermissionProfile {
             "git-strict" => git_strict(),
             "gcp-strict" => gcp_strict(),
             "aws-strict" => aws_strict(),
+            "infra-strict" => infra_strict(),
             "rust-dev" => rust_dev(),
             "python-dev" => python_dev(),
             "typescript-dev" => typescript_dev(),
@@ -217,7 +219,7 @@ fn git_strict() -> PermissionProfile {
 }
 
 /// GCP destruction patterns: project/IAM/KMS/Run/SQL/Secrets deletion,
-/// storage removal, IAM policy mutation, plus IaC and k8s destructors.
+/// storage removal, IAM policy mutation.
 fn gcp_strict() -> PermissionProfile {
     PermissionProfile {
         name: "gcp-strict",
@@ -251,11 +253,6 @@ fn gcp_strict() -> PermissionProfile {
             // --- IAM policy mutation ---
             "Bash(gcloud * set-iam-policy *)",
             "Bash(gcloud * remove-iam-policy-binding *)",
-            // --- IaC destruction ---
-            "Bash(terraform destroy *)",
-            "Bash(terraform state rm *)",
-            // --- k8s destructors ---
-            "Bash(kubectl delete *)",
         ],
     }
 }
@@ -274,6 +271,22 @@ fn aws_strict() -> PermissionProfile {
             "Bash(aws kms schedule-key-deletion *)",
             "Bash(aws lambda delete-function *)",
             "Bash(aws cloudformation delete-stack *)",
+        ],
+    }
+}
+
+/// Infrastructure destructors no cloud owns: IaC state and cluster resources,
+/// whichever provider they run against. It composes beside the cloud's own
+/// profile, not in place of it.
+fn infra_strict() -> PermissionProfile {
+    PermissionProfile {
+        name: "infra-strict",
+        allow: vec![],
+        ask: vec![],
+        deny: vec![
+            "Bash(terraform destroy *)",
+            "Bash(terraform state rm *)",
+            "Bash(kubectl delete *)",
         ],
     }
 }
@@ -649,9 +662,23 @@ mod tests {
             p.deny
                 .contains(&"Bash(gcloud * remove-iam-policy-binding *)")
         );
-        assert!(p.deny.contains(&"Bash(terraform destroy *)"));
-        assert!(p.deny.contains(&"Bash(terraform state rm *)"));
-        assert!(p.deny.contains(&"Bash(kubectl delete *)"));
+    }
+
+    #[test]
+    fn infra_destructors_live_in_no_cloud_profile() {
+        // A Terraform-on-AWS project composes aws-strict and infra-strict; one
+        // of these left in a cloud profile is denied only on that cloud.
+        let infra = infra_strict();
+        for rule in [
+            "Bash(terraform destroy *)",
+            "Bash(terraform state rm *)",
+            "Bash(kubectl delete *)",
+        ] {
+            assert!(infra.deny.contains(&rule), "{rule}");
+            for cloud in [gcp_strict(), aws_strict()] {
+                assert!(!cloud.deny.contains(&rule), "{} carries {rule}", cloud.name);
+            }
+        }
     }
 
     #[test]
