@@ -224,7 +224,7 @@ harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff 
 
 harnex export schema {config|envelope|finding|event|permissions|error-codes|
                        session|session-submissions|session-baseline|
-                       session-trend|all}
+                       session-trend|asks|ask-outcome|ask-current|all}
 
 harnex completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```

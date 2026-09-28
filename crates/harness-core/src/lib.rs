@@ -13,6 +13,7 @@
 //!   [`error::Error`] with a stable [`error::ErrorCode`].
 
 pub mod always_loaded;
+pub mod ask;
 pub mod audit;
 pub mod check;
 pub mod codegen;
