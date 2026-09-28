@@ -380,7 +380,7 @@ patterns covered out of the box:
 - Decisions put to the person instead of assumed (`harnex ask`) — any HTML
   page served on 127.0.0.1 takes one answer set; each answer comes back with
   what its ask showed, and `ask current` tells, when it is recorded, whether
-  that ask still reads the same
+  it still holds and what a set asked together still waits on
 - Promotion + retirement lifecycle for learnings
 - Settings.json hook adapter (the documented hook events)
 - Single-command CI gate

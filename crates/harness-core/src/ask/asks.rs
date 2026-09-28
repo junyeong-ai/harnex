@@ -54,7 +54,9 @@ pub struct Ask {
     pub answers: Vec<Offered>,
 }
 
-/// Asks answered all at once or not at all.
+/// Asks that hold only together. `ask serve` takes them all at once or none,
+/// and `ask current` holds none of them until one record answers every one
+/// as asked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Together {
