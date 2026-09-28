@@ -16,12 +16,12 @@ harnex_version = ">=0.29, <0.30"
 
 [validate.rules]
 # The Claude Code memory budget applies to what loads every turn — a rule
-# carrying no `paths:`. Path-scoped rules cost context only on the files they
-# govern, so `max_scoped_lines` stays unset: a cohesive long rule is not a
-# defect. The slugs below are the artifacts the scaffold emits that are meant
-# to load unconditionally — the laws, the conduct a session is held to, and
-# what a review judges by, none of which is truth about a file that could
-# scope it.
+# whose `paths:` scopes nothing. A path-scoped rule's own text costs context
+# only on the files it governs, so `max_scoped_lines` stays unset: a cohesive
+# long rule is not a defect. The slugs below are the artifacts the scaffold
+# emits that are meant to load unconditionally — the laws, the conduct a
+# session is held to, and what a review judges by, none of which is truth
+# about a file that could scope it.
 max_lines = 200
 always_loaded_slugs = ["constitution", "agent-conduct", "review-lenses"]
 # Every path-scoped rule declares what it is truth ABOUT (`governs:` —
@@ -62,8 +62,9 @@ reject_unknown_keys = true
 # A budget, in characters, over the files the repository puts into every
 # session: the memory files and what they import, the rules whose `paths:`
 # scope nothing, the output style the settings select, and each skill,
-# command and agent listing entry. There is no default — `harnex validate always-loaded`
-# measures the set member by member, and the number is the project's own.
+# command and agent listing entry. There is no default — `harnex validate
+# always-loaded` measures the set member by member, and the number is the
+# project's own.
 # [validate.always_loaded]
 # max_chars = 40000
 

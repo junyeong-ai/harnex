@@ -51,9 +51,9 @@ the other way out: a `[guard.floor]` without the Edit|Write floor hook freezes
 nothing and belongs out of `harness.toml` — the state of a harness scaffolded
 before 0.30 that never adopted the enforcement-floor pattern. An absent
 settings file hands the sandbox no entries; only one that is present and
-unreadable leaves the arm unjudged in `skipped`. Like governs it ignores `--since`: a path added to
-`[guard.floor]` breaks the projection as surely as an entry dropped from the
-settings.
+unreadable leaves the arm unjudged in `skipped`. Like governs it ignores
+`--since`: a path added to `[guard.floor]` breaks the projection as surely
+as an entry dropped from the settings.
 
 The `validate.always_loaded` arm is not a surface validator: it reads the
 whole set `always_loaded::resolve` returns and reports one
@@ -88,9 +88,8 @@ file — a `CLAUDE.md` and a rule — because one the runtime never loads makes 
 claim; it is read through `always_loaded::Excludes`, which matches the
 absolute path as the runtime does, so a relative pattern excludes nothing.
 `settings.local.json` is the developer's, and a gate that read it would pass
-a tree locally that CI fails. When git cannot
-answer — no repository, dubious
-ownership — the nested set is declared unmeasured in `skipped` as
+a tree locally that CI fails. When git cannot answer — no repository,
+dubious ownership — the nested set is declared unmeasured in `skipped` as
 `evidence.nested-memory` and everything else is still read; a git failure
 under `--since` stays `CheckGitFailure`, because that window was asked for.
 The window is `--relative`: without it a config below the git top level is
