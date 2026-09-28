@@ -77,8 +77,11 @@ The memory set is the two locations the runtime always reads (`CLAUDE.md`,
 project owns — `harness-core::git` owns that set and why it is the project's
 ignore files and not the developer's. A walk would read the one a vendored
 package ships and resolve its paths here. `claudeMdExcludes` from both
-project settings scopes is honored, because a memory file the runtime never
-loads makes no claim. When git cannot answer — no repository, dubious
+project settings scopes is honored for every memory file — a `CLAUDE.md` and
+a rule — because one the runtime never loads makes no claim; it is read
+through `always_loaded::Excludes`, which matches the absolute path as the
+runtime does, so a relative pattern excludes nothing. When git cannot
+answer — no repository, dubious
 ownership — the nested set is declared unmeasured in `skipped` as
 `evidence.nested-memory` and everything else is still read; a git failure
 under `--since` stays `CheckGitFailure`, because that window was asked for.

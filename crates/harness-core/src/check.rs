@@ -313,34 +313,6 @@ impl<'a> ProjectChecker<'a> {
             .map_err(|git::Failure(message)| Error::CheckGitFailure { message })
     }
 
-    /// `claudeMdExcludes` from the project's settings, merged across the two
-    /// project scopes the way the runtime merges them. A pattern the runtime
-    /// could not honor is an error here too.
-    fn claude_md_excludes(&self) -> Result<Vec<glob::Pattern>> {
-        let mut patterns = Vec::new();
-        for scope in [".claude/settings.json", ".claude/settings.local.json"] {
-            let path = self.working_dir.join(scope);
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-                // Malformed settings are `validate.settings`' finding, not a
-                // reason for this arm to guess at an exclude list.
-                continue;
-            };
-            let Some(listed) = value.get("claudeMdExcludes").and_then(|v| v.as_array()) else {
-                continue;
-            };
-            for raw in listed.iter().filter_map(|v| v.as_str()) {
-                patterns.push(glob::Pattern::new(raw).map_err(|e| Error::ConfigInvalid {
-                    message: format!("{scope}: claudeMdExcludes pattern '{raw}' is invalid: {e}"),
-                    location: None,
-                })?);
-            }
-        }
-        Ok(patterns)
-    }
-
     fn passes_filter(&self, path: &Path, changed: &Option<HashSet<PathBuf>>) -> bool {
         match changed {
             Some(set) => set.contains(path),
@@ -496,7 +468,7 @@ impl<'a> ProjectChecker<'a> {
         // `.claude/rules/CLAUDE.md` is a rule and a memory file; read once.
         candidates.sort();
         candidates.dedup();
-        let excluded = self.claude_md_excludes()?;
+        let excludes = crate::always_loaded::Excludes::read(self.working_dir)?;
         for path in &candidates {
             if !path.is_file() {
                 continue;
@@ -505,13 +477,13 @@ impl<'a> ProjectChecker<'a> {
                 continue;
             }
             // The runtime's own skip list: a memory file it never loads makes
-            // no claim, whatever the tree holds.
-            if path.file_name().is_some_and(|name| name == "CLAUDE.md")
-                && let Ok(relative) = path.strip_prefix(self.working_dir)
-                && excluded
-                    .iter()
-                    .any(|pattern| pattern.matches_path(relative))
-            {
+            // no claim, whatever the tree holds. Skills, agents, output styles
+            // and routines are not memory files, and no exclude reaches them.
+            let memory_file = path.file_name().is_some_and(|name| name == "CLAUDE.md")
+                || path.strip_prefix(self.working_dir).is_ok_and(|relative| {
+                    <RuleValidator as SurfaceValidator>::covers(&relative.to_string_lossy())
+                });
+            if memory_file && excludes.matches(path) {
                 continue;
             }
             *files_scanned += 1;

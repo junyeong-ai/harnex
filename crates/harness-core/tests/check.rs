@@ -882,14 +882,17 @@ fn a_config_below_the_git_top_level_still_sees_its_changed_files() {
 
 #[test]
 fn the_runtimes_own_exclude_list_is_honored() {
-    // `claudeMdExcludes` is the runtime's list of memory files it never loads.
-    // A tracked example carrying its own example's paths would otherwise be
-    // a Blocker about a file the runtime never reads.
+    // `claudeMdExcludes` is the runtime's list of memory files it never loads,
+    // matched against the absolute path — a vendored example's paths would
+    // otherwise be a Blocker about a file the runtime never reads, and a
+    // relative pattern excludes nothing, so the file it names still loads and
+    // its claims still count.
     let tmp = project();
     write(&tmp.path().join("harness.toml"), evidence_config());
     write(
         &tmp.path().join(".claude/settings.json"),
-        "{\"claudeMdExcludes\": [\"examples/**/CLAUDE.md\"]}\n",
+        "{\"claudeMdExcludes\": [\"examples/**/CLAUDE.md\", \"**/vendor/**/CLAUDE.md\", \
+         \"**/.claude/rules/generated.md\"]}\n",
     );
     write(
         &tmp.path().join("CLAUDE.md"),
@@ -900,6 +903,14 @@ fn the_runtimes_own_exclude_list_is_honored() {
         "Owner: [file: no/such/example.rs:1].\n",
     );
     write(
+        &tmp.path().join("vendor/pkg/CLAUDE.md"),
+        "Owner: [file: no/such/vendor.rs:1].\n",
+    );
+    write(
+        &tmp.path().join(".claude/rules/generated.md"),
+        "Owner: [file: no/such/generated.rs:1].\n",
+    );
+    write(
         &tmp.path().join("crates/x/CLAUDE.md"),
         "Owner: [file: no/such/nested.rs:1].\n",
     );
@@ -907,7 +918,7 @@ fn the_runtimes_own_exclude_list_is_honored() {
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     assert_eq!(
         cited(&outcome),
-        ["nested.rs", "root.rs"],
+        ["example.rs", "nested.rs", "root.rs"],
         "{:#?}",
         outcome.findings
     );
