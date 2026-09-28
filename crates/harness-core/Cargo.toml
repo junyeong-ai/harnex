@@ -22,6 +22,9 @@ semver.workspace = true
 tempfile.workspace = true
 yaml_serde.workspace = true
 walkdir.workspace = true
+httparse.workspace = true
+percent-encoding.workspace = true
+getrandom.workspace = true
 schemars.workspace = true
 
 [lints]

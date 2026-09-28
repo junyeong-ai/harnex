@@ -33,6 +33,11 @@ semver = "1"
 tempfile = "3"
 yaml_serde = "0.10"
 walkdir = "2"
+# The request line and headers of the one HTTP exchange `ask serve` holds.
+# A hand-rolled parser is where request handling most often goes wrong.
+httparse = "1"
+percent-encoding = "2"
+getrandom = "0.4"
 schemars = { version = "1", features = ["preserve_order", "jiff02", "semver1"] }
 
 [workspace.lints.rust]

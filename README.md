@@ -220,6 +220,10 @@ harnex plan audit --plan P [--spec S]                 # spec-workflow review flo
                                                       # and the per-gate round budget,
                                                       # which is held only when given
 
+harnex ask serve <page> <asks.json> [--within <min>]  # a decision page on 127.0.0.1: ends on
+                 [--no-open]                          # one answer set, a moved source, or time
+harnex ask current <answered.json> <asks.json>        # which earlier answers still hold now
+
 harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
 
 harnex export schema {config|envelope|finding|event|permissions|error-codes|
@@ -262,10 +266,22 @@ harness lands. `baseline trend` lays every window of one scope side by side, one
 series per metric, and subtracts nothing — pairwise comparison, with its
 overlap and support guards, stays with `diff`.
 
+`ask serve` puts a decision to the person where a session would otherwise
+assume it. The page is any HTML file that marks each ask as a `fieldset` of
+radios; the asks file (`export schema asks`) names what is asked and carries
+the caller's version of what each ask shows. The page's directory is served on
+127.0.0.1 under a random path, the address goes to stderr and the browser, and
+the command ends on one answer set (exit 0), a source that changed while the
+page was open (`stale`, exit 1), or `--within` minutes (`unanswered`, exit 1).
+Each answer returns with the version, label and answers its ask showed, so
+`ask current` can tell, when the answers are recorded, which still hold
+against the asks as they read then. A sandboxed session on macOS binds the
+port only with `sandbox.network.allowLocalBinding`.
+
 By default every command emits one JSON envelope on stdout; the explicit raw
 modes (`export schema --raw`, `completions --raw`) emit the bare artifact for
-committing to disk. Exit code: 0 = success, 1 = gating finding (blocker or
-major), 2 = runtime failure.
+committing to disk. Exit code: 0 = success, 1 = a gating finding (blocker or
+major) or a result that did not pass, 2 = runtime failure.
 
 ## What the oracle covers
 

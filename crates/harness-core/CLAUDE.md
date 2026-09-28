@@ -104,6 +104,7 @@ against the finding it is attached to.
 | `ConsumerDetector` | grep + graph-backlinks, each anchored at construction |
 | `NodexRunner` | external-process boundary + test mock seam (see `graph::client`) |
 | `CommandRunner` | external-process boundary + test mock seam (see `guard::stop_audit`) |
+| `Browser` | external-process boundary + test mock seam (see `ask::serve`) |
 | `SurfaceValidator` | one driver, `ProjectChecker::run_surface_validator`, over every glob-driven validator |
 
 No 1-impl trait exists outside of a documented process/test boundary.

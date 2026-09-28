@@ -1,3 +1,4 @@
+pub mod ask;
 pub mod audit;
 pub mod check;
 pub mod codegen;

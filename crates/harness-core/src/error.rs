@@ -66,6 +66,8 @@ wire_enum! {
         SessionBaselineNotComparable => "SESSION_BASELINE_NOT_COMPARABLE",
         SessionBaselineUnreadable => "SESSION_BASELINE_UNREADABLE",
         AskInputInvalid => "ASK_INPUT_INVALID",
+        AskListenFailed => "ASK_LISTEN_FAILED",
+        AskBrowserUnopened => "ASK_BROWSER_UNOPENED",
     }
 }
 
@@ -229,6 +231,15 @@ pub enum Error {
 
     #[error("{path}: {message}")]
     AskInputInvalid { path: PathBuf, message: String },
+
+    #[error("could not listen on 127.0.0.1: {source}")]
+    AskListenFailed {
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("could not open {url} in a browser: {reason}")]
+    AskBrowserUnopened { url: String, reason: String },
 }
 
 impl Error {
@@ -279,6 +290,8 @@ impl Error {
             Self::SessionBaselineNotComparable { .. } => ErrorCode::SessionBaselineNotComparable,
             Self::SessionBaselineUnreadable { .. } => ErrorCode::SessionBaselineUnreadable,
             Self::AskInputInvalid { .. } => ErrorCode::AskInputInvalid,
+            Self::AskListenFailed { .. } => ErrorCode::AskListenFailed,
+            Self::AskBrowserUnopened { .. } => ErrorCode::AskBrowserUnopened,
         }
     }
 
@@ -373,6 +386,16 @@ impl Error {
             ),
             Self::AskInputInvalid { .. } => Some(
                 "the file named breaks the schema `harnex export schema asks` (an asks file) or `ask-outcome` (an answered record) describes; correct what the message names",
+            ),
+            Self::AskListenFailed { source }
+                if source.kind() == std::io::ErrorKind::PermissionDenied =>
+            {
+                Some(
+                    "a sandboxed session on macOS may not bind a local port: set `sandbox.network.allowLocalBinding` to true, or run `harnex ask serve` outside the sandbox through `sandbox.excludedCommands`",
+                )
+            }
+            Self::AskBrowserUnopened { .. } => Some(
+                "run it again with `--no-open` and give the person the address it prints on stderr",
             ),
             _ => None,
         }
