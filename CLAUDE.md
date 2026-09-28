@@ -2,7 +2,7 @@
 
 Harness engineering for Claude Code projects. Two surfaces: the **harnex
 plugin** (a skill that generates project-native harness tooling) and the
-**`harnex` binary** (the Pure-Rust, deterministic, no-network oracle the
+**`harnex` binary** (the Pure-Rust, deterministic oracle the
 plugin's templates are verified against).
 
 ## The plugin (primary surface)
@@ -89,7 +89,9 @@ For the full command surface, run `harnex --help` or read `README.md`.
 
 ## What this project refuses to do
 
-- No async runtime, no servers, no daemons, no network at command time.
+- No async runtime, no daemons, no network at command time — the one
+  exception is `harnex ask serve`, a single-answer listener on 127.0.0.1
+  (constitution I).
 - No project domain vocabulary in source — every project-specific shape
   derives from `harness.toml` declarations.
 - No string-matched errors — typed `Error` + stable `ErrorCode`.

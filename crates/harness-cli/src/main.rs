@@ -79,6 +79,12 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::plan::PlanCommand,
     },
+    /// Put a decision to the person on a page, and tell whether its answers
+    /// still hold
+    Ask {
+        #[command(subcommand)]
+        cmd: commands::ask::AskCommand,
+    },
     /// Emit JSON Schema for the toolkit's user-facing types
     Export {
         #[command(subcommand)]
@@ -164,6 +170,7 @@ fn main() -> ExitCode {
         Command::Lifecycle { cmd } => commands::lifecycle::run(cmd, &mut out),
         Command::Guard { cmd } => commands::guard::run(cmd, &mut out),
         Command::Plan { cmd } => commands::plan::run(cmd, &mut out),
+        Command::Ask { cmd } => commands::ask::run(cmd, &mut out),
         Command::Export { cmd } => commands::export::run(cmd, &mut out),
         Command::Session { cmd } => commands::session::run(cmd, &mut out),
         Command::Governs { cmd } => commands::governs::run(cmd, &mut out),

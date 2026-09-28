@@ -9,7 +9,10 @@
 //!
 //! The contract is the transport's to honor and not its to define: an answer
 //! record from any transport that fills the same shape is checked the same way.
-//! [`words`] holds what harnex itself says around a page, per locale.
+//! [`serve::serve`] is the local one. It serves the page's directory on
+//! 127.0.0.1 under a random path, sets `script.js` after the page, and ends on
+//! one answer set, a changed source, or its deadline. [`words`] holds what
+//! harnex itself says around a page, per locale.
 //!
 //! ## What this module refuses to do
 //!
@@ -20,8 +23,14 @@
 //!   served page, so an answer set is read against the asks file alone.
 //! - Never take part of a set asked together, and never let an answer stand on
 //!   a version, label or offer that moved.
+//! - Never listen beyond 127.0.0.1, past one answer set or its deadline, and
+//!   never connect out. How a page is navigated — keys, focus, layout — is the
+//!   page's; the script only checks the page, turns its controls on, and sends.
 
 pub mod answers;
 pub mod asks;
 pub mod current;
+mod files;
+mod http;
+pub mod serve;
 pub mod words;

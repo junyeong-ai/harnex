@@ -2,8 +2,10 @@
 
 ## I. Pure determinism
 
-No async runtime. No network at command time. No AI / agent / server
-dependencies. `rayon` is the only permitted concurrency primitive (and
+No async runtime. No network at command time, except `harnex ask serve`: it
+listens on 127.0.0.1 for one answer set from the person, under a time limit
+it cannot run without, and opens no outbound connection. No AI / agent /
+server dependencies. `rayon` is the only permitted concurrency primitive (and
 not yet used).
 
 ## II. JSON envelope is the only output contract

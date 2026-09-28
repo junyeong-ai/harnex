@@ -6,7 +6,8 @@
 //!
 //! ## What this crate refuses to do
 //!
-//! - No async, no network at command time, no servers, no AI dependencies.
+//! - No async, no AI dependencies, and no network at command time beyond
+//!   [`ask::serve`]'s single-answer listener on 127.0.0.1.
 //! - No project domain vocabulary in source — every project-specific shape
 //!   derives from `harness.toml`.
 //! - No string-matched errors — every failure surfaces as a typed
