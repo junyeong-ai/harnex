@@ -419,6 +419,57 @@ fn a_file_every_session_imports_is_part_of_the_harness() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn an_edit_behind_a_linked_memory_file_moves_the_harness() {
+    let dir = repo();
+    std::fs::write(dir.path().join("AGENTS.md"), "# p\n").unwrap();
+    std::os::unix::fs::symlink("AGENTS.md", dir.path().join("CLAUDE.md")).unwrap();
+    git(dir.path(), &["add", "-A"]);
+    git(dir.path(), &["commit", "-q", "-m", "linked memory"]);
+    let edited = commit_touching(dir.path(), "tests first", &["AGENTS.md"]);
+    commit_touching(dir.path(), "code", &["src/lib.rs"]);
+
+    let state = |dir: &Path| {
+        repository::harness_state(dir, &harness_core::config::default_harness_paths())
+            .unwrap()
+            .expect("a work tree answers")
+    };
+    assert_eq!(
+        state(dir.path()).head.as_deref(),
+        Some(edited.as_str()),
+        "git tracks the link as the name it points at, so the edit lands on its target"
+    );
+    std::fs::write(dir.path().join("AGENTS.md"), "# p, edited\n").unwrap();
+    assert!(state(dir.path()).uncommitted);
+}
+
+#[test]
+fn a_package_window_counts_what_the_root_memory_imports() {
+    let dir = repo();
+    std::fs::write(
+        dir.path().join("CLAUDE.md"),
+        "# p\n\n@docs/conventions.md\n",
+    )
+    .unwrap();
+    commit_touching(dir.path(), "conventions", &["docs/conventions.md"]);
+    let imported = commit_touching(dir.path(), "tests first", &["docs/conventions.md"]);
+    commit_touching(dir.path(), "code", &["crates/core/src/lib.rs"]);
+
+    let state = repository::harness_state(
+        &dir.path().join("crates/core"),
+        &harness_core::config::default_harness_paths(),
+    )
+    .unwrap()
+    .expect("a directory inside a work tree is one");
+
+    assert_eq!(
+        state.head.as_deref(),
+        Some(imported.as_str()),
+        "a session in the package loads the root memory and what it imports"
+    );
+}
+
 #[test]
 fn a_file_a_package_session_loads_is_read_from_the_root() {
     let dir = repo();
