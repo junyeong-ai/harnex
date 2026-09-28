@@ -437,6 +437,20 @@ mod error_code_tests {
         let count = ErrorCode::ALL.len();
         let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(count, unique.len(), "ALL has a duplicate variant");
-        assert!(count >= 38, "ALL shrank unexpectedly — variant dropped?");
+        assert!(count >= 43, "ALL shrank unexpectedly — variant dropped?");
+    }
+
+    #[test]
+    fn only_a_refused_bind_is_told_about_the_sandbox() {
+        let listen = |kind| super::Error::AskListenFailed {
+            source: std::io::Error::from(kind),
+        };
+        let refused = listen(std::io::ErrorKind::PermissionDenied);
+        assert!(
+            refused
+                .hint()
+                .is_some_and(|h| h.contains("allowLocalBinding"))
+        );
+        assert_eq!(listen(std::io::ErrorKind::AddrInUse).hint(), None);
     }
 }
