@@ -196,10 +196,13 @@ pub const SPEC_SETS: &[(&str, &[&str])] = &[("import-text-extensions", IMPORT_TE
 /// that starts it.
 pub const MAX_IMPORT_HOPS: usize = 4;
 
-/// Characters a listing entry's text is cut to, the last one an ellipsis.
+/// Length a listing entry's text is cut to, the last character an ellipsis,
+/// counted as [`runtime_len`] counts — unless the committed settings set
+/// `skillListingMaxDescChars`.
 pub const LISTING_ENTRY_CAP: usize = 1536;
 
-/// Characters a description taken from a body line is cut to.
+/// Length a description taken from a body line is cut to, counted as
+/// [`runtime_len`] counts.
 pub const FALLBACK_DESCRIPTION_CAP: usize = 100;
 
 /// Bytes past which the runtime skips a memory file whole — `CLAUDE.md`, a
@@ -289,6 +292,7 @@ pub fn resolve(root: &Path) -> Result<AlwaysLoaded> {
     let mut walk = Walk {
         root: &root,
         excludes: &settings.excludes,
+        listing_cap: settings.listing_cap,
         seen: HashSet::new(),
         members: Vec::new(),
         unmeasured: Vec::new(),
@@ -410,6 +414,7 @@ impl Excludes {
 /// What the committed project settings select for every session.
 struct ProjectSettings {
     output_style: Option<String>,
+    listing_cap: usize,
     excludes: Excludes,
 }
 
@@ -446,8 +451,15 @@ impl ProjectSettings {
                 patterns.push(glob.compile_matcher());
             }
         }
+        let listing_cap = value
+            .as_ref()
+            .and_then(|v| v.get("skillListingMaxDescChars"))
+            .and_then(|v| v.as_u64())
+            .filter(|&cap| cap > 0)
+            .map_or(LISTING_ENTRY_CAP, |cap| cap as usize);
         Ok(Self {
             output_style,
+            listing_cap,
             excludes: Excludes {
                 root: root.to_path_buf(),
                 canonical_root: canonical_root(root)?,
@@ -487,6 +499,7 @@ struct Walk<'a> {
     /// its own canonical path starts with this.
     root: &'a Path,
     excludes: &'a Excludes,
+    listing_cap: usize,
     /// Canonical paths already read: a file reached twice loads once.
     seen: HashSet<PathBuf>,
     members: Vec<Member>,
@@ -611,7 +624,7 @@ impl Walk<'_> {
         };
         let entry = match kind {
             MemberKind::Agent => agent_entry(&source.fields),
-            _ => invocable_entry(&source, kind),
+            _ => invocable_entry(&source, kind, self.listing_cap),
         };
         if let Some(entry) = entry {
             self.admit(kind, path, &target, &entry);
@@ -699,7 +712,7 @@ fn needs_quotes(value: &str) -> bool {
 
 /// A skill's or command's listing text, or `None` where it is not listed at
 /// launch.
-fn invocable_entry(source: &Source, kind: MemberKind) -> Option<String> {
+fn invocable_entry(source: &Source, kind: MemberKind, listing_cap: usize) -> Option<String> {
     let fields = &source.fields;
     if kind == MemberKind::Skill && path_globs::declares_scope(fields.get("paths")) {
         return None;
@@ -721,7 +734,7 @@ fn invocable_entry(source: &Source, kind: MemberKind) -> Option<String> {
         Some(when) => format!("{description} - {when}"),
         None => description,
     };
-    Some(cap(&entry, LISTING_ENTRY_CAP, "\u{2026}"))
+    Some(cap(&entry, listing_cap, "\u{2026}"))
 }
 
 /// An agent's listing text: its `description`, where `name` is one the
@@ -947,13 +960,23 @@ fn fallback_description(body: &str, unnamed: &str) -> String {
     cap(heading.unwrap_or(line), FALLBACK_DESCRIPTION_CAP, "...")
 }
 
-/// `text` cut to `limit` characters, `marker` ending the cut.
+/// A text's length as the runtime measures one it cuts: UTF-16 code units, so
+/// a character outside the Basic Multilingual Plane counts twice.
+pub(crate) fn runtime_len(text: &str) -> usize {
+    text.encode_utf16().count()
+}
+
+/// `text` cut as the runtime cuts it: past `limit` ([`runtime_len`]), the code
+/// units before `marker`, then `marker`. A cut through a surrogate pair leaves
+/// half a character, which reaches the model as U+FFFD.
 fn cap(text: &str, limit: usize, marker: &str) -> String {
-    if text.chars().count() <= limit {
+    if runtime_len(text) <= limit {
         return text.to_string();
     }
-    let keep = limit - marker.chars().count();
-    let mut out: String = text.chars().take(keep).collect();
+    let keep = limit - runtime_len(marker);
+    let mut out: String = char::decode_utf16(text.encode_utf16().take(keep))
+        .map(|unit| unit.unwrap_or(char::REPLACEMENT_CHARACTER))
+        .collect();
     out.push_str(marker);
     out
 }
@@ -1435,6 +1458,10 @@ mod tests {
                 ".claude/skills/long/SKILL.md",
                 &format!("---\nname: long\ndescription: {long}\n---\nbody\n"),
             ),
+            (
+                ".claude/skills/emoji/SKILL.md",
+                &format!("---\ndescription: {}\n---\nbody\n", "😀".repeat(1000)),
+            ),
             (".claude/commands/sub/run.md", "first line\nsecond\n"),
             (".claude/commands/blank.md", ""),
             (
@@ -1470,6 +1497,8 @@ mod tests {
             chars_of(&set, ".claude/skills/long/SKILL.md"),
             LISTING_ENTRY_CAP
         );
+        // 1,535 code units keep 767 emoji and half of the next.
+        assert_eq!(chars_of(&set, ".claude/skills/emoji/SKILL.md"), 767 + 2);
         assert_eq!(
             chars_of(&set, ".claude/commands/sub/run.md"),
             "first line".len()
@@ -1493,6 +1522,23 @@ mod tests {
     }
 
     #[test]
+    fn the_committed_listing_cap_replaces_the_default() {
+        let entry = |settings: &str| {
+            let set = loaded(&[
+                (".claude/settings.json", settings),
+                (
+                    ".claude/skills/s/SKILL.md",
+                    "---\ndescription: abcdefghijklmnop\n---\n",
+                ),
+            ]);
+            chars_of(&set, ".claude/skills/s/SKILL.md")
+        };
+        assert_eq!(entry(r#"{"skillListingMaxDescChars": 10}"#), 10);
+        assert_eq!(entry(r#"{"skillListingMaxDescChars": 0}"#), 16);
+        assert_eq!(entry("{}"), 16);
+    }
+
+    #[test]
     fn a_description_from_the_body_is_its_first_line_cut_to_a_hundred() {
         assert_eq!(fallback_description("\n\n## Title\nnext", "Skill"), "Title");
         assert_eq!(fallback_description("#tag line", "Skill"), "#tag line");
@@ -1500,6 +1546,8 @@ mod tests {
         let cut = fallback_description(&"y".repeat(150), "Skill");
         assert_eq!(cut.chars().count(), FALLBACK_DESCRIPTION_CAP);
         assert!(cut.ends_with("..."));
+        let emoji = fallback_description(&"😀".repeat(60), "Skill");
+        assert_eq!(emoji, format!("{}\u{fffd}...", "😀".repeat(48)));
     }
 
     #[test]
