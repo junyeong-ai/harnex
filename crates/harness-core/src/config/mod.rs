@@ -97,14 +97,15 @@ pub struct SessionConfig {
     /// instruction. Absent returns the window whole.
     #[serde(default)]
     pub submission_sample: Option<usize>,
-    /// What a baseline treats as the harness, relative to the project it was
-    /// scoped to. A comparison reports whether these moved between two
-    /// windows, which is the difference between a delta that could be an
-    /// effect and one that cannot.
+    /// What a baseline treats as the harness beyond the files that load into
+    /// every session, which count whatever this says. A comparison reports
+    /// whether the harness moved between two windows, which is the difference
+    /// between a delta that could be an effect and one that cannot.
     ///
-    /// These are git pathspecs, so a bare name is anchored at the work tree
-    /// root and reaches no deeper: project memory nested beside the code it
-    /// governs takes the `**/` form alongside it, which is why the default
+    /// These are git pathspecs read from the work tree root, since a window
+    /// scoped to a package still loads the root's memory, so a bare name
+    /// reaches no deeper than the root: project memory nested beside the code
+    /// it governs takes the `**/` form alongside it, which is why the default
     /// carries `CLAUDE.md` twice.
     ///
     /// The default covers everywhere a scaffolded harness lands, held there by
@@ -1279,7 +1280,7 @@ impl Config {
         {
             return Err(Error::ConfigInvalid {
                 message: format!(
-                    "[session] harness_paths entry '{bad}' is empty or absolute; each is relative to the project a window is scoped to"
+                    "[session] harness_paths entry '{bad}' is empty or absolute; each is a pathspec read from the work tree root"
                 ),
                 location: None,
             });

@@ -203,15 +203,37 @@ pub struct HarnessState {
     pub uncommitted: bool,
 }
 
-/// Ask the project's repository what its harness was at this moment.
+/// Ask the project's repository what its harness was at this moment: the
+/// `declared` pathspecs, and every file the runtime loads into each session
+/// in `project` as [`crate::always_loaded`] resolves them — an import
+/// included, since an edit to one changes what every session starts from
+/// wherever it lives.
 ///
 /// `None` when the path is not a git work tree, for the reason [`survey`]
 /// gives.
-pub fn harness_state(project: &Path, paths: &[String]) -> Result<Option<HarnessState>> {
+pub fn harness_state(project: &Path, declared: &[String]) -> Result<Option<HarnessState>> {
     if !project.is_dir() || !is_work_tree(project)? || !has_commits(project)? {
         return Ok(None);
     }
     let root = work_tree_root(project)?;
+    // Git resolves a pathspec against the directory it runs in, and a window
+    // scoped to a package still loads the root's memory, so the declared
+    // paths are read from the root and the loaded files moved onto it.
+    let below = std::fs::canonicalize(project)
+        .ok()
+        .and_then(|p| p.strip_prefix(&root).ok().map(Path::to_path_buf))
+        .ok_or_else(|| Error::CheckGitFailure {
+            message: format!(
+                "{} is not below the work tree git names for it, {}",
+                project.display(),
+                root.display()
+            ),
+        })?;
+    let loaded = crate::always_loaded::resolve(project)?
+        .members
+        .into_iter()
+        .map(|member| format!(":(literal){}", below.join(member.path).display()));
+    let paths: Vec<String> = declared.iter().cloned().chain(loaded).collect();
 
     let mut args = vec!["log", "-1", "--format=%H", "HEAD", "--"];
     args.extend(paths.iter().map(String::as_str));

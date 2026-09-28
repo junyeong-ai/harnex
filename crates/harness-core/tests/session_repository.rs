@@ -396,6 +396,56 @@ fn project_memory_beside_the_code_it_governs_is_part_of_the_harness() {
 }
 
 #[test]
+fn a_file_every_session_imports_is_part_of_the_harness() {
+    let dir = repo();
+    std::fs::write(
+        dir.path().join("CLAUDE.md"),
+        "# p\n\n@docs/conventions.md\n",
+    )
+    .unwrap();
+    commit_touching(dir.path(), "conventions", &["docs/conventions.md"]);
+    let imported = commit_touching(dir.path(), "tests first", &["docs/conventions.md"]);
+    commit_touching(dir.path(), "code", &["src/lib.rs"]);
+
+    let state =
+        repository::harness_state(dir.path(), &harness_core::config::default_harness_paths())
+            .unwrap()
+            .expect("a work tree answers");
+
+    assert_eq!(
+        state.head.as_deref(),
+        Some(imported.as_str()),
+        "the memory imports it, so every session starts from what it says"
+    );
+}
+
+#[test]
+fn a_file_a_package_session_loads_is_read_from_the_root() {
+    let dir = repo();
+    commit_touching(dir.path(), "root memory", &["CLAUDE.md"]);
+    let rule = commit_touching(
+        dir.path(),
+        "package rule",
+        &["crates/core/.claude/rules/r.md"],
+    );
+    commit_touching(dir.path(), "code", &["crates/core/src/lib.rs"]);
+
+    let state = repository::harness_state(
+        &dir.path().join("crates/core"),
+        &harness_core::config::default_harness_paths(),
+    )
+    .unwrap()
+    .expect("a directory inside a work tree is one");
+
+    assert_eq!(
+        state.head.as_deref(),
+        Some(rule.as_str()),
+        "the package's own rule loads into its sessions, and the declared `.claude` \
+         is the root's"
+    );
+}
+
+#[test]
 fn a_window_scoped_below_the_root_is_told_about_the_whole_harness() {
     let dir = repo();
     let root_memory = commit_touching(dir.path(), "root memory", &["CLAUDE.md"]);
