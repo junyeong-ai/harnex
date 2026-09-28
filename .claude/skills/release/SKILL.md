@@ -20,18 +20,23 @@ Then, for every claim either returns:
   finding is a hypothesis. A fix landed on an unreproduced claim is a change
   with no defect behind it.
 - **Mutation-test every guard the change adds or touches**, to the discipline
-  `making-changes.md § Verification` states. A guard that passes its own
-  mutation is watching nothing, and the suite still reports green. For Rust,
-  the set is computed rather than enumerated: diff the release range into a
-  file and run `scripts/mutants.sh --in-diff <file> --test-workspace=false
-  --copy-vcs=true` — the git directory is copied because integration tests
-  read it, and without it the unmutated baseline fails before any mutant
-  runs. The wrapper is what bounds a mutant's memory; `cargo mutants` bounds
-  only its wall clock, and a mutant of a loop that allocates per turn takes
-  the machine before that comes round. A missed mutant is an open claim until a test kills it; one another
-  package's test would kill is confirmed by re-running it with
-  `--test-workspace=true`. Shell and template guards have no such tool and keep
-  the manual form.
+  `making-changes.md § Verification` states: put in what the guard catches,
+  run the tests that name it, restore. A guard that passes its own mutation is
+  watching nothing, and the suite still reports green. A mutant is caught
+  only when its test filter passes unmutated and fails with a test failure
+  once mutated: a build error or an argument the runner rejects fails the
+  same command and says nothing about the guard. Restore with a fresh mtime,
+  or cargo keeps the mutant's build and the next baseline runs it. A missed
+  mutant is an open claim until a test kills it.
+- **`scripts/mutants.sh --in-diff <file> --test-workspace=false
+  --copy-vcs=true` computes the set over a whole range** when the range
+  warrants one; a mutant costs about half a minute, so a range of two hundred
+  is hours. The git directory is copied because integration tests read it,
+  and without it the unmutated baseline fails before any mutant runs. The
+  wrapper is what bounds a mutant's memory; `cargo mutants` bounds only its
+  wall clock, and a mutant of a loop that allocates per turn takes the machine
+  before that comes round. One another package's test would kill is confirmed
+  by re-running it with `--test-workspace=true`.
 
 Do not start §3 while a claim is open. An unresolved finding after a tag is a
 finding that ships, and a review dispatched and not yet read is an open claim —
