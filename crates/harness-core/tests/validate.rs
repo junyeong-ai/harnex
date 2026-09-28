@@ -203,6 +203,10 @@ fn a_skill_description_is_measured_as_the_characters_the_listing_shows() {
         "the ` - ` is listed too"
     );
     assert!(!over(&"x".repeat(40), &"y".repeat(7)));
+    assert!(!over(&"😀".repeat(25), ""), "an emoji is two code units");
+    assert!(over(&"😀".repeat(26), ""));
+    let padded = format!("\"{}{}{}\"", " ".repeat(5), "x".repeat(50), " ".repeat(5));
+    assert!(!over(&padded, ""), "the listing trims");
 }
 
 #[test]

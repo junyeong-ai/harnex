@@ -602,7 +602,7 @@
           "default": 500
         },
         "max_description_chars": {
-          "description": "Characters of the listing text `description - when_to_use`. Defaults to\nthe length Claude Code cuts an entry at.",
+          "description": "Length of the listing text `description - when_to_use`, counted as\nClaude Code counts it — UTF-16 code units, so a character outside the\nBasic Multilingual Plane counts twice. Defaults to the length Claude\nCode cuts an entry at.",
           "type": "integer",
           "format": "uint",
           "minimum": 0,

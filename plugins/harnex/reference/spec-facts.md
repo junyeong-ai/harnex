@@ -394,7 +394,8 @@ already contradicted both a page and the binary's own schema.
   `outputStyle` names (frontmatter `name` before file name); and one listing
   entry per skill and command — `description`, else the first non-empty body
   line (a heading's text, cut to 100; `Skill` or `Custom command` for an empty
-  body), plus ` - when_to_use`, cut to 1,536, none under
+  body), plus ` - when_to_use`, cut to 1,536 or the `skillListingMaxDescChars`
+  setting — both in UTF-16 code units, the runtime's `.length` — none under
   `disable-model-invocation` — and per agent with a `name` — its
   `description`. A skill whose `paths:` scopes something waits for a matching
   file and is not listed. A skill's entry is named by its directory. When the whole listing outgrows a budget that scales with the

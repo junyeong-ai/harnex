@@ -42,9 +42,9 @@ turn:
 
 Skill validator (per <https://code.claude.com/docs/en/skills>):
 - `name` ∈ `[a-z0-9-]{1,64}` and equals directory name when declared.
-- The listing text `description - when_to_use` ≤ `max_description_chars`
-  characters, defaulting to the runtime's cut
-  (`always_loaded::LISTING_ENTRY_CAP`).
+- The listing text `description - when_to_use` ≤ `max_description_chars`,
+  counted as the runtime counts (`always_loaded::runtime_len`, UTF-16 code
+  units) and defaulting to its cut (`always_loaded::LISTING_ENTRY_CAP`).
 - Body ≤ `max_skill_md_lines` (compaction budget ≈ 5000 tokens).
 - `user-invocable` must be boolean if present (Major).
 - `context` must be `"fork"` if present (Major).

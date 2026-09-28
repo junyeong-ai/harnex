@@ -4,9 +4,9 @@
 //! - Frontmatter present and parses as YAML.
 //! - Effective `name` (frontmatter or directory) matches `[a-z0-9-]{1,64}`.
 //! - If frontmatter `name` declared, it equals directory name.
-//! - The listing text `description - when_to_use` ≤ `max_description_chars`
-//!   characters (Claude Code cuts an entry at
-//!   `always_loaded::LISTING_ENTRY_CAP`).
+//! - The listing text `description - when_to_use` ≤ `max_description_chars`,
+//!   measured as Claude Code measures it (`always_loaded::runtime_len`), which
+//!   cuts an entry at `always_loaded::LISTING_ENTRY_CAP`.
 //! - SKILL.md body line count ≤ `max_skill_md_lines` (compaction budget
 //!   ≈ 5000 tokens ≈ 500 lines).
 //! - Opt-in via `SkillsPolicy.flag_side_effect_verbs`: emit a Minor
@@ -275,21 +275,24 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        let chars = |text: &str| text.chars().count();
-        let total_desc = parsed.description.as_deref().map_or(0, chars)
+        let len = crate::always_loaded::runtime_len;
+        let total_desc = parsed
+            .description
+            .as_deref()
+            .map_or(0, |description| len(description.trim()))
             + parsed
                 .when_to_use
                 .as_deref()
                 .filter(|when| !when.is_empty())
-                .map_or(0, |when| " - ".len() + chars(when));
+                .map_or(0, |when| len(" - ") + len(when));
         if total_desc > self.policy.max_description_chars {
             findings.push(Finding {
                 slug: "skill-description-over-budget".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), fm.begin_line),
                 message: format!(
-                    "description - when_to_use lists {total_desc} characters, over \
-                     max_description_chars={} (Claude Code cuts a listing entry at {})",
+                    "description - when_to_use is {total_desc} characters as Claude Code \
+                     counts them, over max_description_chars={} (a listing entry is cut at {})",
                     self.policy.max_description_chars,
                     crate::always_loaded::LISTING_ENTRY_CAP
                 ),
