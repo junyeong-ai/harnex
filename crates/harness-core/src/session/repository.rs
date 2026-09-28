@@ -229,11 +229,29 @@ pub fn harness_state(project: &Path, declared: &[String]) -> Result<Option<Harne
                 root.display()
             ),
         })?;
-    let loaded = crate::always_loaded::resolve(project)?
-        .members
-        .into_iter()
-        .map(|member| format!(":(literal){}", below.join(member.path).display()));
-    let paths: Vec<String> = declared.iter().cloned().chain(loaded).collect();
+    let mut paths: BTreeSet<String> = declared.iter().cloned().collect();
+    // A session in a package loads what every directory above it puts into
+    // each session, up to the root, so each of those is read as the runtime
+    // reads it. Git follows no link: a file reached through one is named both
+    // where it was reached, which a retargeted link changes, and where its
+    // content lives, which an edit changes.
+    let mut levels: Vec<&Path> = below.ancestors().collect();
+    levels.reverse();
+    for level in levels {
+        for member in crate::always_loaded::resolve(&root.join(level))?.members {
+            let reached = level.join(&member.path);
+            let content =
+                std::fs::canonicalize(root.join(&reached)).map_err(|source| Error::IoFailure {
+                    path: root.join(&reached),
+                    source,
+                })?;
+            let content = content
+                .strip_prefix(&root)
+                .expect("a member's content lies inside the directory it was read from");
+            paths.insert(format!(":(literal){}", reached.display()));
+            paths.insert(format!(":(literal){}", content.display()));
+        }
+    }
 
     let mut args = vec!["log", "-1", "--format=%H", "HEAD", "--"];
     args.extend(paths.iter().map(String::as_str));

@@ -262,11 +262,14 @@ measured: the build, the paragraph floor, and — where the window was scoped to
 a git work tree — the commit the project's harness stood at and whether it had
 uncommitted changes. `baseline diff` answers `harness_change` from those, so a
 delta across an unchanged harness is not read as the effect of one. What counts
-as the harness is every file that loads into each session, an import or an
-`AGENTS.md` included, plus `[session] harness_paths`, defaulting to where a
-scaffolded harness lands. `baseline trend` lays every window of one scope side by side, one
-series per metric, and subtracts nothing — pairwise comparison, with its
-overlap and support guards, stays with `diff`.
+as the harness is every file that loads into each session from the project and
+each directory above it up to the root, an import or a linked `AGENTS.md`
+included, plus `[session] harness_paths`, defaulting to where a scaffolded
+harness lands. Git answers for these, so a file it ignores does not count, and
+neither does an import reaching out of the directory whose memory imports it.
+`baseline trend` lays every window of one scope side by side, one series per
+metric, and subtracts nothing — pairwise comparison, with its overlap and
+support guards, stays with `diff`.
 
 `ask serve` puts a decision to the person where a session would otherwise
 assume it. The page is any HTML file that keeps the markup promise at the
