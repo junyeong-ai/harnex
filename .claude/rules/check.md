@@ -45,9 +45,12 @@ Validator slugs (current):
 
 The `guard.floor` arm holds `sandbox.filesystem.denyWrite` in
 `.claude/settings.json` to cover every path the floor freezes
-(`floor-sandbox-uncovered`, the entry to add in its hint). Like governs it
-ignores `--since`: a path added to `[guard.floor]` breaks the projection as
-surely as an entry dropped from the settings.
+(`floor-sandbox-uncovered`, the entry to add in its hint) except the two
+settings files the sandbox refuses on its own. An absent settings file hands
+the sandbox no entries; only one that is present and unreadable leaves the arm
+unjudged in `skipped`. Like governs it ignores `--since`: a path added to
+`[guard.floor]` breaks the projection as surely as an entry dropped from the
+settings.
 
 The `validate.always_loaded` arm is not a surface validator: it reads the
 whole set `always_loaded::resolve` returns and reports one

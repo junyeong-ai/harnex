@@ -738,24 +738,23 @@ impl<'a> ProjectChecker<'a> {
             return;
         };
         let settings_path = self.working_dir.join(".claude/settings.json");
-        if !settings_path.is_file() {
-            skipped.push(SkippedRule {
-                slug: "guard.floor".into(),
-                reason: ".claude/settings.json not present".into(),
-            });
-            return;
-        }
-        // Unreadable settings are `validate.settings`' finding; this arm records
-        // that it could not judge rather than guessing at an empty list.
-        let Some(settings) = std::fs::read_to_string(&settings_path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-        else {
-            skipped.push(SkippedRule {
-                slug: "guard.floor".into(),
-                reason: ".claude/settings.json is not readable JSON".into(),
-            });
-            return;
+        // An absent file hands the sandbox no entries. One that is present and
+        // unreadable is `validate.settings`' finding; this arm records that it
+        // could not judge rather than guessing at an empty list.
+        let settings = if settings_path.is_file() {
+            let Some(settings) = std::fs::read_to_string(&settings_path)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            else {
+                skipped.push(SkippedRule {
+                    slug: "guard.floor".into(),
+                    reason: ".claude/settings.json is not readable JSON".into(),
+                });
+                return;
+            };
+            settings
+        } else {
+            serde_json::Value::Null
         };
         let deny_write: Vec<&str> = settings
             .pointer("/sandbox/filesystem/denyWrite")

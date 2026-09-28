@@ -4,7 +4,8 @@
 //! reading of the command line closes over it. `sandbox.filesystem.denyWrite`
 //! is enforced by the operating system on each of those processes, which makes
 //! it the place a Bash write into the floor is refused: every floor entry is
-//! covered by one of its entries, and `check` reports the ones that are not.
+//! covered by one of its entries or by the sandbox's own protection
+//! ([`SANDBOX_PROTECTED`]), and `check` reports the ones that are not.
 //!
 //! An entry covers a floor path when it names that path or a directory above
 //! it, read as the sandbox reads an entry in project settings: `./` or no
@@ -13,6 +14,12 @@
 //! or `~/` path names this checkout on one machine, while
 //! `.claude/settings.json` is every developer's; and an entry carrying `*`, `?`
 //! or `[` is skipped by the Linux and WSL2 sandbox.
+
+/// Paths the sandbox refuses to write in the project whatever `denyWrite`
+/// says, so a sandboxed command cannot widen its own sandbox — measured from
+/// the 2.1.283 CLI, which adds them for every directory it lets a command
+/// write.
+pub const SANDBOX_PROTECTED: &[&str] = &[".claude/settings.json", ".claude/settings.local.json"];
 
 /// The `denyWrite` entry that holds one floor entry. The trailing `/` is
 /// dropped because a sandbox before Claude Code 2.1.224 passed it through, and
@@ -34,7 +41,7 @@ pub fn uncovered<'a>(
         .into_iter()
         .filter(|entry| {
             let path: Vec<&str> = entry.trim_end_matches('/').split('/').collect();
-            !covering.iter().any(|dir| path.starts_with(dir))
+            !SANDBOX_PROTECTED.contains(entry) && !covering.iter().any(|dir| path.starts_with(dir))
         })
         .collect()
 }
@@ -122,6 +129,16 @@ mod tests {
         ] {
             assert_eq!(left(&["hooks/"], &[deny]), ["hooks/"], "{deny}");
         }
+    }
+
+    #[test]
+    fn the_settings_files_are_the_sandboxs_own_to_refuse() {
+        let floor = [
+            ".claude/settings.json",
+            ".claude/settings.local.json",
+            ".claude/other.json",
+        ];
+        assert_eq!(left(&floor, &[]), [".claude/other.json"]);
     }
 
     #[test]

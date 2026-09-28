@@ -322,7 +322,8 @@ patterns covered out of the box:
   itself are frozen, and a break-glass grant read live from the main checkout
   is how the operator opens them; a Bash write meets the same set in the
   sandbox's `sandbox.filesystem.denyWrite`, which `harnex check` holds to
-  cover every frozen path. It is a tripwire, not a boundary. These stay out of
+  cover every path `[guard.floor]` declares. It is a tripwire, not a
+  boundary. These stay out of
   scope: a second shell handed its script as an argument (`sh -c`), a backtick
   body on the command line, a git alias, a `#` glued
   to the `)` of a process substitution or an array, which is read as a comment

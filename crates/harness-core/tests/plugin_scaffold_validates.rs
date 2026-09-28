@@ -291,31 +291,6 @@ fn run_scaffold_validation(lang: &str) {
         );
     }
 
-    // The floor the scaffold declares is the floor its settings hand the Bash
-    // sandbox; a template that falls behind `[guard.floor]` leaves a frozen
-    // path writable by any command the sandbox runs.
-    let config = harness_core::config::Config::load_from(&proj_root.join("harness.toml"))
-        .unwrap_or_else(|e| panic!("[{lang}] scaffolded harness.toml does not load: {e}"));
-    let floor = config
-        .guard
-        .as_ref()
-        .and_then(|g| g.floor.as_ref())
-        .expect("the scaffold declares [guard.floor]");
-    let deny_write: Vec<&str> = settings["sandbox"]["filesystem"]["denyWrite"]
-        .as_array()
-        .expect("sandbox.filesystem.denyWrite is an array")
-        .iter()
-        .filter_map(|v| v.as_str())
-        .collect();
-    let uncovered = harness_core::guard::floor::sandbox::uncovered(
-        harness_core::guard::floor::floor_entries(&floor.protected_paths),
-        &deny_write,
-    );
-    assert!(
-        uncovered.is_empty(),
-        "[{lang}] the scaffold freezes {uncovered:?} and its sandbox can still write them"
-    );
-
     for script in glob_under(&proj_root.join("hooks"), "*") {
         assert!(
             bash_n_ok(&script),

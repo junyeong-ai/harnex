@@ -23,16 +23,13 @@ fn read(rel: &str) -> String {
 /// Files that enumerate the built-in protected set verbatim (not the ones
 /// that merely describe it as "the two settings files"). Each must name
 /// every entry.
-const BUILT_IN_RESTATEMENTS: [&str; 2] = [
-    "plugins/harnex/templates/patterns/enforcement-floor/enforcement-floor.md",
-    "plugins/harnex/templates/common/harness.toml",
-];
+const BUILT_IN_RESTATEMENTS: [&str; 1] =
+    ["plugins/harnex/templates/patterns/enforcement-floor/enforcement-floor.md"];
 
 /// Files that name the break-glass grant key verbatim (the CLI message reads
 /// it from the const and is not a restatement).
-const GRANT_KEY_RESTATEMENTS: [&str; 3] = [
+const GRANT_KEY_RESTATEMENTS: [&str; 2] = [
     "plugins/harnex/templates/patterns/enforcement-floor/enforcement-floor.md",
-    "plugins/harnex/templates/common/harness.toml",
     ".claude/rules/guard.md",
 ];
 

@@ -109,7 +109,7 @@ program's to decide: `floor::sandbox` owns the floor's projection into
 `sandbox.filesystem.denyWrite`, which the OS enforces on each of those
 processes, and `check`'s `guard.floor` arm reports a frozen path it leaves
 uncovered. The command-line reading stays with the hook bypass, which no OS
-layer sees. Its two halves fail in deliberately opposite
+layer sees. The auditor's two halves fail in deliberately opposite
 directions — violation checks fail open (inability to evaluate is a
 `Skip` with a reason, never a block), while the operator's break-glass
 grant fails closed (an unreadable override is an absent one). The grant is
