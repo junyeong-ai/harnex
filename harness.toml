@@ -82,6 +82,12 @@ require_governs = true
 
 [validate.routines]
 
+# What every session here carries — CLAUDE.md and the two always-loaded rules,
+# member by member in `harnex validate always-loaded` — held a little above
+# its size, so growing it is a decision rather than drift.
+[validate.always_loaded]
+max_chars = 16000
+
 [session]
 roots = ["~/.claude/projects"]
 
