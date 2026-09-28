@@ -209,6 +209,23 @@ fn every_manifest_that_publishes_this_project_names_one_owner() {
 }
 
 #[test]
+fn the_marketplace_lists_the_plugin_in_the_plugin_s_own_words() {
+    let json = |path: &str| -> serde_json::Value {
+        serde_json::from_str(&repo_file(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
+    };
+    let plugin = json("plugins/harnex/.claude-plugin/plugin.json");
+    let marketplace = json(".claude-plugin/marketplace.json");
+    let listed = marketplace["plugins"]
+        .as_array()
+        .and_then(|plugins| plugins.iter().find(|p| p["name"] == plugin["name"]))
+        .expect("the marketplace lists the plugin by its manifest name");
+    assert_eq!(
+        listed["description"], plugin["description"],
+        "the marketplace describes the plugin other than its manifest does"
+    );
+}
+
+#[test]
 fn the_upload_step_keeps_the_defaults_the_installer_reads_asset_names_from() {
     let workflow = repo_file(WORKFLOW);
 
