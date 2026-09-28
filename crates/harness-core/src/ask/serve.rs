@@ -21,6 +21,11 @@ const SCRIPT: &str = include_str!("script.js");
 /// connections it may never use, and one of those must not hold the page.
 const IDLE: Duration = Duration::from_secs(10);
 const WRITE_LIMIT: Duration = Duration::from_secs(10);
+/// A browser keeps a handful of connections to one host. Anything on this
+/// machine can open more, and holding every one would let them run the
+/// process out of descriptors, or arrive faster than they are taken and keep
+/// the loop from its deadline.
+const CONNECTIONS: usize = 64;
 const POLL: Duration = Duration::from_millis(10);
 const OPENER_WAIT: Duration = Duration::from_secs(5);
 
@@ -130,28 +135,7 @@ pub fn serve(
         if Instant::now() >= deadline {
             return Ok(Outcome::Unanswered { url });
         }
-        let mut moved = false;
-        loop {
-            match listener.accept() {
-                Ok((stream, _)) => {
-                    moved = true;
-                    if stream.set_nonblocking(true).is_ok() {
-                        open.push(Connection {
-                            stream,
-                            read: Vec::new(),
-                            since: Instant::now(),
-                        });
-                    }
-                }
-                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
-                Err(e)
-                    if matches!(
-                        e.kind(),
-                        ErrorKind::ConnectionAborted | ErrorKind::Interrupted
-                    ) => {}
-                Err(source) => return Err(Error::AskListenFailed { source }),
-            }
-        }
+        let mut moved = admit(&listener, &mut open)?;
         let mut i = 0;
         while i < open.len() {
             match open[i].pump() {
@@ -178,6 +162,34 @@ pub fn serve(
             std::thread::sleep(POLL);
         }
     }
+}
+
+/// Take the connections waiting on `listener`, as many as the bound leaves
+/// room for; the rest wait in the listen backlog. Whether any was taken.
+fn admit(listener: &TcpListener, open: &mut Vec<Connection>) -> Result<bool> {
+    let mut moved = false;
+    while open.len() < CONNECTIONS {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                moved = true;
+                if stream.set_nonblocking(true).is_ok() {
+                    open.push(Connection {
+                        stream,
+                        read: Vec::new(),
+                        since: Instant::now(),
+                    });
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    ErrorKind::ConnectionAborted | ErrorKind::Interrupted
+                ) => {}
+            Err(source) => return Err(Error::AskListenFailed { source }),
+        }
+    }
+    Ok(moved)
 }
 
 fn read_sources(asks: &Asks, base: &Path) -> Result<Vec<(PathBuf, Vec<u8>)>> {
@@ -401,5 +413,28 @@ impl Connection {
             reply.content_type,
             &reply.body,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connections_past_the_bound_wait_in_the_backlog() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let _clients: Vec<TcpStream> = (0..CONNECTIONS + 8)
+            .map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap())
+            .collect();
+        let mut open = Vec::new();
+        assert!(admit(&listener, &mut open).unwrap());
+        assert_eq!(open.len(), CONNECTIONS);
+        assert!(!admit(&listener, &mut open).unwrap());
+
+        open.truncate(CONNECTIONS - 8);
+        assert!(admit(&listener, &mut open).unwrap());
+        assert_eq!(open.len(), CONNECTIONS);
     }
 }
