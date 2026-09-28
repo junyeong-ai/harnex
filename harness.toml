@@ -18,18 +18,17 @@
 # way the verdict assumes. `spec` stamps Claude Code's surface and nothing
 # stamps git's, so the cadence is the whole mechanism.
 #
-# guard.floor stays absent, and the tripwire it used to hold back is armed:
-# the Bash PreToolUse entry refuses a command that would skip the hook stack,
-# and it reads nothing from here. What the section would arm is the freeze,
-# which covers harness.toml and `.claude/settings.json` — files 38 of the 60
-# commits before this line touch, because here the harness is the work
-# product. A grant left standing to answer that prints `[floor-edit allowed]`
-# on most commits, which is how the one signal that the freeze was bypassed
-# stops being one. Adopters whose gate files are not their work product wire
-# the second entry with the enforcement-floor pattern.
+# guard.floor stays absent. The tripwire is armed regardless: the Bash
+# PreToolUse entry refuses a command that would skip the hook stack, and it
+# reads nothing from here. What the section would arm is the freeze, which
+# covers harness.toml and `.claude/settings.json` — files most commits here
+# touch, because the harness is the work product. A grant left standing to
+# answer that prints `[floor-edit allowed]` on most commits, which is how the
+# one signal that the freeze was bypassed stops being one. Adopters whose gate
+# files are not their work product wire the second entry with the
+# enforcement-floor pattern.
 # lifecycle and telemetry are ON (below): the promotion/retirement loop this
-# repo ships was field-tested only by its consumers until 2026-08 — the loop's
-# own friction has to be findable here, on the corpus that builds it.
+# repo ships has to show its own friction here, on the corpus that builds it.
 
 [meta]
 harnex_version = ">=0.30, <0.31"
@@ -68,8 +67,9 @@ strategy = "file-path-line"
 
 [validate.rules]
 # The Claude Code memory budget applies to what loads every turn. Every other
-# rule here is path-scoped and costs context only on the files it governs, so
-# `max_scoped_lines` stays unset — a cohesive long rule is not a defect.
+# rule here is path-scoped and its own text costs context only on the files it
+# governs, so `max_scoped_lines` stays unset — a cohesive long rule is not a
+# defect.
 max_lines = 200
 always_loaded_slugs = ["constitution", "making-changes"]
 require_governs = true

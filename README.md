@@ -16,7 +16,7 @@ Harness engineering for Claude Code projects. harnex has two surfaces:
 ## Why
 
 Modern Claude follows in-context conventions well. What it cannot do alone
-is keep its harnex spec-correct as the upstream surface evolves, enforce
+is keep its harness spec-correct as the upstream surface evolves, enforce
 what the runtime would silently corrupt, or fit one harness to many
 languages and module shapes. harnex centralizes the *correctness knowledge*
 and emits a harness each project owns — never a shared binary every project
@@ -61,9 +61,8 @@ needs a detected profile. The manifest is the only list of what a harness
 contains — read it rather than a summary. A stack harnex has no profile for
 still receives the foundation tier and a report of what is missing, and a repo
 holding two stacks receives the language tier once per stack. It never
-free-generates a hook or permission rule. Knowledge lives in
-`reference/` (the spec facts, the enforced-vs-advisory split, the
-keep/soften/cut principle, the language matrix, the exploration procedure).
+free-generates a hook or permission rule. Knowledge lives in `reference/`,
+which the skill reads on demand.
 
 ## The oracle binary
 
@@ -106,10 +105,10 @@ the plugin reports the oracle as missing rather than fetching it.
 `schemas/harness.schema.json` ships in this repo. Point your TOML
 language server at it for autocomplete + validation on `harness.toml`:
 
-- **Taplo / VS Code Even-Better-TOML**: the generated `harness.toml`
-  includes a `#:schema <url>` directive at the top — replace
-  `<owner>/<repo>` with your fork's path, or use a `file://` URL of
-  `schemas/harness.schema.json` in your local checkout.
+- **Taplo / VS Code Even-Better-TOML**: add a `#:schema` directive at the
+  top of `harness.toml` naming the schema of the release your pin admits —
+  `https://raw.githubusercontent.com/junyeong-ai/harnex/<tag>/schemas/harness.schema.json`
+  — or a `file://` URL of `schemas/harness.schema.json` in a local checkout.
 - **IntelliJ family**: Languages & Frameworks → Schemas and DTDs → JSON
   Schema Mappings → add `harness.schema.json` for the pattern `harness.toml`.
 
@@ -134,13 +133,13 @@ cd your-project/
 cp <harnex>/examples/harness.toml.minimal harness.toml
 
 # Unified gate — every enabled validator in one JSON envelope
-./harnex check
-./harnex check --fix      # auto-fix what can be fixed (currently: codegen sync)
+harnex check
+harnex check --fix        # auto-fix what can be fixed (currently: codegen sync)
 ```
 
 `examples/harness.toml.minimal` enables just evidence (provenance verifier)
 and telemetry (event ledger) — the smallest useful surface.
-`examples/harness.toml.team` is the full-surface config (adds
+`examples/harness.toml.team` is a broad config (adds
 validate.rules/skills, policy.permissions, lifecycle, codegen, …). Start
 from one and extend with `[[kinds]]`, `[[lifecycle.consumer_detectors]]`,
 `[[codegen.groups]]`, `[[policy.versions]]`, `[validate.commit_msg]` as your
@@ -258,8 +257,8 @@ measured: the build, the paragraph floor, and — where the window was scoped to
 a git work tree — the commit the project's harness stood at and whether it had
 uncommitted changes. `baseline diff` answers `harness_change` from those, so a
 delta across an unchanged harness is not read as the effect of one. What counts
-as the harness is `[session] harness_paths`, defaulting to what Claude Code
-reads. `baseline trend` lays every window of one scope side by side, one
+as the harness is `[session] harness_paths`, defaulting to where a scaffolded
+harness lands. `baseline trend` lays every window of one scope side by side, one
 series per metric, and subtracts nothing — pairwise comparison, with its
 overlap and support guards, stays with `diff`.
 
@@ -305,13 +304,15 @@ patterns covered out of the box:
   — memory files and their imports, rules whose `paths:` scope nothing, the
   selected output style, each skill, command and agent listing entry — read
   the way Claude Code loads them (`[validate.always_loaded] max_chars`)
-- Hook wiring integrity — every `${CLAUDE_PROJECT_DIR}` path a hook names
-  resolves and the script it spawns directly is executable, so a handler
-  cannot fail open while the harness reads as wired
+- Hook wiring integrity (`harnex audit --plugin-root`) — every
+  `${CLAUDE_PROJECT_DIR}` path a hook names that is a scaffold destination
+  resolves and the script it spawns directly is executable, so a generated
+  handler cannot fail open while the harness reads as wired; a hook the
+  project wrote itself is its own to guard
 - Generated-artifact integrity — edits inside a managed region, a `copy`
   artifact whose bytes drifted from its template, a fill marker the generating
-  step left behind, a `.claude/settings.json` value that stopped matching what
-  the profile declares
+  step left behind, a `.claude/settings.json` missing a deny rule its profiles
+  declare or allowing what one denies
 - The enforcement floor (`guard floor`, PreToolUse) — a git command that skips
   the hook stack: `--no-verify` and the prefixes git resolves to it, a
   `core.hooksPath` reroute through `-c` / `--config-env` / the `GIT_CONFIG_*`
@@ -383,9 +384,9 @@ and individual repos cannot weaken them. The integration points:
   managed skills are exempt). harnex's templates do not rely on
   shell-injection, so it remains fully functional under this policy.
 
-See `https://code.claude.com/docs/en/settings` for the complete managed
-settings surface and OS-specific deployment paths (`managed-settings.d/`,
-plist, registry, Group Policy).
+See `https://code.claude.com/docs/en/managed-settings` for how managed
+settings are delivered per OS (`managed-settings.d/`, plist, registry, Group
+Policy) and `https://code.claude.com/docs/en/settings-reference` for the keys.
 
 ## Operating context
 

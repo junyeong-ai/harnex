@@ -28,8 +28,8 @@ turn:
 - Always-loaded rules: `max_lines` cap (default 200 per Claude Code memory
   spec, which targets unconditionally-loaded context) as Major.
 - Path-scoped rules: `max_scoped_lines` cap as Minor, unset by default. The
-  always-loaded budget never applies to them — they cost context only on
-  their own paths, so a cohesive long rule is not a defect.
+  always-loaded budget never applies to them — a rule's own text costs
+  context only on its paths, so a cohesive long rule is not a defect.
 - Unparseable frontmatter returns the Blocker alone and asserts no budget:
   the runtime loads such a rule under whatever keys its repair recovers,
   which is not the scope the author wrote.
@@ -57,7 +57,7 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
 - `paths` is a string (comma-separated) OR an array of glob patterns — spec
   accepts both; each glob must compile (Major).
 - `hooks` keys validated against `KNOWN_HOOK_EVENTS` (Major).
-- `effort` must be one of `low|medium|high|xhigh|max` (Major).
+- `effort` must be in `KNOWN_EFFORT_LEVELS` (Major).
 - `agent` / `model` are valid free-form fields — accepted, never flagged
   (a finding for a correct config is CUT-tier noise).
 - `reject_unknown_keys` (opt-in, default off): flag any top-level
@@ -73,9 +73,9 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
 Agent validator (per <https://code.claude.com/docs/en/sub-agents>):
 - `name` and `description` present; `name` matches `[a-z0-9-]+` (`:` is the
   plugin namespace separator and `agent_type` cannot carry it).
-- `permissionMode` ∈ `default|acceptEdits|auto|dontAsk|bypassPermissions|plan|manual`,
-  `effort` ∈ `low|medium|high|xhigh|max`, `isolation` ∈ `worktree`,
-  `memory` ∈ `user|project|local`, `color` ∈ the eight documented values (Major).
+- `permissionMode` ∈ `KNOWN_PERMISSION_MODES`, `effort` ∈
+  `KNOWN_EFFORT_LEVELS`, `isolation` ∈ `KNOWN_ISOLATION_MODES`, `memory` ∈
+  `KNOWN_MEMORY_SCOPES`, `color` ∈ `KNOWN_COLORS` (Major).
 - `maxTurns` is a positive integer; `background` is a boolean.
 - `tools` / `disallowedTools` are a string or a list of strings; `skills` is a
   list of strings; `mcpServers` is neither a scalar nor a list carrying an
@@ -125,16 +125,15 @@ Settings validator:
   compares. A hyphen is inside the wide charset, so a hyphenated server name
   is an exact string, never a regex.
 - `permissions.deny` empty raises a Minor advisory.
-- `permissions.defaultMode` must be in `KNOWN_DEFAULT_MODE_VALUES`
-  (`default|acceptEdits|plan|auto|dontAsk|bypassPermissions`) if present (Major).
+- `permissions.defaultMode` must be in `KNOWN_DEFAULT_MODE_VALUES` if present
+  (Major).
 - Project / local scope settings carrying a key in
   `KNOWN_PROJECT_SCOPE_NOOP_KEYS` (the const is the owner — see settings.rs;
   `defaultMode: "auto"` is the value-restricted special case) raise a Major
   advisory — those keys silently no-op outside user/managed.
-- `skillOverrides` values must be `on|name-only|user-invocable-only|off` (Major).
-- Allow rules whose command base is in `DANGEROUS_ALLOW_BASES`
-  (`rm`, `rm -rf`, `curl`, `sudo`) without a deny of the same base raise a
-  Minor advisory. Match on the normalized base via `bash_base`, which
+- `skillOverrides` values must be in `KNOWN_SKILL_OVERRIDE_VALUES` (Major).
+- Allow rules whose command base is in `DANGEROUS_ALLOW_BASES` without a deny
+  of the same base raise a Minor advisory. Match on the normalized base via `bash_base`, which
   collapses the equivalent `cmd:*` / `cmd *` / bare wildcard forms, so both
   spellings are caught and a scoped rule (`rm:./tmp/*`) is not.
 

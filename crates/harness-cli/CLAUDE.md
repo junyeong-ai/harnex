@@ -29,8 +29,8 @@ enumerates them, and a copy of that list here is the one that goes stale.
 | `2` | Runtime failure (config not found, IO failure, invalid arguments) |
 
 The gate threshold is the single source of truth `Severity::fails_gate()`
-(returns true for `Blocker | Major`). `check.rs`, `audit.rs`, `evidence.rs`,
-`validate.rs` all decide exit 1 via
+(returns true for `Blocker | Major`). Every command that reports findings
+decides exit 1 via
 `findings.iter().any(|f| f.severity.fails_gate())` — keep it identical across
 sites. To change the threshold, edit `fails_gate`, never the call sites.
 
