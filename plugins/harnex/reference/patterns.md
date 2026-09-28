@@ -109,8 +109,8 @@ an observation is the blank-page problem in disguise.
   read, and the sources of any verifier a hook dispatches (the enforcer sweep
   already lists them). harness.toml and the two settings files are built into
   the floor — never list them. Add the `sandbox.filesystem.denyWrite` entry
-  `harnex check` names for each frozen path; the sandbox protects the two
-  settings files itself. Wire one PreToolUse entry in
+  `harnex check` names for each frozen path; what the sandbox already
+  refuses on its own, the settings files among it, needs none. Wire one PreToolUse entry in
   `.claude/settings.json` running `${CLAUDE_PROJECT_DIR}/hooks/check-floor.sh`
   with matcher `Edit|Write|MultiEdit`. Install it only where the gate files
   are not the project's work product: where they are, the freeze fires on most

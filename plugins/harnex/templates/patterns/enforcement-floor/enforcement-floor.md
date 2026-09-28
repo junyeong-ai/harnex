@@ -44,8 +44,9 @@ where the gate files are not the work product.
   `.claude/settings.json` and `.claude/settings.local.json` are built into
   the floor itself. Do not restate the list here or anywhere else;
   `sandbox.filesystem.denyWrite` is its projection, and `harnex check` names
-  each entry it lacks. The sandbox refuses the two settings files on its own,
-  so they need none.
+  each entry it lacks. What the sandbox refuses on its own — the settings
+  files, `.mcp.json`, and `.claude`'s `hooks`, `skills`, `commands` and
+  `agents` among it — needs none.
 - **Bash writes are the sandbox's.** What a shell command writes is decided by
   every program it starts, so no reading of the command line refuses it; the
   sandbox enforces `denyWrite` on each of those processes. It holds only where

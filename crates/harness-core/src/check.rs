@@ -776,7 +776,9 @@ impl<'a> ProjectChecker<'a> {
                 hint: Some(format!(
                     "add \"{}\" to `sandbox.filesystem.denyWrite` in .claude/settings.json. \
                      The sandbox enforces it on every process a command starts, and it does \
-                     nothing where the sandbox is off.",
+                     nothing where the sandbox is off. A `[guard.floor]` with no \
+                     Edit|Write|MultiEdit floor hook wired freezes nothing, and belongs out of \
+                     harness.toml instead.",
                     crate::guard::floor::sandbox::deny_write_entry(entry)
                 )),
                 auto_fixable: false,
