@@ -3,7 +3,9 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 fn harnex() -> Command {
     Command::new(env!("CARGO_BIN_EXE_harnex"))
@@ -29,46 +31,81 @@ fn project() -> tempfile::TempDir {
     dir
 }
 
+/// A running `ask serve`, at the address it announced on stderr.
+struct Served {
+    child: Child,
+    url: String,
+    minutes: String,
+    port: u16,
+    token: String,
+}
+
+impl Served {
+    fn start(command: &mut Command) -> Self {
+        let mut child = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        BufReader::new(child.stderr.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let (url, minutes) = line
+            .strip_prefix("serving ")
+            .and_then(|rest| rest.strip_suffix(" minutes\n"))
+            .and_then(|rest| rest.split_once(" for "))
+            .unwrap_or_else(|| panic!("the address line: {line:?}"));
+        let (port, path) = url
+            .strip_prefix("http://127.0.0.1:")
+            .and_then(|rest| rest.split_once('/'))
+            .unwrap();
+        Self {
+            port: port.parse().unwrap(),
+            token: path.split('/').next().unwrap().to_string(),
+            url: url.to_string(),
+            minutes: minutes.to_string(),
+            child,
+        }
+    }
+
+    fn request(&self, method: &str, path: &str, body: &str) -> String {
+        let port = self.port;
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(
+            stream,
+            "{method} /{}/{path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: http://127.0.0.1:{port}\r\nContent-Length: {}\r\n\r\n{body}",
+            self.token,
+            body.len()
+        )
+        .unwrap();
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).unwrap();
+        reply
+    }
+
+    fn finish(self) -> (i32, serde_json::Value) {
+        let out = self.child.wait_with_output().unwrap();
+        let envelope = serde_json::from_slice(&out.stdout).unwrap();
+        (out.status.code().unwrap(), envelope)
+    }
+}
+
+fn serve(dir: &Path) -> Command {
+    let mut command = harnex();
+    command
+        .args(["ask", "serve", "page.html", "asks.json"])
+        .current_dir(dir);
+    command
+}
+
 /// Serve, then send `body` once the address is announced, and read what the
 /// command printed.
-fn serve_and_send(
-    dir: &std::path::Path,
-    before: impl FnOnce(),
-    body: &str,
-) -> (i32, serde_json::Value) {
-    let mut child = harnex()
-        .args(["ask", "serve", "page.html", "asks.json", "--no-open"])
-        .current_dir(dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut line = String::new();
-    BufReader::new(child.stderr.take().unwrap())
-        .read_line(&mut line)
-        .unwrap();
-    let url = line
-        .strip_prefix("serving ")
-        .and_then(|rest| rest.strip_suffix(" for 120 minutes\n"))
-        .unwrap_or_else(|| panic!("the address line: {line:?}"));
-    let rest = url.strip_prefix("http://127.0.0.1:").unwrap();
-    let (port, path) = rest.split_once('/').unwrap();
-    let token = path.split('/').next().unwrap();
-
+fn serve_and_send(dir: &Path, before: impl FnOnce(), body: &str) -> (i32, serde_json::Value) {
+    let served = Served::start(serve(dir).arg("--no-open"));
     before();
-    let mut stream = TcpStream::connect(("127.0.0.1", port.parse::<u16>().unwrap())).unwrap();
-    write!(
-        stream,
-        "POST /{token}/answers HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: http://127.0.0.1:{port}\r\nContent-Length: {}\r\n\r\n{body}",
-        body.len()
-    )
-    .unwrap();
-    let mut reply = String::new();
-    stream.read_to_string(&mut reply).unwrap();
-
-    let out = child.wait_with_output().unwrap();
-    let envelope = serde_json::from_slice(&out.stdout).unwrap();
-    (out.status.code().unwrap(), envelope)
+    served.request("POST", "answers", body);
+    served.finish()
 }
 
 #[test]
@@ -87,7 +124,7 @@ fn an_answered_ask_prints_its_record_and_current_holds_it() {
     assert_eq!(data["answers"][0]["offered"][1]["note"], "required");
     std::fs::write(dir.path().join("answered.json"), data.to_string()).unwrap();
 
-    let current = |dir: &std::path::Path| {
+    let current = |dir: &Path| {
         let out = harnex()
             .args(["ask", "current", "answered.json", "asks.json"])
             .current_dir(dir)
@@ -143,5 +180,92 @@ fn an_asks_file_that_breaks_the_schema_is_an_input_error() {
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         let envelope: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(envelope["error"]["code"], "ASK_INPUT_INVALID", "{args:?}");
+        let hint = envelope["error"]["hint"].as_str().unwrap_or_default();
+        assert!(
+            hint.contains("harnex export schema asks"),
+            "{args:?}: {hint}"
+        );
     }
+}
+
+#[test]
+fn the_page_closes_the_minutes_given_from_now() {
+    let dir = project();
+    let served = Served::start(serve(dir.path()).args(["--no-open", "--within", "3"]));
+    assert_eq!(served.minutes, "3");
+    let script = served.request("GET", "ask.js", "");
+    let setting = script
+        .split_once("const ASK = ")
+        .and_then(|(_, rest)| rest.split_once(";\n"))
+        .map(|(json, _)| serde_json::from_str::<serde_json::Value>(json).unwrap())
+        .unwrap();
+    let deadline: jiff::Timestamp = setting["deadline"].as_str().unwrap().parse().unwrap();
+    let off = deadline.duration_since(jiff::Timestamp::now()) - jiff::SignedDuration::from_mins(3);
+    assert!(off.abs() < jiff::SignedDuration::from_secs(30), "{off:?}");
+    served.request(
+        "POST",
+        "answers",
+        r#"{"answers": [{"id": "approved:기준", "answer": "승인"}]}"#,
+    );
+    assert_eq!(served.finish().0, 0);
+}
+
+/// The platform's opener, found on `PATH` as `open` and `xdg-open`, standing
+/// in as a script that records the address it was handed and exits `status`.
+#[cfg(unix)]
+fn opener(status: u8) -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    for name in ["open", "xdg-open"] {
+        let path = bin.path().join(name);
+        std::fs::write(
+            &path,
+            format!("#!/bin/sh\nprintf '%s' \"$1\" > \"$OPENED.part\"\nmv \"$OPENED.part\" \"$OPENED\"\nexit {status}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    bin
+}
+
+#[cfg(unix)]
+fn with_opener(command: &mut Command, bin: &Path, opened: &Path) {
+    let path = std::env::join_paths(std::iter::once(bin.to_path_buf()).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .unwrap();
+    command.env("PATH", path).env("OPENED", opened);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_browser_is_handed_the_address_it_announced() {
+    let dir = project();
+    let bin = opener(0);
+    let opened = dir.path().join("opened");
+    let mut command = serve(dir.path());
+    with_opener(&mut command, bin.path(), &opened);
+    let served = Served::start(&mut command);
+    let started = Instant::now();
+    while !opened.exists() {
+        assert!(started.elapsed() < Duration::from_secs(10), "never opened");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(std::fs::read_to_string(&opened).unwrap(), served.url);
+    served.request(
+        "POST",
+        "answers",
+        r#"{"answers": [{"id": "approved:기준", "answer": "승인"}]}"#,
+    );
+    assert_eq!(served.finish().0, 0);
+
+    let bin = opener(3);
+    let mut command = serve(dir.path());
+    with_opener(&mut command, bin.path(), &opened);
+    let out = command.output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let envelope: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(envelope["error"]["code"], "ASK_BROWSER_UNOPENED");
+    let hint = envelope["error"]["hint"].as_str().unwrap_or_default();
+    assert!(hint.contains("--no-open"), "{hint}");
 }
