@@ -59,23 +59,25 @@ pub struct Warning {
     pub message: String,
 }
 
-/// Severity ladder. Closed enum, kebab-case in JSON.
-///
-/// `Blocker` and `Major` are the GATING tiers: any finding at or above
-/// `Major` fails the validation gate (non-zero exit, blocks commits / CI).
-/// `Minor` and `Info` are advisory — surfaced in the envelope but never
-/// change the exit code (e.g. an opted-out memory-only claim is `Minor`).
-/// New tiers may be added at the top when a class of findings needs to
-/// outrank Blocker; doing so requires updating `Severity::rank` (the
-/// compiler enforces the exhaustive `match`). The gate threshold lives in
-/// one place — [`Severity::fails_gate`] — consumed by every CLI command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum Severity {
-    Blocker,
-    Major,
-    Minor,
-    Info,
+wire_enum! {
+    /// Severity ladder. Closed enum, kebab-case in JSON.
+    ///
+    /// `Blocker` and `Major` are the GATING tiers: any finding at or above
+    /// `Major` fails the validation gate (non-zero exit, blocks commits / CI).
+    /// `Minor` and `Info` are advisory — surfaced in the envelope but never
+    /// change the exit code (e.g. an opted-out memory-only claim is `Minor`).
+    /// New tiers may be added at the top when a class of findings needs to
+    /// outrank Blocker; doing so requires updating `Severity::rank` (the
+    /// compiler enforces the exhaustive `match`). The gate threshold lives in
+    /// one place — [`Severity::fails_gate`] — consumed by every CLI command.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Severity {
+        Blocker => "blocker",
+        Major => "major",
+        Minor => "minor",
+        Info => "info",
+    }
 }
 
 impl Severity {
@@ -98,7 +100,14 @@ impl Severity {
 
 #[cfg(test)]
 mod success_shape_tests {
-    use super::{Warning, write_success};
+    use super::{Severity, Warning, write_success};
+
+    #[test]
+    fn serde_spells_each_severity_as_its_wire_string() {
+        for severity in Severity::ALL {
+            assert_eq!(serde_json::to_value(severity).unwrap(), severity.as_str());
+        }
+    }
 
     #[test]
     fn warnings_is_present_even_when_empty() {
