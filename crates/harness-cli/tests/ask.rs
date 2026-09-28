@@ -32,8 +32,19 @@ fn project() -> tempfile::TempDir {
 }
 
 /// A running `ask serve`, at the address it announced on stderr.
+/// A command that is ended when dropped, so a test that fails at any point,
+/// its own setup included, leaves nothing serving for the minutes it was given.
+struct Running(Child);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 struct Served {
-    child: Child,
+    child: Running,
     url: String,
     minutes: String,
     port: u16,
@@ -42,13 +53,15 @@ struct Served {
 
 impl Served {
     fn start(command: &mut Command) -> Self {
-        let mut child = command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+        let mut child = Running(
+            command
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
         let mut line = String::new();
-        BufReader::new(child.stderr.take().unwrap())
+        BufReader::new(child.0.stderr.take().unwrap())
             .read_line(&mut line)
             .unwrap();
         let (url, minutes) = line
@@ -94,28 +107,21 @@ impl Served {
             .unwrap()
     }
 
-    fn finish(mut self) -> (i32, serde_json::Value) {
+    fn finish(self) -> (i32, serde_json::Value) {
+        let mut running = self.child;
+        let child = &mut running.0;
         let mut stdout = String::new();
-        self.child
+        child
             .stdout
             .take()
             .unwrap()
             .read_to_string(&mut stdout)
             .unwrap();
-        let status = self.child.wait().unwrap();
+        let status = child.wait().unwrap();
         (
             status.code().unwrap(),
             serde_json::from_str(&stdout).unwrap(),
         )
-    }
-}
-
-/// A test that fails before the command ends must not leave it serving for
-/// the minutes it was given.
-impl Drop for Served {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
     }
 }
 
