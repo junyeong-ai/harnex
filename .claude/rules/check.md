@@ -45,10 +45,13 @@ Validator slugs (current):
 
 The `guard.floor` arm holds `sandbox.filesystem.denyWrite` in
 `.claude/settings.json` to cover every path the floor freezes
-(`floor-sandbox-uncovered`, the entry to add in its hint) except the two
-settings files the sandbox refuses on its own. An absent settings file hands
-the sandbox no entries; only one that is present and unreadable leaves the arm
-unjudged in `skipped`. Like governs it ignores `--since`: a path added to
+(`floor-sandbox-uncovered`, the entry to add in its hint) except what the
+sandbox refuses on its own (`sandbox::SANDBOX_PROTECTED`). The hint also names
+the other way out: a `[guard.floor]` without the Edit|Write floor hook freezes
+nothing and belongs out of `harness.toml` — the state of a harness scaffolded
+before 0.30 that never adopted the enforcement-floor pattern. An absent
+settings file hands the sandbox no entries; only one that is present and
+unreadable leaves the arm unjudged in `skipped`. Like governs it ignores `--since`: a path added to
 `[guard.floor]` breaks the projection as surely as an entry dropped from the
 settings.
 

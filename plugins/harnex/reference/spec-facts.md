@@ -172,11 +172,15 @@ already contradicted both a page and the binary's own schema.
   permission-rule meaning of `/` does not apply); a trailing `/` or `/**` is
   stripped and a directory entry covers what is below it. Before 2.1.224 a
   trailing `/` was passed through and the entry guarded nothing; on Linux and
-  WSL2 an entry with `*`, `?` or `[` is skipped. The sandbox also refuses
-  `.claude/settings.json` and `.claude/settings.local.json` in every
-  directory it lets a command write, whatever `denyWrite` says: the 2.1.283
-  CLI adds them itself, and a sandboxed append to each was refused with
-  `denyWrite` empty while one beside them landed. Two exits stay open: an
+  WSL2 an entry with `*`, `?` or `[` is skipped. The sandbox also refuses,
+  whatever `denyWrite` says, what configures a session in the working
+  directory and each one above it: `.mcp.json`, the two `.claude` settings
+  files, and `.claude`'s `skills`, `commands`, `agents`, `hooks`, `workflows`,
+  `routines`, `output-styles`, `launch.json`, `scheduled_tasks.json` and
+  `loop.md` (`guard::floor::sandbox::SANDBOX_PROTECTED`). The 2.1.283 CLI adds
+  them itself; with `denyWrite` empty, a sandboxed append to the settings
+  files, `.mcp.json` and a file under `hooks`, `skills`, `output-styles` and
+  `routines` was refused while one to `.claude/other/` landed. Two exits stay open: an
   unsandboxed retry (`dangerouslyDisableSandbox`) goes through the permission
   flow, which a session skipping permission prompts passes unasked unless
   `sandbox.allowUnsandboxedCommands: false`; and a command in
