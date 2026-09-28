@@ -28,7 +28,8 @@ pub enum AskCommand {
         #[arg(long, default_value = "120")]
         within: NonZeroU32,
         /// Serve without opening a browser, for a person who reaches the
-        /// address another way, such as a forwarded port
+        /// address another way, such as a port forwarded to their machine and
+        /// opened there as `localhost` or `127.0.0.1` on any port
         #[arg(long)]
         no_open: bool,
     },

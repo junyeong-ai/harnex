@@ -129,8 +129,6 @@ fn serve_under(
     let url = format!("http://127.0.0.1:{port}/{token}/page/{}", site.page_path());
     let server = Server {
         prefix: format!("/{token}/"),
-        host: format!("127.0.0.1:{port}"),
-        origin: format!("http://127.0.0.1:{port}"),
         tag: format!("\n<script src=\"/{token}/ask.js\"></script>\n"),
         script: script(serving.asks, &token, closes),
         site,
@@ -314,8 +312,6 @@ impl Reply {
 
 struct Server<'a> {
     prefix: String,
-    host: String,
-    origin: String,
     tag: String,
     script: String,
     site: Site,
@@ -329,9 +325,9 @@ impl Server<'_> {
     /// points there, and such a request carries that name as its host; it is
     /// refused before anything else is read.
     fn handle(&self, request: &Request) -> (Reply, Option<Outcome>) {
-        if request.host.as_deref() != Some(self.host.as_str()) {
+        let Some(host) = request.host.as_deref().filter(|host| loopback(host)) else {
             return (Reply::empty(Status::Forbidden), None);
-        }
+        };
         let Some(rest) = request.path.strip_prefix(&self.prefix) else {
             return (Reply::empty(Status::NotFound), None);
         };
@@ -345,7 +341,7 @@ impl Server<'_> {
                 None,
             ),
             ("GET", path) => (self.file(path), None),
-            ("POST", "answers") => self.answers(request),
+            ("POST", "answers") => self.answers(request, host),
             _ => (Reply::empty(Status::NotFound), None),
         }
     }
@@ -370,10 +366,11 @@ impl Server<'_> {
         }
     }
 
-    /// Only the page this server served posts from its origin; a form on
-    /// another site that reaches the port carries that site's.
-    fn answers(&self, request: &Request) -> (Reply, Option<Outcome>) {
-        if request.origin.as_deref() != Some(self.origin.as_str()) {
+    /// Only a page served from the address the request names posts with that
+    /// address as its origin; a form on another site that reaches the port
+    /// carries that site's.
+    fn answers(&self, request: &Request, host: &str) -> (Reply, Option<Outcome>) {
+        if request.origin.as_deref() != Some(format!("http://{host}").as_str()) {
             return (Reply::empty(Status::Forbidden), None);
         }
         let words = self.asks.locale.words();
@@ -420,6 +417,20 @@ impl Server<'_> {
         };
         Reply::json(status, serde_json::json!({ "problem": problem }))
     }
+}
+
+/// Whether `host` names this machine's loopback, on any port: the listener's
+/// own address, or where a person forwarded the port to reach it from their
+/// browser (`localhost`, or `[::1]`, and a port of the forward's choosing).
+fn loopback(host: &str) -> bool {
+    let (name, port) = match host.rsplit_once(':') {
+        Some((name, port)) if !host.ends_with(']') => (name, Some(port)),
+        _ => (host, None),
+    };
+    port.is_none_or(|port| port.parse::<u16>().is_ok())
+        && ["127.0.0.1", "localhost", "[::1]"]
+            .iter()
+            .any(|loopback| name.eq_ignore_ascii_case(loopback))
 }
 
 struct Connection {
@@ -576,6 +587,32 @@ mod tests {
             let mut head = [0u8; 12];
             stream.read_exact(&mut head).unwrap();
             String::from_utf8_lossy(&head).into_owned()
+        }
+    }
+
+    #[test]
+    fn only_a_loopback_name_is_a_host_this_page_answers() {
+        for host in [
+            "127.0.0.1:4242",
+            "localhost:80",
+            "LOCALHOST",
+            "[::1]:8080",
+            "[::1]",
+        ] {
+            assert!(loopback(host), "{host}");
+        }
+        for host in [
+            "evil.example",
+            "evil.example:4242",
+            "127.0.0.1.evil.example:4242",
+            "localhost.evil.example",
+            "127.0.0.2:4242",
+            "localhost:",
+            "localhost:99999",
+            "[::2]:80",
+            "",
+        ] {
+            assert!(!loopback(host), "{host}");
         }
     }
 
