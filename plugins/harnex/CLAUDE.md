@@ -64,7 +64,8 @@ guides editing it, not using it):
 - **Add a pattern** = a `templates/patterns/<slug>/` directory with the
   skeleton files + a `[[pattern]]` entry in `templates/patterns/manifest.toml`
   (slug, files, analyze steps) + its entry in `reference/patterns.md`, which
-  is the list the skill offers. The `pattern_manifest_sync` test fails on
+  is the list the skill offers — what the pattern gives a project, then what
+  its analysis observes. The `pattern_manifest_sync` test fails on
   drift among the three. Pattern files ship CONCRETE proven
   defaults, never blank fill-ins — every `<!-- harnex-fill: … -->` is replaced
   at install time by the skill from project analysis. That is the one marker
