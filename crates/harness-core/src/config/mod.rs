@@ -34,6 +34,7 @@ static KIND_NAME_PATTERN: LazyLock<Regex> =
 const CONFIG_FILE_NAME: &str = "harness.toml";
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub meta: MetaConfig,
     #[serde(default)]
@@ -141,6 +142,7 @@ fn default_baseline_path() -> PathBuf {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MetaConfig {
     /// SemVer requirement that the binary must satisfy.
     pub harnex_version: String,
@@ -174,6 +176,7 @@ pub struct KindDecl {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceConfig {
     #[serde(default = "default_provenance")]
     pub default_provenance: String,
@@ -225,6 +228,7 @@ fn default_provenance() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct VerifierDecl {
     pub provenance: String,
     pub strategy: String,
@@ -235,6 +239,7 @@ pub struct VerifierDecl {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TelemetryConfig {
     #[serde(default = "default_storage")]
     pub storage: String,
@@ -253,6 +258,7 @@ fn default_rotate_at_mb() -> u32 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TelemetryKindDecl {
     pub name: String,
     pub payload_schema: serde_json::Value,
@@ -261,12 +267,14 @@ pub struct TelemetryKindDecl {
 // ---------- Codegen ----------
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CodegenConfig {
     #[serde(default)]
     pub groups: Vec<CodegenGroupDecl>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CodegenGroupDecl {
     pub name: String,
     pub source: PathBuf,
@@ -283,6 +291,7 @@ fn default_source_format() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SentinelTargetDecl {
     pub path: PathBuf,
     pub begin: String,
@@ -295,6 +304,7 @@ pub struct SentinelTargetDecl {
 // ---------- Policy ----------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PolicyConfig {
     #[serde(default)]
     pub permissions: Option<PermissionsPolicy>,
@@ -303,6 +313,7 @@ pub struct PolicyConfig {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PermissionsPolicy {
     /// Names of built-in profiles to compose, applied in declaration order.
     #[serde(default)]
@@ -316,6 +327,7 @@ pub struct PermissionsPolicy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct VersionPinDecl {
     pub tool: String,
     pub version: String,
@@ -328,6 +340,7 @@ pub struct VersionPinDecl {
 // ---------- Validate ----------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ValidateConfig {
     #[serde(default)]
     pub routines: Option<RoutinesPolicy>,
@@ -356,6 +369,7 @@ pub struct AlwaysLoadedPolicy {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct OutputStylesPolicy {
     /// Opt-in: emit a Major finding for any frontmatter key outside the
     /// Claude Code output-style spec surface (`KNOWN_OUTPUT_STYLE_KEYS`).
@@ -366,6 +380,7 @@ pub struct OutputStylesPolicy {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AgentsPolicy {
     /// Opt-in: emit a Major finding for any frontmatter key outside the
     /// Claude Code sub-agent spec surface (`KNOWN_AGENT_KEYS`). Claude Code
@@ -377,6 +392,7 @@ pub struct AgentsPolicy {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CommitMsgPolicy {
     /// Trailer declarations. Each lists the trailer key (e.g.,
     /// `Nodex-Event`) and either a closed `allowed_values` set or
@@ -386,6 +402,7 @@ pub struct CommitMsgPolicy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CommitMsgTrailerDecl {
     /// Trailer key as it appears before the colon (case-sensitive).
     pub key: String,
@@ -402,9 +419,11 @@ pub struct CommitMsgTrailerDecl {
 /// grammar is closed and the schedule states are the query's, not a
 /// policy's.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RoutinesPolicy {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RulesPolicy {
     /// Line budget for the always-loaded set — the rules that carry no
     /// `paths:` and therefore enter every session's context. 200 is the
@@ -437,6 +456,7 @@ fn default_rule_max_lines() -> usize {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SkillsPolicy {
     /// 5000-token compaction budget ≈ 500 lines.
     #[serde(default = "default_skill_max_lines")]
@@ -470,6 +490,7 @@ fn default_skill_description_max() -> usize {
 // ---------- Lifecycle ----------
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LifecycleConfig {
     #[serde(default = "default_promotion_min_instances")]
     pub promotion_min_instances: u32,
@@ -512,6 +533,7 @@ fn default_decision_dir() -> PathBuf {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ConsumerDetectorDecl {
     /// Kind name this detector applies to.
     pub kind: String,
@@ -524,12 +546,14 @@ pub struct ConsumerDetectorDecl {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RetirementConfig {
     #[serde(default)]
     pub exempt: RetirementExemptDecl,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RetirementExemptDecl {
     #[serde(default)]
     pub kinds: Vec<String>,
@@ -540,6 +564,7 @@ pub struct RetirementExemptDecl {
 // ---------- Guard ----------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GuardConfig {
     #[serde(default)]
     pub stop_audit: Option<StopAuditConfig>,
@@ -559,6 +584,7 @@ pub struct FloorConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct StopAuditConfig {
     /// Runtime name. `claude-code` is the only one implemented.
     #[serde(default = "default_runtime")]
@@ -1626,6 +1652,49 @@ mod tests {
                 parse(&with(bad)).unwrap_err().code(),
                 ErrorCode::ConfigInvalid,
                 "`{bad}` must be rejected — a budget that silently fails to parse holds nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn every_section_refuses_a_key_it_does_not_declare() {
+        // A misspelled key or section is otherwise dropped without a word,
+        // and the gate it was meant to configure never runs.
+        fn open_sections(schema: &serde_json::Value, at: &str, open: &mut Vec<String>) {
+            if let Some(object) = schema.as_object() {
+                if object.contains_key("properties")
+                    && object.get("additionalProperties") != Some(&serde_json::Value::Bool(false))
+                {
+                    open.push(at.to_string());
+                }
+                for (key, child) in object {
+                    open_sections(child, &format!("{at}/{key}"), open);
+                }
+            } else if let Some(items) = schema.as_array() {
+                for (i, child) in items.iter().enumerate() {
+                    open_sections(child, &format!("{at}/{i}"), open);
+                }
+            }
+        }
+        let mut open = Vec::new();
+        open_sections(
+            &crate::export::schema_for(crate::export::SchemaTarget::Config),
+            "",
+            &mut open,
+        );
+        assert!(open.is_empty(), "accepting an undeclared key: {open:?}");
+
+        let base = "[meta]\nharnex_version = \">=0.29, <0.30\"\n";
+        for typo in [
+            "harnex_versoin = \"x\"",
+            "[validate.always_load]\nmax_chars = 1",
+            "[guard.flor]\nprotected_paths = []",
+            "[validate.rules]\nmax_line = 10",
+        ] {
+            assert_eq!(
+                parse(&format!("{base}{typo}\n")).unwrap_err().code(),
+                ErrorCode::ConfigInvalid,
+                "`{typo}` must be rejected"
             );
         }
     }
