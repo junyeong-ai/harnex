@@ -10,8 +10,9 @@ Harness engineering for Claude Code projects. harnex has two surfaces:
   not a runtime you depend on.
 - **The `harnex` binary** (oracle) — a Pure-Rust, JSON-first CLI that
   deterministically verifies a harness: provenance, closed-schema telemetry,
-  lifecycle, runtime guards, a unified validation gate. It is the
-  spec-correct reference the plugin's templates are checked against.
+  lifecycle, runtime guards, a unified validation gate, and decisions put to
+  the person on a local page. It is the spec-correct reference the plugin's
+  templates are checked against.
 
 ## Why
 
@@ -361,6 +362,10 @@ patterns covered out of the box:
   committed section none of them can be read against — each blocks at
   commit (`plan audit`, driven by the shipped `hooks/pre-commit.d/`
   arm)
+- Decisions put to the person instead of assumed (`harnex ask`) — any HTML
+  page served on 127.0.0.1 takes one answer set; each answer comes back with
+  what its ask showed, and `ask current` tells, when it is recorded, whether
+  that ask still reads the same
 - Promotion + retirement lifecycle for learnings
 - Settings.json hook adapter (the documented hook events)
 - Single-command CI gate
