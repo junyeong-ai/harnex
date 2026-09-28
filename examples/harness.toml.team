@@ -123,9 +123,9 @@ strategy = "minor"
 # ---------- validate ----------
 
 [validate.rules]
-# Budget for the always-loaded set — rules carrying no `paths:`. Path-scoped
-# rules stay unbounded unless `max_scoped_lines` is set; they cost context
-# only on the files they govern.
+# Budget for the always-loaded set — rules whose `paths:` scopes nothing.
+# Path-scoped rules stay unbounded unless `max_scoped_lines` is set; a rule's
+# own text costs context only on the files it governs.
 max_lines = 200
 always_loaded_slugs = ["constitution", "harness", "learned-patterns"]
 

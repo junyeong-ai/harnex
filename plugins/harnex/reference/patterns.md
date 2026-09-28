@@ -110,9 +110,10 @@ an observation is the blank-page problem in disguise.
   already lists them). harness.toml and the two settings files are built into
   the floor — never list them. Add the `sandbox.filesystem.denyWrite` entry
   `harnex check` names for each frozen path; what the sandbox already
-  refuses on its own, the settings files among it, needs none. Wire one PreToolUse entry in
-  `.claude/settings.json` running `${CLAUDE_PROJECT_DIR}/hooks/check-floor.sh`
-  with matcher `Edit|Write|MultiEdit`. Install it only where the gate files
+  refuses on its own, the settings files among it, needs none. Wire one
+  PreToolUse entry in `.claude/settings.json` running
+  `${CLAUDE_PROJECT_DIR}/hooks/check-floor.sh` with matcher
+  `Edit|Write|MultiEdit`. Install it only where the gate files
   are not the project's work product: where they are, the freeze fires on most
   commits and the standing grant it takes prints its notice so often that the
   one signal the freeze was bypassed stops being one. Tell the operator the

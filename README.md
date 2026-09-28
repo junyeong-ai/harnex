@@ -321,9 +321,9 @@ patterns covered out of the box:
   receiving program may run. Edit-tool writes to the enforcement surface
   itself are frozen, and a break-glass grant read live from the main checkout
   is how the operator opens them; a Bash write meets the same set in the
-  sandbox's `sandbox.filesystem.denyWrite`, which `harnex check` holds to
-  cover every path `[guard.floor]` declares. It is a tripwire, not a
-  boundary. These stay out of
+  sandbox, and `harnex check` names each path `[guard.floor]` declares that
+  neither `sandbox.filesystem.denyWrite` nor the sandbox's own protection
+  covers. It is a tripwire, not a boundary. These stay out of
   scope: a second shell handed its script as an argument (`sh -c`), a backtick
   body on the command line, a git alias, a `#` glued
   to the `)` of a process substitution or an array, which is read as a comment
