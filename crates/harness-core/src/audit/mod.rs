@@ -10,7 +10,7 @@
 //!
 //! Spec-vocabulary staleness is deliberately NOT a finding here. It is a
 //! property of the binary rather than of the project under audit, so it rides
-//! the envelope's `warnings[]` on every command ([`crate::spec`]) instead of
+//! the envelope's `warnings[]` on every success ([`crate::spec`]) instead of
 //! appearing as a defect in one project's report — where it would also make a
 //! fixture's zero-findings assertion fail on a calendar with no code change.
 //!

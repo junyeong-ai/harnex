@@ -102,9 +102,9 @@ mod success_shape_tests {
 
     #[test]
     fn warnings_is_present_even_when_empty() {
-        // Article II states the success shape as `{ok, data?, error?,
-        // warnings[]}`. Omitting the key in the quiet case makes every
-        // consumer special-case the common path.
+        // Article II states the success shape as `{ok, data, warnings[]}`.
+        // Omitting the key in the quiet case makes every consumer
+        // special-case the common path.
         let mut out = Vec::new();
         write_success(&mut out, serde_json::json!({"n": 1}), &[]).unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out).unwrap();
@@ -244,7 +244,7 @@ impl<T: schemars::JsonSchema> ListResponse<T> {
 }
 
 /// `warnings` is always serialized, empty included: Article II states the
-/// success shape as `{ok, data?, error?, warnings[]}`, and a consumer reading
+/// success shape as `{ok, data, warnings[]}`, and a consumer reading
 /// `envelope.warnings.length` should not have to know that the quiet case
 /// spells the empty list as a missing key.
 #[derive(Serialize)]

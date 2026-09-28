@@ -357,8 +357,9 @@ already contradicted both a page and the binary's own schema.
   brace expansion) they load only on matching files; without `paths:` they load
   every session. So does a `paths:` whose globs, each with a trailing `/**`
   removed, leave nothing or only `**` (`**`, `**/**`, `[]` — measured at
-  2.1.283), while `["**", "src/**"]` waits for a match. Foundation rules are
-  the ones that intentionally omit `paths:`.
+  2.1.283), while `["**", "src/**"]` waits for a match. A harness names the
+  rules that intentionally omit `paths:` in `[validate.rules]
+  always_loaded_slugs`.
 - **A `paths:` list is bounded before it is matched.** Brace groups multiply,
   and the whole list shares one budget of 1,000 expanded patterns and 4 MiB
   (brace-free patterns do not count against it). A pattern that would exceed

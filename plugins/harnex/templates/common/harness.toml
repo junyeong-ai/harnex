@@ -37,8 +37,9 @@ require_governs = true
 # lags the upstream spec, and a stale list turns valid frontmatter into a
 # finding. A harnex harness opts in anyway: Claude Code silently ignores an
 # unknown key, so a typo costs the field it was meant to set with no signal at
-# all, and every command's envelope carries a warning when a surface's
-# measurement is old enough to distrust. Turn one off if a spec addition outpaces a regenerate.
+# all, and every successful command's envelope carries a warning when a
+# surface's measurement is old enough to distrust. Turn one off if a spec
+# addition outpaces a regenerate.
 [validate.skills]
 reject_unknown_keys = true
 # Advisory (Minor, never gating): a description carrying `commit`, `deploy`,

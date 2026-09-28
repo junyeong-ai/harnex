@@ -45,7 +45,8 @@ enforcement.
 
 ## Adding or changing a vocabulary
 
-1. Re-read the surface's `doc` page against the live documentation.
+1. Re-read the surface's `doc` page against the live documentation, and a set
+   the page does not list against the CLI it was read from.
 2. Edit the constant.
 3. Set `measured` to today and `digest` to the value the failing test prints.
 
