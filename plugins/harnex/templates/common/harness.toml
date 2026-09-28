@@ -59,10 +59,10 @@ reject_unknown_keys = true
 [validate.output_styles]
 reject_unknown_keys = true
 
-# A budget, in characters, over everything the repository puts into every
-# session: the memory files and what they import, the rules without `paths:`,
-# the output style the settings select, and each skill, command and agent
-# listing entry. There is no default — `harnex validate always-loaded`
+# A budget, in characters, over the files the repository puts into every
+# session: the memory files and what they import, the rules whose `paths:`
+# scope nothing, the output style the settings select, and each skill,
+# command and agent listing entry. There is no default — `harnex validate always-loaded`
 # measures the set member by member, and the number is the project's own.
 # [validate.always_loaded]
 # max_chars = 40000

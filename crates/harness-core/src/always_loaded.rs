@@ -11,25 +11,36 @@
 //! request it sends and the loader it ships:
 //!
 //! - `CLAUDE.md` and `.claude/CLAUDE.md` both load; `AGENTS.md` and
-//!   `.claude/AGENTS.md` load in their place when neither exists.
+//!   `.claude/AGENTS.md` load in their place when neither exists
+//!   ([`memory_files`]).
+//! - A file loads only as a regular file within its kind's size limit
+//!   ([`MEMORY_FILE_LIMIT`], [`SKILL_FILE_LIMIT`], [`DEFINITION_FILE_LIMIT`]),
+//!   decoded as UTF-8 with invalid bytes replaced.
+//! - Frontmatter opens with `---` and closes at the next `---`, wherever that
+//!   falls; without one the whole file is body. YAML that does not parse is
+//!   parsed again after the runtime's repair — a `key: value` line whose
+//!   unquoted value holds a YAML indicator is quoted, leading tabs become
+//!   spaces — and yields no keys when that fails too.
 //! - A rule under `.claude/rules/` loads when its `paths:` scopes nothing
-//!   (`validate::path_globs::declares_scope`).
-//! - A memory file loses its frontmatter and each top-level HTML block that
-//!   opens with a comment. An inline comment, and one inside a list or a
-//!   quote, stays.
+//!   (`validate::path_globs::declares_scope`). A skill whose `paths:` scopes
+//!   something waits for a matching file and is not listed.
+//! - A memory file loses each top-level HTML block that opens with a comment.
+//!   An inline comment, and one inside a list or a quote, stays.
 //! - `@path` imports a file when it opens a text run or follows whitespace
 //!   outside code and comments, begins with a letter, a digit, `.`, `_`, `-`,
 //!   `~/` or `/`, and names a file whose extension is in
 //!   [`IMPORT_TEXT_EXTENSIONS`] or that has none. It resolves against the
 //!   importing file, reaches [`MAX_IMPORT_HOPS`] deep, and loads a file once.
-//! - `claudeMdExcludes` in either project settings file removes a memory file
-//!   whose absolute path it matches; a relative pattern matches nothing.
+//! - `claudeMdExcludes` removes a memory file whose absolute path it matches —
+//!   a rule's path under `.claude/rules/` or its link target — and a relative
+//!   pattern matches nothing.
 //! - The output style is the body of the file whose `name`, or else whose file
 //!   name, is `outputStyle`, comments included.
 //! - A skill or command lists `description` — else its body's first non-empty
 //!   line, a heading's text, cut to [`FALLBACK_DESCRIPTION_CAP`] — and
-//!   ` - when_to_use`, cut to [`LISTING_ENTRY_CAP`], unless it sets
-//!   `disable-model-invocation: true`. An agent lists its `description`.
+//!   ` - when_to_use`, cut to [`LISTING_ENTRY_CAP`], unless
+//!   `disable-model-invocation` is set. An agent with a usable `name` lists its
+//!   `description`.
 //!
 //! A member counts its own text. The framing the runtime writes around it —
 //! a file header, a list marker, an agent's tools — is not the repository's
@@ -40,29 +51,31 @@
 //! ## What this module refuses to do
 //!
 //! - Never counts what the repository does not own. `CLAUDE.local.md`, a
-//!   user-level or ancestor memory file and auto memory are each developer's
-//!   own; an import reaching outside the project and an output style the
-//!   project does not ship are [`Unmeasured`], named rather than guessed.
-//! - Never guesses at a file it cannot read. An unreadable file, or
-//!   frontmatter that does not parse, is [`Unmeasured`]: whether the runtime
-//!   loads it at all is unknown.
+//!   user-level or ancestor memory file, auto memory and `settings.local.json`
+//!   are each developer's own, and reading the last would pass a tree locally
+//!   that CI fails. Text whose file lies outside the project — an import
+//!   reaching out, a link pointing out — and an output style the project does
+//!   not ship are [`Unmeasured`], named rather than guessed.
+//! - Never runs a hook. A `SessionStart` hook's output joins every session
+//!   too, and its size is the script's to bound.
 //! - Never counts tokens. That needs the model's tokenizer, which is not
 //!   available offline, and characters are exact.
 
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use regex::Regex;
 use serde::Serialize;
+use yaml_serde::{Mapping, Value};
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
 use crate::validate::{
-    AgentValidator, OutputStyleValidator, RuleValidator, SkillValidator, SurfaceValidator,
-    frontmatter, path_globs,
+    AgentValidator, RuleValidator, SkillValidator, SurfaceValidator, path_globs,
 };
 use crate::wire_enum::wire_enum;
-
 /// Extensions an import may carry, lowercased; an import with none loads too.
 /// Read from the include filter the 2.1.283 CLI ships, since the memory page
 /// names none.
@@ -189,6 +202,32 @@ pub const LISTING_ENTRY_CAP: usize = 1536;
 /// Characters a description taken from a body line is cut to.
 pub const FALLBACK_DESCRIPTION_CAP: usize = 100;
 
+/// Bytes past which the runtime skips a memory file whole — `CLAUDE.md`, a
+/// rule, an import.
+pub const MEMORY_FILE_LIMIT: u64 = 4_194_304;
+
+/// Bytes past which the runtime skips a skill's `SKILL.md`.
+pub const SKILL_FILE_LIMIT: u64 = 1_000_000;
+
+/// Bytes past which the runtime skips a command, an agent or an output style.
+pub const DEFINITION_FILE_LIMIT: u64 = 1_048_576;
+
+/// Commands and output styles are read from every directory below their root.
+const COMMAND_GLOB: &str = ".claude/commands/**/*.md";
+const OUTPUT_STYLE_GLOB: &str = ".claude/output-styles/**/*.md";
+
+static FRONTMATTER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\A---\s*\n((?s:.*?))---\s*\n?").expect("FRONTMATTER regex"));
+
+/// A top-level `key: value` line, as the runtime's YAML repair matches one.
+static PLAIN_PAIR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([a-zA-Z_-]+):\s+([^\n\r\u{2028}\u{2029}]+)$").expect("PLAIN_PAIR regex")
+});
+
+/// A value the runtime's YAML repair quotes.
+static INDICATOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[{}\[\]*&#!|>%@`]|: ").expect("INDICATOR regex"));
+
 wire_enum! {
     /// Why a member is in every session.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
@@ -209,12 +248,11 @@ wire_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
     #[serde(rename_all = "kebab-case")]
     pub enum UnmeasuredReason {
-        /// An import resolving outside the project, `~/` included.
+        /// Text whose file lies outside the project: an import reaching out,
+        /// `~/` included, or a link pointing out.
         OutsideProject => "outside-project",
         /// An output style the project does not ship: built in, or a user's.
         NotInProject => "not-in-project",
-        /// A file, or its frontmatter, that cannot be read.
-        Unreadable => "unreadable",
     }
 }
 
@@ -246,37 +284,32 @@ pub struct AlwaysLoaded {
 
 /// Read the set rooted at `root`, the directory `harness.toml` lives in.
 pub fn resolve(root: &Path) -> Result<AlwaysLoaded> {
-    let settings = ProjectSettings::read(root)?;
+    let root = canonical_root(root)?;
+    let settings = ProjectSettings::read(&root)?;
     let mut walk = Walk {
-        root,
+        root: &root,
         excludes: &settings.excludes,
         seen: HashSet::new(),
         members: Vec::new(),
         unmeasured: Vec::new(),
     };
 
-    let claude_md = present(root, &["CLAUDE.md", ".claude/CLAUDE.md"]);
-    let memory = if claude_md.is_empty() {
-        present(root, &["AGENTS.md", ".claude/AGENTS.md"])
-    } else {
-        claude_md
-    };
-    for path in memory {
+    for path in memory_files(&root) {
         walk.memory_file(&path, MemberKind::Memory, 0);
     }
-    for path in discover(root, <RuleValidator as SurfaceValidator>::GLOB)? {
-        walk.rule(&path);
+    for path in discover(&root, <RuleValidator as SurfaceValidator>::GLOB)? {
+        walk.memory_file(&path, MemberKind::Rule, 0);
     }
     if let Some(name) = &settings.output_style {
         walk.output_style(name)?;
     }
-    for path in discover(root, <SkillValidator as SurfaceValidator>::GLOB)? {
+    for path in discover(&root, <SkillValidator as SurfaceValidator>::GLOB)? {
         walk.listing(&path, MemberKind::Skill);
     }
-    for path in discover(root, ".claude/commands/**/*.md")? {
+    for path in discover(&root, COMMAND_GLOB)? {
         walk.listing(&path, MemberKind::Command);
     }
-    for path in discover(root, <AgentValidator as SurfaceValidator>::GLOB)? {
+    for path in discover(&root, <AgentValidator as SurfaceValidator>::GLOB)? {
         walk.listing(&path, MemberKind::Agent);
     }
 
@@ -292,6 +325,18 @@ pub fn resolve(root: &Path) -> Result<AlwaysLoaded> {
         members,
         unmeasured,
     })
+}
+
+/// The project memory files the runtime reads at launch: `CLAUDE.md` and
+/// `.claude/CLAUDE.md`, or `AGENTS.md` and `.claude/AGENTS.md` where neither
+/// exists.
+pub(crate) fn memory_files(root: &Path) -> Vec<PathBuf> {
+    let claude_md = present(root, &["CLAUDE.md", ".claude/CLAUDE.md"]);
+    if claude_md.is_empty() {
+        present(root, &["AGENTS.md", ".claude/AGENTS.md"])
+    } else {
+        claude_md
+    }
 }
 
 /// The finding a set over `max_chars` is, located at its largest member.
@@ -329,25 +374,40 @@ pub fn over_budget(loaded: &AlwaysLoaded, max_chars: usize, root: &Path) -> Opti
 }
 
 /// `claudeMdExcludes` as the runtime reads it: glob patterns matched against
-/// the canonical absolute path of a memory file — `CLAUDE.md`, a rule or an
-/// import — so a relative pattern matches nothing.
-pub(crate) struct Excludes(Vec<globset::GlobMatcher>);
+/// the absolute path of a memory file, with the project root as the runtime
+/// sees it — resolved through links — so a relative pattern matches nothing.
+pub(crate) struct Excludes {
+    root: PathBuf,
+    canonical_root: PathBuf,
+    patterns: Vec<globset::GlobMatcher>,
+}
 
 impl Excludes {
-    /// The patterns in both project settings files.
+    /// The patterns the committed project settings declare.
     pub(crate) fn read(root: &Path) -> Result<Self> {
         Ok(ProjectSettings::read(root)?.excludes)
     }
 
-    /// Whether the runtime skips the memory file at `path`, which exists.
-    pub(crate) fn matches(&self, path: &Path) -> bool {
-        std::fs::canonicalize(path)
-            .is_ok_and(|absolute| self.0.iter().any(|glob| glob.is_match(&absolute)))
+    /// Whether the runtime skips the memory file at `path`, reached under the
+    /// root this was read for. A rule is matched at its path under
+    /// `.claude/rules/` and at its link target; any other memory file at the
+    /// path it was reached by.
+    pub(crate) fn matches(&self, path: &Path, kind: MemberKind) -> bool {
+        let reached = match path.strip_prefix(&self.root) {
+            Ok(relative) => self.canonical_root.join(relative),
+            Err(_) => path.to_path_buf(),
+        };
+        let target = match kind {
+            MemberKind::Rule => std::fs::canonicalize(path).ok(),
+            _ => None,
+        };
+        std::iter::once(reached)
+            .chain(target)
+            .any(|candidate| self.patterns.iter().any(|glob| glob.is_match(&candidate)))
     }
 }
 
-/// The project settings the set depends on, merged as the runtime merges the
-/// two project scopes: the local file wins a key, and lists concatenate.
+/// What the committed project settings select for every session.
 struct ProjectSettings {
     output_style: Option<String>,
     excludes: Excludes,
@@ -355,46 +415,79 @@ struct ProjectSettings {
 
 impl ProjectSettings {
     fn read(root: &Path) -> Result<Self> {
-        let mut output_style = None;
-        let mut excludes = Vec::new();
-        for scope in [".claude/settings.json", ".claude/settings.local.json"] {
-            // A settings file that is absent or not JSON contributes nothing;
-            // the malformed one is `validate.settings`' finding.
-            let Some(value) = std::fs::read_to_string(root.join(scope))
-                .ok()
-                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-            else {
-                continue;
-            };
-            if let Some(style) = value.get("outputStyle").and_then(|v| v.as_str()) {
-                output_style = Some(style.to_string());
-            }
-            for pattern in value
-                .get("claudeMdExcludes")
-                .and_then(|v| v.as_array())
-                .into_iter()
-                .flatten()
-                .filter_map(|v| v.as_str())
-            {
-                let glob = path_globs::compile_glob(pattern).map_err(|e| Error::ConfigInvalid {
-                    message: format!(
-                        "{scope}: claudeMdExcludes pattern '{pattern}' is invalid: {e}"
-                    ),
-                    location: None,
-                })?;
-                excludes.push(glob.compile_matcher());
+        let scope = ".claude/settings.json";
+        // Settings that are absent or not JSON select nothing; the malformed
+        // file is `validate.settings`' finding.
+        let value = std::fs::read_to_string(root.join(scope))
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+        let output_style = value
+            .as_ref()
+            .and_then(|v| v.get("outputStyle"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let mut patterns = Vec::new();
+        for pattern in value
+            .as_ref()
+            .and_then(|v| v.get("claudeMdExcludes"))
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|v| v.as_str())
+        {
+            for variant in with_resolved_prefix(pattern) {
+                let glob =
+                    path_globs::compile_glob(&variant).map_err(|e| Error::ConfigInvalid {
+                        message: format!(
+                            "{scope}: claudeMdExcludes pattern '{pattern}' is invalid: {e}"
+                        ),
+                        location: None,
+                    })?;
+                patterns.push(glob.compile_matcher());
             }
         }
         Ok(Self {
             output_style,
-            excludes: Excludes(excludes),
+            excludes: Excludes {
+                root: root.to_path_buf(),
+                canonical_root: canonical_root(root)?,
+                patterns,
+            },
         })
     }
 }
 
+/// `pattern`, and for an absolute one whose literal directory reaches through
+/// a link, the same pattern over that link's target — the runtime matches
+/// both.
+fn with_resolved_prefix(pattern: &str) -> Vec<String> {
+    let mut variants = vec![pattern.to_string()];
+    if pattern.starts_with('/') {
+        let literal = &pattern[..pattern.find(['*', '?', '{', '[']).unwrap_or(pattern.len())];
+        if let Some(dir) = Path::new(literal).parent()
+            && let Ok(resolved) = std::fs::canonicalize(dir)
+            && resolved != dir
+        {
+            let rest = &pattern[dir.as_os_str().len()..];
+            variants.push(format!("{}{rest}", resolved.display()));
+        }
+    }
+    variants
+}
+
+fn canonical_root(root: &Path) -> Result<PathBuf> {
+    std::fs::canonicalize(root).map_err(|source| Error::IoFailure {
+        path: root.to_path_buf(),
+        source,
+    })
+}
+
 struct Walk<'a> {
+    /// Canonical, so a member's content is inside the project exactly when
+    /// its own canonical path starts with this.
     root: &'a Path,
     excludes: &'a Excludes,
+    /// Canonical paths already read: a file reached twice loads once.
     seen: HashSet<PathBuf>,
     members: Vec<Member>,
     unmeasured: Vec<Unmeasured>,
@@ -408,54 +501,42 @@ impl Walk<'_> {
             .into_owned()
     }
 
-    fn count(&mut self, kind: MemberKind, path: &Path, text: &str) {
-        let path = self.relative(path);
-        self.members.push(Member {
-            kind,
-            path,
-            chars: text.chars().count(),
-        });
-    }
-
     fn unmeasured(&mut self, kind: MemberKind, name: String, reason: UnmeasuredReason) {
         self.unmeasured.push(Unmeasured { kind, name, reason });
     }
 
-    fn rule(&mut self, path: &Path) {
-        let Some((yaml, body)) = self.split(path, MemberKind::Rule) else {
-            return;
-        };
-        let paths = match yaml {
-            None => None,
-            Some(yaml) => {
-                match yaml_serde::from_str::<crate::validate::rules::RuleFrontmatter>(&yaml) {
-                    Ok(parsed) => parsed.paths,
-                    Err(_) => {
-                        let name = self.relative(path);
-                        self.unmeasured(MemberKind::Rule, name, UnmeasuredReason::Unreadable);
-                        return;
-                    }
-                }
-            }
-        };
-        if !path_globs::declares_scope(paths.as_ref()) {
-            self.load_memory(path, MemberKind::Rule, &body, 0);
+    /// Count `text` for the file reached at `path` whose content is at
+    /// `target`, or name it where that content lies outside the project.
+    fn admit(&mut self, kind: MemberKind, path: &Path, target: &Path, text: &str) -> bool {
+        let name = self.relative(path);
+        if !target.starts_with(self.root) {
+            self.unmeasured(kind, name, UnmeasuredReason::OutsideProject);
+            return false;
         }
+        self.members.push(Member {
+            kind,
+            path: name,
+            chars: text.chars().count(),
+        });
+        true
     }
 
     fn memory_file(&mut self, path: &Path, kind: MemberKind, depth: usize) {
-        if let Some((_, body)) = self.split(path, kind) {
-            self.load_memory(path, kind, &body, depth);
-        }
-    }
-
-    fn load_memory(&mut self, path: &Path, kind: MemberKind, body: &str, depth: usize) {
-        if !self.seen.insert(path.to_path_buf()) || self.excludes.matches(path) {
+        if self.excludes.matches(path, kind) {
             return;
         }
-        let read = read_memory(body);
-        self.count(kind, path, read.text.trim());
-        if depth == MAX_IMPORT_HOPS {
+        let Some((target, source)) = read(path, MEMORY_FILE_LIMIT) else {
+            return;
+        };
+        if !self.seen.insert(target.clone()) {
+            return;
+        }
+        if kind == MemberKind::Rule && path_globs::declares_scope(source.fields.get("paths")) {
+            return;
+        }
+        let read = read_memory(&source.body);
+        let text = read.text.trim();
+        if text.is_empty() || !self.admit(kind, path, &target, text) || depth == MAX_IMPORT_HOPS {
             return;
         }
         let from = path.parent().unwrap_or(self.root);
@@ -468,136 +549,243 @@ impl Walk<'_> {
         let Some(target) = import_target(written) else {
             return;
         };
-        if target.starts_with("~/") {
-            self.unmeasured(
-                MemberKind::Import,
-                written.to_string(),
-                UnmeasuredReason::OutsideProject,
-            );
+        if !has_text_extension(Path::new(&target)) {
             return;
         }
-        let Some(path) = normalize(&from.join(&target)) else {
-            return;
+        let path = if target.starts_with("~/") {
+            None
+        } else {
+            let Some(path) = normalize(&from.join(&target)) else {
+                return;
+            };
+            Some(path)
         };
-        if !path.starts_with(self.root) {
-            self.unmeasured(
+        match path {
+            Some(path) if path.starts_with(self.root) => {
+                self.memory_file(&path, MemberKind::Import, depth);
+            }
+            Some(path) if self.excludes.matches(&path, MemberKind::Import) => {}
+            _ => self.unmeasured(
                 MemberKind::Import,
                 written.to_string(),
                 UnmeasuredReason::OutsideProject,
-            );
-            return;
+            ),
         }
-        if !path.is_file() || !has_text_extension(&path) {
-            return;
-        }
-        self.memory_file(&path, MemberKind::Import, depth);
     }
 
-    /// A style file that cannot be read may be the selected one, so it turns
-    /// a style the project does not seem to ship into one it cannot measure.
-    fn output_style(&mut self, name: &str) -> Result<()> {
+    fn output_style(&mut self, selected: &str) -> Result<()> {
         let mut by_stem = None;
-        let mut any_unreadable = false;
-        for path in discover(self.root, <OutputStyleValidator as SurfaceValidator>::GLOB)? {
-            let Ok((yaml, body)) = split(&path) else {
-                any_unreadable = true;
+        for path in discover(self.root, OUTPUT_STYLE_GLOB)? {
+            let Some((target, source)) = read(&path, DEFINITION_FILE_LIMIT) else {
                 continue;
             };
-            let named = yaml
-                .as_deref()
-                .and_then(|yaml| parse_mapping(yaml).ok())
-                .and_then(|mapping| mapping.get("name")?.as_str().map(str::to_string));
-            if named.as_deref() == Some(name) {
-                self.count(MemberKind::OutputStyle, &path, body.trim());
+            if source.fields.get("name").and_then(js_string).as_deref() == Some(selected) {
+                self.admit(MemberKind::OutputStyle, &path, &target, source.body.trim());
                 return Ok(());
             }
-            if by_stem.is_none() && path.file_stem().is_some_and(|stem| stem == name) {
-                by_stem = Some((path, body));
+            if by_stem.is_none() && path.file_stem().is_some_and(|stem| stem == selected) {
+                by_stem = Some((path, target, source.body));
             }
         }
-        let reason = match by_stem {
-            Some((path, body)) => {
-                self.count(MemberKind::OutputStyle, &path, body.trim());
-                return Ok(());
+        match by_stem {
+            Some((path, target, body)) => {
+                self.admit(MemberKind::OutputStyle, &path, &target, body.trim());
             }
-            None if any_unreadable => UnmeasuredReason::Unreadable,
-            None if name.eq_ignore_ascii_case("default") => return Ok(()),
-            None => UnmeasuredReason::NotInProject,
-        };
-        self.unmeasured(MemberKind::OutputStyle, name.to_string(), reason);
+            None if selected.eq_ignore_ascii_case("default") => {}
+            None => self.unmeasured(
+                MemberKind::OutputStyle,
+                selected.to_string(),
+                UnmeasuredReason::NotInProject,
+            ),
+        }
         Ok(())
     }
 
     fn listing(&mut self, path: &Path, kind: MemberKind) {
-        let Some((yaml, body)) = self.split(path, kind) else {
+        let limit = match kind {
+            MemberKind::Skill => SKILL_FILE_LIMIT,
+            _ => DEFINITION_FILE_LIMIT,
+        };
+        let Some((target, source)) = read(path, limit) else {
             return;
         };
-        let mapping = match yaml.as_deref().map(parse_mapping) {
-            None => yaml_serde::Mapping::new(),
-            Some(Ok(mapping)) => mapping,
-            Some(Err(())) => {
-                let name = self.relative(path);
-                self.unmeasured(kind, name, UnmeasuredReason::Unreadable);
-                return;
-            }
+        let entry = match kind {
+            MemberKind::Agent => agent_entry(&source.fields),
+            _ => invocable_entry(&source, kind),
         };
-        let text = |key: &str| {
-            mapping
-                .get(key)
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        };
-        let entry = if kind == MemberKind::Agent {
-            if text("name").is_none() {
-                return;
-            }
-            let Some(description) = text("description") else {
-                return;
-            };
-            description
-        } else {
-            if mapping
-                .get("disable-model-invocation")
-                .and_then(|v| v.as_bool())
-                == Some(true)
-            {
-                return;
-            }
-            let description = text("description").unwrap_or_else(|| fallback_description(&body));
-            let entry = match text("when_to_use") {
-                Some(when) => format!("{description} - {when}"),
-                None => description,
-            };
-            cap(&entry, LISTING_ENTRY_CAP, "\u{2026}")
-        };
-        self.count(kind, path, &entry);
-    }
-
-    /// [`split`], with a file that cannot be read recorded as unmeasured.
-    fn split(&mut self, path: &Path, kind: MemberKind) -> Option<(Option<String>, String)> {
-        let split = split(path).ok();
-        if split.is_none() {
-            let name = self.relative(path);
-            self.unmeasured(kind, name, UnmeasuredReason::Unreadable);
+        if let Some(entry) = entry {
+            self.admit(kind, path, &target, &entry);
         }
-        split
     }
 }
 
-/// A file's frontmatter text and its body, or `Err` for a file that cannot be
-/// read or whose frontmatter is not closed.
-fn split(path: &Path) -> std::result::Result<(Option<String>, String), ()> {
-    let content = std::fs::read_to_string(path).map_err(|_| ())?;
-    match frontmatter::parse(&content, path).map_err(|_| ())? {
-        None => Ok((None, content)),
-        Some(fm) => {
-            let body = content
-                .split_inclusive('\n')
-                .skip(fm.end_line as usize)
-                .collect();
-            Ok((Some(fm.yaml_text), body))
+/// A file's frontmatter keys and body, split as the runtime splits them.
+struct Source {
+    fields: Mapping,
+    body: String,
+}
+
+impl Source {
+    /// A leading byte-order mark is dropped: every reader of the text trims
+    /// it away.
+    fn parse(text: &str) -> Self {
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        match FRONTMATTER.captures(text) {
+            None => Self {
+                fields: Mapping::new(),
+                body: text.to_string(),
+            },
+            Some(block) => Self {
+                fields: fields(&block[1]),
+                body: text[block.get(0).expect("group 0 is the match").end()..].to_string(),
+            },
         }
+    }
+}
+
+/// The file at `path` as the runtime reads it — its content's canonical path
+/// and text — or `None` where the runtime loads nothing: not a regular file,
+/// over `limit` bytes, or unreadable.
+fn read(path: &Path, limit: u64) -> Option<(PathBuf, Source)> {
+    let target = std::fs::canonicalize(path).ok()?;
+    let metadata = std::fs::metadata(&target).ok()?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return None;
+    }
+    let bytes = std::fs::read(&target).ok()?;
+    Some((target, Source::parse(&String::from_utf8_lossy(&bytes))))
+}
+
+/// Frontmatter keys: the YAML, else the YAML after the runtime's repair, and
+/// none where the one that parses is not a mapping.
+fn fields(yaml: &str) -> Mapping {
+    let parse = |text: &str| yaml_serde::from_str::<Value>(text).ok();
+    match parse(yaml).or_else(|| parse(&repaired(yaml))) {
+        Some(Value::Mapping(fields)) => fields,
+        _ => Mapping::new(),
+    }
+}
+
+/// YAML as the runtime repairs it after a failed parse: a `key: value` line
+/// whose unquoted value holds an indicator is quoted, and each leading tab
+/// becomes two spaces.
+fn repaired(yaml: &str) -> String {
+    let lines: Vec<String> = yaml
+        .split('\n')
+        .map(|line| {
+            let line = match PLAIN_PAIR.captures(line) {
+                Some(pair) if needs_quotes(&pair[2]) => format!(
+                    "{}: \"{}\"",
+                    &pair[1],
+                    pair[2].replace('\\', "\\\\").replace('"', "\\\"")
+                ),
+                _ => line.to_string(),
+            };
+            let tabs = line.len() - line.trim_start_matches('\t').len();
+            format!("{}{}", "  ".repeat(tabs), &line[tabs..])
+        })
+        .collect();
+    lines.join("\n")
+}
+
+fn needs_quotes(value: &str) -> bool {
+    let quoted = (value.starts_with('"') && value.ends_with('"'))
+        || (value.starts_with('\'') && value.ends_with('\''));
+    let flow_list = value.starts_with('[')
+        && value.ends_with(']')
+        && matches!(yaml_serde::from_str::<Value>(value), Ok(Value::Sequence(_)));
+    !quoted && !flow_list && INDICATOR.is_match(value)
+}
+
+/// A skill's or command's listing text, or `None` where it is not listed at
+/// launch.
+fn invocable_entry(source: &Source, kind: MemberKind) -> Option<String> {
+    let fields = &source.fields;
+    if kind == MemberKind::Skill && path_globs::declares_scope(fields.get("paths")) {
+        return None;
+    }
+    if truthy(fields.get("disable-model-invocation")) {
+        return None;
+    }
+    let unnamed = match kind {
+        MemberKind::Skill => "Skill",
+        _ => "Custom command",
+    };
+    let description = description(fields.get("description"))
+        .unwrap_or_else(|| fallback_description(&source.body, unnamed));
+    let entry = match fields
+        .get("when_to_use")
+        .and_then(js_string)
+        .filter(|when| !when.is_empty())
+    {
+        Some(when) => format!("{description} - {when}"),
+        None => description,
+    };
+    Some(cap(&entry, LISTING_ENTRY_CAP, "\u{2026}"))
+}
+
+/// An agent's listing text: its `description`, where `name` is one the
+/// runtime registers.
+fn agent_entry(fields: &Mapping) -> Option<String> {
+    let name = fields
+        .get("name")?
+        .as_str()
+        .filter(|name| !name.is_empty())?;
+    if name.starts_with('-') || name.contains(':') {
+        return None;
+    }
+    let description = fields
+        .get("description")?
+        .as_str()
+        .filter(|description| !description.is_empty())?;
+    Some(description.replace("\\n", "\n"))
+}
+
+/// A `description` the runtime lists: text trimmed, a number or boolean
+/// spelled out, and nothing for an empty one or any other shape.
+fn description(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(text) => Some(text.trim())
+            .filter(|t| !t.is_empty())
+            .map(str::to_string),
+        scalar @ (Value::Bool(_) | Value::Number(_)) => js_string(scalar),
+        _ => None,
+    }
+}
+
+/// `String(value)` as the runtime spells a frontmatter value, `None` for null.
+fn js_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::String(s) => Some(s.clone()),
+        Value::Sequence(items) => Some(
+            items
+                .iter()
+                .map(|item| js_string(item).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join(","),
+        ),
+        Value::Mapping(_) => Some("[object Object]".to_string()),
+        Value::Tagged(tagged) => js_string(&tagged.value),
+    }
+}
+
+/// A flag the runtime reads as set: `true`, or `1`, `true`, `yes` or `on`
+/// spelled as text or a number.
+fn truthy(value: Option<&Value>) -> bool {
+    match value {
+        Some(Value::Bool(set)) => *set,
+        Some(spelled @ (Value::String(_) | Value::Number(_))) => {
+            js_string(spelled).is_some_and(|s| {
+                matches!(
+                    s.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+        }
+        _ => false,
     }
 }
 
@@ -616,16 +804,11 @@ fn read_memory(body: &str) -> MemoryText {
     let mut run = String::new();
     let mut imports = Vec::new();
     for (event, range) in Parser::new_ext(body, Options::empty()).into_offset_iter() {
-        match &event {
-            Event::Text(chunk) if !in_code => {
-                run.push_str(chunk);
-                continue;
-            }
-            Event::SoftBreak => {
-                run.push('\n');
-                continue;
-            }
-            _ => {}
+        if let Event::Text(chunk) = &event
+            && !in_code
+        {
+            run.push_str(chunk);
+            continue;
         }
         scan_imports(&run, &mut imports);
         run.clear();
@@ -656,11 +839,6 @@ fn read_memory(body: &str) -> MemoryText {
                     }
                 }
             }
-            Event::InlineHtml(html) => {
-                if let Some(rest) = without_comments(&html) {
-                    scan_imports(&rest, &mut imports);
-                }
-            }
             _ => {}
         }
     }
@@ -668,7 +846,6 @@ fn read_memory(body: &str) -> MemoryText {
     text.push_str(&body[copied..]);
     MemoryText { text, imports }
 }
-
 /// `raw` with every `<!-- … -->` removed, when it opens with a comment and
 /// closes one; `None` for HTML the runtime keeps and does not read.
 fn without_comments(raw: &str) -> Option<String> {
@@ -755,10 +932,11 @@ fn normalize(path: &Path) -> Option<PathBuf> {
     Some(out)
 }
 
-/// The body's first non-empty line, a heading's text in place of the line.
-fn fallback_description(body: &str) -> String {
+/// The body's first non-empty line, a heading's text in place of the line, and
+/// `unnamed` for a body with none.
+fn fallback_description(body: &str, unnamed: &str) -> String {
     let Some(line) = body.lines().map(str::trim).find(|l| !l.is_empty()) else {
-        return "Custom item".to_string();
+        return unnamed.to_string();
     };
     let heading = line
         .strip_prefix('#')
@@ -778,13 +956,6 @@ fn cap(text: &str, limit: usize, marker: &str) -> String {
     let mut out: String = text.chars().take(keep).collect();
     out.push_str(marker);
     out
-}
-
-fn parse_mapping(yaml: &str) -> std::result::Result<yaml_serde::Mapping, ()> {
-    if yaml.trim().is_empty() {
-        return Ok(yaml_serde::Mapping::new());
-    }
-    yaml_serde::from_str(yaml).map_err(|_| ())
 }
 
 fn present(root: &Path, names: &[&str]) -> Vec<PathBuf> {
@@ -813,7 +984,6 @@ fn discover(root: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
     out.sort();
     Ok(out)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -846,6 +1016,14 @@ mod tests {
             .find(|m| m.path == path)
             .unwrap_or_else(|| panic!("{path} is not a member: {:?}", loaded.members))
             .chars
+    }
+
+    fn unmeasured(loaded: &AlwaysLoaded) -> Vec<(&str, UnmeasuredReason)> {
+        loaded
+            .unmeasured
+            .iter()
+            .map(|u| (u.name.as_str(), u.reason))
+            .collect()
     }
 
     #[test]
@@ -887,15 +1065,79 @@ mod tests {
     #[test]
     fn frontmatter_and_top_level_comment_blocks_leave_the_text() {
         let text = read_memory(
-            "a\n\n<!-- gone -->\n\n<!--\nalso gone\n-->\n\n<!-- gone --> kept\n\nb <!-- inline stays -->\n\n- item\n\n  <!-- listed stays -->\n",
+            "a\n\n<!-- gone -->\n\n<!--\nalso gone\n-->\n\n<!-- gone --> kept\n\nb <!-- inline stays -->\n\n- item\n\n  <!-- listed stays -->\n\n> <!-- quoted stays -->\n\n<!-- gone after the list -->\n",
         )
         .text;
         assert!(!text.contains("gone"), "{text:?}");
         assert!(text.contains(" kept"), "{text:?}");
         assert!(text.contains("inline stays"), "{text:?}");
         assert!(text.contains("listed stays"), "{text:?}");
+        assert!(text.contains("quoted stays"), "{text:?}");
         let set = loaded(&[("CLAUDE.md", "---\ntitle: x\n---\nbody\n")]);
         assert_eq!(chars_of(&set, "CLAUDE.md"), "body".len());
+    }
+
+    #[test]
+    fn frontmatter_is_split_and_repaired_as_the_runtime_does() {
+        let unclosed = "---\nA rule under a thematic break.\n\nbody\n";
+        let set = loaded(&[
+            ("CLAUDE.md", unclosed),
+            (".claude/CLAUDE.md", "---\ntitle: a---\nbody\n"),
+            (
+                ".claude/rules/repaired.md",
+                "---\npaths: **/*.ts\n---\nscoped once repaired\n",
+            ),
+            (
+                ".claude/rules/listed.md",
+                "---\npaths:\n  - **/*.ts\n---\nbeyond repair\n",
+            ),
+            (
+                ".claude/rules/tabbed.md",
+                "---\npaths:\n\t- \"src/**\"\n---\nscoped once untabbed\n",
+            ),
+        ]);
+        assert_eq!(chars_of(&set, "CLAUDE.md"), unclosed.trim().len());
+        assert_eq!(chars_of(&set, ".claude/CLAUDE.md"), "body".len());
+        assert_eq!(
+            paths(&set),
+            [".claude/CLAUDE.md", ".claude/rules/listed.md", "CLAUDE.md"]
+        );
+        assert_eq!(
+            chars_of(&set, ".claude/rules/listed.md"),
+            "beyond repair".len()
+        );
+    }
+
+    #[test]
+    fn a_file_the_runtime_skips_loads_nothing_and_bad_bytes_are_replaced() {
+        let oversized = "x".repeat(MEMORY_FILE_LIMIT as usize + 1);
+        let at_limit = "y".repeat(SKILL_FILE_LIMIT as usize - "---\ndescription: z\n---\n".len());
+        let dir = project(&[
+            ("CLAUDE.md", "@big.md\n"),
+            ("big.md", &oversized),
+            (
+                ".claude/skills/edge/SKILL.md",
+                &format!("---\ndescription: z\n---\n{at_limit}"),
+            ),
+            (
+                ".claude/skills/over/SKILL.md",
+                &format!("---\ndescription: z\n---\n{at_limit}!"),
+            ),
+        ]);
+        std::fs::write(dir.path().join(".claude/CLAUDE.md"), b"ok \xff\n").unwrap();
+        let set = resolve(dir.path()).unwrap();
+        assert_eq!(
+            paths(&set),
+            [
+                ".claude/CLAUDE.md",
+                ".claude/skills/edge/SKILL.md",
+                "CLAUDE.md"
+            ]
+        );
+        assert_eq!(
+            chars_of(&set, ".claude/CLAUDE.md"),
+            "ok \u{fffd}".chars().count()
+        );
     }
 
     #[test]
@@ -906,7 +1148,8 @@ mod tests {
                 "@docs/start.md\n\nsee @docs/space.md here\n\n# @docs/heading.md\n\n\
                  See @docs/dot.md. later\n\n`@docs/span.md`\n\n```\n@docs/fence.md\n```\n\n    \
                  @docs/indented.md\n\nmail a@docs/mail.md\n\n(@docs/paren.md)\n\n\
-                 <!-- @docs/comment.md -->\n\n@docs/sp\\ ace.md\n\n@docs/missing.md\n\n@docs\n",
+                 <!-- @docs/comment.md -->\n\n@docs/sp\\ ace.md\n\n@docs/missing.md\n\n@docs\n\n\
+                 line one\n@docs/wrapped.md\n",
             ),
             ("docs/start.md", "x"),
             ("docs/space.md", "x"),
@@ -919,6 +1162,7 @@ mod tests {
             ("docs/paren.md", "x"),
             ("docs/comment.md", "x"),
             ("docs/sp ace.md", "x"),
+            ("docs/wrapped.md", "x"),
         ]);
         assert_eq!(
             paths(&set),
@@ -927,7 +1171,8 @@ mod tests {
                 "docs/heading.md",
                 "docs/sp ace.md",
                 "docs/space.md",
-                "docs/start.md"
+                "docs/start.md",
+                "docs/wrapped.md"
             ]
         );
     }
@@ -937,7 +1182,7 @@ mod tests {
         let set = loaded(&[
             (
                 "CLAUDE.md",
-                "@a.MD\n\n@Makefile\n\n@a.toml\n\n@a.weirdext\n\n@a.png\n\n@a.md,\n",
+                "@a.MD\n\n@Makefile\n\n@a.toml\n\n@a.weirdext\n\n@a.png\n\n@a.md,\n\n@~/pic.png\n",
             ),
             ("a.MD", "x"),
             ("Makefile", "x"),
@@ -947,12 +1192,13 @@ mod tests {
             ("a.md,", "x"),
         ]);
         assert_eq!(paths(&set), ["CLAUDE.md", "Makefile", "a.MD", "a.toml"]);
+        assert!(set.unmeasured.is_empty(), "{:?}", set.unmeasured);
     }
 
     #[test]
     fn imports_reach_four_hops_and_load_a_file_once() {
         let set = loaded(&[
-            ("CLAUDE.md", "@d/1.md\n\n@d/shared.md\n"),
+            ("CLAUDE.md", "@d/1.md\n\n@d/shared.md\n\n@d/empty.md\n"),
             (".claude/CLAUDE.md", "@../d/shared.md\n"),
             ("d/1.md", "@2.md\n"),
             ("d/2.md", "@3.md\n"),
@@ -960,6 +1206,7 @@ mod tests {
             ("d/4.md", "@5.md\n"),
             ("d/5.md", "five\n"),
             ("d/shared.md", "shared\n"),
+            ("d/empty.md", "\n<!-- nothing -->\n"),
         ]);
         assert_eq!(
             paths(&set),
@@ -984,6 +1231,10 @@ mod tests {
             (
                 ".claude/rules/scoped.md",
                 "---\npaths: \"src/**\"\n---\nscoped\n",
+            ),
+            (
+                ".claude/rules/governed.md",
+                "---\npaths: \"src/**\"\ngoverns: not a harnex shape\n---\nscoped\n",
             ),
             ("docs/r.md", "imported\n"),
         ]);
@@ -1019,10 +1270,18 @@ mod tests {
     #[test]
     fn an_exclude_matches_the_absolute_path_and_a_relative_one_matches_nothing() {
         let dir = project(&[
-            ("CLAUDE.md", "@docs/rel.md\n\n@docs/star.md\n"),
+            (
+                "CLAUDE.md",
+                "@docs/rel.md\n\n@docs/star.md\n\n@docs/spelled.md\n",
+            ),
             ("docs/rel.md", "x"),
             ("docs/star.md", "x"),
+            ("docs/spelled.md", "x"),
             (".claude/rules/abs.md", "x"),
+            (
+                ".claude/settings.local.json",
+                r#"{"claudeMdExcludes": ["**/CLAUDE.md"]}"#,
+            ),
         ]);
         let absolute = std::fs::canonicalize(dir.path()).unwrap();
         std::fs::write(
@@ -1031,6 +1290,7 @@ mod tests {
                 "docs/rel.md",
                 "**/docs/star.md",
                 format!("{}/.claude/rules/*.md", absolute.display()),
+                format!("{}/docs/spelled.md", dir.path().display()),
             ]})
             .to_string(),
         )
@@ -1043,18 +1303,66 @@ mod tests {
     fn an_import_outside_the_project_is_named_and_not_counted() {
         let set = loaded(&[("CLAUDE.md", "@~/.claude/mine.md\n\n@../../elsewhere.md\n")]);
         assert_eq!(paths(&set), ["CLAUDE.md"]);
-        let names: Vec<(&str, UnmeasuredReason)> = set
-            .unmeasured
-            .iter()
-            .map(|u| (u.name.as_str(), u.reason))
-            .collect();
         assert_eq!(
-            names,
+            unmeasured(&set),
             [
                 ("../../elsewhere.md", UnmeasuredReason::OutsideProject),
                 ("~/.claude/mine.md", UnmeasuredReason::OutsideProject)
             ]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_is_counted_where_its_content_lives() {
+        use std::os::unix::fs::symlink;
+        let rules = project(&[("shared.md", "shared rule\n")]);
+        let file = project(&[("secret.md", "secret\n")]);
+        let dir = project(&[
+            ("CLAUDE.md", "@docs/import.md\n"),
+            ("docs/local.md", "local\n"),
+        ]);
+        let root = dir.path();
+        symlink(file.path().join("secret.md"), root.join("docs/import.md")).unwrap();
+        std::fs::create_dir_all(root.join(".claude/rules")).unwrap();
+        symlink(rules.path(), root.join(".claude/rules/shared")).unwrap();
+        symlink("../../docs/local.md", root.join(".claude/rules/local.md")).unwrap();
+        symlink("../CLAUDE.md", root.join(".claude/CLAUDE.md")).unwrap();
+        let set = resolve(root).unwrap();
+        assert_eq!(paths(&set), [".claude/rules/local.md", "CLAUDE.md"]);
+        assert_eq!(
+            unmeasured(&set),
+            [
+                (
+                    ".claude/rules/shared/shared.md",
+                    UnmeasuredReason::OutsideProject
+                ),
+                ("docs/import.md", UnmeasuredReason::OutsideProject),
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_rule_is_excluded_by_its_rules_path_or_its_target() {
+        use std::os::unix::fs::symlink;
+        for (pattern, loads) in [
+            ("**/.claude/rules/linked/*.md", 0),
+            ("**/docs/target.md", 0),
+            ("**/docs/elsewhere.md", 1),
+        ] {
+            let dir = project(&[
+                ("docs/target.md", "rule\n"),
+                (
+                    ".claude/settings.json",
+                    &serde_json::json!({ "claudeMdExcludes": [pattern] }).to_string(),
+                ),
+            ]);
+            std::fs::create_dir_all(dir.path().join(".claude/rules")).unwrap();
+            symlink("../../docs", dir.path().join(".claude/rules/linked")).unwrap();
+            let set = resolve(dir.path()).unwrap();
+            assert_eq!(set.members.len(), loads, "{pattern}: {:?}", set.members);
+        }
     }
 
     #[test]
@@ -1075,11 +1383,11 @@ mod tests {
 
         let by_stem = loaded(&[
             (".claude/settings.json", r#"{"outputStyle": "Terse"}"#),
-            (".claude/output-styles/Terse.md", "by file name\n"),
+            (".claude/output-styles/team/Terse.md", "by file name\n"),
         ]);
-        assert_eq!(paths(&by_stem), [".claude/output-styles/Terse.md"]);
+        assert_eq!(paths(&by_stem), [".claude/output-styles/team/Terse.md"]);
 
-        let local_wins = loaded(&[
+        let local_is_theirs = loaded(&[
             (".claude/settings.json", r#"{"outputStyle": "Terse"}"#),
             (
                 ".claude/settings.local.json",
@@ -1087,11 +1395,15 @@ mod tests {
             ),
             (".claude/output-styles/Terse.md", "by file name\n"),
         ]);
-        assert!(local_wins.members.is_empty());
+        assert_eq!(paths(&local_is_theirs), [".claude/output-styles/Terse.md"]);
+
+        let unshipped = loaded(&[(".claude/settings.json", r#"{"outputStyle": "Explanatory"}"#)]);
         assert_eq!(
-            local_wins.unmeasured[0].reason,
-            UnmeasuredReason::NotInProject
+            unmeasured(&unshipped),
+            [("Explanatory", UnmeasuredReason::NotInProject)]
         );
+        let built_in = loaded(&[(".claude/settings.json", r#"{"outputStyle": "default"}"#)]);
+        assert!(built_in.members.is_empty() && built_in.unmeasured.is_empty());
     }
 
     #[test]
@@ -1100,28 +1412,42 @@ mod tests {
         let set = loaded(&[
             (
                 ".claude/skills/both/SKILL.md",
-                "---\nname: both\ndescription: Deploy\nwhen_to_use: on release\n---\nbody\n",
+                "---\nname: both\ndescription: \"  Deploy  \"\nwhen_to_use: on release\n---\nbody\n",
             ),
             (
                 ".claude/skills/hidden/SKILL.md",
-                "---\nname: hidden\ndescription: x\ndisable-model-invocation: true\n---\nbody\n",
+                "---\nname: hidden\ndescription: x\ndisable-model-invocation: \"yes\"\n---\nbody\n",
+            ),
+            (
+                ".claude/skills/conditional/SKILL.md",
+                "---\ndescription: x\npaths: \"src/**\"\n---\nbody\n",
             ),
             (
                 ".claude/skills/bare/SKILL.md",
                 "---\nname: bare\n---\n\n# Heading text\n\nmore\n",
+            ),
+            (".claude/skills/empty/SKILL.md", "---\nname: empty\n---\n"),
+            (
+                ".claude/skills/listed/SKILL.md",
+                "---\ndescription: Ship\nwhen_to_use:\n  - tagging\n  - releasing\n---\n",
             ),
             (
                 ".claude/skills/long/SKILL.md",
                 &format!("---\nname: long\ndescription: {long}\n---\nbody\n"),
             ),
             (".claude/commands/sub/run.md", "first line\nsecond\n"),
+            (".claude/commands/blank.md", ""),
             (
                 ".claude/agents/named.md",
-                "---\nname: named\ndescription: Reviews\n---\nbody\n",
+                "---\nname: named\ndescription: Reviews\\n\\nthings\n---\nbody\n",
             ),
             (
                 ".claude/agents/nameless.md",
                 "---\ndescription: Unlisted\n---\nbody\n",
+            ),
+            (
+                ".claude/agents/dashed.md",
+                "---\nname: -dashed\ndescription: Unlisted\n---\nbody\n",
             ),
         ]);
         assert_eq!(
@@ -1133,6 +1459,14 @@ mod tests {
             "Heading text".len()
         );
         assert_eq!(
+            chars_of(&set, ".claude/skills/empty/SKILL.md"),
+            "Skill".len()
+        );
+        assert_eq!(
+            chars_of(&set, ".claude/skills/listed/SKILL.md"),
+            "Ship - tagging,releasing".len()
+        );
+        assert_eq!(
             chars_of(&set, ".claude/skills/long/SKILL.md"),
             LISTING_ENTRY_CAP
         );
@@ -1140,36 +1474,43 @@ mod tests {
             chars_of(&set, ".claude/commands/sub/run.md"),
             "first line".len()
         );
-        assert_eq!(chars_of(&set, ".claude/agents/named.md"), "Reviews".len());
-        assert!(!paths(&set).contains(&".claude/skills/hidden/SKILL.md"));
-        assert!(!paths(&set).contains(&".claude/agents/nameless.md"));
+        assert_eq!(
+            chars_of(&set, ".claude/commands/blank.md"),
+            "Custom command".len()
+        );
+        assert_eq!(
+            chars_of(&set, ".claude/agents/named.md"),
+            "Reviews\n\nthings".len()
+        );
+        for absent in [
+            ".claude/skills/hidden/SKILL.md",
+            ".claude/skills/conditional/SKILL.md",
+            ".claude/agents/nameless.md",
+            ".claude/agents/dashed.md",
+        ] {
+            assert!(!paths(&set).contains(&absent), "{absent}");
+        }
     }
 
     #[test]
     fn a_description_from_the_body_is_its_first_line_cut_to_a_hundred() {
-        assert_eq!(fallback_description("\n\n## Title\nnext"), "Title");
-        assert_eq!(fallback_description("#tag line"), "#tag line");
-        assert_eq!(fallback_description(""), "Custom item");
-        let cut = fallback_description(&"y".repeat(150));
+        assert_eq!(fallback_description("\n\n## Title\nnext", "Skill"), "Title");
+        assert_eq!(fallback_description("#tag line", "Skill"), "#tag line");
+        assert_eq!(fallback_description("", "Skill"), "Skill");
+        let cut = fallback_description(&"y".repeat(150), "Skill");
         assert_eq!(cut.chars().count(), FALLBACK_DESCRIPTION_CAP);
         assert!(cut.ends_with("..."));
     }
 
     #[test]
-    fn a_file_that_cannot_be_read_is_unmeasured_rather_than_guessed() {
-        let set = loaded(&[
-            (
-                ".claude/rules/broken.md",
-                "---\npaths: [unclosed\n---\nbody\n",
-            ),
-            (".claude/skills/open/SKILL.md", "---\nname: open\n"),
-        ]);
-        assert!(set.members.is_empty(), "{:?}", set.members);
-        let reasons: Vec<UnmeasuredReason> = set.unmeasured.iter().map(|u| u.reason).collect();
-        assert_eq!(
-            reasons,
-            [UnmeasuredReason::Unreadable, UnmeasuredReason::Unreadable]
-        );
+    fn a_flag_is_set_the_ways_the_runtime_spells_it() {
+        let flag = |yaml: &str| truthy(fields(yaml).get("f"));
+        for set in ["f: true", "f: \"true\"", "f: \"Yes\"", "f: \"on\"", "f: 1"] {
+            assert!(flag(set), "{set}");
+        }
+        for unset in ["f: false", "f: \"no\"", "f: 0", "f: [true]", "g: true"] {
+            assert!(!flag(unset), "{unset}");
+        }
     }
 
     #[test]

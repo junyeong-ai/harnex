@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::always_loaded::MemberKind;
 use crate::codegen::SentinelSyncer;
 use crate::config::Config;
 use crate::envelope::{Finding, FixCommand, Location, Severity, SkippedRule};
@@ -440,22 +441,20 @@ impl<'a> ProjectChecker<'a> {
         // `check_reads_a_claim_from_every_shape_validated_surface` holds
         // this list to the validators `run` dispatches.
         //
-        // The two project memory locations the runtime always reads are
+        // The project memory files the runtime reads at launch are
         // unconditional. The nested set comes from git, and a git that
         // cannot answer — no repository, dubious ownership — leaves that set
         // declared unmeasured rather than the gate unrun.
-        let mut candidates: Vec<PathBuf> = ["CLAUDE.md", ".claude/CLAUDE.md"]
-            .iter()
-            .map(|name| self.working_dir.join(name))
-            .collect();
+        let mut memory = crate::always_loaded::memory_files(self.working_dir);
         match self.nested_claude_md_files() {
-            Ok(nested) => candidates.extend(nested),
+            Ok(nested) => memory.extend(nested),
             Err(Error::CheckGitFailure { message }) => skipped.push(SkippedRule {
                 slug: "evidence.nested-memory".into(),
                 reason: message,
             }),
             Err(e) => return Err(e),
         }
+        let mut candidates = memory.clone();
         for glob in [
             <RuleValidator as SurfaceValidator>::GLOB,
             <SkillValidator as SurfaceValidator>::GLOB,
@@ -479,11 +478,15 @@ impl<'a> ProjectChecker<'a> {
             // The runtime's own skip list: a memory file it never loads makes
             // no claim, whatever the tree holds. Skills, agents, output styles
             // and routines are not memory files, and no exclude reaches them.
-            let memory_file = path.file_name().is_some_and(|name| name == "CLAUDE.md")
-                || path.strip_prefix(self.working_dir).is_ok_and(|relative| {
-                    <RuleValidator as SurfaceValidator>::covers(&relative.to_string_lossy())
-                });
-            if memory_file && excludes.matches(path) {
+            let rule = path.strip_prefix(self.working_dir).is_ok_and(|relative| {
+                <RuleValidator as SurfaceValidator>::covers(&relative.to_string_lossy())
+            });
+            let kind = if rule {
+                Some(MemberKind::Rule)
+            } else {
+                memory.contains(path).then_some(MemberKind::Memory)
+            };
+            if kind.is_some_and(|kind| excludes.matches(path, kind)) {
                 continue;
             }
             *files_scanned += 1;
