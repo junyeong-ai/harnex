@@ -12,7 +12,7 @@
 # this file.
 
 [meta]
-harnex_version = ">=0.31, <0.32"
+harnex_version = ">=0.32, <0.33"
 
 [validate.rules]
 # The Claude Code memory budget applies to what loads every turn — a rule
