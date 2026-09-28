@@ -174,8 +174,9 @@ already contradicted both a page and the binary's own schema.
   trailing `/` was passed through and the entry guarded nothing; on Linux and
   WSL2 an entry with `*`, `?` or `[` is skipped. The sandbox also refuses
   `.claude/settings.json` and `.claude/settings.local.json` in every
-  directory it lets a command write, whatever `denyWrite` says (the 2.1.283
-  CLI adds them itself). Two exits stay open: an
+  directory it lets a command write, whatever `denyWrite` says: the 2.1.283
+  CLI adds them itself, and a sandboxed append to each was refused with
+  `denyWrite` empty while one beside them landed. Two exits stay open: an
   unsandboxed retry (`dangerouslyDisableSandbox`) goes through the permission
   flow, which a session skipping permission prompts passes unasked unless
   `sandbox.allowUnsandboxedCommands: false`; and a command in
