@@ -92,8 +92,8 @@ Every `Finding` must carry an actionable `hint`. There are no
 visible at code review time. If a finding is `auto_fixable`, its
 `fix_command` is `Option<FixCommand>` — a closed set, not a string —
 because `ProjectChecker::try_fix` dispatches via the enum, and
-`every_fix_command_is_an_invocation_the_binary_accepts` holds each command to
-the built CLI.
+`every_fix_command_clears_the_finding_it_is_attached_to` runs each command
+against the finding it is attached to.
 
 ### Trait abstractions in use
 
