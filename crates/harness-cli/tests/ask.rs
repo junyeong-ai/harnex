@@ -84,6 +84,16 @@ impl Served {
         reply
     }
 
+    /// What the page script is set up with: the `ASK` it is served under.
+    fn setting(&self) -> serde_json::Value {
+        let script = self.request("GET", "ask.js", "");
+        script
+            .split_once("const ASK = ")
+            .and_then(|(_, rest)| rest.split_once(";\n"))
+            .map(|(json, _)| serde_json::from_str(json).unwrap())
+            .unwrap()
+    }
+
     fn finish(mut self) -> (i32, serde_json::Value) {
         let mut stdout = String::new();
         self.child
@@ -221,15 +231,31 @@ fn the_deadline_is_the_minutes_given_from_now() {
     let dir = project();
     let served = Served::start(serve(dir.path()).args(["--no-open", "--within", "3"]));
     assert_eq!(served.minutes, "3");
-    let script = served.request("GET", "ask.js", "");
-    let setting = script
-        .split_once("const ASK = ")
-        .and_then(|(_, rest)| rest.split_once(";\n"))
-        .map(|(json, _)| serde_json::from_str::<serde_json::Value>(json).unwrap())
-        .unwrap();
+    let setting = served.setting();
     let deadline: jiff::Timestamp = setting["deadline"].as_str().unwrap().parse().unwrap();
     let off = deadline.duration_since(jiff::Timestamp::now()) - jiff::SignedDuration::from_mins(3);
     assert!(off.abs() < jiff::SignedDuration::from_secs(30), "{off:?}");
+    served.request(
+        "POST",
+        "answers",
+        r#"{"answers": [{"id": "approved:기준", "answer": "승인"}]}"#,
+    );
+    assert_eq!(served.finish().0, 0);
+}
+
+#[test]
+fn the_words_printed_for_a_locale_are_the_words_its_page_is_served() {
+    let dir = project();
+    std::fs::write(
+        dir.path().join("asks.json"),
+        ASKS.replacen('{', r#"{"locale": "ko","#, 1),
+    )
+    .unwrap();
+    let served = Served::start(serve(dir.path()).arg("--no-open"));
+    let out = harnex().args(["ask", "words", "ko"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let printed: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(printed["data"], served.setting()["words"]);
     served.request(
         "POST",
         "answers",

@@ -1,18 +1,22 @@
 //! What harnex itself says on a page and to it, in each locale.
 //!
 //! One catalog serves both sides: the transport renders the refusals it sends,
-//! and the page script receives the catalog and renders the rest. A `{name}`
-//! is a placeholder, filled in one pass so a filled value is never read as
-//! another placeholder. The words use letters, digits and ASCII punctuation
-//! only, because a page that subsets its font to its own text has no glyph for
-//! a symbol it never printed.
+//! and the page script receives the catalog and renders the rest. `harnex ask
+//! words` prints it before any page is served, for a page that carries the
+//! glyphs of what it will show. A `{name}` is a placeholder, filled in one
+//! pass so a filled value is never read as another placeholder. The words use
+//! letters, digits and ASCII punctuation only, because a page that subsets its
+//! font to its own text has no glyph for a symbol it never printed.
 
 use serde::Serialize;
 
 use super::asks::Locale;
 
-/// Every sentence harnex says around a decision page.
-#[derive(Debug, Serialize)]
+/// Every sentence harnex says around a decision page, in one locale. A
+/// `{name}` is filled where the sentence is shown: with a label, an answer or
+/// an id from the asks file or the page, with a count in ASCII digits, or with
+/// the deadline as `YYYY-MM-DD HH:MM`.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Words {
     /// The page sent something that is not an answer set.
     pub unreadable: &'static str,

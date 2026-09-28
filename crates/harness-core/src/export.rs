@@ -18,6 +18,7 @@ use serde_json::Value;
 use crate::ask::answers::Outcome;
 use crate::ask::asks::Asks;
 use crate::ask::current::Current;
+use crate::ask::words::Words;
 use crate::config::Config;
 use crate::envelope::{EnvelopeShape, Finding, ListResponse};
 use crate::error::ErrorCode;
@@ -43,6 +44,7 @@ wire_enum! {
         Asks => "asks",
         AskOutcome => "ask-outcome",
         AskCurrent => "ask-current",
+        AskWords => "ask-words",
         All => "all",
     }
 }
@@ -64,6 +66,7 @@ pub fn schema_for(target: SchemaTarget) -> Value {
         SchemaTarget::Asks => to_value(schemars::schema_for!(Asks)),
         SchemaTarget::AskOutcome => to_value(schemars::schema_for!(Outcome)),
         SchemaTarget::AskCurrent => to_value(schemars::schema_for!(Current)),
+        SchemaTarget::AskWords => to_value(schemars::schema_for!(Words)),
         SchemaTarget::All => all_schemas(),
     }
 }
@@ -204,7 +207,7 @@ mod tests {
             SchemaTarget::ALL.iter().map(|t| t.as_str()).collect();
         assert_eq!(SchemaTarget::ALL.len(), unique.len(), "ALL has a duplicate");
         assert!(
-            SchemaTarget::ALL.len() >= 14,
+            SchemaTarget::ALL.len() >= 15,
             "ALL shrank unexpectedly — target dropped?"
         );
     }

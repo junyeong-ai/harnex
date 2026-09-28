@@ -222,14 +222,16 @@ harnex plan audit --plan P [--spec S]                 # spec-workflow review flo
                                                       # which is held only when given
 
 harnex ask serve <page> <asks.json> [--within <min>]  # a decision page on 127.0.0.1: ends on
-                 [--no-open]                          # one answer set, a moved source, or time
+                 [--no-open]                          # an answer set, taken or stale, or time
 harnex ask current <answered.json> <asks.json>        # which earlier answers still hold now
+harnex ask words <locale>                             # every sentence serve may put on a page
 
 harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
 
 harnex export schema {config|envelope|finding|event|permissions|error-codes|
                        session|session-submissions|session-baseline|
-                       session-trend|asks|ask-outcome|ask-current|all}
+                       session-trend|asks|ask-outcome|ask-current|ask-words|
+                       all}
 
 harnex completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```
@@ -283,11 +285,15 @@ goes to stderr and the browser, and the command ends on one answer set
 `--within` minutes (`unanswered`, exit 1). Each answer returns with the
 version, label and answers its ask showed, so `ask current` can tell, when
 the answers are recorded, which still hold against the asks as they read
-then. A sandboxed session on macOS binds the port only with
-`sandbox.network.allowLocalBinding`. On Linux the browser receives the
-address as a command-line argument, which other users of the machine can
-read; on a shared host, serve with `--no-open` and open the address from
-stderr.
+then. `ask words <locale>` prints, before any page is served, every sentence
+the script or a refusal may put on a page in that locale. With the labels,
+answers and ids the sentences name, and digits for counts and the deadline
+(`YYYY-MM-DD HH:MM`), that is every character harnex adds, so a page that
+carries its own font subset can cover them. A sandboxed session on macOS binds
+the port only with `sandbox.network.allowLocalBinding`. On Linux the browser
+receives the address as a command-line argument, which other users of the
+machine can read; on a shared host, serve with `--no-open` and open the
+address from stderr.
 
 By default every command emits one JSON envelope on stdout; the explicit raw
 modes (`export schema --raw`, `completions --raw`) emit the bare artifact for
