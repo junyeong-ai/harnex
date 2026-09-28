@@ -134,6 +134,7 @@ mod tests {
         for deny in [
             "/Users/dev/repo/hooks",
             "//Users/dev/repo/hooks",
+            "/hooks",
             "~/repo/hooks",
             "~",
             "./hooks/*",
@@ -142,8 +143,14 @@ mod tests {
             "../repo/hooks",
             "",
         ] {
-            assert_eq!(left(&["hooks/"], &[deny]), ["hooks/"], "{deny}");
+            assert_eq!(project_components(deny), None, "{deny}");
         }
+        // `[guard.floor]` takes `~` as the name of a project directory, and
+        // the sandbox reads the same spelling as the home directory.
+        assert_eq!(
+            left(&["~/hooks/", "~"], &["~/hooks", "~"]),
+            ["~/hooks/", "~"]
+        );
     }
 
     #[test]
