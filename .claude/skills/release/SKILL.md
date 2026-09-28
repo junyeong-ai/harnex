@@ -2,7 +2,7 @@
 description: "Take a change from converged review to a proven release: two independent whole-surface reviews, the version decision, the gate run, tag, push, CI, assets, and a proof against the released binary. Reads the workspace gates, `.github/workflows/ci.yml`, and `gh run`; writes the version bump, the tag, and the release."
 when_to_use: "At a milestone — work is complete and about to leave this repository. Not for an ordinary commit, which needs the gates and nothing here. Manual only: it tags and pushes, and neither is undone by re-running."
 disable-model-invocation: true
-allowed-tools: Read Edit Bash(cargo *) Bash(harnex *) Bash(git *) Bash(gh *) Bash(claude plugin *)
+allowed-tools: Read Edit Bash(cargo *) Bash(harnex *) Bash(git *) Bash(gh *) Bash(claude plugin *) Bash(npm ci *) Bash(npx playwright *) Bash(scripts/mutants.sh *)
 ---
 
 # release
@@ -30,8 +30,8 @@ Then, for every claim either returns:
   mutant is an open claim until a test kills it.
 - **`scripts/mutants.sh --in-diff <file> --test-workspace=false
   --copy-vcs=true` computes the set over a whole range** when the range
-  warrants one; a mutant costs about half a minute, so a range of two hundred
-  is hours. The git directory is copied because integration tests read it,
+  warrants one; at roughly half a minute a mutant on this workspace, a range
+  of two hundred runs for hours. The git directory is copied because integration tests read it,
   and without it the unmutated baseline fails before any mutant runs. The
   wrapper is what bounds a mutant's memory; `cargo mutants` bounds only its
   wall clock, and a mutant of a loop that allocates per turn takes the machine
@@ -60,31 +60,30 @@ the rest. Say which it is and why. A second withdrawal of the same behaviour is
 a design being litigated in releases rather than decided.
 
 Diff the gate over a corpus before and after, and over one that can produce the
-change — 0.8.1 shipped a silent false pass because six of its 13,711 citations
-reached the code it changed. The diff is mechanical; reading each flip as a
+change: a corpus that never reaches the changed code diffs clean whatever the
+change did. The diff is mechanical; reading each flip as a
 true or a false finding is not, and that reading is the decision.
 
 ## 3 — Run the chain
 
-Run the gates so **their exit status is the run's**. This has failed once: a
-wrapper captured a gate in a command substitution, the suite went red, and the
-substitution returned its output rather than its status — the chain continued
-over a failure the suite had already found.
+Run the gates so **their exit status is the run's**. A command substitution
+returns a gate's output rather than its status, so a chain built on one runs
+on past a suite that failed.
 
 Every CI job needs a local counterpart before a tag, and
 `.github/workflows/ci.yml` is the list to check that against. Two kinds of gap,
 and only one of them is a hole. A job whose twin was never written is a hole:
-v0.6.0 was tagged over a schema drift for exactly that, and `schema_sync.rs` is
-the twin that was missing. A job that cannot run here is not a hole: the
+a drift only that job reads ships unseen, which is what `schema_sync.rs`
+answers for the schema-drift job. A job that cannot run here is not a hole: the
 test matrix carries two operating systems and a development machine is one of
 them, so the other leg is only ever green in CI. That is why the run is watched
 rather than predicted.
 
 The pins are not a manual sweep, but they take two gates and not one. A stale
-`harnex_version` in a fixture, a template or a shipped example fails the suite —
-eight targets, measured. This repository's own `harness.toml` is loaded by no
-test, so a stale pin there is silent until `harnex check` reads it, which is
-what the audit job runs. Run both; neither alone covers all eight sites.
+`harnex_version` in a fixture, a template or a shipped example fails the suite.
+This repository's own `harness.toml` is loaded by no test, so a stale pin
+there is silent until `harnex check` reads it, which is what the audit job
+runs. Run both; neither alone covers every pin.
 
 Then: bump, commit, tag, push, and watch CI to completion. `gh run watch
 --exit-status` is the form that fails when the run does.

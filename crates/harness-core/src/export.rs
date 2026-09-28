@@ -1,9 +1,8 @@
 //! # export — JSON Schema emission for downstream codegen
 //!
-//! Emits JSON Schema (draft 2020-12) for the toolkit's user-facing types:
-//! `Config` (for IDE autocomplete on `harness.toml`), `EnvelopeShape`
-//! (for typed-client codegen of CLI output), `Finding`, `Event`,
-//! `PermissionsBlock`, and the closed enum of [`ErrorCode`].
+//! Emits JSON Schema (draft 2020-12) for every [`SchemaTarget`] — `harness.toml`
+//! for IDE autocomplete, the envelope and each payload a command emits for
+//! typed clients — from the types themselves.
 //!
 //! ## What this module refuses to do
 //!

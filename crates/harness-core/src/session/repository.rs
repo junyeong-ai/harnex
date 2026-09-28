@@ -5,6 +5,10 @@
 //! and the transcript cannot answer it: the repository can, and only for the
 //! project a window was scoped to.
 //!
+//! The same repository says what a window ran under: [`harness_state`] asks
+//! git about what `always_loaded` resolves at each directory from the work
+//! tree's root down to the project, beside the declared `harness_paths`.
+//!
 //! The transcript abbreviates a commit to seven or nine characters — measured,
 //! 2,071 at nine and 241 at seven — so nothing here resolves one itself. Git is
 //! asked, because a prefix is not a commit until a repository says which one.
