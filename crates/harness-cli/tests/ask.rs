@@ -164,13 +164,21 @@ fn an_ask_whose_source_moved_prints_stale_and_exits_1() {
 fn an_asks_file_that_breaks_the_schema_is_an_input_error() {
     let dir = project();
     std::fs::write(
+        dir.path().join("answered.json"),
+        r#"{"outcome": "answered", "url": "u", "answers": [{"id": "approved:기준",
+            "version": "v1", "label": "기준", "offered": [{"name": "승인", "note": "none"},
+            {"name": "보류", "note": "required"}], "answer": "승인", "note": null,
+            "at": "2026-01-01T00:00:00Z"}]}"#,
+    )
+    .unwrap();
+    std::fs::write(
         dir.path().join("asks.json"),
         r#"{"asks": [], "title": "x"}"#,
     )
     .unwrap();
     for args in [
         vec!["ask", "serve", "page.html", "asks.json", "--no-open"],
-        vec!["ask", "current", "asks.json", "asks.json"],
+        vec!["ask", "current", "answered.json", "asks.json"],
     ] {
         let out = harnex()
             .args(&args)
@@ -180,6 +188,8 @@ fn an_asks_file_that_breaks_the_schema_is_an_input_error() {
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         let envelope: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(envelope["error"]["code"], "ASK_INPUT_INVALID", "{args:?}");
+        let message = envelope["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("asks.json"), "{args:?}: {message}");
         let hint = envelope["error"]["hint"].as_str().unwrap_or_default();
         assert!(
             hint.contains("harnex export schema asks"),
