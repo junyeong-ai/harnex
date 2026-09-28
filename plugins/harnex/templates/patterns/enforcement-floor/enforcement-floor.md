@@ -52,7 +52,7 @@ where the gate files are not the work product.
   the sandbox runs, and does nothing where it is off. The two halves cover each
   other's tool: a session the sandbox refuses can reach for Write, and one the
   freeze refuses can reach for Bash. A session that skips permission prompts
-  retries a denied command unsandboxed without asking unless
+  can retry a denied command unsandboxed without being asked unless
   `sandbox.allowUnsandboxedCommands` is `false`. The grant opens the
   Edit tools only, so a Bash write into the floor — and a git checkout or merge
   that must rewrite a frozen file — is the operator's to run, outside the
