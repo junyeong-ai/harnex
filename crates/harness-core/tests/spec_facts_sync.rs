@@ -52,6 +52,18 @@ fn parse_hyphenated_csv(block: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// Tokenize backticked paths (`` `.mcp.json`, `.claude/hooks` `` →
+/// {".mcp.json", ".claude/hooks"}), keeping the leading dot the identifier
+/// tokenizers trim.
+fn parse_backticked_csv(block: &str) -> BTreeSet<String> {
+    block
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(|t| t.trim_matches('`'))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 #[test]
 fn spec_facts_hook_events_match_known_events() {
     let regions = sentinel::extract_regions(&spec_facts_content());
@@ -203,6 +215,15 @@ fn spec_facts_primary_content_fields_match_the_rule_grammar() {
     );
 }
 
+#[test]
+fn spec_facts_sandbox_protected_matches_the_floor() {
+    assert_region_matches(
+        "spec-facts-sandbox-protected",
+        harness_core::guard::floor::sandbox::SANDBOX_PROTECTED,
+        parse_backticked_csv,
+    );
+}
+
 fn assert_region_matches(region: &str, canonical: &[&str], tokenize: fn(&str) -> BTreeSet<String>) {
     let content = spec_facts_content();
     let regions = sentinel::extract_regions(&content);
@@ -215,7 +236,7 @@ fn assert_region_matches(region: &str, canonical: &[&str], tokenize: fn(&str) ->
             .iter()
             .map(|s| s.to_string())
             .collect::<BTreeSet<_>>(),
-        "spec-facts.md '{region}' block drifted from policy::rule — update the \
-         sentinel block to match Rust SSoT"
+        "spec-facts.md '{region}' block drifted from the Rust constant that owns it — \
+         update the sentinel block to match"
     );
 }

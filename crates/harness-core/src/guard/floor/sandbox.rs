@@ -18,7 +18,10 @@
 /// Paths the sandbox refuses to write in the project whatever `denyWrite`
 /// says, so a sandboxed command cannot rewrite what configures the session —
 /// read from the 2.1.283 CLI, which adds them for the working directory and
-/// each one above it. A directory covers what is below it.
+/// each one above it. A directory covers what is below it. What it refuses in
+/// the working directory alone — shell startup files, `.gitconfig`, `.git/hooks`
+/// and the like — is left out, so a floor path there is still asked for an
+/// entry.
 pub const SANDBOX_PROTECTED: &[&str] = &[
     ".claude/settings.json",
     ".claude/settings.local.json",
@@ -34,6 +37,9 @@ pub const SANDBOX_PROTECTED: &[&str] = &[
     ".claude/loop.md",
     ".mcp.json",
 ];
+
+/// The closed sets this module mirrors from Claude Code, stamped by `spec`.
+pub const SPEC_SETS: &[(&str, &[&str])] = &[("sandbox-protected", SANDBOX_PROTECTED)];
 
 /// The `denyWrite` entry that holds one floor entry. The trailing `/` is
 /// dropped because a sandbox before Claude Code 2.1.224 passed it through, and
