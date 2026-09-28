@@ -141,9 +141,9 @@ blank-page problem in disguise.
   refuses on its own, the settings files among it, needs none. Wire one
   PreToolUse entry in `.claude/settings.json` running
   `${CLAUDE_PROJECT_DIR}/hooks/check-floor.sh` with matcher
-  `Edit|Write|MultiEdit`. Install it only where the gate files
-  are not the project's work product: where they are, the freeze fires on most
-  commits and the standing grant it takes prints its notice so often that the
+  `Edit|Write|MultiEdit`. Install it only where editing the gate files is not
+  the project's ordinary work: where it is, each such edit needs the grant, and
+  a grant left standing to spare that prints its notice on every one, so the
   one signal the freeze was bypassed stops being one. Tell the operator the
   break-glass entry by name, and that the `denyWrite` entries hold only in a
   session the sandbox runs in; both the grant and turning the sandbox on are

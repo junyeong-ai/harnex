@@ -21,12 +21,13 @@
 # guard.floor stays absent. The tripwire is armed regardless: the Bash
 # PreToolUse entry refuses a command that would skip the hook stack, and it
 # reads nothing from here. What the section would arm is the freeze, which
-# covers harness.toml and `.claude/settings.json` — files most commits here
-# touch, because the harness is the work product. A grant left standing to
-# answer that prints `[floor-edit allowed]` on most commits, which is how the
-# one signal that the freeze was bypassed stops being one. Adopters whose gate
-# files are not their work product wire the second entry with the
-# enforcement-floor pattern.
+# covers harness.toml and `.claude/settings.json` — files this repository edits
+# as ordinary work (every minor release moves the pin below), so each such
+# change would go through the break-glass grant, and a grant left standing
+# prints `[floor-edit allowed]` on every one, which is how the one signal that
+# the freeze was bypassed stops being one. Adopters for whom editing the gate
+# files is not ordinary work wire the second entry with the enforcement-floor
+# pattern.
 # lifecycle and telemetry are ON (below): the promotion/retirement loop this
 # repo ships has to show its own friction here, on the corpus that builds it.
 

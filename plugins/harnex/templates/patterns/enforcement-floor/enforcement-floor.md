@@ -31,11 +31,12 @@ either, and a command that reaches git through another program's own argument
 without permission checks has neither. Wire this pattern for what it is: the
 floor under a command typed directly, not a boundary around the capability.
 
-The freeze is the half with a price: it covers `harness.toml` and
-`.claude/settings.json`, so in a repository where the harness is the work
-product it fires on most commits, and a grant left standing to answer that
-prints its notice so often it stops being a signal. Install this pattern
-where the gate files are not the work product.
+The freeze is the half with a price: every edit to `harness.toml` or
+`.claude/settings.json` goes through the operator's break-glass grant. Where
+editing those files is the repository's ordinary work, the grant is switched
+on for each such change or left standing, and a notice printed on every such
+edit stops being a signal. Install this pattern where editing the gate files
+is not ordinary work.
 
 ## The contract
 
