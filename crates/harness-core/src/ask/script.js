@@ -1,5 +1,6 @@
 // The script `harnex ask serve` sets into a decision page. The page carries
-// markup only; `ASK` is defined ahead of this by the transport.
+// markup only; `ASK` is defined ahead of this by the transport. It is driven
+// through real browsers by crates/harness-cli/tests/ask-page.
 //
 // The page promises, for each ask:
 // - one `fieldset[data-ask][data-version]`, its `data-ask` the ask's id and
