@@ -1,7 +1,7 @@
 //! The page's directory, served read-only, so a page keeps the stylesheets,
 //! images and fonts it names by relative path.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 
@@ -67,30 +67,36 @@ impl Site {
     }
 
     /// The file `path` (below the site, as a URL spells it) names, if it is
-    /// one the site serves: inside the page's directory once links are
-    /// followed, and reached through no hidden name. The second keeps `.git`
-    /// and `.env` unserved when the page sits at a repository root; a page
-    /// that links an asset under a dot-directory cannot load it.
+    /// one the site serves: the page, or a file inside the page's directory
+    /// whose path there, once links are followed, has no hidden name. Judging
+    /// the followed path keeps `.git` and `.env` unserved when the page sits
+    /// at a repository root, whatever name reaches them; a page that links an
+    /// asset under a dot-directory cannot load it.
     pub fn file(&self, path: &str) -> Option<File> {
         let mut candidate = self.root.clone();
         for segment in path.split('/') {
             let segment = percent_decode_str(segment).decode_utf8().ok()?;
-            if segment.is_empty() || segment.starts_with('.') || segment.contains(['/', '\\', '\0'])
-            {
+            if segment.is_empty() || segment.contains(['/', '\\', '\0']) {
                 return None;
             }
             candidate.push(segment.as_ref());
         }
         let resolved = std::fs::canonicalize(&candidate).ok()?;
-        if !resolved.starts_with(&self.root) || !resolved.is_file() {
+        let is_page = resolved == self.page;
+        let below = resolved.strip_prefix(&self.root).ok()?;
+        if !is_page && below.components().any(hidden) || !resolved.is_file() {
             return None;
         }
         Some(File {
-            is_page: resolved == self.page,
+            is_page,
             content_type: content_type(&resolved),
             path: resolved,
         })
     }
+}
+
+fn hidden(component: Component<'_>) -> bool {
+    matches!(component, Component::Normal(name) if name.as_encoded_bytes().starts_with(b"."))
 }
 
 fn content_type(path: &Path) -> &'static str {
@@ -175,6 +181,17 @@ mod tests {
             )
             .unwrap();
             assert_eq!(site.file("link.txt"), None, "a link leaving the directory");
+            std::os::unix::fs::symlink(".git/config", dir.path().join("pages/config.txt")).unwrap();
+            assert_eq!(site.file("config.txt"), None, "a link to a hidden file");
         }
+    }
+
+    #[test]
+    fn a_page_with_a_hidden_name_is_still_served() {
+        let (dir, _) = site();
+        std::fs::write(dir.path().join("pages/.draft.html"), "<p>x</p>").unwrap();
+        let site = Site::of(&dir.path().join("pages/.draft.html")).unwrap();
+        assert!(site.file(&site.page_path()).unwrap().is_page);
+        assert_eq!(site.file(".git/config"), None);
     }
 }
