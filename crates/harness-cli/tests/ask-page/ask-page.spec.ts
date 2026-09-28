@@ -104,6 +104,7 @@ test("a served page turns on, keeps each note with its answer, and sends", async
 
   const send = tab.locator(".ask-send");
   await expect(send).toHaveText("보내기");
+  await expect(tab.locator("[data-ask-send]")).not.toContainText("여기서는 고를 수 없다");
   await expect(tab.locator(".ask-progress")).toHaveText("답한 것 0 / 2");
   await expect(tab.locator(".ask-until")).toContainText("까지 답을 받는다");
   await expect(tab.locator("body")).toHaveCSS("background-color", "rgb(1, 2, 3)");
