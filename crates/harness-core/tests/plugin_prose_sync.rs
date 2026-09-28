@@ -69,7 +69,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
     ),
     (
         "commands/measure.md",
-        71,
+        72,
         &[
             "BaselineDiff.from",
             "BaselineDiff.to",
@@ -118,6 +118,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
             "BaselineDiff.harness_change",
             "Coverage.record_types_unconsumed",
             "MetricDelta.change",
+            "SessionConfig.harness_paths",
             "SessionConfig.min_support",
             "SessionConfig.submission_sample",
         ],
