@@ -10,8 +10,9 @@
 // - inside it, for each answer whose note is not `none`, one
 //   `[data-ask-note]` named for the answer, holding one `input` or `textarea`;
 // and once, a `[data-ask-send]` whose content is what a page opened from disk
-// shows. Controls ship disabled; a page that breaks the promise says so there
-// and sends nothing.
+// shows. The script replaces that content with the send controls, so the
+// page keeps its own elements outside it. Controls ship disabled; a page that
+// breaks the promise says so there and sends nothing.
 //
 // A page's own script, which runs before this one, hears two events on
 // `document`: `ask-ready` once the controls are on (`detail.asks` is the asks
