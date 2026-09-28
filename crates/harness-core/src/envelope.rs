@@ -155,7 +155,7 @@ wire_enum! {
     /// exhaustive `match`, so adding a variant still forces the dispatcher to
     /// handle it.
     pub enum FixCommand {
-        CodegenSync => "harness codegen sync",
+        CodegenSync => "harnex codegen sync",
     }
 }
 
