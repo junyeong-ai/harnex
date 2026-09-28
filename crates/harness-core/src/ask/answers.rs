@@ -208,10 +208,20 @@ fn answered(text: &str) -> std::result::Result<Vec<Answer>, String> {
             return Err("the outcome is `unanswered`, which took no answers".into());
         }
     };
+    if answers.is_empty() {
+        return Err("the outcome is `answered` but records no answer".into());
+    }
     let mut ids = BTreeSet::new();
     for answer in &answers {
         if !ids.insert(answer.id.as_str()) {
             return Err(format!("`{}` is answered twice", answer.id));
+        }
+        if answer
+            .note
+            .as_deref()
+            .is_some_and(|note| note.trim().is_empty())
+        {
+            return Err(format!("`{}` records a blank note", answer.id));
         }
         let offered = answer
             .offered
@@ -398,11 +408,24 @@ mod tests {
                 .unwrap_err()
                 .contains("without the note")
         );
+        value["answers"][0]["note"] = " ".into();
+        assert!(
+            answered(&value.to_string())
+                .unwrap_err()
+                .contains("blank note")
+        );
+        value["answers"][0]["note"] = serde_json::Value::Null;
         value["answers"][0]["answer"] = "모름".into();
         assert!(
             answered(&value.to_string())
                 .unwrap_err()
                 .contains("did not offer")
+        );
+        value["answers"] = serde_json::json!([]);
+        assert!(
+            answered(&value.to_string())
+                .unwrap_err()
+                .contains("no answer")
         );
     }
 }
