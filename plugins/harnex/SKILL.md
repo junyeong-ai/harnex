@@ -423,10 +423,9 @@ frozen binary cannot serve). For each file with sentinel markers:
    profile.
 3. Write the file back with project-authored regions preserved verbatim.
 
-For `.claude/settings.json`: re-derive only the harnex-owned ENTRIES (the
-baseline + `<lang>-dev` permission rules; the base SessionStart/PostToolUse/Stop
-hook entries) and MERGE — never drop a permission rule or hook entry harnex did
-not author (operator `extend` additions and incumbent hand-rolled entries must
+For `.claude/settings.json`: re-derive only the harnex-owned ENTRIES
+(§ Invariants 6 names them) and MERGE — never drop an entry harnex did not
+author (operator `extend` additions and incumbent hand-rolled entries must
 survive). On a conflict (an incumbent entry occupies a base slot with different
 content), surface it for operator review rather than overwrite. Preserve every
 other top-level key (`autoMemoryEnabled`, `skillOverrides`, `env`, etc.).

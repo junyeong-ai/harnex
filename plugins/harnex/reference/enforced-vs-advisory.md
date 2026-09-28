@@ -11,7 +11,7 @@ thing that survives a confused, careless, or adversarial agent turn.
 | **Hooks** (PreToolUse / PermissionRequest exit 2 or `permissionDecision: deny`) | Run as the client at lifecycle events "regardless of what Claude decides." The only block that a reasoning model cannot talk itself past. |
 | **`permissions.deny` / `ask` / `allow`** | Client-enforced; deny wins, first match, merges across scopes. |
 | **Managed settings** | Highest precedence, cannot be overridden; org floors (`allowManagedPermissionRulesOnly`, `disableAllHooks`, `strictPluginOnlyCustomization`). |
-| **Sandbox** | Filesystem/network isolation for Bash. |
+| **Sandbox** | Filesystem/network isolation for Bash, enforced by the OS on every process a command starts — the only layer that bounds what a shell command writes, so the enforcement floor is held in `sandbox.filesystem.denyWrite`. |
 
 ## Advisory — shapes behavior, no guarantee
 
