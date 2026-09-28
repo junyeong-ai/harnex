@@ -162,6 +162,39 @@ test("a page that breaks the promise says so and sends nothing", async ({ page: 
   expect(await tab.evaluate(() => (window as any).heard)).toEqual([]);
 });
 
+test("an answer the page ships checked is counted and sent, and waits for the rest of its set", async ({
+  page: tab,
+}) => {
+  const given = FIELDS.replace('value="나중" disabled', 'value="나중" checked disabled').replace(
+    '<input type="text" disabled>',
+    '<input type="text" value="다음 분기" disabled>',
+  );
+  const served = await serve(page(given), {
+    asks: { ...ASKS, together: [{ label: "결정과 설계", ids: ["d-1", "d-2"] }] },
+  });
+  await tab.goto(served.url);
+
+  await expect(tab.locator(".ask-progress")).toHaveText("답한 것 1 / 2");
+  await expect(tab.locator("[data-ask-note='나중'] input")).toHaveValue("다음 분기");
+  await expect(tab.locator("[data-ask-note='나중']")).toBeVisible();
+
+  const send = tab.locator(".ask-send");
+  await send.click();
+  await expect(tab.locator(".ask-status")).toHaveText("결정과 설계: 함께 답한다. 2개 가운데 1개만 답했다.");
+  await expect(send).toBeEnabled();
+
+  await tab.getByLabel("동의").check();
+  await send.click();
+  await expect(tab.locator(".ask-status")).toHaveText("보냈다. 세션이 답을 받았다. 이 창은 닫아도 된다.");
+
+  const { code, envelope } = await served.exit;
+  expect(code).toBe(0);
+  expect(envelope.data.answers.map((a: any) => [a.id, a.answer, a.note])).toEqual([
+    ["d-1", "나중", "다음 분기"],
+    ["d-2", "동의", null],
+  ]);
+});
+
 test("a page under a strict content security policy turns on and sends", async ({ page: tab }) => {
   const strict = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; connect-src 'self'">

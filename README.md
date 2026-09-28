@@ -289,7 +289,8 @@ answer returns with the version, label and answers its ask showed, so
 against the asks as they read then. `serve` takes a set asked together whole
 or not at all, so a record it writes is never `incomplete`; that comes from a
 transport that saves answer by answer, and `awaited` names what its set still
-waits on. `ask words <locale>` prints, before any page is served, every
+waits on. A page that ships the answers that stand already checked asks only
+for the rest. `ask words <locale>` prints, before any page is served, every
 sentence the script or a refusal may put on a page in that locale. With the
 labels, answers and ids the sentences name, and digits for counts and the
 deadline (`YYYY-MM-DD HH:MM`), that is every character harnex adds, so a page
