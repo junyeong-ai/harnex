@@ -19,10 +19,12 @@ List:    `data = {"items": [...], "total": N}`
 
 Construct via `envelope::write_success(out, data, warnings)` or
 `envelope::write_error(out, &error)`. Never write prose to stdout.
-Stderr carries no contract. The `guard` hook commands write to it, where the
-runtime reads a hook's notices (`.claude/rules/guard.md`), and `ask serve`
-writes the address it serves the moment it serves it, since its envelope
-arrives only when the wait ends.
+Stderr carries no contract but one line: `ask serve` writes `serving <url> for
+<n> minutes` the moment it serves, since its envelope arrives only when the
+wait ends and a `--no-open` caller reads the address there;
+`crates/harness-cli/tests/ask.rs` holds its shape. The `guard` hook commands
+also write to stderr, where the runtime reads a hook's notices
+(`.claude/rules/guard.md`).
 
 Severity enum (kebab-case in JSON): `blocker | major | minor | info`.
 

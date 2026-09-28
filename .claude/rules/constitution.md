@@ -12,7 +12,8 @@ not yet used).
 
 Every CLI command emits exactly one JSON object on stdout —
 `{ok, data, warnings[]}` on success, `{ok, error}` on failure. Exit 0 =
-success, 1 = validation finding, 2 = runtime failure. No prose on stdout.
+success, 1 = a finding or a result that did not pass, 2 = runtime failure.
+No prose on stdout.
 
 ## III. Single safe write module
 

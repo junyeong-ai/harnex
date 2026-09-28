@@ -89,15 +89,9 @@ For the full command surface, run `harnex --help` or read `README.md`.
 
 ## What this project refuses to do
 
-- No async runtime, no daemons, no network at command time — the one
-  exception is `harnex ask serve`, a single-answer listener on 127.0.0.1
-  (constitution I).
-- No project domain vocabulary in source — every project-specific shape
-  derives from `harness.toml` declarations.
-- No string-matched errors — typed `Error` + stable `ErrorCode`.
-- No backward-compatibility shims — rename in place, delete legacy in the
-  same commit.
+The constitution and `making-changes.md` hold the rest.
+
 - No `docs/` directory — `README.md` is the single human surface;
   everything else under this repo is consumed by Claude.
-- No `chrono`, no `time`, no `once_cell` — `jiff` + `std::sync::LazyLock`
-  are the chosen primitives (see `.claude/rules/jiff-time.md`).
+- No `chrono`, `time` or `once_cell` — `deny.toml` bans them; `jiff` and
+  `std::sync::LazyLock` are the chosen primitives.

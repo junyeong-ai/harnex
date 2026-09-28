@@ -9,10 +9,10 @@ Harness engineering for Claude Code projects. harnex has two surfaces:
   knowledge of getting the Claude Code spec right, distributed as a skill —
   not a runtime you depend on.
 - **The `harnex` binary** (oracle) — a Pure-Rust, JSON-first CLI that
-  deterministically verifies a harness: provenance, closed-schema telemetry,
-  lifecycle, runtime guards, a unified validation gate, and decisions put to
-  the person on a local page. It is the spec-correct reference the plugin's
-  templates are checked against.
+  deterministically verifies a harness — provenance, closed-schema telemetry,
+  lifecycle, runtime guards, a unified validation gate — and puts decisions
+  to the person on a local page. It is the spec-correct reference the
+  plugin's templates are checked against.
 
 ## Why
 
@@ -54,7 +54,7 @@ what the operator repeats every session, so it has something to say once there
 is a harness and a few weeks of transcripts — `scaffold` is where a project
 without one starts.
 
-It detects the stack from lockfile + manifest (TypeScript/pnpm, Python/uv,
+It detects the stack from lockfile + manifest (TypeScript/Node, Python/uv,
 Rust/cargo, JVM/Gradle-Maven for Java and Kotlin) and composes the harness
 from `templates/scaffold.toml`, which declares every artifact in two tiers: a
 **foundation** tier with no language dependency, and a **language** tier that
@@ -264,33 +264,38 @@ measured: the build, the paragraph floor, and — where the window was scoped to
 a git work tree — the commit the project's harness stood at and whether it had
 uncommitted changes. `baseline diff` answers `harness_change` from those, so a
 delta across an unchanged harness is not read as the effect of one. What counts
-as the harness is every file that loads into each session from the project and
-each directory above it up to the root, an import or a linked `AGENTS.md`
-included, plus `[session] harness_paths`, defaulting to where a scaffolded
-harness lands. Git answers for these, so a file it ignores does not count, and
-neither does an import reaching out of the directory whose memory imports it.
-`baseline trend` lays every window of one scope side by side, one series per
-metric, and subtracts nothing — pairwise comparison, with its overlap and
-support guards, stays with `diff`.
+as the harness is what each directory from the work tree's root down to the
+project puts into every session, an import or a linked `AGENTS.md` included,
+plus `[session] harness_paths`, defaulting to where a scaffolded harness lands.
+Git answers for these, so a file it ignores does not count, and neither does an
+import reaching out of the directory whose memory imports it. `baseline trend`
+lays every window of one scope side by side, one series per metric, and
+subtracts nothing — pairwise comparison, with its overlap and support guards,
+stays with `diff`.
 
 `ask serve` puts a decision to the person where a session would otherwise
 assume it. The page is any HTML file that keeps the markup promise at the
 head of [`script.js`](crates/harness-core/src/ask/script.js): a `fieldset` of
 radios per ask, one slot whose content the send controls replace, and two
 events the page's own script can hear. The asks file (`export schema asks`)
-names what is asked and carries the caller's version of what each ask shows.
-The page's directory is served on 127.0.0.1 under a random path, the address
-goes to stderr and the browser, and the command ends on one answer set
-(exit 0), an answer set sent after a source changed (`stale`, exit 1), or
-`--within` minutes (`unanswered`, exit 1). Each answer returns with the
-version, label and answers its ask showed, so `ask current` can tell, when
-the answers are recorded, which still hold against the asks as they read
-then. `ask words <locale>` prints, before any page is served, every sentence
-the script or a refusal may put on a page in that locale. With the labels,
-answers and ids the sentences name, and digits for counts and the deadline
-(`YYYY-MM-DD HH:MM`), that is every character harnex adds, so a page that
-carries its own font subset can cover them. A sandboxed session on macOS binds
-the port only with `sandbox.network.allowLocalBinding`. On Linux the browser
+names what is asked, carries the caller's version of what each ask shows, and
+lists the `sources` the page was made from, read from the working directory.
+The page's directory, apart from anything under a dot-name, is served on
+127.0.0.1 under a random path, the address goes to stderr and the browser, and
+the command ends on one answer set (exit 0), an answer set sent after a source
+changed (`stale`, exit 1), or `--within` minutes (`unanswered`, exit 1). Each
+answer returns with the version, label and answers its ask showed, so
+`ask current` can tell, when the answers are recorded, which still hold
+against the asks as they read then. `serve` takes a set asked together whole
+or not at all, so a record it writes is never `incomplete`; that comes from a
+transport that saves answer by answer, and `awaited` names what its set still
+waits on. `ask words <locale>` prints, before any page is served, every
+sentence the script or a refusal may put on a page in that locale. With the
+labels, answers and ids the sentences name, and digits for counts and the
+deadline (`YYYY-MM-DD HH:MM`), that is every character harnex adds, so a page
+that carries its own font subset can cover them. A sandboxed session on macOS
+binds the port only with `sandbox.network.allowLocalBinding`, or with
+`harnex ask serve` in `sandbox.excludedCommands`. On Linux the browser
 receives the address as a command-line argument, which other users of the
 machine can read; on a shared host, serve with `--no-open` and open the
 address from stderr.

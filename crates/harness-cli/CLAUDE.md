@@ -60,8 +60,9 @@ never hand-maintain the shell list.
 ## What this crate refuses to do
 
 - No business logic. Pure clap dispatch + envelope wrapping.
-- No `println!` / `eprintln!` of human prose in the success path. The
-  envelope is the only output (per `constitution.md` Article II).
+- No prose on stdout, and on stderr only where `.claude/rules/envelope.md`
+  names the writer. The envelope is the only output (per `constitution.md`
+  Article II).
 - No direct `std::fs::write` — route through
   `harness_core::path_guard` (`write_atomic` or `append_line`) if a CLI
   handler must mutate state (rare; most state mutation lives in core).
