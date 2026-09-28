@@ -245,6 +245,7 @@ impl<'a> ProjectChecker<'a> {
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
         self.run_permissions_audit(&changed, &mut findings, &mut run, &mut skipped)?;
         self.run_floor_sandbox(&mut findings, &mut run, &mut skipped);
+        self.run_always_loaded(&mut findings, &mut run, &mut skipped)?;
 
         findings.sort_by(|a, b| {
             a.severity
@@ -811,6 +812,37 @@ impl<'a> ProjectChecker<'a> {
             });
         }
         run.push("guard.floor".into());
+    }
+
+    /// The whole always-loaded set within `[validate.always_loaded]
+    /// max_chars`. Ignores `--since`: every member is part of one sum, so a
+    /// change anywhere moves it.
+    fn run_always_loaded(
+        &self,
+        findings: &mut Vec<Finding>,
+        run: &mut Vec<String>,
+        skipped: &mut Vec<SkippedRule>,
+    ) -> Result<()> {
+        let Some(policy) = self
+            .config
+            .validate
+            .as_ref()
+            .and_then(|v| v.always_loaded.as_ref())
+        else {
+            skipped.push(SkippedRule {
+                slug: "validate.always_loaded".into(),
+                reason: "no [validate.always_loaded] section".into(),
+            });
+            return Ok(());
+        };
+        let loaded = crate::always_loaded::resolve(self.working_dir)?;
+        findings.extend(crate::always_loaded::over_budget(
+            &loaded,
+            policy.max_chars,
+            self.working_dir,
+        ));
+        run.push("validate.always_loaded".into());
+        Ok(())
     }
 }
 

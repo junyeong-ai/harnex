@@ -41,12 +41,18 @@ Validator slugs (current):
 - `codegen`
 - `policy.permissions`
 - `guard.floor`
+- `validate.always_loaded`
 
 The `guard.floor` arm holds `sandbox.filesystem.denyWrite` in
 `.claude/settings.json` to cover every path the floor freezes
 (`floor-sandbox-uncovered`, the entry to add in its hint). Like governs it
 ignores `--since`: a path added to `[guard.floor]` breaks the projection as
 surely as an entry dropped from the settings.
+
+The `validate.always_loaded` arm is not a surface validator: it reads the
+whole set `always_loaded::resolve` returns and reports one
+`always-loaded-over-budget` past `max_chars`, located at the largest member.
+It ignores `--since`, because every member is part of one sum.
 
 The `governs` arm shares the rule validator's gate (`[validate.rules]`) and
 glob: shape findings are the validator's, and this arm asks only the

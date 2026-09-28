@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Subcommand;
+use serde::Serialize;
 
-use harness_core::envelope::ListResponse;
+use harness_core::always_loaded::{self, AlwaysLoaded};
+use harness_core::envelope::{Finding, ListResponse};
 use harness_core::error::{Error, Result};
 use harness_core::validate::{
     AgentValidator, CommitMsgValidator, OutputStyleValidator, RuleValidator, SettingsScope,
@@ -58,13 +60,53 @@ pub enum ValidateCommand {
     /// Validate a git commit message against `[validate.commit_msg]` trailers
     /// (e.g., `.git/COMMIT_EDITMSG` from a commit-msg hook)
     CommitMsg { path: PathBuf },
+    /// Measure what this repository puts into every session, member by
+    /// member. Held to `[validate.always_loaded] max_chars` when the section
+    /// is declared; measured either way, so a budget can be chosen from it.
+    AlwaysLoaded,
+}
+
+/// The set, the budget it was held to, and what holding it found.
+#[derive(Serialize)]
+struct AlwaysLoadedReport {
+    #[serde(flatten)]
+    loaded: AlwaysLoaded,
+    max_chars: Option<usize>,
+    findings: Vec<Finding>,
 }
 
 pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
-    let (config, _config_path, _working_dir) = load_config()?;
+    let (config, config_path, working_dir) = load_config()?;
 
     let mut findings = Vec::new();
     match cmd {
+        ValidateCommand::AlwaysLoaded => {
+            let root = super::config_dir(&config_path, &working_dir);
+            let loaded = always_loaded::resolve(&root)?;
+            let max_chars = config
+                .validate
+                .as_ref()
+                .and_then(|v| v.always_loaded.as_ref())
+                .map(|policy| policy.max_chars);
+            let findings: Vec<Finding> = max_chars
+                .and_then(|max| always_loaded::over_budget(&loaded, max, &root))
+                .into_iter()
+                .collect();
+            let has_gating_finding = findings.iter().any(|f| f.severity.fails_gate());
+            write_envelope_success(
+                out,
+                AlwaysLoadedReport {
+                    loaded,
+                    max_chars,
+                    findings,
+                },
+            )?;
+            return Ok(if has_gating_finding {
+                ExitCode::from(1)
+            } else {
+                ExitCode::SUCCESS
+            });
+        }
         ValidateCommand::Rules { paths } => {
             let policy = config
                 .validate

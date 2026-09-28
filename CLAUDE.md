@@ -48,6 +48,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::scaffold` | composition manifest (`scaffold.toml`) + tier model |
 | `harness-core::spec` | measurement stamps for the Claude Code vocabularies |
 | `harness-core::validate` | rule / skill / agent / output-style / settings / commit-msg checks |
+| `harness-core::always_loaded` | what a repository puts into every session, read as the runtime loads it, member by member — and the budget over it |
 | `harness-core::audit` | harness-engineering compliance gate; `AuditCheckKind` is the check set |
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
 | `harness-core::session` | reads Claude Code's own transcripts — instructions, interventions, repetition, tool and token use, and what the repository says survived |

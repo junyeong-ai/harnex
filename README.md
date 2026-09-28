@@ -172,6 +172,8 @@ harnex validate agents <files...>
 harnex validate output-styles <files...>
 harnex validate settings [<path>]
 harnex validate commit-msg <path>                     # closed-enum trailer
+harnex validate always-loaded                         # what every session
+                                                      # carries, per member
 
 harnex governs resolve <paths...>                     # the rules that are truth
                                                       # about each path
@@ -299,6 +301,10 @@ patterns covered out of the box:
   field — refused at every boundary one can be written
 - Claude Code spec compliance (rules / skills / agents / output-styles /
   settings frontmatter)
+- A character budget over everything the repository puts into every session
+  — memory files and their imports, rules without `paths:`, the selected
+  output style, each skill, command and agent listing entry — read the way
+  Claude Code loads it (`[validate.always_loaded] max_chars`)
 - Hook wiring integrity — every `${CLAUDE_PROJECT_DIR}` path a hook names
   resolves and the script it spawns directly is executable, so a handler
   cannot fail open while the harness reads as wired

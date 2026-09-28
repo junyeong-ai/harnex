@@ -12,6 +12,7 @@
 //! - No string-matched errors — every failure surfaces as a typed
 //!   [`error::Error`] with a stable [`error::ErrorCode`].
 
+pub mod always_loaded;
 pub mod audit;
 pub mod check;
 pub mod codegen;
