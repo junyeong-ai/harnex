@@ -461,10 +461,12 @@ pub struct SkillsPolicy {
     /// 5000-token compaction budget ≈ 500 lines.
     #[serde(default = "default_skill_max_lines")]
     pub max_skill_md_lines: usize,
-    /// Length of the listing text `description - when_to_use`, counted as
-    /// Claude Code counts it — UTF-16 code units, so a character outside the
-    /// Basic Multilingual Plane counts twice. Defaults to the length Claude
-    /// Code cuts an entry at.
+    /// Length of a skill's listing text — its `description`, else its body's
+    /// first line, then ` - when_to_use` — counted as Claude Code counts it:
+    /// UTF-16 code units, so a character outside the Basic Multilingual Plane
+    /// counts twice. Defaults to the length Claude Code cuts an entry at when
+    /// its settings leave `skillListingMaxDescChars` unset; this default does
+    /// not follow that setting.
     #[serde(default = "default_skill_description_max")]
     pub max_description_chars: usize,
     /// Opt-in: emit a Major finding for any frontmatter key outside the

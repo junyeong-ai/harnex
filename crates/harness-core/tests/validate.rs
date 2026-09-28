@@ -189,13 +189,20 @@ fn a_skill_description_is_measured_as_the_characters_the_listing_shows() {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let over = |description: &str, when: &str| {
-        let md = format!(
-            "---\nname: my-skill\ndescription: {description}\nwhen_to_use: \"{when}\"\n---\nBody\n"
-        );
+    let over_budget = |md: String| {
         v.validate_text(&md, &path)
             .iter()
             .any(|f| f.slug == "skill-description-over-budget")
+    };
+    let over = |description: &str, when: &str| {
+        over_budget(format!(
+            "---\nname: my-skill\ndescription: {description}\nwhen_to_use: \"{when}\"\n---\nBody\n"
+        ))
+    };
+    let undescribed = |heading: &str, when: &str| {
+        over_budget(format!(
+            "---\nname: my-skill\nwhen_to_use: \"{when}\"\n---\n# {heading}\n"
+        ))
     };
     assert!(!over(&"한".repeat(50), ""), "fifty characters fit");
     assert!(
@@ -207,6 +214,13 @@ fn a_skill_description_is_measured_as_the_characters_the_listing_shows() {
     assert!(over(&"😀".repeat(26), ""));
     let padded = format!("\"{}{}{}\"", " ".repeat(5), "x".repeat(50), " ".repeat(5));
     assert!(!over(&padded, ""), "the listing trims");
+    assert!(
+        undescribed(&"h".repeat(51), ""),
+        "without a description the body's first line is listed"
+    );
+    assert!(!undescribed(&"h".repeat(50), ""));
+    assert!(undescribed(&"h".repeat(8), &"w".repeat(40)));
+    assert!(!undescribed(&"h".repeat(7), &"w".repeat(40)));
 }
 
 #[test]
