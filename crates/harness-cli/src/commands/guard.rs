@@ -54,7 +54,7 @@ pub enum GuardCommand {
     /// harness_invocation event (the invoked element's slug + the outcome).
     /// Wire to both events with matcher Skill|Task|Agent, best `async`. Always
     /// exits 0 and emits nothing on stdout; any reason it cannot record (no
-    /// [telemetry], the Kind undeclared, a write failure) is a silent no-op.
+    /// `[telemetry]`, the Kind undeclared, a write failure) is a silent no-op.
     TelemetryEmit,
 }
 

@@ -77,7 +77,7 @@ pub struct AssetInvocation {
     /// own, so the sum is across windows rather than anything one context
     /// held; `max_chars` is the largest single charge. What the record carries
     /// per tool, and where it carries nothing, is
-    /// [`crate::session::AssetCall::chars`].
+    /// [`crate::session::record::AssetCall::chars`].
     pub chars: usize,
     /// The largest single invocation's characters. A charge that grows per
     /// round is invisible in a total and visible here beside `calls`.

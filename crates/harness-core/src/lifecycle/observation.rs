@@ -3,7 +3,7 @@
 //! Each observation records a single sighting of a recurring concern
 //! ("developers keep getting the same null defect", "this rule was cited
 //! by yet another spec"). Threshold-crossing aggregates surface via
-//! [`super::PromotionCandidateFinder`].
+//! [`super::LedgerReader::survey`].
 
 use std::path::PathBuf;
 

@@ -52,10 +52,8 @@ pub trait Verifier: Send + Sync {
 }
 
 wire_enum! {
-    /// Closed set of supported verifier strategies. Adding a variant requires
-    /// updating [`from_str`], [`as_str`], [`ALL`], and the match in
-    /// [`EvidenceVerifier::new`] — the compiler enforces all four sites via
-    /// exhaustive `match`.
+    /// Closed set of supported verifier strategies, each built by
+    /// [`EvidenceVerifier::new`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum VerifierStrategy {
         FilePathLine => "file-path-line",
