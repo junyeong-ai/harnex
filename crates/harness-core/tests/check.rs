@@ -19,7 +19,7 @@ fn write(p: &Path, contents: &str) {
 fn minimal_config_toml() -> String {
     r#"
 [meta]
-harnex_version = ">=0.30, <0.31"
+harnex_version = ">=0.31, <0.32"
 
 [evidence]
 default_provenance = "memory-only"
@@ -118,7 +118,7 @@ fn check_skips_validators_with_no_config_section() {
     let tmp = project();
     let minimal = r#"
 [meta]
-harnex_version = ">=0.30, <0.31"
+harnex_version = ">=0.31, <0.32"
 "#;
     let cfg = load_cfg(&tmp, minimal);
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
@@ -155,7 +155,7 @@ fn check_emits_codegen_drift_as_blocker() {
 
     let toml_body = r##"
 [meta]
-harnex_version = ">=0.30, <0.31"
+harnex_version = ">=0.31, <0.32"
 
 [[codegen.groups]]
 name = "g"
@@ -293,7 +293,7 @@ fn a_set_past_its_budget_is_one_finding_at_its_largest_member() {
     let tmp = project();
     let cfg = load_cfg(
         &tmp,
-        "[meta]\nharnex_version = \">=0.30, <0.31\"\n[validate.always_loaded]\nmax_chars = 10\n",
+        "[meta]\nharnex_version = \">=0.31, <0.32\"\n[validate.always_loaded]\nmax_chars = 10\n",
     );
     write(&tmp.path().join("CLAUDE.md"), "twelve chars\n");
     write(&tmp.path().join(".claude/CLAUDE.md"), "short\n");
@@ -381,7 +381,7 @@ fn fix_resolves_codegen_drift_and_re_check_clean() {
     .unwrap();
     let toml_body = r##"
 [meta]
-harnex_version = ">=0.30, <0.31"
+harnex_version = ">=0.31, <0.32"
 
 [[codegen.groups]]
 name = "g"
@@ -642,7 +642,7 @@ fn check_gates_advisory_staleness_by_context() {
 fn evidence_config() -> &'static str {
     r#"
 [meta]
-harnex_version = ">=0.30, <0.31"
+harnex_version = ">=0.31, <0.32"
 
 [evidence]
 default_provenance = "internal"
@@ -1120,7 +1120,7 @@ fn an_unreadable_file_is_reported_where_its_own_validator_is_disabled() {
         &tmp,
         r#"
 [meta]
-harnex_version = ">=0.30, <0.31"
+harnex_version = ">=0.31, <0.32"
 
 [evidence]
 default_provenance = "memory-only"
