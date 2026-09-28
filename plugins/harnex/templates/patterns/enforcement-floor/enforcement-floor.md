@@ -48,9 +48,11 @@ where the gate files are not the work product.
 - **Bash writes are the sandbox's.** What a shell command writes is decided by
   every program it starts, so no reading of the command line refuses it; the
   sandbox enforces `denyWrite` on each of those processes. It holds only where
-  the sandbox runs, and does nothing where it is off. A session that skips
-  permission prompts retries a denied command unsandboxed without asking
-  unless `sandbox.allowUnsandboxedCommands` is `false`. The grant opens the
+  the sandbox runs, and does nothing where it is off. The two halves cover each
+  other's tool: a session the sandbox refuses reaches for Write, and one the
+  freeze refuses reaches for Bash. A session that skips permission prompts
+  retries a denied command unsandboxed without asking unless
+  `sandbox.allowUnsandboxedCommands` is `false`. The grant opens the
   Edit tools only, so a Bash write into the floor — and a git checkout or merge
   that must rewrite a frozen file — is the operator's to run, outside the
   agent.
