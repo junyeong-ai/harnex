@@ -11,10 +11,15 @@ wire_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
     #[serde(rename_all = "kebab-case")]
     pub enum AnswerState {
-        /// Asked now exactly as it was answered.
+        /// Asked now exactly as it was answered, in a record that answers the
+        /// rest of any set it is asked together with.
         Current => "current",
+        /// Asked now exactly as it was answered, in a record that leaves
+        /// members of its set unanswered (`awaited`): it stands, and holds in
+        /// a record that answers them too.
+        Incomplete => "incomplete",
         /// Still asked, but not as it was answered: its version, its label or
-        /// what it offered moved, or a set it is answered with did.
+        /// what it offered moved, or that of another answer in its set did.
         Changed => "changed",
         /// No longer asked.
         Gone => "gone",
@@ -30,10 +35,15 @@ pub struct Standing {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub struct Current {
     pub items: Vec<Standing>,
+    /// Asks a set asked together still waits on: the members the record
+    /// holds no answer for, of each set it answers at all, in the order the
+    /// sets name them.
+    pub awaited: Vec<String>,
 }
 
 impl Current {
-    /// Whether every answer still holds.
+    /// Whether every answer holds: none moved, none gone, and none waiting on
+    /// the rest of its set.
     pub fn holds(&self) -> bool {
         self.items.iter().all(|s| s.state == AnswerState::Current)
     }
@@ -43,8 +53,13 @@ impl Current {
 /// answer holds only while its ask is asked under the same id, version and
 /// label with the same answers offered, in the same order and under the same
 /// note rules, since the caller's version may not cover what the page offered.
-/// A set asked together holds whole or not at all, under the sets `now`
-/// declares.
+/// A set asked together, under the sets `now` declares, holds only whole
+/// within the record: an answer beside one that moved has moved with it, and
+/// otherwise one whose set the record answers in part is incomplete. A
+/// transport that saves answer by answer completes such a record by adding
+/// to it, and `ask serve` by asking the whole set again with what stands
+/// filled in. How a set is composed is not compared; a caller for whom a
+/// change to a set unsettles its members says so in their versions.
 pub fn current(answers: &[Answer], now: &Asks) -> Current {
     let mut items: Vec<Standing> = answers
         .iter()
@@ -63,6 +78,7 @@ pub fn current(answers: &[Answer], now: &Asks) -> Current {
             },
         })
         .collect();
+    let mut awaited = Vec::new();
     for set in &now.together {
         let members: Vec<usize> = items
             .iter()
@@ -70,19 +86,32 @@ pub fn current(answers: &[Answer], now: &Asks) -> Current {
             .filter(|(_, s)| set.ids.contains(&s.id))
             .map(|(i, _)| i)
             .collect();
-        let whole = members.len() == set.ids.len()
-            && members
+        if members.is_empty() {
+            continue;
+        }
+        awaited.extend(
+            set.ids
                 .iter()
-                .all(|&i| items[i].state == AnswerState::Current);
-        if !members.is_empty() && !whole {
-            for i in members {
-                if items[i].state == AnswerState::Current {
-                    items[i].state = AnswerState::Changed;
-                }
+                .filter(|id| !items.iter().any(|s| &s.id == *id))
+                .cloned(),
+        );
+        let unsettled = if members
+            .iter()
+            .any(|&i| items[i].state != AnswerState::Current)
+        {
+            AnswerState::Changed
+        } else if members.len() < set.ids.len() {
+            AnswerState::Incomplete
+        } else {
+            continue;
+        };
+        for i in members {
+            if items[i].state == AnswerState::Current {
+                items[i].state = unsettled;
             }
         }
     }
-    Current { items }
+    Current { items, awaited }
 }
 
 #[cfg(test)]
@@ -187,9 +216,64 @@ mod tests {
         now["together"][0]["ids"] = serde_json::json!(["v:1", "v:2", "v:3"]);
         assert_eq!(
             state_of(now, "v:1"),
-            AnswerState::Changed,
+            AnswerState::Incomplete,
             "a member added since leaves the set answered in part"
         );
+    }
+
+    /// Answers a transport saved one at a time.
+    fn saved_one_by_one(chosen: serde_json::Value) -> Vec<Answer> {
+        let mut unset = file();
+        unset.as_object_mut().unwrap().remove("together");
+        read(
+            serde_json::json!({ "answers": chosen })
+                .to_string()
+                .as_bytes(),
+            &asks(unset),
+            Timestamp::UNIX_EPOCH,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_set_answered_in_part_stands_incomplete_until_the_rest_are() {
+        let part = saved_one_by_one(serde_json::json!([
+            {"id": "q:a", "answer": "예"}, {"id": "v:1", "answer": "통과"}
+        ]));
+        let now = current(&part, &asks(file()));
+        let states: Vec<AnswerState> = now.items.iter().map(|s| s.state).collect();
+        assert_eq!(states, [AnswerState::Current, AnswerState::Incomplete]);
+        assert_eq!(now.awaited, ["v:2"]);
+        assert!(!now.holds());
+
+        let whole = saved_one_by_one(serde_json::json!([
+            {"id": "v:1", "answer": "통과"}, {"id": "v:2", "answer": "통과"}
+        ]));
+        let now = current(&whole, &asks(file()));
+        assert!(now.holds() && now.awaited.is_empty());
+
+        let untouched = saved_one_by_one(serde_json::json!([{"id": "q:a", "answer": "예"}]));
+        assert!(
+            current(&untouched, &asks(file())).awaited.is_empty(),
+            "a set the record does not answer at all waits on nothing"
+        );
+    }
+
+    #[test]
+    fn a_set_answered_in_part_beside_a_moved_answer_has_moved() {
+        let part = saved_one_by_one(serde_json::json!([
+            {"id": "v:1", "answer": "통과"}, {"id": "v:2", "answer": "통과"}
+        ]));
+        let mut now = file();
+        now["asks"].as_array_mut().unwrap().push(serde_json::json!(
+            {"id": "v:3", "label": "기준 3", "version": "v3", "answers": [
+                {"name": "통과", "note": "none"}, {"name": "실패", "note": "required"}]}));
+        now["together"][0]["ids"] = serde_json::json!(["v:1", "v:2", "v:3"]);
+        now["asks"][2]["version"] = "v2b".into();
+        let now = current(&part, &asks(now));
+        let states: Vec<AnswerState> = now.items.iter().map(|s| s.state).collect();
+        assert_eq!(states, [AnswerState::Changed, AnswerState::Changed]);
+        assert_eq!(now.awaited, ["v:3"], "asked again, the set still needs it");
     }
 
     #[test]
