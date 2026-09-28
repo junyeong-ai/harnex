@@ -779,18 +779,34 @@ fn invocable_entry(source: &Source, kind: MemberKind, listing_cap: usize) -> Opt
     if truthy(fields.get("disable-model-invocation")) {
         return None;
     }
+    Some(cap(&listed(source, kind), listing_cap, "\u{2026}"))
+}
+
+/// The text a `SKILL.md` lists before the runtime cuts it, whether or not the
+/// skill is listed at launch.
+pub(crate) fn skill_listing_text(text: &str) -> String {
+    listed(&Source::parse(text), MemberKind::Skill)
+}
+
+/// The text a skill or command lists before the runtime cuts it: its
+/// `description`, else its body's first line, then ` - when_to_use` unless
+/// that is empty.
+fn listed(source: &Source, kind: MemberKind) -> String {
     let unnamed = match kind {
         MemberKind::Skill => "Skill",
         _ => "Custom command",
     };
-    let description = description(fields.get("description"))
+    let description = description(source.fields.get("description"))
         .unwrap_or_else(|| fallback_description(&source.body, unnamed));
-    let when = fields.get("when_to_use").and_then(js_string);
-    Some(cap(
-        &listing_text(&description, when.as_deref()),
-        listing_cap,
-        "\u{2026}",
-    ))
+    match source
+        .fields
+        .get("when_to_use")
+        .and_then(js_string)
+        .filter(|when| !when.is_empty())
+    {
+        Some(when) => format!("{description} - {when}"),
+        None => description,
+    }
 }
 
 /// An agent's name and listing text, its `description`, where the name is one
@@ -810,15 +826,6 @@ fn agent_entry(fields: &Mapping) -> Option<(String, String)> {
         .as_str()
         .filter(|description| !description.is_empty())?;
     Some((name.to_string(), description.replace("\\n", "\n")))
-}
-
-/// The text a skill or command lists before the runtime cuts it: its
-/// description, then ` - when_to_use` unless that is empty.
-pub(crate) fn listing_text(description: &str, when_to_use: Option<&str>) -> String {
-    match when_to_use.filter(|when| !when.is_empty()) {
-        Some(when) => format!("{description} - {when}"),
-        None => description.to_string(),
-    }
 }
 
 /// A `description` the runtime lists: text trimmed, a number or boolean

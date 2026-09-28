@@ -275,10 +275,7 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        let listed = crate::always_loaded::listing_text(
-            parsed.description.as_deref().map_or("", str::trim),
-            parsed.when_to_use.as_deref(),
-        );
+        let listed = crate::always_loaded::skill_listing_text(content);
         let total_desc = crate::always_loaded::runtime_len(&listed);
         if total_desc > self.policy.max_description_chars {
             findings.push(Finding {
@@ -286,12 +283,15 @@ impl<'a> SkillValidator<'a> {
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), fm.begin_line),
                 message: format!(
-                    "description - when_to_use is {total_desc} characters as Claude Code \
-                     counts them, over max_description_chars={} (a listing entry is cut at {})",
-                    self.policy.max_description_chars,
-                    crate::always_loaded::LISTING_ENTRY_CAP
+                    "the listing text is {total_desc} characters as Claude Code counts them, \
+                     over max_description_chars={}",
+                    self.policy.max_description_chars
                 ),
-                hint: Some("tighten description; details belong in skill body".into()),
+                hint: Some(
+                    "write a short description (without one the body's first line is listed) \
+                     and tighten when_to_use; details belong in the skill body"
+                        .into(),
+                ),
                 auto_fixable: false,
                 fix_command: None,
             });
