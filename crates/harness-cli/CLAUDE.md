@@ -25,14 +25,16 @@ enumerates them, and a copy of that list here is the one that goes stale.
 | Code | Meaning |
 |---|---|
 | `0` | Success (no findings, or only advisory `Minor`/`Info` findings) |
-| `1` | At least one gating finding (`Severity::fails_gate()` — `Blocker` or `Major`) |
+| `1` | At least one gating `Finding` (`Severity::fails_gate()` — `Blocker` or `Major`), or any failure a result without a severity reports |
 | `2` | Runtime failure (config not found, IO failure, invalid arguments) |
 
 The gate threshold is the single source of truth `Severity::fails_gate()`
-(returns true for `Blocker | Major`). Every command that reports findings
+(returns true for `Blocker | Major`). Every command that reports `Finding`s
 decides exit 1 via
 `findings.iter().any(|f| f.severity.fails_gate())` — keep it identical across
-sites. To change the threshold, edit `fails_gate`, never the call sites.
+sites. To change the threshold, edit `fails_gate`, never the call sites. A
+result that carries no severity — a `PermissionFinding`, a codegen drift, a
+version verdict — exits 1 on any failure it reports.
 
 ## Shell completions
 

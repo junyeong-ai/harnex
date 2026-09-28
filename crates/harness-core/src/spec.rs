@@ -27,7 +27,7 @@
 //!   one that says so.
 //! - Never gate, and never become a finding. Staleness is a property of this
 //!   binary, not of the project a command was pointed at, so it rides the
-//!   envelope's `warnings[]` on every command. As a finding it would both
+//!   envelope's `warnings[]` on every success. As a finding it would both
 //!   misattribute the problem and make a zero-findings assertion fail on a
 //!   calendar with no code change behind it.
 
@@ -230,7 +230,7 @@ pub fn stale_warnings(today: Date) -> Vec<Warning> {
         .collect()
 }
 
-/// Warnings as of the current UTC day — what every command attaches.
+/// Warnings as of the current UTC day — what every success envelope attaches.
 pub fn stale_warnings_now() -> Vec<Warning> {
     stale_warnings(jiff::Timestamp::now().to_zoned(TimeZone::UTC).date())
 }
@@ -288,9 +288,9 @@ mod tests {
 
     #[test]
     fn the_now_helper_agrees_with_the_tested_function() {
-        // `stale_warnings_now` is what every command calls; the clock read is
-        // the only thing it adds, so pin it to the function the cases above
-        // exercise rather than leaving the wiring untested.
+        // `stale_warnings_now` is what every success envelope is written with;
+        // the clock read is the only thing it adds, so pin it to the function
+        // the cases above exercise rather than leaving the wiring untested.
         let today = jiff::Timestamp::now().to_zoned(TimeZone::UTC).date();
         assert_eq!(
             stale_warnings_now().len(),

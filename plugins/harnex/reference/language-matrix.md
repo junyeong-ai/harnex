@@ -190,9 +190,10 @@ repo is never penalised for the tool it does not install.
   env-runner, so the exclusion narrows what is typed casually and not what is
   reachable. `typescript-dev`'s doc comment states the reach; the observation
   ledger enumerates it across every profile.
-- The foundation rules — the slugs `[validate.rules] always_loaded_slugs`
-  lists — omit `paths:` and load every session. Every other rule carries a
-  `paths:` that scopes it.
+- The rules `[validate.rules] always_loaded_slugs` lists omit `paths:` and
+  load every session. Every other rule carries a `paths:` that scopes it, and
+  `harnex validate rules` reports a rule that disagrees with the list in
+  either direction.
 - **The per-file formatter must resolve the same config the gate does.**
   A PostToolUse hook formats one file; the CI gate formats the workspace.
   Where the two read configuration differently, every edit reverts what the
