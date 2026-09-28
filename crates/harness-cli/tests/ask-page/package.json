@@ -1,0 +1,12 @@
+{
+  "name": "harnex-ask-page",
+  "private": true,
+  "type": "module",
+  "description": "`harnex ask serve` driven through real browsers: the page script against the built binary.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

@@ -47,6 +47,30 @@ jobs:
       # nextest does not run doctests.
       - run: cargo test --workspace --doc --locked
 
+  page-script:
+    # The script `ask serve` sets into a page runs in whichever browser the
+    # platform opens, so it is driven through all three engines against the
+    # binary this commit builds.
+    name: ask page script
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: crates/harness-cli/tests/ask-page
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p harness-cli --locked
+        working-directory: .
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: crates/harness-cli/tests/ask-page/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npx playwright test
+
   msrv:
     name: msrv
     runs-on: ubuntu-latest
