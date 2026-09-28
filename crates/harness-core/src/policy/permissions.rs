@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::config::PermissionsPolicy;
 use crate::error::{Error, Result};
+use crate::wire_enum::wire_enum;
 
 use super::profiles::PermissionProfile;
 
@@ -60,11 +61,13 @@ pub struct PermissionFinding {
     pub rule: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum PermissionFindingKind {
-    MissingBaselineDeny,
-    ContradictoryRule,
+wire_enum! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum PermissionFindingKind {
+        MissingBaselineDeny => "missing-baseline-deny",
+        ContradictoryRule => "contradictory-rule",
+    }
 }
 
 pub struct PermissionAuditor<'a> {
@@ -143,6 +146,13 @@ impl<'a> PermissionAuditor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn serde_spells_each_finding_kind_as_its_wire_string() {
+        for kind in PermissionFindingKind::ALL {
+            assert_eq!(serde_json::to_value(kind).unwrap(), kind.as_str());
+        }
+    }
 
     #[test]
     fn generator_composes_profile_and_extras() {
