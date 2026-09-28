@@ -336,8 +336,10 @@ already contradicted both a page and the binary's own schema.
   is skipped whole rather than truncated.
 - **Path-scoped rules:** `.claude/rules/*.md`; with `paths:` frontmatter (glob,
   brace expansion) they load only on matching files; without `paths:` they load
-  every session. A foundation rule (constitution) is the one that intentionally
-  omits `paths:`.
+  every session. So does a `paths:` whose globs, each with a trailing `/**`
+  removed, leave nothing or only `**` (`**`, `**/**`, `[]` — measured at
+  2.1.283), while `["**", "src/**"]` waits for a match. A foundation rule
+  (constitution) is the one that intentionally omits `paths:`.
 - **A `paths:` list is bounded before it is matched.** Brace groups multiply,
   and the whole list shares one budget of 1,000 expanded patterns and 4 MiB
   (brace-free patterns do not count against it). A pattern that would exceed

@@ -80,21 +80,23 @@ pub(crate) fn compile_glob(pattern: &str) -> std::result::Result<globset::Glob, 
 
 /// Whether a `paths:` value actually scopes the rule.
 ///
-/// Presence of the key is not the question: `paths:` with no value, an empty
-/// list, and a list of empty strings all carry zero globs, so Claude Code has
-/// nothing to match the rule against and it is not path-scoped. Reading the
-/// key alone would exempt such a rule from both the always-loaded budget and
-/// the declaration requirement while it loads on every turn.
+/// Presence of the key is not the question. Claude Code removes a trailing
+/// `/**` from each glob and loads the rule at launch when what is left is
+/// nothing, or nothing but `**` — measured at 2.1.283: `paths:` with no value,
+/// an empty list, `**` and `**/**` all load every session, while
+/// `["**", "src/**"]` waits for a match. Reading the key alone would exempt
+/// such a rule from both the always-loaded budget and the declaration
+/// requirement while it loads on every turn.
 pub(crate) fn declares_scope(value: Option<&yaml_serde::Value>) -> bool {
-    let Some(value) = value else {
-        return false;
-    };
-    match value.as_sequence() {
-        Some(seq) => seq
+    value.is_some_and(|value| {
+        globs(value)
             .iter()
-            .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty())),
-        None => value.as_str().is_some_and(|s| !s.trim().is_empty()),
-    }
+            .map(|glob| {
+                let glob = glob.trim();
+                glob.strip_suffix("/**").unwrap_or(glob)
+            })
+            .any(|glob| !glob.is_empty() && glob != "**")
+    })
 }
 
 #[cfg(test)]
