@@ -362,7 +362,20 @@ already contradicted both a page and the binary's own schema.
 - **`claudeMdExcludes`:** glob patterns to skip memory files — CLAUDE.md,
   rules and imports alike. Matched against the ABSOLUTE path, so a relative
   pattern such as `docs/x.md` excludes nothing (measured); write `**/docs/x.md`.
-  Merges across settings layers. Managed-policy files cannot be excluded.
+  A rule reached through a link is matched at its path under `.claude/rules/`
+  and at its target (2.1.239+), and an absolute pattern whose directory is a
+  link also matches over the link's target. Merges across settings layers.
+  Managed-policy files cannot be excluded.
+- **Frontmatter as every loader reads it** (2.1.283, from the shipped
+  parser): a block opens with `---` and closes at the next `---` wherever it
+  falls, mid-line included; without one the whole file is body. YAML that
+  fails is parsed again after a repair — a `key: value` line whose unquoted
+  value holds a YAML indicator is quoted, leading tabs become two spaces — and
+  yields no keys when that fails too. So `paths: **/*.ts` still scopes a rule,
+  while a list item `- **/*.ts` leaves it loading every session. A file loads
+  only as a regular file within a size limit — memory files 4 MiB, `SKILL.md`
+  1,000,000 bytes, commands, agents and output styles 1 MiB — decoded as UTF-8
+  with invalid bytes replaced.
 - **A top-level HTML block that opens with a comment is stripped before
   injection** (free for notes), with the blank lines after it; text after the
   closing `-->` on that line stays. An inline comment, and a comment inside a
@@ -370,14 +383,17 @@ already contradicted both a page and the binary's own schema.
   output style.
 - **What loads every session from a repository** (2.1.283, from the request
   the CLI sends): `CLAUDE.md` and `.claude/CLAUDE.md` both — `AGENTS.md` and
-  `.claude/AGENTS.md` only when neither exists — with their imports and the
-  rules that scope nothing, each without frontmatter and trimmed; the body of
-  the output style `outputStyle` names (frontmatter `name` before file name);
-  and one listing entry per skill and command — `description`, else the first
-  non-empty body line (a heading's text, cut to 100), plus ` - when_to_use`,
-  cut to 1,536, none under `disable-model-invocation: true` — and per agent
-  with a `name` — its `description`. A skill's entry is named by its
-  directory. When the whole listing outgrows a budget that scales with the
+  `.claude/AGENTS.md` only when neither exists, nor a developer's
+  `CLAUDE.local.md`; the `claude-md-and-agents-md` setting that loads both is
+  ignored in project settings — with their imports and the rules that scope
+  nothing, each without frontmatter and trimmed; the body of the output style
+  `outputStyle` names (frontmatter `name` before file name); and one listing
+  entry per skill and command — `description`, else the first non-empty body
+  line (a heading's text, cut to 100; `Skill` or `Custom command` for an empty
+  body), plus ` - when_to_use`, cut to 1,536, none under
+  `disable-model-invocation` — and per agent with a `name` — its
+  `description`. A skill whose `paths:` scopes something waits for a matching
+  file and is not listed. A skill's entry is named by its directory. When the whole listing outgrows a budget that scales with the
   context window, some entries are sent as a name alone.
   `harnex validate always-loaded` measures this set.
 - **CLAUDE.md / rules / auto-memory are ADVISORY** — "no guarantee of strict

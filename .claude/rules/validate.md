@@ -30,8 +30,9 @@ turn:
 - Path-scoped rules: `max_scoped_lines` cap as Minor, unset by default. The
   always-loaded budget never applies to them — they cost context only on
   their own paths, so a cohesive long rule is not a defect.
-- Unparseable frontmatter returns the Blocker alone; load scope is then
-  unknown and no budget is asserted.
+- Unparseable frontmatter returns the Blocker alone and asserts no budget:
+  the runtime loads such a rule under whatever keys its repair recovers,
+  which is not the scope the author wrote.
 - `governs:` shape is checked wherever declared (`harness_core::governs` owns
   the grammar); `require_governs` (opt-in) demands one on path-scoped rules
   only — always-loaded rules cross no load boundary and may have no truth in

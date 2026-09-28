@@ -301,10 +301,10 @@ patterns covered out of the box:
   field — refused at every boundary one can be written
 - Claude Code spec compliance (rules / skills / agents / output-styles /
   settings frontmatter)
-- A character budget over everything the repository puts into every session
-  — memory files and their imports, rules without `paths:`, the selected
-  output style, each skill, command and agent listing entry — read the way
-  Claude Code loads it (`[validate.always_loaded] max_chars`)
+- A character budget over the files the repository puts into every session
+  — memory files and their imports, rules whose `paths:` scope nothing, the
+  selected output style, each skill, command and agent listing entry — read
+  the way Claude Code loads them (`[validate.always_loaded] max_chars`)
 - Hook wiring integrity — every `${CLAUDE_PROJECT_DIR}` path a hook names
   resolves and the script it spawns directly is executable, so a handler
   cannot fail open while the harness reads as wired

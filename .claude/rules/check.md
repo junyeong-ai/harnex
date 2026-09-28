@@ -72,15 +72,17 @@ written; a nested `CLAUDE.md` citing paths from its own directory resolves
 against the wrong file or none, and the frame is the same one Claude Code's
 own tools resolve in.
 
-The memory set is the two locations the runtime always reads (`CLAUDE.md`,
-`.claude/CLAUDE.md`), unconditionally, plus every nested `CLAUDE.md` the
-project owns — `harness-core::git` owns that set and why it is the project's
-ignore files and not the developer's. A walk would read the one a vendored
-package ships and resolve its paths here. `claudeMdExcludes` from both
-project settings scopes is honored for every memory file — a `CLAUDE.md` and
-a rule — because one the runtime never loads makes no claim; it is read
-through `always_loaded::Excludes`, which matches the absolute path as the
-runtime does, so a relative pattern excludes nothing. When git cannot
+The memory set is the project memory files the runtime reads at launch
+(`always_loaded::memory_files` owns which), unconditionally, plus every
+nested `CLAUDE.md` the project owns — `harness-core::git` owns that set and
+why it is the project's ignore files and not the developer's. A walk would
+read the one a vendored package ships and resolve its paths here.
+`claudeMdExcludes` in `.claude/settings.json` is honored for every memory
+file — a `CLAUDE.md` and a rule — because one the runtime never loads makes no
+claim; it is read through `always_loaded::Excludes`, which matches the
+absolute path as the runtime does, so a relative pattern excludes nothing.
+`settings.local.json` is the developer's, and a gate that read it would pass
+a tree locally that CI fails. When git cannot
 answer — no repository, dubious
 ownership — the nested set is declared unmeasured in `skipped` as
 `evidence.nested-memory` and everything else is still read; a git failure

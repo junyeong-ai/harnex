@@ -886,13 +886,18 @@ fn the_runtimes_own_exclude_list_is_honored() {
     // matched against the absolute path — a vendored example's paths would
     // otherwise be a Blocker about a file the runtime never reads, and a
     // relative pattern excludes nothing, so the file it names still loads and
-    // its claims still count.
+    // its claims still count. A developer's local settings are theirs: the
+    // same tree gets the same verdict wherever it is checked.
     let tmp = project();
     write(&tmp.path().join("harness.toml"), evidence_config());
     write(
         &tmp.path().join(".claude/settings.json"),
         "{\"claudeMdExcludes\": [\"examples/**/CLAUDE.md\", \"**/vendor/**/CLAUDE.md\", \
          \"**/.claude/rules/generated.md\"]}\n",
+    );
+    write(
+        &tmp.path().join(".claude/settings.local.json"),
+        "{\"claudeMdExcludes\": [\"**/crates/**/CLAUDE.md\"]}\n",
     );
     write(
         &tmp.path().join("CLAUDE.md"),
@@ -922,6 +927,26 @@ fn the_runtimes_own_exclude_list_is_honored() {
         "{:#?}",
         outcome.findings
     );
+}
+
+#[test]
+fn an_agents_md_is_read_where_the_runtime_reads_it() {
+    let tmp = project();
+    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(
+        &tmp.path().join("AGENTS.md"),
+        "Owner: [file: no/such/agents.rs:1].\n",
+    );
+    let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert_eq!(cited(&outcome), ["agents.rs"], "{:#?}", outcome.findings);
+
+    write(
+        &tmp.path().join("CLAUDE.md"),
+        "Owner: [file: no/such/root.rs:1].\n",
+    );
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert_eq!(cited(&outcome), ["root.rs"], "{:#?}", outcome.findings);
 }
 
 #[test]

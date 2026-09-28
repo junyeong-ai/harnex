@@ -24,9 +24,10 @@
 //!   target governs unconditional context cost; a rule that is read only
 //!   alongside the files it governs does not spend it, and auto-failing a
 //!   cohesive long rule is a false positive on a correct harness.
-//! - Never assert a budget on a rule whose frontmatter will not parse. Load
-//!   scope is then unknown, and a guess about which budget applies is worse
-//!   than the parse error already reported.
+//! - Never assert a budget on a rule whose frontmatter will not parse. The
+//!   runtime then loads it with whatever keys its repair recovers
+//!   (`always_loaded` reads that scope), which is not the scope the author
+//!   wrote, and the parse error already reported is the one defect to fix.
 
 use std::path::Path;
 
