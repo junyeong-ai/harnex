@@ -1,6 +1,6 @@
 ---
 paths:
-  - "./hooks/check-pre-write.*"
+  - "hooks/check-pre-write.*"
   - ".claude/settings.json"
 governs:
   concept: write-time convention enforcement
@@ -11,7 +11,7 @@ governs:
 
 # Write guard — PreToolUse enforcement
 
-`hooks/check-pre-write.sh` runs on every Edit/Write tool call BEFORE the
+`hooks/check-pre-write.sh` runs on every Edit, Write or MultiEdit call BEFORE the
 write completes. Exit 0 allows the write; exit 2 blocks it with a reason
 fed back to Claude via stderr. This is the strongest domain enforcement
 surface — `permissions.deny` controls WHICH tools run; the write guard

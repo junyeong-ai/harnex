@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse(Edit|Write): check the target file against write-time
+# PreToolUse(Edit|Write|MultiEdit): check the target file against write-time
 # conventions BEFORE the write completes. Exit 0 = allow, exit 2 = block
 # (stderr reason feeds back to Claude). Pure bash + jq.
 #

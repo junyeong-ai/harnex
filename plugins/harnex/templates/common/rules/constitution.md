@@ -1,6 +1,6 @@
 # Constitution
 
-Foundation laws. Always loaded (this is the one rule file with no `paths:`).
+Foundation laws. Always loaded: this rule carries no `paths:`.
 Imperatives only — rationale lives in commit bodies, not here.
 
 <!-- harnex-managed:start constitution-articles -->
@@ -23,9 +23,10 @@ that gap. A leaked secret is irreversible once pushed.
 Force-push, hard reset, blanket `git add`, `rm -rf` of roots, and arbitrary
 code execution are denied at the permission layer.
 
-## IV. Edits are formatted at the boundary
+## IV. Formatting lives at the boundary
 
-The formatter runs on every Edit/Write via a PostToolUse hook — style is the
+Where the language profile ships a formatter hook and the project configures
+that formatter, it runs on every Edit/Write via PostToolUse — style is the
 linter's job, never a rule the model must remember.
 
 ## V. The session never traps

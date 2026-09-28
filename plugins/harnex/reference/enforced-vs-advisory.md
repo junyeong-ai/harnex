@@ -11,7 +11,7 @@ thing that survives a confused, careless, or adversarial agent turn.
 | **Hooks** (PreToolUse / PermissionRequest exit 2 or `permissionDecision: deny`) | Run as the client at lifecycle events "regardless of what Claude decides." The only block that a reasoning model cannot talk itself past. |
 | **`permissions.deny` / `ask` / `allow`** | Client-enforced; deny wins, first match, merges across scopes. |
 | **Managed settings** | Highest precedence, cannot be overridden; org floors (`allowManagedPermissionRulesOnly`, `disableAllHooks`, `strictPluginOnlyCustomization`). |
-| **Sandbox** | Filesystem/network isolation for Bash, enforced by the OS on every process a command starts — the only layer that bounds what a shell command writes, so the enforcement floor is held in `sandbox.filesystem.denyWrite`. |
+| **Sandbox** | Filesystem/network isolation for Bash, enforced by the OS on every process a command starts — the only layer that bounds what a shell command writes, so where the enforcement-floor pattern is installed, the floor's Bash half is held in `sandbox.filesystem.denyWrite`. It holds only in a session the sandbox runs in. |
 
 ## Advisory — shapes behavior, no guarantee
 
@@ -38,27 +38,17 @@ thing that survives a confused, careless, or adversarial agent turn.
    computes it — a hook, a test, a validator, or a recorded count the next
    step must read before proceeding. State the computer beside the control;
    one with no computer is an observation for the lifecycle ledger, not a
-   rule. The measured failure shape: a review gate whose "stop at the
-   second round" lived in prose while no round count was recorded — it ran
-   eleven rounds, and clearing findings was indistinguishable from narrating
-   them away. The spec-workflow's own controls name theirs: `harnex plan
-   audit` computes the round budget, the disposition floor, the append-only
-   row contract, and whether the commit that lands a round's findings records
+   rule. The spec-workflow's controls name theirs: `harnex plan audit`
+   computes the round budget, the disposition floor, the append-only row
+   contract, and whether the commit that lands a round's findings records
    that round at all, and the shipped pre-commit arm holds them at the commit.
-   That last one is the same failure one layer down — a budget counting
-   records bounds nothing while recording stays the loop's own choice, and
-   fifty-four rounds landed on one spec against a budget of five before a gate
-   read the rows instead of the ledger. One layer down again: the loop writes
-   the ledger, so a budget any token it can write returns is a budget it hands
-   itself — a pass that disposed its rows and recorded the approval that ended
-   the gate bought back the whole count, every round. A control over a loop is
-   computed from something monotone under everything that loop can write. And
-   a control reads numbers, so the numbers answer to the page: a record stating
-   fewer findings than its own commit filed read as a converging log over a
-   filling plan, until the counts were held rank by rank to the rows.
-   The computer also decides what a control can be: a count sampled
-   from one reviewer carries no rule about falling, which is why the budget
-   counts rounds instead.
+   A control over a loop is computed from something monotone under everything
+   that loop can write: a count of what the loop chooses to record is a budget
+   it hands itself. The numbers a control reads answer to what they count,
+   held rank by rank to the rows rather than to a record's own summary. And
+   the computer decides what a control can be: a count sampled from one
+   reviewer carries no rule about falling, which is why the budget counts
+   rounds instead.
 
 ## Unmeasured is not passed
 
@@ -80,7 +70,7 @@ it. Every enforced surface harnex ships names its own:
 |---|---|---|
 | `lifecycle retire` | silence inferred from a record that could never have named the artifact | `unmeasured`, which fires no signal |
 | `plan audit` acceptance | a criterion nothing answered, counted as passed | `unmeasured`, blocking an approval exactly as a Blocker does |
-| `hooks/pre-commit` | a secret scan that failed, exiting like one that found nothing | a code of its own for findings, so a failure is `unjudged` rather than clean |
+| `hooks/pre-commit` | a secret scan that failed, exiting like one that found a secret | a code of its own for findings, so a failure is `unjudged` rather than a finding |
 | `lifecycle candidates` | an unwritten or unreadable ledger, read as a corpus that produced nothing | `observations_read` beside the candidates, and an error where the read failed |
 | `guard stop-audit` | a probe that gave no answer, read as "there is work" | a skip naming why, having spent nothing |
 

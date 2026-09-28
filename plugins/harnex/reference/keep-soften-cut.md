@@ -45,7 +45,8 @@ frontier models (context rot).
 ## SOFTEN — advisory / opt-in, escape hatch mandatory
 
 - Numeric caps (line counts) — a cohesive 210-line file is not a defect; frame
-  as "review for domain mixing," not auto-fail.
+  as "review for domain mixing," not auto-fail. What loads every session is
+  the exception: it is paid on every turn, so its budget gates.
 - Side-effect *verb* detection over a description — matches prose, not intent;
   a model judges "does this skill perform the side effect" better than `\bsend\b`.
 - Unknown-frontmatter-key rejection — valuable but a hardcoded key list lags

@@ -49,7 +49,7 @@ An artifact is a retirement candidate when ALL of the following hold
 is adopted; otherwise verify them by hand at a retro):
 - No finding, decision, or reference attributed to it in 90+ days
   (Silent / Stale signals).
-- Not listed as a foundation artifact (constitution, governance, this file).
+- Not a foundation artifact (§ Exempt artifacts below).
 - No active consumer (NoConsumers — grep the codebase for the slug; check
   backlinks). For a rule the runtime loads through `paths:`, this counts
   citations and not loads: a rule read on every file it governs still shows
