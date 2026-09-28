@@ -11,8 +11,9 @@
 //! record from any transport that fills the same shape is checked the same way.
 //! [`serve::serve`] is the local one. It serves the page's directory on
 //! 127.0.0.1 under a random path, sets `script.js` after the page, and ends on
-//! one answer set, a changed source, or its deadline. [`words`] holds what
-//! harnex itself says around a page, per locale.
+//! one answer set, taken or refused whole because a source changed, or on its
+//! deadline. [`words`] holds what harnex itself says around a page, per
+//! locale.
 //!
 //! ## What this module refuses to do
 //!

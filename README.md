@@ -276,12 +276,15 @@ events the page's own script can hear. The asks file (`export schema asks`)
 names what is asked and carries the caller's version of what each ask shows.
 The page's directory is served on 127.0.0.1 under a random path, the address
 goes to stderr and the browser, and the command ends on one answer set
-(exit 0), a source that changed while the page was open (`stale`, exit 1), or
+(exit 0), an answer set sent after a source changed (`stale`, exit 1), or
 `--within` minutes (`unanswered`, exit 1). Each answer returns with the
 version, label and answers its ask showed, so `ask current` can tell, when
 the answers are recorded, which still hold against the asks as they read
 then. A sandboxed session on macOS binds the port only with
-`sandbox.network.allowLocalBinding`.
+`sandbox.network.allowLocalBinding`. On Linux the browser receives the
+address as a command-line argument, which other users of the machine can
+read; on a shared host, serve with `--no-open` and open the address from
+stderr.
 
 By default every command emits one JSON envelope on stdout; the explicit raw
 modes (`export schema --raw`, `completions --raw`) emit the bare artifact for

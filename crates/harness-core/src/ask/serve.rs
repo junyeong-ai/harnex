@@ -1,5 +1,6 @@
-//! One decision page served on 127.0.0.1 until one answer set is taken, a
-//! source turns out to have changed, or the time given runs out.
+//! One decision page served on 127.0.0.1 until an answer set arrives, taken
+//! or refused whole because a source changed since the page was served, or
+//! the time given runs out.
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};

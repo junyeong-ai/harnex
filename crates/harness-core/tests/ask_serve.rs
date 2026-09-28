@@ -302,7 +302,7 @@ fn a_source_changed_while_the_page_was_open_ends_the_wait_as_stale() {
         reply["problem"]
             .as_str()
             .unwrap()
-            .contains("원천 문서가 바뀌었다")
+            .contains("원천 문서가 바뀌어서 이 답은 받지 않았다")
     );
     assert!(matches!(served.outcome().unwrap(), Outcome::Stale { .. }));
 }

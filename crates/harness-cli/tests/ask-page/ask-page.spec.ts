@@ -164,7 +164,7 @@ test("a source changed while the page was open closes it as stale", async ({ pag
   await tab.getByLabel("동의").check();
   await tab.locator(".ask-send").click();
   await expect(tab.locator(".ask-status")).toHaveText(
-    "이 페이지를 연 뒤 원천 문서가 바뀌었다. 세션이 페이지를 다시 연다.",
+    "이 페이지를 연 뒤 원천 문서가 바뀌어서 이 답은 받지 않았다. 세션에 그렇게 알렸다.",
   );
   await expect(tab.getByLabel("동의")).toBeDisabled();
   expect(await tab.evaluate(() => (window as any).heard)).toEqual([
