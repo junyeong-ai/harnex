@@ -116,17 +116,14 @@ strategy = "file-path-line"
 
 # The enforcement floor's second half. The first — refusing a git command
 # that would skip the hook stack — is wired for Bash in every scaffold and
-# reads nothing here. This section arms the freeze, which the
-# enforcement-floor pattern wires for Edit|Write|MultiEdit: harness.toml,
-# .claude/settings.json and .claude/settings.local.json are built in, and the
-# project's own gate-defining files are listed here (a trailing / freezes a
-# directory). Without that wiring the Edit tools pass the list by. A Bash
-# command meets it in the sandbox's sandbox.filesystem.denyWrite, which
-# `harnex check` holds to cover every entry. The operator's break-glass is
-# HARNEX_ALLOW_FLOOR_EDIT: "1" in the settings.local.json env block, and it
-# opens the Edit tools only.
-[guard.floor]
-protected_paths = ["hooks/", ".gitleaks.toml"]
+# reads nothing here. The freeze is the enforcement-floor pattern's to arm,
+# and it arms three things together: this section, the Edit|Write|MultiEdit
+# wiring, and the sandbox.filesystem.denyWrite entry `harnex check` names for
+# each path, since a declared floor is held to its sandbox entries.
+# harness.toml and the two settings files are built in; list the project's
+# own gate-defining files (a trailing / freezes a directory).
+# [guard.floor]
+# protected_paths = ["hooks/", ".gitleaks.toml"]
 
 # The promotion-and-retirement loop `governance.md` and `artifact-lifecycle.md`
 # describe. Every threshold has a default, so the section is declared empty on

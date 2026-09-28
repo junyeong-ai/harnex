@@ -103,14 +103,6 @@ content = { kind = "merge", key = "hooks" }
 template = "common/hooks.json"
 destination = ".claude/settings.json"
 
-# The floor `harness.toml` declares, held where the Bash sandbox reads it.
-# `harnex check` names each entry missing when `[guard.floor]` changes.
-[[artifact]]
-tier = "foundation"
-content = { kind = "merge", key = "sandbox.filesystem.denyWrite" }
-template = "common/sandbox.deny-write.json"
-destination = ".claude/settings.json"
-
 [[artifact]]
 tier = "foundation"
 content = { kind = "managed" }

@@ -29,9 +29,8 @@ guides editing it, not using it):
   `<!-- harnex-managed:start <slug> -->` / `<!-- harnex-managed:end <slug> -->`
   sentinels bounding the harnex-owned region. `regenerate` overwrites only
   inside sentinels; everything outside is project-authored. `.claude/settings.json`
-  is JSON (no comments), so its partition is **item-level within** `permissions`,
-  `hooks` and `sandbox.filesystem.denyWrite` — harnex owns the entries it
-  generated, each identified by its
+  is JSON (no comments), so its partition is **item-level within** `permissions`
+  and `hooks` — harnex owns the entries it generated, each identified by its
   template shape, and an operator's `extend` additions and any incumbent
   hand-rolled entries are project-owned and survive regenerate. Reading that as
   whole-key ownership is what would erase them. Every other top-level key is

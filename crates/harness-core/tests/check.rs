@@ -226,7 +226,7 @@ fn every_floor_path_the_sandbox_leaves_writable_is_named_with_its_entry() {
     let cfg = load_cfg(&tmp, &floor_config_toml());
     write(
         &tmp.path().join(".claude/settings.json"),
-        r#"{"sandbox":{"filesystem":{"denyWrite":["./harness.toml","./hooks/pre-commit","./.github"]}}}"#,
+        r#"{"sandbox":{"filesystem":{"denyWrite":["./hooks/pre-commit","./.github"]}}}"#,
     );
 
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
@@ -236,12 +236,8 @@ fn every_floor_path_the_sandbox_leaves_writable_is_named_with_its_entry() {
         .iter()
         .map(|f| f.hint.as_deref().unwrap())
         .collect();
-    assert_eq!(hints.len(), 3, "{hints:?}");
-    for entry in [
-        "./.claude/settings.json",
-        "./.claude/settings.local.json",
-        "./hooks",
-    ] {
+    assert_eq!(hints.len(), 2, "{hints:?}");
+    for entry in ["./harness.toml", "./hooks"] {
         assert!(
             hints.iter().any(|h| h.contains(&format!("\"{entry}\""))),
             "no finding hands over {entry}: {hints:?}"
@@ -255,9 +251,7 @@ fn a_settings_file_that_projects_the_floor_leaves_nothing_to_report() {
     let cfg = load_cfg(&tmp, &floor_config_toml());
     write(
         &tmp.path().join(".claude/settings.json"),
-        r#"{"sandbox":{"filesystem":{"denyWrite":[
-            "./harness.toml","./.claude/settings.json","./.claude/settings.local.json",
-            "./hooks","./.github/workflows"]}}}"#,
+        r#"{"sandbox":{"filesystem":{"denyWrite":["./harness.toml","./hooks","./.github/workflows"]}}}"#,
     );
 
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
@@ -271,14 +265,27 @@ fn a_settings_file_that_projects_the_floor_leaves_nothing_to_report() {
 }
 
 #[test]
-fn a_floor_with_no_settings_file_to_read_is_declared_unjudged() {
+fn a_floor_with_no_settings_file_hands_the_sandbox_nothing() {
     let tmp = project();
     let cfg = load_cfg(&tmp, &floor_config_toml());
 
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
 
+    assert!(outcome.run.contains(&"guard.floor".to_string()));
+    assert_eq!(floor_findings(&outcome).len(), 3, "{:?}", outcome.findings);
+}
+
+#[test]
+fn a_floor_whose_settings_cannot_be_read_is_declared_unjudged() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &floor_config_toml());
+    write(&tmp.path().join(".claude/settings.json"), "{ not json");
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+
     assert!(!outcome.run.contains(&"guard.floor".to_string()));
     assert!(outcome.skipped.iter().any(|s| s.slug == "guard.floor"));
+    assert!(floor_findings(&outcome).is_empty());
 }
 
 #[test]
