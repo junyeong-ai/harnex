@@ -32,7 +32,7 @@
 # repo ships has to show its own friction here, on the corpus that builds it.
 
 [meta]
-harnex_version = ">=0.30, <0.31"
+harnex_version = ">=0.31, <0.32"
 
 # What the retirement sweep walks. Without a declared kind the sweep runs
 # over nothing and answers success — an enabled loop that processes nothing
