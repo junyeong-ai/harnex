@@ -664,7 +664,7 @@ impl Config {
         Self::load_from(&path).map(|cfg| (cfg, path))
     }
 
-    /// Load + validate from a specific file. Lower-level than [`load`].
+    /// Load + validate from a specific file. Lower-level than [`Self::load`].
     pub fn load_from(path: &Path) -> Result<Self> {
         let contents = std::fs::read_to_string(path).map_err(|e| Error::IoFailure {
             path: path.to_path_buf(),

@@ -12,8 +12,8 @@
 //! Where a call site does derive it, `#[serde(rename_all)]` spells the wire
 //! string a second time, and a test beside that type holds the two equal.
 
-/// Declares a closed wire enum: variants, [`ALL`](Self::ALL), `as_str` and
-/// `from_str` from one list.
+/// Declares a closed wire enum: variants, `ALL`, `as_str` and `from_str` from
+/// one list.
 macro_rules! wire_enum {
     (
         $(#[$enum_meta:meta])*

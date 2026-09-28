@@ -32,10 +32,8 @@ pub trait ConsumerDetector: Send + Sync {
 }
 
 wire_enum! {
-    /// Closed set of supported consumer detection strategies. Adding a variant
-    /// requires updating [`from_str`], [`as_str`], [`ALL`], and the match in
-    /// [`consumer_detector_for`] — all enforced at compile time via exhaustive
-    /// `match`.
+    /// Closed set of supported consumer detection strategies, each built by
+    /// [`consumer_detector_for`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ConsumerStrategy {
         Grep => "grep",

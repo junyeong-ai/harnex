@@ -49,6 +49,11 @@ unsafe_code = "forbid"
 # that adds zero value for a closed set.
 should_implement_trait = "allow"
 
+[workspace.lints.rustdoc]
+# The docs are for whoever works on harnex and are built with
+# --document-private-items (ci.yml), where a link to a private item resolves.
+private_intra_doc_links = "allow"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

@@ -22,10 +22,8 @@ use crate::error::{Error, Result};
 use crate::wire_enum::wire_enum;
 
 wire_enum! {
-    /// Closed set of supported codegen source serialization formats. Adding a
-    /// variant requires updating [`from_str`], [`as_str`], [`ALL`], and the
-    /// match in [`load_source`] — all of which the compiler enforces via
-    /// exhaustive `match` on `Self`.
+    /// Closed set of supported codegen source serialization formats, each read
+    /// by [`load_source`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum SourceFormat {
         Toml => "toml",

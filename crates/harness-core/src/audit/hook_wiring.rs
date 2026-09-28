@@ -42,13 +42,14 @@
 //!   `mcp_tool`, `prompt`, and `agent` types carry no path this auditor can
 //!   resolve, and their fields happening to hold an anchored string says
 //!   nothing about a file.
-//! - Never check the executable bit on a script something else runs. `bash
-//!   <script>` runs a non-executable file, and the bit does not survive every
-//!   checkout configuration, so a mode check there would report a working hook
-//!   as broken. The executable a handler spawns ITSELF is the other case and is
-//!   checked: `args` present means the runtime runs `command` with no shell, so
-//!   a missing bit is EACCES before the script starts. The wrapper's own
-//!   fail-open cannot cover that — it never runs — and nothing else reports it.
+//! - Never check the executable bit on a script something else runs.
+//!   `bash <script>` runs a non-executable file, and the bit does not
+//!   survive every checkout configuration, so a mode check there would
+//!   report a working hook as broken. The executable a handler spawns ITSELF
+//!   is the other case and is checked: `args` present means the runtime runs
+//!   `command` with no shell, so a missing bit is EACCES before the script
+//!   starts. The wrapper's own fail-open cannot cover that — it never runs —
+//!   and nothing else reports it.
 //! - Never interpret a runner's own dispatch convention. `args[0]` naming a
 //!   verifier relative to a wrapper's directory is a contract the wrapper
 //!   owns, not the spec. Whether such an artifact is present is reported by

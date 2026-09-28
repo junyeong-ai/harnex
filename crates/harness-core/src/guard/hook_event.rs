@@ -17,7 +17,7 @@ pub struct HookEvent {
     pub transcript_path: Option<String>,
     #[serde(default)]
     pub permission_mode: Option<String>,
-    /// Raw event JSON. Event-specific fields are accessed via [`field`].
+    /// Raw event JSON. Event-specific fields are accessed via [`Self::field`].
     #[serde(flatten)]
     pub raw: serde_json::Map<String, serde_json::Value>,
 }

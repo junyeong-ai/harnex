@@ -14,10 +14,8 @@ pub trait Renderer: Send + Sync {
 }
 
 wire_enum! {
-    /// Closed set of supported renderer strategies. Adding a variant requires
-    /// updating [`from_str`], [`as_str`], [`ALL`], and the match in
-    /// [`renderer_for`] — all of which the compiler enforces via exhaustive
-    /// `match` on `Self`.
+    /// Closed set of supported renderer strategies, each built by
+    /// [`renderer_for`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum RendererStrategy {
         TomlArrayAssignment => "toml-array-assignment",
