@@ -19,8 +19,10 @@ configuration and freezes nothing, so `hooks/check-floor.sh` is wired for
 `Bash` in every scaffold and keeps standing where `harness.toml` has been
 removed, which no Edit can do but any Bash call can. This pattern adds the
 second entry, `Edit|Write|MultiEdit`, which freezes the files that define what
-the gates verify. A failing gate is fixed at its cause, never by weakening what
-the gate verifies.
+the gates verify. A Bash command meets the same files in the sandbox: the
+scaffold merges the floor into `sandbox.filesystem.denyWrite`, and
+`harnex check` reports a frozen path that list leaves uncovered. A failing gate
+is fixed at its cause, never by weakening what the gate verifies.
 
 What the tripwire reads is the command line, as the shell composes it, and a
 heredoc body that line feeds. So it answers about a git invocation spelled in
@@ -40,7 +42,18 @@ where the gate files are not the work product.
 - **The protected set has one owner.** `harness.toml` `[guard.floor]`
   `protected_paths` names the project's gate-defining files; `harness.toml`,
   `.claude/settings.json` and `.claude/settings.local.json` are built into
-  the floor itself. Do not restate the list here or anywhere else.
+  the floor itself. Do not restate the list here or anywhere else;
+  `sandbox.filesystem.denyWrite` is its projection, and `harnex check` names
+  the entry to add when `protected_paths` grows.
+- **Bash writes are the sandbox's.** What a shell command writes is decided by
+  every program it starts, so no reading of the command line refuses it; the
+  sandbox enforces `denyWrite` on each of those processes. It holds only where
+  the sandbox runs, and does nothing where it is off. A session that skips
+  permission prompts retries a denied command unsandboxed without asking
+  unless `sandbox.allowUnsandboxedCommands` is `false`. The grant opens the
+  Edit tools only, so a Bash write into the floor — and a git checkout or merge
+  that must rewrite a frozen file — is the operator's to run, outside the
+  agent.
 - **Break-glass is the operator's, read live.** Deliberate harness work
   proceeds when the operator sets `HARNEX_ALLOW_FLOOR_EDIT: "1"` in the
   `env` block of the **main** checkout's `.claude/settings.local.json` —
@@ -52,8 +65,7 @@ where the gate files are not the work product.
   (not proven guilty); an override that cannot be read is an absent one (not
   proven authorised). Do not "fix" either direction into the other.
 - **Tripwire, not boundary.** A shell is Turing-complete, so these stay out
-  of scope: a write smuggled through Bash (`sed -i`, redirection, heredoc),
-  an obfuscated bypass (a git alias, `sh -c`), a reroute that hands git a
+  of scope: an obfuscated bypass (a git alias, `sh -c`), a reroute that hands git a
   file instead of naming the key (`include.path`, `GIT_CONFIG_GLOBAL`), and
   a backtick substitution on the command line, whose mark is also the
   code-span mark — reading it there refuses documents that quote a flag,

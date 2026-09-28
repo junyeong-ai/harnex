@@ -18,8 +18,11 @@
 //!
 //! This is a tripwire for the casual bypass, not a security boundary — a
 //! shell is Turing-complete, so local hook enforcement is inherently
-//! evadable, and a write smuggled through Bash (`sed -i`, redirection) is
-//! out of scope. Path matching is byte-exact under the root and
+//! evadable. For that reason a Bash write into the floor is not judged from
+//! its command line at all: [`sandbox`] holds the floor in the Bash sandbox,
+//! which the operating system enforces on every process a command starts, and
+//! the command-line reading keeps to what no such layer can see — git skipping
+//! its own hooks. Path matching is byte-exact under the root and
 //! case-insensitive for the entry, so on a case-insensitive filesystem a
 //! deliberately odd-cased root spelling reaches the same file without
 //! matching — an adversarial evasion in the same class, not a
@@ -38,6 +41,7 @@
 pub mod bypass;
 pub mod command_line;
 pub mod grant;
+pub mod sandbox;
 
 use std::path::{Path, PathBuf};
 
@@ -54,6 +58,14 @@ pub const BUILT_IN_PROTECTED: [&str; 3] = [
     ".claude/settings.json",
     ".claude/settings.local.json",
 ];
+
+/// Every entry the floor freezes: the built-in set, then what the project
+/// declares.
+pub fn floor_entries(protected: &[String]) -> impl Iterator<Item = &str> {
+    BUILT_IN_PROTECTED
+        .into_iter()
+        .chain(protected.iter().map(String::as_str))
+}
 
 /// One proposed tool call, judged. The CLI matches on this to speak the
 /// PreToolUse hook contract directly, so it is never serialised — no wire
@@ -240,17 +252,14 @@ impl FloorAuditor {
 /// is an exact repo-relative path.
 fn protected_entry<'a>(protected: &'a [String], rel_path: &str) -> Option<&'a str> {
     let lower = rel_path.to_lowercase();
-    BUILT_IN_PROTECTED
-        .into_iter()
-        .chain(protected.iter().map(String::as_str))
-        .find(|entry| {
-            let entry_lower = entry.to_lowercase();
-            if entry_lower.ends_with('/') {
-                lower.starts_with(&entry_lower)
-            } else {
-                lower == entry_lower
-            }
-        })
+    floor_entries(protected).find(|entry| {
+        let entry_lower = entry.to_lowercase();
+        if entry_lower.ends_with('/') {
+            lower.starts_with(&entry_lower)
+        } else {
+            lower == entry_lower
+        }
+    })
 }
 
 #[cfg(test)]

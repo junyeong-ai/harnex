@@ -40,6 +40,13 @@ Validator slugs (current):
 - `governs`
 - `codegen`
 - `policy.permissions`
+- `guard.floor`
+
+The `guard.floor` arm holds `sandbox.filesystem.denyWrite` in
+`.claude/settings.json` to cover every path the floor freezes
+(`floor-sandbox-uncovered`, the entry to add in its hint). Like governs it
+ignores `--since`: a path added to `[guard.floor]` breaks the projection as
+surely as an entry dropped from the settings.
 
 The `governs` arm shares the rule validator's gate (`[validate.rules]`) and
 glob: shape findings are the validator's, and this arm asks only the

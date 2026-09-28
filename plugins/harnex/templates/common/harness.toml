@@ -112,9 +112,11 @@ strategy = "file-path-line"
 # enforcement-floor pattern wires for Edit|Write|MultiEdit: harness.toml,
 # .claude/settings.json and .claude/settings.local.json are built in, and the
 # project's own gate-defining files are listed here (a trailing / freezes a
-# directory). Without that wiring the list is inert. The operator's
-# break-glass is HARNEX_ALLOW_FLOOR_EDIT: "1" in the settings.local.json env
-# block.
+# directory). Without that wiring the Edit tools pass the list by. A Bash
+# command meets it in the sandbox's sandbox.filesystem.denyWrite, which
+# `harnex check` holds to cover every entry. The operator's break-glass is
+# HARNEX_ALLOW_FLOOR_EDIT: "1" in the settings.local.json env block, and it
+# opens the Edit tools only.
 [guard.floor]
 protected_paths = ["hooks/", ".gitleaks.toml"]
 
