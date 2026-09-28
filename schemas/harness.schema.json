@@ -113,6 +113,7 @@
       "default": null
     }
   },
+  "additionalProperties": false,
   "required": [
     "meta"
   ],
@@ -125,6 +126,7 @@
           "type": "string"
         }
       },
+      "additionalProperties": false,
       "required": [
         "harnex_version"
       ]
@@ -189,7 +191,8 @@
           },
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "VerifierDecl": {
       "type": "object",
@@ -217,6 +220,7 @@
           "default": null
         }
       },
+      "additionalProperties": false,
       "required": [
         "provenance",
         "strategy"
@@ -281,6 +285,7 @@
           "default": []
         }
       },
+      "additionalProperties": false,
       "required": [
         "storage_dir"
       ]
@@ -293,6 +298,7 @@
         },
         "payload_schema": true
       },
+      "additionalProperties": false,
       "required": [
         "name",
         "payload_schema"
@@ -308,7 +314,8 @@
           },
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "CodegenGroupDecl": {
       "type": "object",
@@ -335,6 +342,7 @@
           "default": []
         }
       },
+      "additionalProperties": false,
       "required": [
         "name",
         "source",
@@ -364,6 +372,7 @@
           "default": null
         }
       },
+      "additionalProperties": false,
       "required": [
         "path",
         "begin",
@@ -392,7 +401,8 @@
           },
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "PermissionsPolicy": {
       "type": "object",
@@ -426,7 +436,8 @@
           },
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "VersionPinDecl": {
       "type": "object",
@@ -449,6 +460,7 @@
           "default": null
         }
       },
+      "additionalProperties": false,
       "required": [
         "tool",
         "version",
@@ -535,11 +547,13 @@
           ],
           "default": null
         }
-      }
+      },
+      "additionalProperties": false
     },
     "RoutinesPolicy": {
       "description": "Enables `.claude/routines/*.md` shape validation. No knobs yet: the\ngrammar is closed and the schedule states are the query's, not a\npolicy's.",
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false
     },
     "RulesPolicy": {
       "type": "object",
@@ -574,7 +588,8 @@
           "type": "boolean",
           "default": false
         }
-      }
+      },
+      "additionalProperties": false
     },
     "SkillsPolicy": {
       "type": "object",
@@ -603,7 +618,8 @@
           "type": "boolean",
           "default": false
         }
-      }
+      },
+      "additionalProperties": false
     },
     "AgentsPolicy": {
       "type": "object",
@@ -613,7 +629,8 @@
           "type": "boolean",
           "default": false
         }
-      }
+      },
+      "additionalProperties": false
     },
     "OutputStylesPolicy": {
       "type": "object",
@@ -623,7 +640,8 @@
           "type": "boolean",
           "default": false
         }
-      }
+      },
+      "additionalProperties": false
     },
     "CommitMsgPolicy": {
       "type": "object",
@@ -636,7 +654,8 @@
           },
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "CommitMsgTrailerDecl": {
       "type": "object",
@@ -662,6 +681,7 @@
           "default": false
         }
       },
+      "additionalProperties": false,
       "required": [
         "key"
       ]
@@ -730,7 +750,8 @@
           },
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "ConsumerDetectorDecl": {
       "type": "object",
@@ -755,6 +776,7 @@
           "default": []
         }
       },
+      "additionalProperties": false,
       "required": [
         "kind",
         "strategy",
@@ -771,7 +793,8 @@
             "slugs": []
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "RetirementExemptDecl": {
       "type": "object",
@@ -790,7 +813,8 @@
           },
           "default": []
         }
-      }
+      },
+      "additionalProperties": false
     },
     "GuardConfig": {
       "type": "object",
@@ -817,7 +841,8 @@
           ],
           "default": null
         }
-      }
+      },
+      "additionalProperties": false
     },
     "StopAuditConfig": {
       "type": "object",
@@ -850,6 +875,7 @@
           "default": ".harness/_audit_retry"
         }
       },
+      "additionalProperties": false,
       "required": [
         "critique_skill",
         "has_changes_check"
