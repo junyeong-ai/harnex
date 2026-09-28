@@ -49,7 +49,7 @@ placeholders. Read the source, not the whole tree.
 | CI pipeline + gates | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, `turbo.json` | hook event selection; suggested `extend pattern` |
 | Test framework | `vitest.config`, `pytest.ini`, Cargo test layout | `<lang>-conventions.md` testing section |
 | Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners in deps/CI | secret-scan recommendation |
-| Cloud CLIs | `gcloud`/`gsutil` or `aws` in CI config or task scripts | `gcp-strict` (Google Cloud) / `aws-strict` (AWS) composed into `permissions` |
+| Cloud and infrastructure CLIs | `gcloud`/`gsutil`, `aws`, `terraform`, `kubectl` in CI config or task scripts | each strict profile whose denies name a CLI found, composed into `permissions`: `gcp-strict` names `gcloud`, `gsutil`, `terraform` and `kubectl`, `aws-strict` names `aws` (`policy/profiles.rs` owns the lists) |
 | **Enforced invariants** | the enforcer sweep below — run it, do not sample it | `extend rule` bodies; the scaffold report's rule candidates |
 
 A concern with no signal keeps its template default and is noted "none

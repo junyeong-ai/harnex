@@ -132,8 +132,8 @@ it because their content comes from the project rather than from a template:
 - For Rust, `rustfmt.toml` carrying the edition declared in `Cargo.toml` —
   per-file `rustfmt` does not read the manifest and would otherwise format to
   a different style than `cargo fmt` (language-matrix).
-- Composing `gcp-strict` or `aws-strict` into `permissions` where exploration
-  Phase 2's cloud-CLI row found that cloud's CLI in use.
+- Composing into `permissions` the strict profiles exploration Phase 2's
+  cloud and infrastructure CLI row names for the CLIs it found.
 - The gate-driver grant, from the task declaration Step 1 already read (the
   language-matrix fingerprint table). A project whose gates run through `just`,
   `make`, `poe` or `task` prompts on every gate invocation without it, and the
