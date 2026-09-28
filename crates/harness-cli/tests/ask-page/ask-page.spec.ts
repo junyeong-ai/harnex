@@ -162,6 +162,19 @@ test("a page that breaks the promise says so and sends nothing", async ({ page: 
   expect(await tab.evaluate(() => (window as any).heard)).toEqual([]);
 });
 
+test("a page under a strict content security policy turns on and sends", async ({ page: tab }) => {
+  const strict = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; connect-src 'self'">
+</head><body>${FIELDS}<div data-ask-send>여기서는 고를 수 없다.</div></body></html>`;
+  const served = await serve(strict);
+  await tab.goto(served.url);
+
+  await tab.getByLabel("동의").check();
+  await tab.locator(".ask-send").click();
+  await expect(tab.locator(".ask-status")).toHaveText("보냈다. 세션이 답을 받았다. 이 창은 닫아도 된다.");
+  expect((await served.exit).code).toBe(0);
+});
+
 test("a source changed while the page was open closes it as stale", async ({ page: tab }) => {
   const served = await serve(page(FIELDS));
   await tab.goto(served.url);

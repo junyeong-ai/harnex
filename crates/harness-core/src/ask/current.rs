@@ -41,9 +41,10 @@ impl Current {
 
 /// Each answer's standing against `now`, in the order they were answered. An
 /// answer holds only while its ask is asked under the same id, version and
-/// label with the same answers offered, since the caller's version may not
-/// cover what the page offered. A set asked together holds whole or not at
-/// all, under the sets `now` declares.
+/// label with the same answers offered, in the same order and under the same
+/// note rules, since the caller's version may not cover what the page offered.
+/// A set asked together holds whole or not at all, under the sets `now`
+/// declares.
 pub fn current(answers: &[Answer], now: &Asks) -> Current {
     let mut items: Vec<Standing> = answers
         .iter()

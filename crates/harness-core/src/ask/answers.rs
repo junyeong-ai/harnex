@@ -20,6 +20,8 @@ pub struct Answer {
     /// The ask's version as the caller gave it.
     pub version: String,
     pub label: String,
+    /// Every answer the ask offered, in the order it offered them; a later
+    /// order that differs is a different offer.
     pub offered: Vec<Offered>,
     pub answer: String,
     /// The person's own words, where the answer takes them.
