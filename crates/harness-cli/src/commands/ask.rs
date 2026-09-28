@@ -7,7 +7,7 @@ use std::time::Duration;
 use clap::Subcommand;
 
 use harness_core::ask::answers::{Outcome, read_answered};
-use harness_core::ask::asks::Asks;
+use harness_core::ask::asks::{Asks, Locale};
 use harness_core::ask::current::current;
 use harness_core::ask::serve::{Browser, Serving, SystemBrowser, serve};
 use harness_core::error::{Error, Result};
@@ -43,6 +43,20 @@ pub enum AskCommand {
         /// The asks file as it reads now
         asks: PathBuf,
     },
+    /// Every sentence `ask serve` may put on a page in one locale, before any
+    /// page is served: what the page script shows and what a refusal says.
+    /// `{name}` marks a value filled where it is shown
+    Words {
+        /// A locale an asks file can name as its `locale`
+        #[arg(value_parser = locale_values())]
+        locale: String,
+    },
+}
+
+/// Source of truth for the `locale` value_parser — derives from
+/// [`Locale::ALL`], so a locale added to the catalog is offered here.
+fn locale_values() -> Vec<&'static str> {
+    Locale::ALL.iter().map(|l| l.as_str()).collect()
 }
 
 pub fn run<W: Write>(cmd: AskCommand, out: &mut W) -> Result<ExitCode> {
@@ -86,6 +100,14 @@ pub fn run<W: Write>(cmd: AskCommand, out: &mut W) -> Result<ExitCode> {
             };
             write_envelope_success(out, standing)?;
             Ok(exit)
+        }
+        AskCommand::Words { locale } => {
+            let locale = Locale::from_str(&locale).ok_or_else(|| Error::ConfigInvalid {
+                message: format!("unknown locale '{locale}'"),
+                location: None,
+            })?;
+            write_envelope_success(out, locale.words())?;
+            Ok(ExitCode::SUCCESS)
         }
     }
 }
