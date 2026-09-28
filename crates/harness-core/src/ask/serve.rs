@@ -1,7 +1,7 @@
 //! One decision page served on 127.0.0.1 until one answer set is taken, a
 //! source turns out to have changed, or the time given runs out.
 
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -17,15 +17,25 @@ use crate::error::{Error, Result};
 
 const SCRIPT: &str = include_str!("script.js");
 
-/// How long a connection may take to send its request. A browser opens
-/// connections it may never use, and one of those must not hold the page.
-const IDLE: Duration = Duration::from_secs(10);
-const WRITE_LIMIT: Duration = Duration::from_secs(10);
-/// A browser keeps a handful of connections to one host. Anything on this
-/// machine can open more, and holding every one would let them run the
-/// process out of descriptors, or arrive faster than they are taken and keep
-/// the loop from its deadline.
-const CONNECTIONS: usize = 64;
+/// What one connection may hold of a loop that serves them all in turn.
+struct Limits {
+    /// How long a connection may go without moving: sending its request from
+    /// when it was taken, or taking any of its reply. A browser opens
+    /// connections it may never use, and stops taking a reply it no longer
+    /// wants, such as a paused video.
+    idle: Duration,
+    /// How many connections are held at once; the rest wait in the listen
+    /// backlog. A browser keeps a handful to one host, and anything on this
+    /// machine can open more: holding every one would let them run the process
+    /// out of descriptors, or arrive faster than they are taken and keep the
+    /// loop from its deadline.
+    connections: usize,
+}
+
+const LIMITS: Limits = Limits {
+    idle: Duration::from_secs(10),
+    connections: 64,
+};
 const POLL: Duration = Duration::from_millis(10);
 const OPENER_WAIT: Duration = Duration::from_secs(5);
 
@@ -86,6 +96,15 @@ pub fn serve(
     browser: Option<&dyn Browser>,
     announce: &mut dyn FnMut(&str),
 ) -> Result<Outcome> {
+    serve_under(serving, browser, announce, &LIMITS)
+}
+
+fn serve_under(
+    serving: &Serving<'_>,
+    browser: Option<&dyn Browser>,
+    announce: &mut dyn FnMut(&str),
+    limits: &Limits,
+) -> Result<Outcome> {
     let site = Site::of(serving.page)?;
     let sources = read_sources(serving.asks, serving.base)?;
     let token = token()?;
@@ -130,33 +149,77 @@ pub fn serve(
             })?;
     }
 
+    // Nothing here waits on one connection: each is read and written as far
+    // as it goes without blocking, so a reader that stops cannot hold the
+    // others or the deadline. Once an answer set is taken the rest are
+    // dropped, and the command ends when its reply is written or cannot be.
     let mut open: Vec<Connection> = Vec::new();
+    let mut settled: Option<Outcome> = None;
     loop {
         if Instant::now() >= deadline {
-            return Ok(Outcome::Unanswered { url });
+            return Ok(settled.unwrap_or(Outcome::Unanswered { url }));
         }
-        let mut moved = admit(&listener, &mut open)?;
+        let mut moved = settled.is_none() && admit(&listener, &mut open, limits)?;
         let mut i = 0;
         while i < open.len() {
-            match open[i].pump() {
-                Pumped::Waiting if open[i].since.elapsed() < IDLE => i += 1,
-                Pumped::Waiting | Pumped::Gone => {
-                    open.swap_remove(i);
-                }
-                Pumped::Parsed(parsed) => {
-                    moved = true;
-                    let connection = open.swap_remove(i);
-                    let (reply, settled) = match parsed {
-                        Parsed::Whole(request) => server.handle(&request),
-                        Parsed::Refused(status) => (server.refused(status), None),
-                        Parsed::Partial => unreachable!("a partial request is still waiting"),
-                    };
-                    connection.send(&reply);
-                    if let Some(outcome) = settled {
-                        return Ok(outcome);
+            let connection = &mut open[i];
+            let keep = if settled.is_some() && !connection.settles {
+                false
+            } else {
+                match &mut connection.stage {
+                    Stage::Receiving(received) => match receive(&mut connection.stream, received) {
+                        Received::Waiting => connection.since.elapsed() < limits.idle,
+                        Received::Gone => false,
+                        Received::Request(parsed) => {
+                            moved = true;
+                            let (reply, outcome) = match parsed {
+                                Parsed::Whole(request) => server.handle(&request),
+                                Parsed::Refused(status) => (server.refused(status), None),
+                                Parsed::Partial => {
+                                    unreachable!("a partial request is still being received")
+                                }
+                            };
+                            connection.settles = outcome.is_some();
+                            settled = outcome;
+                            connection.stage = Stage::Replying {
+                                reply: http::response(
+                                    reply.status,
+                                    reply.content_type,
+                                    &reply.body,
+                                ),
+                                sent: 0,
+                            };
+                            connection.since = Instant::now();
+                            true
+                        }
+                    },
+                    Stage::Replying { reply, sent } => {
+                        match send(&mut connection.stream, reply, sent) {
+                            Sent::Part => {
+                                moved = true;
+                                connection.since = Instant::now();
+                                true
+                            }
+                            Sent::Nothing => connection.since.elapsed() < limits.idle,
+                            Sent::All => {
+                                moved = true;
+                                false
+                            }
+                            Sent::Gone => false,
+                        }
                     }
                 }
+            };
+            if keep {
+                i += 1;
+            } else {
+                open.swap_remove(i);
             }
+        }
+        if open.is_empty()
+            && let Some(outcome) = settled.take()
+        {
+            return Ok(outcome);
         }
         if !moved {
             std::thread::sleep(POLL);
@@ -166,17 +229,18 @@ pub fn serve(
 
 /// Take the connections waiting on `listener`, as many as the bound leaves
 /// room for; the rest wait in the listen backlog. Whether any was taken.
-fn admit(listener: &TcpListener, open: &mut Vec<Connection>) -> Result<bool> {
+fn admit(listener: &TcpListener, open: &mut Vec<Connection>, limits: &Limits) -> Result<bool> {
     let mut moved = false;
-    while open.len() < CONNECTIONS {
+    while open.len() < limits.connections {
         match listener.accept() {
             Ok((stream, _)) => {
                 moved = true;
                 if stream.set_nonblocking(true).is_ok() {
                     open.push(Connection {
                         stream,
-                        read: Vec::new(),
+                        stage: Stage::Receiving(Vec::new()),
                         since: Instant::now(),
+                        settles: false,
                     });
                 }
             }
@@ -360,81 +424,217 @@ impl Server<'_> {
 
 struct Connection {
     stream: TcpStream,
-    read: Vec<u8>,
+    stage: Stage,
+    /// When it last moved: when it was taken, or when the socket last took
+    /// part of its reply.
     since: Instant,
+    /// Whether its reply answers the answer set that was taken.
+    settles: bool,
 }
 
-enum Pumped {
+enum Stage {
+    /// What the client has sent, until its request is whole.
+    Receiving(Vec<u8>),
+    /// The response, and how much of it the socket has taken.
+    Replying { reply: Vec<u8>, sent: usize },
+}
+
+enum Received {
     Waiting,
     Gone,
-    Parsed(Parsed),
+    Request(Parsed),
 }
 
-impl Connection {
-    /// Read what the connection has sent so far, without waiting for more.
-    fn pump(&mut self) -> Pumped {
-        let mut chunk = [0u8; 8192];
-        loop {
-            match self.stream.read(&mut chunk) {
-                Ok(0) => {
-                    return match http::parse(&self.read) {
-                        Parsed::Partial => Pumped::Gone,
-                        parsed => Pumped::Parsed(parsed),
-                    };
-                }
-                Ok(n) => {
-                    self.read.extend_from_slice(&chunk[..n]);
-                    if self.read.len() > HEAD_LIMIT + BODY_LIMIT {
-                        break;
-                    }
-                }
-                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
-                Err(e) if e.kind() == ErrorKind::Interrupted => {}
-                Err(_) => return Pumped::Gone,
+enum Sent {
+    Part,
+    Nothing,
+    All,
+    Gone,
+}
+
+/// Read what the client has sent so far, without waiting for more.
+fn receive(stream: &mut TcpStream, received: &mut Vec<u8>) -> Received {
+    let mut chunk = [0u8; 8192];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => {
+                return match http::parse(received) {
+                    Parsed::Partial => Received::Gone,
+                    parsed => Received::Request(parsed),
+                };
             }
-        }
-        match http::parse(&self.read) {
-            Parsed::Partial => Pumped::Waiting,
-            parsed => Pumped::Parsed(parsed),
+            Ok(n) => {
+                received.extend_from_slice(&chunk[..n]);
+                if received.len() > HEAD_LIMIT + BODY_LIMIT {
+                    break;
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(_) => return Received::Gone,
         }
     }
+    match http::parse(received) {
+        Parsed::Partial => Received::Waiting,
+        parsed => Received::Request(parsed),
+    }
+}
 
-    /// A client that leaves before its reply is written loses only the reply:
-    /// what it sent has already been taken or refused.
-    fn send(mut self, reply: &Reply) {
-        if self.stream.set_nonblocking(false).is_err()
-            || self.stream.set_write_timeout(Some(WRITE_LIMIT)).is_err()
-        {
-            return;
+/// Write as much of `reply` past `sent` as the socket takes, without waiting.
+/// A client that leaves before its reply is written loses only the reply:
+/// what it sent has already been taken or refused.
+fn send(stream: &mut TcpStream, reply: &[u8], sent: &mut usize) -> Sent {
+    let before = *sent;
+    while *sent < reply.len() {
+        match stream.write(&reply[*sent..]) {
+            Ok(0) => return Sent::Gone,
+            Ok(n) => *sent += n,
+            Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(_) => return Sent::Gone,
         }
-        let _ = http::respond(
-            &mut self.stream,
-            reply.status,
-            reply.content_type,
-            &reply.body,
-        );
+    }
+    if *sent == reply.len() {
+        Sent::All
+    } else if *sent > before {
+        Sent::Part
+    } else {
+        Sent::Nothing
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+    use std::thread::JoinHandle;
+
     use super::*;
+
+    const ASKS: &str = r#"{"asks": [{"id": "d-1", "label": "결정", "version": "v1", "answers": [
+        {"name": "a", "note": "none"}, {"name": "b", "note": "none"}]}]}"#;
+
+    struct Served {
+        port: u16,
+        token: String,
+        ended: JoinHandle<Result<Outcome>>,
+        _dir: tempfile::TempDir,
+    }
+
+    /// A page beside a file larger than any socket buffer holds, served under
+    /// `limits` for `within`.
+    fn start(within: Duration, limits: Limits) -> Served {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("page.html"), "<p>x</p>").unwrap();
+        std::fs::write(dir.path().join("large.bin"), vec![0u8; 32 << 20]).unwrap();
+        let root = dir.path().to_path_buf();
+        let (heard, hear) = mpsc::channel();
+        let ended = std::thread::spawn(move || {
+            let asks = Asks::parse(ASKS).unwrap();
+            let serving = Serving {
+                page: &root.join("page.html"),
+                asks: &asks,
+                base: &root,
+                within,
+            };
+            serve_under(
+                &serving,
+                None,
+                &mut |url| heard.send(url.to_string()).unwrap(),
+                &limits,
+            )
+        });
+        let url = hear.recv_timeout(Duration::from_secs(10)).unwrap();
+        let (port, path) = url
+            .strip_prefix("http://127.0.0.1:")
+            .and_then(|rest| rest.split_once('/'))
+            .unwrap();
+        Served {
+            port: port.parse().unwrap(),
+            token: path.split('/').next().unwrap().to_string(),
+            ended,
+            _dir: dir,
+        }
+    }
+
+    impl Served {
+        fn ask(&self, path: &str) -> TcpStream {
+            let mut stream = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
+            write!(
+                stream,
+                "GET /{}/{path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n\r\n",
+                self.token, self.port
+            )
+            .unwrap();
+            stream
+        }
+
+        fn status(&self, path: &str) -> String {
+            let mut stream = self.ask(path);
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut head = [0u8; 12];
+            stream.read_exact(&mut head).unwrap();
+            String::from_utf8_lossy(&head).into_owned()
+        }
+    }
+
+    #[test]
+    fn a_reply_left_unread_holds_neither_the_page_nor_the_deadline() {
+        let within = Duration::from_secs(2);
+        let started = Instant::now();
+        let served = start(within, LIMITS);
+        let _unread = served.ask("page/large.bin");
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(served.status("page/page.html"), "HTTP/1.1 200");
+        let outcome = served.ended.join().unwrap().unwrap();
+        assert!(matches!(outcome, Outcome::Unanswered { .. }), "{outcome:?}");
+        assert!(
+            started.elapsed() < within + Duration::from_secs(1),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_connection_that_stops_moving_gives_up_its_place() {
+        let limits = Limits {
+            idle: Duration::from_millis(300),
+            connections: 1,
+        };
+        let served = start(Duration::from_secs(5), limits);
+        let _silent = TcpStream::connect(("127.0.0.1", served.port)).unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            served.status("page/page.html"),
+            "HTTP/1.1 200",
+            "past one that sends nothing"
+        );
+        let _unread = served.ask("page/large.bin");
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            served.status("page/page.html"),
+            "HTTP/1.1 200",
+            "past one that takes nothing"
+        );
+    }
 
     #[test]
     fn connections_past_the_bound_wait_in_the_backlog() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         listener.set_nonblocking(true).unwrap();
         let port = listener.local_addr().unwrap().port();
-        let _clients: Vec<TcpStream> = (0..CONNECTIONS + 8)
+        let bound = LIMITS.connections;
+        let _clients: Vec<TcpStream> = (0..bound + 8)
             .map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap())
             .collect();
         let mut open = Vec::new();
-        assert!(admit(&listener, &mut open).unwrap());
-        assert_eq!(open.len(), CONNECTIONS);
-        assert!(!admit(&listener, &mut open).unwrap());
+        assert!(admit(&listener, &mut open, &LIMITS).unwrap());
+        assert_eq!(open.len(), bound);
+        assert!(!admit(&listener, &mut open, &LIMITS).unwrap());
 
-        open.truncate(CONNECTIONS - 8);
-        assert!(admit(&listener, &mut open).unwrap());
-        assert_eq!(open.len(), CONNECTIONS);
+        open.truncate(bound - 8);
+        assert!(admit(&listener, &mut open, &LIMITS).unwrap());
+        assert_eq!(open.len(), bound);
     }
 }
