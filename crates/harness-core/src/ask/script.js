@@ -21,6 +21,16 @@
 // file), and `ask-closed` once they are off for good (`detail.answered` says
 // whether the answers were taken). It answers by checking a radio and letting
 // its `change` bubble, and sends by clicking `.ask-send`.
+//
+// A radio the page ships checked is an answer the person already gave, such
+// as one `ask current` finds `current` or `incomplete`: it counts, and is
+// sent with its note as the page filled that field, unless they choose
+// another. A radio cannot be cleared, so a page checks none it was not given.
+// A set asked together that the page checks in part is sent once the person
+// chooses the rest.
+//
+// Pages are written against what this header names, so a change to it is a
+// break (.claude/rules/making-changes.md).
 (() => {
   "use strict";
   const { endpoint, asks, words, deadline } = ASK;
