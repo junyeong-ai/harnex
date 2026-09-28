@@ -101,8 +101,10 @@ up where `harness.toml` declares no `[guard.floor]` and equally where there is
 no `harness.toml` to read: that file is frozen against the Edit tools but not
 against Bash, so a tripwire gated on it would be one `rm` away. The two are
 wired as separate PreToolUse entries because their costs differ: the freeze
-covers `harness.toml` and the settings files, which in a repository whose
-harness is the work product is most commits. A Bash write into the floor is
+sends every edit to `harness.toml` and the settings files through the
+operator's grant, which a repository editing its own harness pays on ordinary
+work, while the tripwire refuses only a command that skips the hook stack. A
+Bash write into the floor is
 not read from the command line, because what it writes is every started
 program's to decide: `floor::sandbox` owns the floor's projection into
 `sandbox.filesystem.denyWrite`, which the OS enforces on each of those
