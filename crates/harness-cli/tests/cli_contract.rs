@@ -78,6 +78,67 @@ fn hook_run_anchors_on_the_runtime_project_over_the_working_directory() {
     );
 }
 
+/// A finding's `fix_command` is what a downstream agent runs, so each one, run
+/// as written in a project carrying the finding it is attached to, clears it.
+/// The fixture is chosen by an exhaustive match, so a new command cannot land
+/// without one.
+#[test]
+fn every_fix_command_clears_the_finding_it_is_attached_to() {
+    use harness_core::envelope::FixCommand;
+
+    for fix in FixCommand::ALL {
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path();
+        let pin = format!("[meta]\nharnex_version = {:?}\n", env!("CARGO_PKG_VERSION"));
+        let files: Vec<(&str, String)> = match fix {
+            FixCommand::CodegenSync => vec![
+                ("enums.toml", "[k]\nallowed = [\"a\", \"b\"]\n".into()),
+                (
+                    "nodex.toml",
+                    "# BEGIN x\nallowed = [\"stale\"]\n# END x\n".into(),
+                ),
+                (
+                    "harness.toml",
+                    format!(
+                        "{pin}[[codegen.groups]]\nname = \"g\"\nsource = \"enums.toml\"\n\
+                         source_key = \"k.allowed\"\n[[codegen.groups.targets]]\n\
+                         path = \"nodex.toml\"\nbegin = \"# BEGIN x\"\nend = \"# END x\"\n\
+                         format = \"toml-array-assignment\"\nname = \"allowed\"\n"
+                    ),
+                ),
+            ],
+        };
+        for (path, text) in files {
+            std::fs::write(root.join(path), text).unwrap();
+        }
+        let attached = || {
+            let out = harness().arg("check").current_dir(root).output().unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+            json["data"]["findings"]
+                .as_array()
+                .unwrap_or_else(|| panic!("`check` answered no findings list: {json}"))
+                .iter()
+                .filter(|f| f["fix_command"] == fix.as_str())
+                .count()
+        };
+        assert_eq!(
+            attached(),
+            1,
+            "the fixture for `{fix}` raises no finding it fixes"
+        );
+
+        let mut words = fix.as_str().split_whitespace();
+        assert_eq!(
+            words.next(),
+            Some("harnex"),
+            "`{fix}` does not invoke the binary by its name"
+        );
+        let status = harness().args(words).current_dir(root).status().unwrap();
+        assert!(status.success(), "`{fix}` did not run");
+        assert_eq!(attached(), 0, "`{fix}` left the finding it is attached to");
+    }
+}
+
 #[test]
 fn invalid_argument_emits_error_envelope_and_exit_2() {
     // A malformed invocation must NOT fall back to clap's bare stderr — it

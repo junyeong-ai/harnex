@@ -114,9 +114,9 @@ enum's exhaustive match in `try_fix`, then re-runs the check. Returns
 
 Adding a new auto-fixable finding:
 1. Add one `Variant => "harnex …"` line to the `FixCommand` `wire_enum!`
-   block — the command a downstream agent runs, which
-   `every_fix_command_is_an_invocation_the_binary_accepts` holds to the
-   built CLI.
+   block — the command a downstream agent runs — and its fixture in
+   `every_fix_command_clears_the_finding_it_is_attached_to`, whose
+   exhaustive match asks for one.
 2. Emit the finding with
    `fix_command: Some(FixCommand::X)`. The field is typed, so this
    step is the compiler's, not a review's.

@@ -1,5 +1,4 @@
-//! Drift guard for the CLI invocations the shipped prose and templates spell,
-//! and for the `fix_command` a finding hands a downstream agent.
+//! Drift guard for the CLI invocations the shipped prose and templates spell.
 //!
 //! Every `` `harnex <sub>` `` citation and every scripted `harnex <sub>`
 //! invocation across the plugin tree, README and CLAUDE.md must name a live
@@ -55,30 +54,6 @@ fn word_after(text: &str, from: usize) -> &str {
         .find(|c: char| !c.is_ascii_lowercase() && c != '-')
         .unwrap_or(rest.len());
     &rest[..end]
-}
-
-/// A finding's `fix_command` is what a downstream agent runs, so each one
-/// invokes the binary by its name and parses as a command it accepts.
-#[test]
-fn every_fix_command_is_an_invocation_the_binary_accepts() {
-    for fix in harness_core::envelope::FixCommand::ALL {
-        let mut words = fix.as_str().split_whitespace();
-        assert_eq!(
-            words.next(),
-            Some("harnex"),
-            "`{fix}` does not invoke the binary by its name"
-        );
-        let status = Command::new(env!("CARGO_BIN_EXE_harnex"))
-            .args(words)
-            .arg("--help")
-            .output()
-            .unwrap()
-            .status;
-        assert!(
-            status.success(),
-            "`{fix}` is not a command the binary parses"
-        );
-    }
 }
 
 #[test]
