@@ -84,10 +84,28 @@ impl Served {
         reply
     }
 
-    fn finish(self) -> (i32, serde_json::Value) {
-        let out = self.child.wait_with_output().unwrap();
-        let envelope = serde_json::from_slice(&out.stdout).unwrap();
-        (out.status.code().unwrap(), envelope)
+    fn finish(mut self) -> (i32, serde_json::Value) {
+        let mut stdout = String::new();
+        self.child
+            .stdout
+            .take()
+            .unwrap()
+            .read_to_string(&mut stdout)
+            .unwrap();
+        let status = self.child.wait().unwrap();
+        (
+            status.code().unwrap(),
+            serde_json::from_str(&stdout).unwrap(),
+        )
+    }
+}
+
+/// A test that fails before the command ends must not leave it serving for
+/// the minutes it was given.
+impl Drop for Served {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
