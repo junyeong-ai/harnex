@@ -4,8 +4,9 @@
 //! - Frontmatter present and parses as YAML.
 //! - Effective `name` (frontmatter or directory) matches `[a-z0-9-]{1,64}`.
 //! - If frontmatter `name` declared, it equals directory name.
-//! - `description + when_to_use` combined ≤ `max_description_chars`
-//!   (Claude Code listing budget caps at 1536 chars).
+//! - The listing text `description - when_to_use` ≤ `max_description_chars`
+//!   characters (Claude Code cuts an entry at
+//!   `always_loaded::LISTING_ENTRY_CAP`).
 //! - SKILL.md body line count ≤ `max_skill_md_lines` (compaction budget
 //!   ≈ 5000 tokens ≈ 500 lines).
 //! - Opt-in via `SkillsPolicy.flag_side_effect_verbs`: emit a Minor
@@ -274,17 +275,23 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        let desc_len = parsed.description.as_deref().map(str::len).unwrap_or(0);
-        let when_len = parsed.when_to_use.as_deref().map(str::len).unwrap_or(0);
-        let total_desc = desc_len + when_len;
+        let chars = |text: &str| text.chars().count();
+        let total_desc = parsed.description.as_deref().map_or(0, chars)
+            + parsed
+                .when_to_use
+                .as_deref()
+                .filter(|when| !when.is_empty())
+                .map_or(0, |when| " - ".len() + chars(when));
         if total_desc > self.policy.max_description_chars {
             findings.push(Finding {
                 slug: "skill-description-over-budget".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), fm.begin_line),
                 message: format!(
-                    "description + when_to_use = {total_desc} chars exceeds max_description_chars={} (Claude Code listing budget caps at 1536)",
-                    self.policy.max_description_chars
+                    "description - when_to_use lists {total_desc} characters, over \
+                     max_description_chars={} (Claude Code cuts a listing entry at {})",
+                    self.policy.max_description_chars,
+                    crate::always_loaded::LISTING_ENTRY_CAP
                 ),
                 hint: Some("tighten description; details belong in skill body".into()),
                 auto_fixable: false,

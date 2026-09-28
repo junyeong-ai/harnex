@@ -178,6 +178,34 @@ fn skill_validator_flags_description_over_budget() {
 }
 
 #[test]
+fn a_skill_description_is_measured_as_the_characters_the_listing_shows() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 50,
+        reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let over = |description: &str, when: &str| {
+        let md = format!(
+            "---\nname: my-skill\ndescription: {description}\nwhen_to_use: \"{when}\"\n---\nBody\n"
+        );
+        v.validate_text(&md, &path)
+            .iter()
+            .any(|f| f.slug == "skill-description-over-budget")
+    };
+    assert!(!over(&"한".repeat(50), ""), "fifty characters fit");
+    assert!(
+        over(&"x".repeat(40), &"y".repeat(8)),
+        "the ` - ` is listed too"
+    );
+    assert!(!over(&"x".repeat(40), &"y".repeat(7)));
+}
+
+#[test]
 fn skill_validator_silent_on_side_effect_verbs_by_default() {
     // The heuristic is opt-in. With `flag_side_effect_verbs: false` (default),
     // a description full of side-effect verbs produces no finding — matching

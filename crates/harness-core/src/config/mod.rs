@@ -461,8 +461,8 @@ pub struct SkillsPolicy {
     /// 5000-token compaction budget ≈ 500 lines.
     #[serde(default = "default_skill_max_lines")]
     pub max_skill_md_lines: usize,
-    /// Claude Code skill listing budget caps `description + when_to_use` at
-    /// 1536 chars; this is the project-level target (safe margin).
+    /// Characters of the listing text `description - when_to_use`. Defaults to
+    /// the length Claude Code cuts an entry at.
     #[serde(default = "default_skill_description_max")]
     pub max_description_chars: usize,
     /// Opt-in: emit a Major finding for any frontmatter key outside the
@@ -484,7 +484,7 @@ fn default_skill_max_lines() -> usize {
     500
 }
 fn default_skill_description_max() -> usize {
-    1536
+    crate::always_loaded::LISTING_ENTRY_CAP
 }
 
 // ---------- Lifecycle ----------

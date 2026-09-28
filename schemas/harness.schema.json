@@ -602,7 +602,7 @@
           "default": 500
         },
         "max_description_chars": {
-          "description": "Claude Code skill listing budget caps `description + when_to_use` at\n1536 chars; this is the project-level target (safe margin).",
+          "description": "Characters of the listing text `description - when_to_use`. Defaults to\nthe length Claude Code cuts an entry at.",
           "type": "integer",
           "format": "uint",
           "minimum": 0,
