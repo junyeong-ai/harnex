@@ -1,8 +1,6 @@
 //! The slice of HTTP/1.1 a decision page needs: one request read from a
 //! connection, and one response that closes it.
 
-use std::io::{self, Write};
-
 /// The largest request head read. A browser's request to this server is a
 /// fraction of it.
 pub const HEAD_LIMIT: usize = 16 * 1024;
@@ -113,25 +111,21 @@ pub fn parse(read: &[u8]) -> Parsed {
     })
 }
 
-/// Write one response and nothing after it: every connection carries one
+/// One response, whole, and nothing after it: every connection carries one
 /// exchange. Nothing is cached, nothing is sniffed, and no address leaves in
 /// a `Referer`, since the path carries the token.
-pub fn respond(
-    out: &mut impl Write,
-    status: Status,
-    content_type: &str,
-    body: &[u8],
-) -> io::Result<()> {
-    write!(
-        out,
+pub fn response(status: Status, content_type: &str, body: &[u8]) -> Vec<u8> {
+    let head = format!(
         "HTTP/1.1 {}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\
          Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\
          Referrer-Policy: no-referrer\r\nConnection: close\r\n\r\n",
         status.line(),
         body.len()
-    )?;
-    out.write_all(body)?;
-    out.flush()
+    );
+    let mut bytes = Vec::with_capacity(head.len() + body.len());
+    bytes.extend_from_slice(head.as_bytes());
+    bytes.extend_from_slice(body);
+    bytes
 }
 
 #[cfg(test)]
@@ -193,9 +187,7 @@ mod tests {
 
     #[test]
     fn a_response_closes_and_leaks_no_address() {
-        let mut out = Vec::new();
-        respond(&mut out, Status::NotFound, "text/plain", b"").unwrap();
-        let text = String::from_utf8(out).unwrap();
+        let text = String::from_utf8(response(Status::NotFound, "text/plain", b"")).unwrap();
         assert!(text.starts_with("HTTP/1.1 404 Not Found\r\n"));
         for header in [
             "Connection: close",
