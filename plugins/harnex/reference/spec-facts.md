@@ -347,10 +347,34 @@ already contradicted both a page and the binary's own schema.
   that does not open a bracket expression is likewise a pattern matching
   nothing — escape it (`photos \[2024/**`). Both failures are silent: the rule
   never loads and nothing says so.
-- `@path` import: relative to the importing file, max depth 4, loads at launch.
-- **`claudeMdExcludes`:** glob patterns to skip specific CLAUDE.md files.
+- **`@path` import:** relative to the importing file, four hops deep, loads at
+  launch, each file once; a rule's imports load too. Measured at 2.1.283, an
+  import is `@` opening a text run or following whitespace, outside code, code
+  spans and comments (`(@x)`, `a@x` and a trailing `.` or `,` import nothing),
+  and it loads only a file whose lowercased extension is on the CLI's text
+  list or that has none — `.mdx`, `.png` and `.weirdext` are skipped
+  (`always_loaded::IMPORT_TEXT_EXTENSIONS`).
+- **`claudeMdExcludes`:** glob patterns to skip memory files — CLAUDE.md,
+  rules and imports alike. Matched against the ABSOLUTE path, so a relative
+  pattern such as `docs/x.md` excludes nothing (measured); write `**/docs/x.md`.
   Merges across settings layers. Managed-policy files cannot be excluded.
-- Block-level `<!-- ... -->` is stripped before injection (free for notes).
+- **A top-level HTML block that opens with a comment is stripped before
+  injection** (free for notes), with the blank lines after it; text after the
+  closing `-->` on that line stays. An inline comment, and a comment inside a
+  list or a quote, is injected as written, and so is every comment in an
+  output style.
+- **What loads every session from a repository** (2.1.283, from the request
+  the CLI sends): `CLAUDE.md` and `.claude/CLAUDE.md` both — `AGENTS.md` and
+  `.claude/AGENTS.md` only when neither exists — with their imports and the
+  rules that scope nothing, each without frontmatter and trimmed; the body of
+  the output style `outputStyle` names (frontmatter `name` before file name);
+  and one listing entry per skill and command — `description`, else the first
+  non-empty body line (a heading's text, cut to 100), plus ` - when_to_use`,
+  cut to 1,536, none under `disable-model-invocation: true` — and per agent
+  with a `name` — its `description`. A skill's entry is named by its
+  directory. When the whole listing outgrows a budget that scales with the
+  context window, some entries are sent as a name alone.
+  `harnex validate always-loaded` measures this set.
 - **CLAUDE.md / rules / auto-memory are ADVISORY** — "no guarantee of strict
   compliance." Only hooks and `permissions.deny` are client-enforced.
 

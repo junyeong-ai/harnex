@@ -341,6 +341,18 @@ pub struct ValidateConfig {
     pub output_styles: Option<OutputStylesPolicy>,
     #[serde(default)]
     pub commit_msg: Option<CommitMsgPolicy>,
+    #[serde(default)]
+    pub always_loaded: Option<AlwaysLoadedPolicy>,
+}
+
+/// A budget over everything the repository puts into every session
+/// (`harness_core::always_loaded`).
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AlwaysLoadedPolicy {
+    /// Characters the whole set may hold. No default: the runtime states no
+    /// such target, so the number is the project's own.
+    pub max_chars: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1595,6 +1607,27 @@ mod tests {
             has_changes_check = ["a-program-this-machine-may-not-have"]
         "#;
         assert!(parse(named).is_ok());
+    }
+
+    #[test]
+    fn an_always_loaded_budget_names_its_number_and_nothing_else() {
+        let with = |body: &str| {
+            format!(
+                "[meta]\nharnex_version = \">=0.29, <0.30\"\n[validate.always_loaded]\n{body}\n"
+            )
+        };
+        assert!(parse(&with("max_chars = 40000")).is_ok());
+        for bad in [
+            "",
+            "max_char = 40000",
+            "max_chars = 40000\nunit = \"lines\"",
+        ] {
+            assert_eq!(
+                parse(&with(bad)).unwrap_err().code(),
+                ErrorCode::ConfigInvalid,
+                "`{bad}` must be rejected — a budget that silently fails to parse holds nothing"
+            );
+        }
     }
 
     #[test]

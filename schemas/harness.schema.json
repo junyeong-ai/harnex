@@ -523,6 +523,17 @@
             }
           ],
           "default": null
+        },
+        "always_loaded": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AlwaysLoadedPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       }
     },
@@ -653,6 +664,22 @@
       },
       "required": [
         "key"
+      ]
+    },
+    "AlwaysLoadedPolicy": {
+      "description": "A budget over everything the repository puts into every session\n(`harness_core::always_loaded`).",
+      "type": "object",
+      "properties": {
+        "max_chars": {
+          "description": "Characters the whole set may hold. No default: the runtime states no\nsuch target, so the number is the project's own.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "max_chars"
       ]
     },
     "LifecycleConfig": {

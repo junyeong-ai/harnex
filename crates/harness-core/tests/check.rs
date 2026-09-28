@@ -56,7 +56,13 @@ fn load_cfg(tmp: &TempDir, toml_body: &str) -> Config {
 #[test]
 fn check_runs_every_enabled_validator() {
     let tmp = project();
-    let cfg = load_cfg(&tmp, &floor_config_toml());
+    let cfg = load_cfg(
+        &tmp,
+        &format!(
+            "{}\n[validate.always_loaded]\nmax_chars = 100000\n",
+            floor_config_toml()
+        ),
+    );
 
     write(
         &tmp.path().join(".claude/rules/constitution.md"),
@@ -91,6 +97,7 @@ fn check_runs_every_enabled_validator() {
         "governs",
         "policy.permissions",
         "guard.floor",
+        "validate.always_loaded",
     ] {
         assert!(outcome.run.contains(&v.to_string()), "missing {v}");
     }
@@ -124,6 +131,7 @@ harnex_version = ">=0.29, <0.30"
         "guard.floor",
         "policy.permissions",
         "validate.agents",
+        "validate.always_loaded",
         "validate.output_styles",
         "validate.routines",
         "validate.rules",
@@ -271,6 +279,32 @@ fn a_floor_with_no_settings_file_to_read_is_declared_unjudged() {
 
     assert!(!outcome.run.contains(&"guard.floor".to_string()));
     assert!(outcome.skipped.iter().any(|s| s.slug == "guard.floor"));
+}
+
+#[test]
+fn a_set_past_its_budget_is_one_finding_at_its_largest_member() {
+    let tmp = project();
+    let cfg = load_cfg(
+        &tmp,
+        "[meta]\nharnex_version = \">=0.29, <0.30\"\n[validate.always_loaded]\nmax_chars = 10\n",
+    );
+    write(&tmp.path().join("CLAUDE.md"), "twelve chars\n");
+    write(&tmp.path().join(".claude/CLAUDE.md"), "short\n");
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+
+    let over: Vec<_> = outcome
+        .findings
+        .iter()
+        .filter(|f| f.slug == "always-loaded-over-budget")
+        .collect();
+    assert_eq!(over.len(), 1, "{:?}", outcome.findings);
+    assert_eq!(over[0].location.path, tmp.path().join("CLAUDE.md"));
+    assert!(
+        over[0].message.starts_with("17 characters"),
+        "{}",
+        over[0].message
+    );
 }
 
 #[test]

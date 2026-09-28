@@ -112,6 +112,12 @@ impl SpecSurface {
             measured: "2026-08-26",
             digest: 0x64e6_167e_a93b_6289,
         },
+        Self {
+            name: "memory",
+            doc: "/en/memory",
+            measured: "2026-09-28",
+            digest: 0x0c8e_247a_dd0f_303f,
+        },
     ];
 
     /// Every closed set this surface stamps, labelled, as the owning validator
@@ -140,6 +146,7 @@ impl SpecSurface {
             "output-styles" => output_styles::SPEC_SETS,
             "settings" => settings::SPEC_SETS,
             "permissions" => rule::SPEC_SETS,
+            "memory" => crate::always_loaded::SPEC_SETS,
             _ => NONE,
         }
     }
