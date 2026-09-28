@@ -1489,7 +1489,8 @@ mod tests {
         let set = loaded(&[
             (
                 "CLAUDE.md",
-                "@~/.claude/mine.md\n\n@../../elsewhere.md\n\n@../../skipped.md\n",
+                "@~/.claude/mine.md\n\n@../../elsewhere.md\n\n@../../skipped.md\n\n\
+                 @/etc/elsewhere.md\n\n@/\n",
             ),
             (
                 ".claude/settings.json",
@@ -1501,6 +1502,7 @@ mod tests {
             unmeasured(&set),
             [
                 ("../../elsewhere.md", UnmeasuredReason::OutsideProject),
+                ("/etc/elsewhere.md", UnmeasuredReason::OutsideProject),
                 ("~/.claude/mine.md", UnmeasuredReason::OutsideProject)
             ]
         );
