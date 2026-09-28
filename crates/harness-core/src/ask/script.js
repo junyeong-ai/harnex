@@ -39,8 +39,12 @@
   button.type = "button";
   button.textContent = words.send;
   status.setAttribute("role", "status");
+  const closes = new Date(deadline);
+  const twoDigits = (n) => String(n).padStart(2, "0");
   until.textContent = fill(words.until, {
-    time: new Date(deadline).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    time:
+      `${closes.getFullYear()}-${twoDigits(closes.getMonth() + 1)}-${twoDigits(closes.getDate())} ` +
+      `${twoDigits(closes.getHours())}:${twoDigits(closes.getMinutes())}`,
   });
   bar.replaceChildren(progress, button, until, status);
   bar.hidden = false;

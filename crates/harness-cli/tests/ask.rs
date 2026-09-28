@@ -217,7 +217,7 @@ fn an_asks_file_that_breaks_the_schema_is_an_input_error() {
 }
 
 #[test]
-fn the_page_closes_the_minutes_given_from_now() {
+fn the_deadline_is_the_minutes_given_from_now() {
     let dir = project();
     let served = Served::start(serve(dir.path()).args(["--no-open", "--within", "3"]));
     assert_eq!(served.minutes, "3");
