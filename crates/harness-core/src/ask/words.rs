@@ -31,7 +31,7 @@ pub struct Words {
     pub send: &'static str,
     /// `{answered}` `{asked}`
     pub progress: &'static str,
-    /// `{time}`
+    /// `{time}`, the deadline as `YYYY-MM-DD HH:MM` in the person's time zone
     pub until: &'static str,
     pub sent: &'static str,
     pub unreachable: &'static str,

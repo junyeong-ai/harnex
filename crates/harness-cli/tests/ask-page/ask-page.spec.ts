@@ -113,7 +113,7 @@ test("a served page turns on, keeps each note with its answer, and sends", async
   await expect(send).toHaveText("보내기");
   await expect(tab.locator("[data-ask-send]")).not.toContainText("여기서는 고를 수 없다");
   await expect(tab.locator(".ask-progress")).toHaveText("답한 것 0 / 2");
-  await expect(tab.locator(".ask-until")).toContainText("까지 답을 받는다");
+  await expect(tab.locator(".ask-until")).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}까지 답을 받는다$/);
   await expect(tab.locator("body")).toHaveCSS("background-color", "rgb(1, 2, 3)");
   expect(await tab.evaluate(() => (window as any).heard)).toEqual([["ready", 2]]);
 
@@ -197,16 +197,40 @@ test("a send after the session stopped waiting says the session was not reached"
   await expect(tab.locator(".ask-send")).toBeEnabled();
 });
 
-test("a page named in any script is served, and speaks the asks file's locale", async ({ page: tab }) => {
-  const served = await serve(page(FIELDS), { asks: { ...ASKS, locale: "en" }, name: "결정 페이지.html" });
-  await tab.goto(served.url);
+test.describe("in a browser set to another locale and time zone", () => {
+  test.use({ locale: "ko-KR", timezoneId: "America/Los_Angeles" });
 
-  await expect(tab.locator(".ask-send")).toHaveText("Send");
-  await expect(tab.locator(".ask-progress")).toHaveText("Answered 0 / 2");
-  await expect(tab.locator("body")).toHaveCSS("background-color", "rgb(1, 2, 3)");
+  test("a page named in any script is served, and speaks the asks file's locale", async ({ page: tab }) => {
+    const served = await serve(page(FIELDS), { asks: { ...ASKS, locale: "en" }, name: "결정 페이지.html" });
+    await tab.goto(served.url);
 
-  await tab.getByLabel("동의").check();
-  await tab.locator(".ask-send").click();
-  await expect(tab.locator(".ask-status")).toHaveText("Sent. The session has the answers, and this window can be closed.");
-  expect((await served.exit).code).toBe(0);
+    await expect(tab.locator(".ask-send")).toHaveText("Send");
+    await expect(tab.locator(".ask-progress")).toHaveText("Answered 0 / 2");
+    const script = await (await tab.request.get(served.url.replace(/\/page\/[^/]*$/, "/ask.js"))).text();
+    const { deadline } = JSON.parse(/^const ASK = (.*);$/m.exec(script)![1]);
+    const at = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Los_Angeles",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(new Date(deadline))
+        .map((part) => [part.type, part.value]),
+    );
+    await expect(tab.locator(".ask-until")).toHaveText(
+      `Taking answers until ${at.year}-${at.month}-${at.day} ${at.hour}:${at.minute}`,
+    );
+    await expect(tab.locator("body")).toHaveCSS("background-color", "rgb(1, 2, 3)");
+
+    await tab.getByLabel("동의").check();
+    await tab.locator(".ask-send").click();
+    await expect(tab.locator(".ask-status")).toHaveText(
+      "Sent. The session has the answers, and this window can be closed.",
+    );
+    expect((await served.exit).code).toBe(0);
+  });
 });
