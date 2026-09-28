@@ -21,26 +21,32 @@
 //!   parsed again after the runtime's repair — a `key: value` line whose
 //!   unquoted value holds a YAML indicator is quoted, leading tabs become
 //!   spaces — and yields no keys when that fails too.
-//! - A rule under `.claude/rules/` loads when its `paths:` scopes nothing
-//!   (`validate::path_globs::declares_scope`). A skill whose `paths:` scopes
-//!   something waits for a matching file and is not listed.
-//! - A memory file loses each top-level HTML block that opens with a comment.
-//!   An inline comment, and one inside a list or a quote, stays.
+//! - A rule under `.claude/rules/`, and each file its imports reach, loads when
+//!   its own `paths:` scopes nothing (`validate::path_globs::declares_scope`);
+//!   a file `CLAUDE.md` imports loads whatever its `paths:` says. A skill
+//!   whose `paths:` scopes something waits for a matching file and is not
+//!   listed.
+//! - A memory file loses each top-level HTML block that opens with a comment,
+//!   and a file holding a comment has its line breaks read as `\n`. An inline
+//!   comment, and one inside a list or a quote, stays.
 //! - `@path` imports a file when it opens a text run or follows whitespace
 //!   outside code and comments, begins with a letter, a digit, `.`, `_`, `-`,
 //!   `~/` or `/`, and names a file whose extension is in
 //!   [`IMPORT_TEXT_EXTENSIONS`] or that has none. It resolves against the
-//!   importing file, reaches [`MAX_IMPORT_HOPS`] deep, and loads a file once.
+//!   directory the importing file's content lives in, a link's target
+//!   included, reaches [`MAX_IMPORT_HOPS`] deep, and loads a file once.
 //! - `claudeMdExcludes` removes a memory file whose absolute path it matches —
 //!   a rule's path under `.claude/rules/` or its link target — and a relative
 //!   pattern matches nothing.
-//! - The output style is the body of the file whose `name`, or else whose file
-//!   name, is `outputStyle`, comments included.
+//! - The output style is the body of the file whose `name`, or else, for a
+//!   file declaring none, whose file name is `outputStyle`, comments included.
 //! - A skill or command lists `description` — else its body's first non-empty
 //!   line, a heading's text, cut to [`FALLBACK_DESCRIPTION_CAP`] — and
 //!   ` - when_to_use`, cut to [`LISTING_ENTRY_CAP`], unless
-//!   `disable-model-invocation` is set. An agent with a usable `name` lists its
-//!   `description`.
+//!   `disable-model-invocation` is set or the committed `skillOverrides`
+//!   offer it `off`, `user-invocable-only` or `name-only`. An agent with a
+//!   usable `name` lists its `description`. A file reached twice is listed
+//!   once, and an agent name registers once.
 //!
 //! A member counts its own text. The framing the runtime writes around it —
 //! a file header, a list marker, an agent's tools — is not the repository's
@@ -61,7 +67,7 @@
 //! - Never counts tokens. That needs the model's tokenizer, which is not
 //!   available offline, and characters are exact.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -293,28 +299,35 @@ pub fn resolve(root: &Path) -> Result<AlwaysLoaded> {
         root: &root,
         excludes: &settings.excludes,
         listing_cap: settings.listing_cap,
+        overrides: &settings.skill_overrides,
         seen: HashSet::new(),
+        listed: HashSet::new(),
+        agents: HashSet::new(),
         members: Vec::new(),
         unmeasured: Vec::new(),
     };
 
     for path in memory_files(&root) {
-        walk.memory_file(&path, MemberKind::Memory, 0);
+        walk.memory_file(&path, MemberKind::Memory, 0, Tree::Memory);
     }
     for path in discover(&root, <RuleValidator as SurfaceValidator>::GLOB)? {
-        walk.memory_file(&path, MemberKind::Rule, 0);
+        walk.memory_file(&path, MemberKind::Rule, 0, Tree::Rules);
     }
     if let Some(name) = &settings.output_style {
         walk.output_style(name)?;
     }
     for path in discover(&root, <SkillValidator as SurfaceValidator>::GLOB)? {
-        walk.listing(&path, MemberKind::Skill);
+        let name = path
+            .parent()
+            .and_then(Path::file_name)
+            .map(|dir| dir.to_string_lossy().into_owned());
+        walk.listing(&path, MemberKind::Skill, name);
     }
-    for path in discover(&root, COMMAND_GLOB)? {
-        walk.listing(&path, MemberKind::Command);
+    for (path, name) in commands(&root)? {
+        walk.listing(&path, MemberKind::Command, Some(name));
     }
     for path in discover(&root, <AgentValidator as SurfaceValidator>::GLOB)? {
-        walk.listing(&path, MemberKind::Agent);
+        walk.listing(&path, MemberKind::Agent, None);
     }
 
     let Walk {
@@ -415,6 +428,8 @@ impl Excludes {
 struct ProjectSettings {
     output_style: Option<String>,
     listing_cap: usize,
+    /// `skillOverrides`: a skill's or command's name to how it is offered.
+    skill_overrides: serde_json::Map<String, serde_json::Value>,
     excludes: Excludes,
 }
 
@@ -457,9 +472,16 @@ impl ProjectSettings {
             .and_then(|v| v.as_u64())
             .filter(|&cap| cap > 0)
             .map_or(LISTING_ENTRY_CAP, |cap| cap as usize);
+        let skill_overrides = value
+            .as_ref()
+            .and_then(|v| v.get("skillOverrides"))
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
         Ok(Self {
             output_style,
             listing_cap,
+            skill_overrides,
             excludes: Excludes {
                 root: root.to_path_buf(),
                 canonical_root: canonical_root(root)?,
@@ -494,14 +516,28 @@ fn canonical_root(root: &Path) -> Result<PathBuf> {
     })
 }
 
+/// The walk a memory file was reached in. A rule's own `paths:` decides
+/// whether it loads, and so does that of every file its imports reach; a file
+/// reached from `CLAUDE.md` loads whatever its `paths:` says.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tree {
+    Memory,
+    Rules,
+}
+
 struct Walk<'a> {
     /// Canonical, so a member's content is inside the project exactly when
     /// its own canonical path starts with this.
     root: &'a Path,
     excludes: &'a Excludes,
     listing_cap: usize,
+    overrides: &'a serde_json::Map<String, serde_json::Value>,
     /// Canonical paths already read: a file reached twice loads once.
     seen: HashSet<PathBuf>,
+    /// Canonical paths of skills and commands already listed, and agent
+    /// names already registered: the runtime lists each once.
+    listed: HashSet<PathBuf>,
+    agents: HashSet<String>,
     members: Vec<Member>,
     unmeasured: Vec<Unmeasured>,
 }
@@ -534,7 +570,10 @@ impl Walk<'_> {
         true
     }
 
-    fn memory_file(&mut self, path: &Path, kind: MemberKind, depth: usize) {
+    /// A memory file and what it imports. Its imports resolve against the
+    /// directory its content lives in, and are followed whether or not the
+    /// file itself loads.
+    fn memory_file(&mut self, path: &Path, kind: MemberKind, depth: usize, tree: Tree) {
         if self.excludes.matches(path, kind) {
             return;
         }
@@ -544,21 +583,25 @@ impl Walk<'_> {
         if !self.seen.insert(target.clone()) {
             return;
         }
-        if kind == MemberKind::Rule && path_globs::declares_scope(source.fields.get("paths")) {
-            return;
-        }
         let read = read_memory(&source.body);
         let text = read.text.trim();
-        if text.is_empty() || !self.admit(kind, path, &target, text) || depth == MAX_IMPORT_HOPS {
+        if text.is_empty() {
             return;
         }
-        let from = path.parent().unwrap_or(self.root);
+        let loads = tree == Tree::Memory || !path_globs::declares_scope(source.fields.get("paths"));
+        if loads {
+            self.admit(kind, path, &target, text);
+        }
+        if !target.starts_with(self.root) || depth == MAX_IMPORT_HOPS {
+            return;
+        }
+        let from = target.parent().unwrap_or(self.root).to_path_buf();
         for written in read.imports {
-            self.import(from, &written, depth + 1);
+            self.import(&from, &written, depth + 1, tree);
         }
     }
 
-    fn import(&mut self, from: &Path, written: &str, depth: usize) {
+    fn import(&mut self, from: &Path, written: &str, depth: usize, tree: Tree) {
         let Some(target) = import_target(written) else {
             return;
         };
@@ -575,7 +618,7 @@ impl Walk<'_> {
         };
         match path {
             Some(path) if path.starts_with(self.root) => {
-                self.memory_file(&path, MemberKind::Import, depth);
+                self.memory_file(&path, MemberKind::Import, depth, tree);
             }
             Some(path) if self.excludes.matches(&path, MemberKind::Import) => {}
             _ => self.unmeasured(
@@ -592,12 +635,15 @@ impl Walk<'_> {
             let Some((target, source)) = read(&path, DEFINITION_FILE_LIMIT) else {
                 continue;
             };
-            if source.fields.get("name").and_then(js_string).as_deref() == Some(selected) {
-                self.admit(MemberKind::OutputStyle, &path, &target, source.body.trim());
-                return Ok(());
-            }
-            if by_stem.is_none() && path.file_stem().is_some_and(|stem| stem == selected) {
-                by_stem = Some((path, target, source.body));
+            match source.fields.get("name").and_then(js_string) {
+                Some(name) if name == selected => {
+                    self.admit(MemberKind::OutputStyle, &path, &target, source.body.trim());
+                    return Ok(());
+                }
+                None if by_stem.is_none() && path.file_stem().is_some_and(|s| s == selected) => {
+                    by_stem = Some((path, target, source.body));
+                }
+                _ => {}
             }
         }
         match by_stem {
@@ -614,7 +660,9 @@ impl Walk<'_> {
         Ok(())
     }
 
-    fn listing(&mut self, path: &Path, kind: MemberKind) {
+    /// One listing entry: a skill or command offered under `name`, or an
+    /// agent, which names itself.
+    fn listing(&mut self, path: &Path, kind: MemberKind, name: Option<String>) {
         let limit = match kind {
             MemberKind::Skill => SKILL_FILE_LIMIT,
             _ => DEFINITION_FILE_LIMIT,
@@ -623,8 +671,19 @@ impl Walk<'_> {
             return;
         };
         let entry = match kind {
-            MemberKind::Agent => agent_entry(&source.fields),
-            _ => invocable_entry(&source, kind, self.listing_cap),
+            MemberKind::Agent => agent_entry(&source.fields)
+                .filter(|(name, _)| self.agents.insert(name.clone()))
+                .map(|(_, entry)| entry),
+            _ => {
+                let offered = name
+                    .and_then(|name| self.overrides.get(&name))
+                    .and_then(|mode| mode.as_str());
+                let described =
+                    !matches!(offered, Some("off" | "user-invocable-only" | "name-only"));
+                (described && self.listed.insert(target.clone()))
+                    .then(|| invocable_entry(&source, kind, self.listing_cap))
+                    .flatten()
+            }
         };
         if let Some(entry) = entry {
             self.admit(kind, path, &target, &entry);
@@ -726,32 +785,40 @@ fn invocable_entry(source: &Source, kind: MemberKind, listing_cap: usize) -> Opt
     };
     let description = description(fields.get("description"))
         .unwrap_or_else(|| fallback_description(&source.body, unnamed));
-    let entry = match fields
-        .get("when_to_use")
-        .and_then(js_string)
-        .filter(|when| !when.is_empty())
-    {
-        Some(when) => format!("{description} - {when}"),
-        None => description,
-    };
-    Some(cap(&entry, listing_cap, "\u{2026}"))
+    let when = fields.get("when_to_use").and_then(js_string);
+    Some(cap(
+        &listing_text(&description, when.as_deref()),
+        listing_cap,
+        "\u{2026}",
+    ))
 }
 
-/// An agent's listing text: its `description`, where `name` is one the
-/// runtime registers.
-fn agent_entry(fields: &Mapping) -> Option<String> {
+/// An agent's name and listing text, its `description`, where the name is one
+/// the runtime registers: not led by `-`, and holding no character NFKC folds
+/// to a `:` (Unicode 16).
+fn agent_entry(fields: &Mapping) -> Option<(String, String)> {
+    const COLONS: [char; 5] = [':', '\u{2a74}', '\u{fe13}', '\u{fe55}', '\u{ff1a}'];
     let name = fields
         .get("name")?
         .as_str()
         .filter(|name| !name.is_empty())?;
-    if name.starts_with('-') || name.contains(':') {
+    if name.starts_with('-') || name.contains(COLONS) {
         return None;
     }
     let description = fields
         .get("description")?
         .as_str()
         .filter(|description| !description.is_empty())?;
-    Some(description.replace("\\n", "\n"))
+    Some((name.to_string(), description.replace("\\n", "\n")))
+}
+
+/// The text a skill or command lists before the runtime cuts it: its
+/// description, then ` - when_to_use` unless that is empty.
+pub(crate) fn listing_text(description: &str, when_to_use: Option<&str>) -> String {
+    match when_to_use.filter(|when| !when.is_empty()) {
+        Some(when) => format!("{description} - {when}"),
+        None => description.to_string(),
+    }
 }
 
 /// A `description` the runtime lists: text trimmed, a number or boolean
@@ -810,6 +877,15 @@ struct MemoryText {
 }
 
 fn read_memory(body: &str) -> MemoryText {
+    // The runtime rebuilds a file that holds a comment from its lexer's
+    // tokens, and that lexer reads every line break as `\n`.
+    let normalized;
+    let body = if body.contains("<!--") {
+        normalized = body.replace("\r\n", "\n").replace('\r', "\n");
+        normalized.as_str()
+    } else {
+        body
+    };
     let mut text = String::with_capacity(body.len());
     let mut copied = 0usize;
     let mut containers = 0usize;
@@ -896,9 +972,7 @@ fn scan_imports(run: &str, out: &mut Vec<String>) {
                     end += d.len_utf8();
                 }
             }
-            if end > start {
-                out.push(run[start..end].to_string());
-            }
+            out.push(run[start..end].to_string());
             previous = run[..end].chars().next_back();
             at = end;
             continue;
@@ -989,6 +1063,56 @@ fn present(root: &Path, names: &[&str]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The commands the runtime registers under `.claude/commands/`, each with the
+/// name `skillOverrides` knows it by: its directories below that one joined by
+/// `:`, then its file name without `.md`. A directory holding a `SKILL.md`
+/// registers that file alone, named by the directory.
+fn commands(root: &Path) -> Result<Vec<(PathBuf, String)>> {
+    let base = root.join(".claude/commands");
+    let namespaced = |dir: &Path, leaf: &str| {
+        let namespace: Vec<String> = dir
+            .strip_prefix(&base)
+            .into_iter()
+            .flat_map(Path::components)
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        if namespace.is_empty() {
+            leaf.to_string()
+        } else {
+            format!("{}:{leaf}", namespace.join(":"))
+        }
+    };
+    let mut by_dir: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
+    for path in discover(root, COMMAND_GLOB)? {
+        let dir = path.parent().unwrap_or(&base).to_path_buf();
+        by_dir.entry(dir).or_default().push(path);
+    }
+    let mut out = Vec::new();
+    for (dir, files) in by_dir {
+        let skill = files.iter().find(|file| {
+            file.file_name()
+                .is_some_and(|name| name.eq_ignore_ascii_case("skill.md"))
+        });
+        match skill {
+            Some(skill) => {
+                let leaf = dir.file_name().unwrap_or_default().to_string_lossy();
+                out.push((
+                    skill.clone(),
+                    namespaced(dir.parent().unwrap_or(&dir), &leaf),
+                ));
+            }
+            None => {
+                for file in files {
+                    let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+                    let name = namespaced(&dir, &stem);
+                    out.push((file, name));
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn discover(root: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
     let rooted = crate::glob_root::rooted(root, pattern)?;
     let mut out = Vec::new();
@@ -1077,6 +1201,20 @@ mod tests {
         // whole text is trimmed — what 2.1.283 sent for this file.
         let set = loaded(&[("CLAUDE.md", "\nfirst\n\n<!-- note -->\n\nsecond\n\n")]);
         assert_eq!(chars_of(&set, "CLAUDE.md"), "first\n\nsecond".len());
+        // A file holding a comment reaches the model with `\n` line breaks;
+        // one without keeps its `\r\n` — 2.1.283 sent 29 and 32 here.
+        let crlf = loaded(&[
+            (
+                "CLAUDE.md",
+                "MARK_CRLF_A\r\n\r\n<!-- c -->\r\n\r\nMARK_CRLF_B\r\nline\r\n",
+            ),
+            (
+                ".claude/CLAUDE.md",
+                "MARK_CRLF2_A\r\nline\r\nMARK_CRLF2_B\r\n",
+            ),
+        ]);
+        assert_eq!(chars_of(&crlf, "CLAUDE.md"), 29);
+        assert_eq!(chars_of(&crlf, ".claude/CLAUDE.md"), 32);
     }
 
     #[test]
@@ -1171,8 +1309,8 @@ mod tests {
                 "@docs/start.md\n\nsee @docs/space.md here\n\n# @docs/heading.md\n\n\
                  See @docs/dot.md. later\n\n`@docs/span.md`\n\n```\n@docs/fence.md\n```\n\n    \
                  @docs/indented.md\n\nmail a@docs/mail.md\n\n(@docs/paren.md)\n\n\
-                 <!-- @docs/comment.md -->\n\n@docs/sp\\ ace.md\n\n@docs/missing.md\n\n@docs\n\n\
-                 line one\n@docs/wrapped.md\n",
+                 <!-- @docs/comment.md -->\n\nsee @docs/sp\\ ace.md here\n\n@docs/missing.md\n\n\
+                 @docs\n\nline one\n@docs/wrapped.md\n\n<div> @docs/html.md --></div>\n",
             ),
             ("docs/start.md", "x"),
             ("docs/space.md", "x"),
@@ -1186,6 +1324,7 @@ mod tests {
             ("docs/comment.md", "x"),
             ("docs/sp ace.md", "x"),
             ("docs/wrapped.md", "x"),
+            ("docs/html.md", "x"),
         ]);
         assert_eq!(
             paths(&set),
@@ -1259,15 +1398,31 @@ mod tests {
                 ".claude/rules/governed.md",
                 "---\npaths: \"src/**\"\ngoverns: not a harnex shape\n---\nscoped\n",
             ),
-            ("docs/r.md", "imported\n"),
+            ("docs/r.md", "imported\n@ts-only.md\n"),
+            (
+                ".claude/rules/scoped-importer.md",
+                "---\npaths: \"src/**\"\n---\n@../../docs/unscoped.md\n",
+            ),
+            ("docs/unscoped.md", "loads though its importer waits\n"),
+            ("docs/ts-only.md", "---\npaths: \"**/*.ts\"\n---\nwaits\n"),
+            ("CLAUDE.md", "@docs/memory-import.md\n"),
+            (
+                "docs/memory-import.md",
+                "---\npaths: \"src/**\"\n---\nloads from CLAUDE.md\n",
+            ),
         ]);
+        // What 2.1.283 sent: in a rule's tree every file answers to its own
+        // `paths:`, and a file `CLAUDE.md` imports loads whatever it says.
         assert_eq!(
             paths(&set),
             [
                 ".claude/rules/plain.md",
                 ".claude/rules/star.md",
                 ".claude/rules/sub/nested.md",
-                "docs/r.md"
+                "CLAUDE.md",
+                "docs/memory-import.md",
+                "docs/r.md",
+                "docs/unscoped.md"
             ]
         );
         assert!(set.members.iter().any(|m| m.path == ".claude/rules/star.md"
@@ -1324,7 +1479,16 @@ mod tests {
 
     #[test]
     fn an_import_outside_the_project_is_named_and_not_counted() {
-        let set = loaded(&[("CLAUDE.md", "@~/.claude/mine.md\n\n@../../elsewhere.md\n")]);
+        let set = loaded(&[
+            (
+                "CLAUDE.md",
+                "@~/.claude/mine.md\n\n@../../elsewhere.md\n\n@../../skipped.md\n",
+            ),
+            (
+                ".claude/settings.json",
+                r#"{"claudeMdExcludes": ["**/skipped.md"]}"#,
+            ),
+        ]);
         assert_eq!(paths(&set), ["CLAUDE.md"]);
         assert_eq!(
             unmeasured(&set),
@@ -1406,6 +1570,7 @@ mod tests {
 
         let by_stem = loaded(&[
             (".claude/settings.json", r#"{"outputStyle": "Terse"}"#),
+            (".claude/output-styles/other.md", "another style\n"),
             (".claude/output-styles/team/Terse.md", "by file name\n"),
         ]);
         assert_eq!(paths(&by_stem), [".claude/output-styles/team/Terse.md"]);
@@ -1420,7 +1585,19 @@ mod tests {
         ]);
         assert_eq!(paths(&local_is_theirs), [".claude/output-styles/Terse.md"]);
 
-        let unshipped = loaded(&[(".claude/settings.json", r#"{"outputStyle": "Explanatory"}"#)]);
+        let renamed = loaded(&[
+            (".claude/settings.json", r#"{"outputStyle": "Terse"}"#),
+            (
+                ".claude/output-styles/Terse.md",
+                "---\nname: Concise\n---\nbody\n",
+            ),
+        ]);
+        assert!(renamed.members.is_empty(), "{:?}", renamed.members);
+
+        let unshipped = loaded(&[
+            (".claude/settings.json", r#"{"outputStyle": "Explanatory"}"#),
+            (".claude/output-styles/other.md", "another style\n"),
+        ]);
         assert_eq!(
             unmeasured(&unshipped),
             [("Explanatory", UnmeasuredReason::NotInProject)]
@@ -1436,6 +1613,10 @@ mod tests {
             (
                 ".claude/skills/both/SKILL.md",
                 "---\nname: both\ndescription: \"  Deploy  \"\nwhen_to_use: on release\n---\nbody\n",
+            ),
+            (
+                ".claude/skills/numbered/SKILL.md",
+                "---\ndescription: 42\n---\nbody line\n",
             ),
             (
                 ".claude/skills/hidden/SKILL.md",
@@ -1489,6 +1670,7 @@ mod tests {
             chars_of(&set, ".claude/skills/empty/SKILL.md"),
             "Skill".len()
         );
+        assert_eq!(chars_of(&set, ".claude/skills/numbered/SKILL.md"), 2);
         assert_eq!(
             chars_of(&set, ".claude/skills/listed/SKILL.md"),
             "Ship - tagging,releasing".len()
@@ -1539,6 +1721,101 @@ mod tests {
     }
 
     #[test]
+    fn a_listing_entry_follows_the_committed_overrides_and_is_listed_once() {
+        // What 2.1.283 sent: `off` and `user-invocable-only` leave the listing,
+        // `name-only` lists no description, a command is overridden by its
+        // `:`-joined name, and one agent name registers once.
+        let set = loaded(&[
+            (
+                ".claude/settings.json",
+                r#"{"skillOverrides": {"big": "off", "terse": "name-only",
+                    "uio": "user-invocable-only", "sub:run": "off", "kept": "on"}}"#,
+            ),
+            (
+                ".claude/skills/big/SKILL.md",
+                "---\ndescription: big\n---\n",
+            ),
+            (
+                ".claude/skills/terse/SKILL.md",
+                "---\ndescription: terse\n---\n",
+            ),
+            (
+                ".claude/skills/uio/SKILL.md",
+                "---\ndescription: uio\n---\n",
+            ),
+            (
+                ".claude/skills/kept/SKILL.md",
+                "---\ndescription: kept\n---\n",
+            ),
+            (
+                ".claude/commands/sub/run.md",
+                "---\ndescription: run\n---\n",
+            ),
+            (".claude/commands/run.md", "---\ndescription: top\n---\n"),
+            (
+                ".claude/commands/packed/SKILL.md",
+                "---\ndescription: packed\n---\n",
+            ),
+            (
+                ".claude/commands/packed/extra.md",
+                "---\ndescription: extra\n---\n",
+            ),
+            (
+                ".claude/agents/a.md",
+                "---\nname: dup\ndescription: first\n---\n",
+            ),
+            (
+                ".claude/agents/b.md",
+                "---\nname: dup\ndescription: second, longer\n---\n",
+            ),
+            (
+                ".claude/agents/colon.md",
+                "---\nname: 리뷰어\u{ff1a}코드\ndescription: unregistered\n---\n",
+            ),
+        ]);
+        assert_eq!(
+            paths(&set),
+            [
+                ".claude/agents/a.md",
+                ".claude/commands/packed/SKILL.md",
+                ".claude/commands/run.md",
+                ".claude/skills/kept/SKILL.md"
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_reached_through_a_link_is_read_where_it_lives() {
+        use std::os::unix::fs::symlink;
+        let dir = project(&[
+            ("shared/rules/common.md", "common\n\n@./style.md\n"),
+            ("shared/rules/style.md", "style\n"),
+            (
+                ".claude/skills/deploy/SKILL.md",
+                "---\ndescription: deploy\n---\n",
+            ),
+        ]);
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".claude/rules")).unwrap();
+        symlink(
+            "../../shared/rules/common.md",
+            root.join(".claude/rules/common.md"),
+        )
+        .unwrap();
+        symlink("deploy", root.join(".claude/skills/ship")).unwrap();
+        let set = resolve(root).unwrap();
+        assert_eq!(
+            paths(&set),
+            [
+                ".claude/rules/common.md",
+                ".claude/skills/deploy/SKILL.md",
+                "shared/rules/style.md"
+            ]
+        );
+    }
+
+    #[test]
     fn a_description_from_the_body_is_its_first_line_cut_to_a_hundred() {
         assert_eq!(fallback_description("\n\n## Title\nnext", "Skill"), "Title");
         assert_eq!(fallback_description("#tag line", "Skill"), "#tag line");
@@ -1548,6 +1825,28 @@ mod tests {
         assert!(cut.ends_with("..."));
         let emoji = fallback_description(&"😀".repeat(60), "Skill");
         assert_eq!(emoji, format!("{}\u{fffd}...", "😀".repeat(48)));
+    }
+
+    #[test]
+    fn the_repair_quotes_only_an_unquoted_value_holding_an_indicator() {
+        // `broken` fails the first parse; every other line is one the repair
+        // must leave as it is, or quote, for the whole block to parse right.
+        let fields = fields(
+            "broken: a: \"b\"\nsingle: a: 'b'\nquoted: 'q: r'\nlist: [\"src/**\", x]\n\
+             alias: [*x]\ncommented: [a, b] # c\nclosing: - a ]\nplain: text",
+        );
+        let text = |key: &str| fields.get(key).and_then(|v| v.as_str());
+        assert_eq!(text("broken"), Some("a: \"b\""));
+        assert_eq!(text("single"), Some("a: 'b'"));
+        assert_eq!(text("quoted"), Some("q: r"));
+        assert!(
+            fields.get("list").is_some_and(Value::is_sequence),
+            "{fields:?}"
+        );
+        assert_eq!(text("alias"), Some("[*x]"));
+        assert_eq!(text("commented"), Some("[a, b] # c"));
+        assert_eq!(text("closing"), Some("- a ]"));
+        assert_eq!(text("plain"), Some("text"));
     }
 
     #[test]

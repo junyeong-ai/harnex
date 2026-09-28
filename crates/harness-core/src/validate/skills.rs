@@ -275,16 +275,11 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        let len = crate::always_loaded::runtime_len;
-        let total_desc = parsed
-            .description
-            .as_deref()
-            .map_or(0, |description| len(description.trim()))
-            + parsed
-                .when_to_use
-                .as_deref()
-                .filter(|when| !when.is_empty())
-                .map_or(0, |when| len(" - ") + len(when));
+        let listed = crate::always_loaded::listing_text(
+            parsed.description.as_deref().map_or("", str::trim),
+            parsed.when_to_use.as_deref(),
+        );
+        let total_desc = crate::always_loaded::runtime_len(&listed);
         if total_desc > self.policy.max_description_chars {
             findings.push(Finding {
                 slug: "skill-description-over-budget".into(),
