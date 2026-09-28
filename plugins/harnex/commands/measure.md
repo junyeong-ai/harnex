@@ -448,7 +448,8 @@ describing the change. Everything else goes in an appendix.
   pattern and most refusals never repeat
 - a commit is a floor: the runtime records some and not others, so
   `repository.authored_in_span` is what `commits` is a floor against — measured,
-  41 of 115 over one project. A per-commit **rate** is not high for that reason:
+  41 of 115 over one project and 1,724 of 4,502 over another. A per-commit
+  **rate** is not high for that reason:
   a re-edit is only found against a commit the window observed, so both sides
   of the ratio are over the same commits. Re-denominating it in
   `authored_in_span` assumes the unobserved commits were never re-edited
@@ -471,8 +472,8 @@ describing the change. Everything else goes in an appendix.
   difference and is not work the project lost
 - a merge changed nothing on its own, so it contributes no paths to `committed`
 - `written` minus `committed` is bounded by the commits the transcript
-  recorded, not by the commits made — measured, 41 of 115 over one project — so
-  a file committed in an unobserved commit sits in that difference. It is a
+  recorded, not by the commits made (the floor above), so a file committed in
+  an unobserved commit sits in that difference. It is a
   ceiling on what did not ship, never a count of wasted work, and no baseline
   metric is denominated in it for that reason
 - repetition is exact-paragraph only, so a constraint restated in other words
@@ -495,9 +496,8 @@ describing the change. Everything else goes in an appendix.
   row
 - `files_discovered` is the corpus the run opened; `files_in_window` is what it
   answered about
-- `by_fate` counts the commits the transcript recorded, which is a floor
-  against `authored_in_span` — measured, 41 of 115 over one project and 1,724 of
-  4,502 over another, so anything denominated in observed commits reads high
+- `by_fate` counts the commits the transcript recorded, the same floor against
+  `authored_in_span`, so anything denominated in observed commits reads high
 - an event the runtime wrote into two transcripts is counted once — a record
   by its uuid, a message by the transcript that wrote it — and
   `records_duplicated` says how many were discarded. One shape escapes: where

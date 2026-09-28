@@ -35,7 +35,7 @@ meta-failure arriving through the front door.
 identical under all three: the formatter resolves the biome the project
 installed, `tsc` typechecks, and `typescript-conventions.md` is scoped by file
 extension — none of it is pnpm's. Fingerprinting the row on one lockfile name
-withheld that whole tier from a Next.js repository on npm: not the honest
+would withhold that whole tier from a TypeScript repository on npm: not the honest
 no-profile below, which answers an unrecognized stack, but a recognized one
 denied on a signal about something else. The package manager reaches the harness through
 `typescript-dev`, which grants all three.
@@ -62,8 +62,9 @@ hook wrappers, the gitleaks pre-commit hook — and is told exactly which
 language-tier artifacts are missing and why. What must never happen is a
 *wrong* profile: emitting ruff into a Go repo is the meta-failure this matrix
 exists to prevent. An absent profile is a different thing, and withholding a
-floor the stack never needed a profile for protects nobody. Offer
-`extend language <lang>` as the way to close the remaining tier.
+floor the stack never needed a profile for protects nobody. The remaining tier
+closes when harnex itself gains the profile (`extend language`, run in the
+harnex repository).
 
 ## Gate-driver detection (evidence, not a per-language default)
 
@@ -119,7 +120,7 @@ is what invariant 5 actually asks for: `.java` reaches a Java formatter and
 |---|---|---|---|---|
 | Formatter (PostToolUse) | `biome check --write`, only where the project declares biome | `ruff format` + `ruff check --fix` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
 | Typecheck | `tsc` (via `turbo run type-check`) | `ty` / `mypy` / `pyright` — whichever the project configures | `cargo check` | `./gradlew compileJava compileKotlin` / `./mvnw -o compile` |
-| Verifier forms the runner dispatches | `.sh` + `.ts` via `node` | `.sh` + `.py` via `uv run --frozen` | `.sh` only (no per-hook `.rs` build); JSON parsed with `jq` | `.sh` only (no per-hook JVM start); JSON parsed with `jq` |
+| Verifier forms to write | `.sh` + `.ts` via `node` | `.sh` + `.py` via `uv run --frozen` | `.sh` only (no per-hook `.rs` build); JSON parsed with `jq` | `.sh` only (no per-hook JVM start); JSON parsed with `jq` |
 | Gate runner (when the project declares none) | the package manager the project's own scripts and CI invoke (+ `turbo`) | `uv run` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
 | Secret scan | gitleaks | gitleaks | gitleaks | gitleaks |
 | PreToolUse default | non-blocking (advisory) | project choice (blocking convention-gate is valid) | non-blocking | non-blocking |
@@ -142,7 +143,8 @@ repo is never penalised for the tool it does not install.
   wrapper's own directory, else that directory's parent; never a probe of the
   working directory, which the runtime does not promise and which names the
   inner repository inside a submodule → dispatch by verifier extension) and
-  `_stop_runner.sh` (same, always exit 0). Both reject `..` path-traversal in
+  `_stop_runner.sh` (the same anchor, `.sh` verifiers only, always exit 0).
+  Both reject `..` path-traversal in
   the script-name argument. The wrapper probes no toolchain — each non-shell dispatch arm
   probes the interpreter it invokes, and a `.sh` verifier probes whatever it
   shells out to. A wrapper that gated on the language's build tool skipped
@@ -188,8 +190,9 @@ repo is never penalised for the tool it does not install.
   env-runner, so the exclusion narrows what is typed casually and not what is
   reachable. `typescript-dev`'s doc comment states the reach; the observation
   ledger enumerates it across every profile.
-- `constitution.md` is the one `.claude/rules/*.md` that omits `paths:`
-  (foundation, always-loaded). Every other rule carries `paths:`.
+- The foundation rules — the slugs `[validate.rules] always_loaded_slugs`
+  lists — omit `paths:` and load every session. Every other rule carries a
+  `paths:` that scopes it.
 - **The per-file formatter must resolve the same config the gate does.**
   A PostToolUse hook formats one file; the CI gate formats the workspace.
   Where the two read configuration differently, every edit reverts what the

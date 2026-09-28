@@ -42,13 +42,14 @@ placeholders. Read the source, not the whole tree.
 
 | Concern | Source | Feeds |
 |---|---|---|
-| Build / test / lint commands | Makefile, Justfile, `package.json` scripts, `[project.scripts]`, CI config | CLAUDE.md `## Build & test`; gate sequence |
+| Build / test / lint commands **and the runner that drives them** | Makefile, Justfile, `package.json` scripts, pyproject.toml `[tool.poe.tasks]`/`[tool.hatch.envs.*.scripts]`/`[tool.pdm.scripts]`/`[project.scripts]`, Taskfile.yml, mise `[tasks]`, CI config | CLAUDE.md `## Build & test`; gate sequence; the gate-driver grant (language-matrix) |
 | Directory layout | top-level listing + workspace member dirs | CLAUDE.md `## Layout` |
 | Project description | README first paragraph, manifest `description` | CLAUDE.md header |
-| Code conventions | formatter/linter/type-checker config + a sample of source | CLAUDE.md `## Conventions`; `<lang>-conventions.md` |
-| CI pipeline + gates | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `turbo.json` | hook event selection; suggested `extend pattern` |
+| Code conventions | formatter/linter/type-checker config (`biome.json`, `.eslintrc`, ruff in `pyproject.toml`, `rustfmt.toml`, `tsconfig.json`) + a sample of source | CLAUDE.md `## Conventions`; `<lang>-conventions.md`; whether the language tier's formatter hook finds a config to act on |
+| CI pipeline + gates | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, `turbo.json` | hook event selection; suggested `extend pattern` |
 | Test framework | `vitest.config`, `pytest.ini`, Cargo test layout | `<lang>-conventions.md` testing section |
-| Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners in deps/CI | suggested `gcp-strict`/`aws-strict` profile; secret-scan recommendation |
+| Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners in deps/CI | secret-scan recommendation |
+| Cloud CLIs | `gcloud`/`gsutil` or `aws` in CI config or task scripts | `gcp-strict` (Google Cloud) / `aws-strict` (AWS) composed into `permissions` |
 | **Enforced invariants** | the enforcer sweep below — run it, do not sample it | `extend rule` bodies; the scaffold report's rule candidates |
 
 A concern with no signal keeps its template default and is noted "none
@@ -118,8 +119,7 @@ module roots directly with a single agent.
 
 Never fan out for: small/single-package repos, dependency-heavy or stateful
 work, or the generation itself. Fan-out costs 4–15× tokens and hurts on
-dependent tasks; it is for read-heavy exploration only. Subagents cannot spawn
-subagents.
+dependent tasks; it is for read-heavy exploration only.
 
 Each Explore subagent gets an explicit objective, output format, and scope
 boundary — vague delegation causes overlap and gaps. Explore agents are
@@ -148,7 +148,7 @@ A single JSON file the synthesis step reads (not the transcripts):
     "monorepo": true,
     "package_manager": "pnpm",
     "workspace_tool": "turborepo",
-    "language_primary": "typescript",
+    "languages": ["typescript"],
     "profile": {
       "build_commands": ["pnpm build", "pnpm test", "pnpm type-check"],
       "formatter": "biome", "test_framework": "vitest",
@@ -174,7 +174,7 @@ A single JSON file the synthesis step reads (not the transcripts):
 ## Phase 4 — synthesis (single agent)
 
 Read the artifact (never the raw exploration transcripts). Decide the harness
-plan: which language profile, which template files to emit, the project-fit
+plan: which language profiles, which template files to emit, the project-fit
 content for each from the `profile` block, and — in brownfield — which
 incumbent artifacts to respect and never overwrite. Generation is single-agent
 and sequential; code changes are stateful, so do not parallelize them.

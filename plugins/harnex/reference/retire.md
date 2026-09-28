@@ -1,8 +1,6 @@
 # Retire — removing what the operator decides is not earning its place
 
-`extend` adds. Nothing removed, so a harness only ever grew: a Stop hook
-spending 2.6 seconds per stop stayed because there was no verb that could take
-it out. This is that verb menu.
+`extend` adds; this is the verb menu that removes.
 
 ## Evidence is a candidate, never a verdict
 

@@ -30,7 +30,10 @@ an observation is the blank-page problem in disguise.
   same list, and it also supplies the **bookend trigger's project signals**
   (a migration surface, an auth path, a generated-file guard). Name the
   **fast gate command** the loop's verify step runs and grant it in the
-  review skill's `allowed-tools`.
+  review skill's `allowed-tools`. Verify a brownfield `harness.toml` lists
+  `review-lenses` in `[validate.rules] always_loaded_slugs`, and add it if
+  not: the rule carries no `paths:`, so without the slug `harnex check`
+  reports it as a rule missing its scope.
 - `spec-workflow` — check for existing `specs/` or `docs/adr/` directory.
   If found, adapt to the existing layout instead of overwriting. Drop any
   phase whose artifact nobody on this project would review and no later
@@ -92,8 +95,9 @@ an observation is the blank-page problem in disguise.
 - `write-guard` — detect files with lifecycle governance (docs/, specs/
   with status frontmatter). Detect existing convention checking tools
   (linter config, type checker). Pre-fill the verifier's case arms with
-  observed protection patterns. Add a PreToolUse(Edit|Write) hook entry
-  to `.claude/settings.json` dispatching through `_runner.sh`.
+  observed protection patterns. Add a PreToolUse hook entry with matcher
+  `Edit|Write|MultiEdit` to `.claude/settings.json` dispatching through
+  `_runner.sh`.
 - `routines` — schedule the first tick of each shipped routine (`when:` +
   `produces:`) or leave them deliberately unscheduled and say so — the
   session surface reports `unscheduled` loudly until they are. Pick the
@@ -117,4 +121,6 @@ an observation is the blank-page problem in disguise.
   are not the project's work product: where they are, the freeze fires on most
   commits and the standing grant it takes prints its notice so often that the
   one signal the freeze was bypassed stops being one. Tell the operator the
-  break-glass entry by name; it is theirs, not the agent's.
+  break-glass entry by name, and that the `denyWrite` entries hold only in a
+  session the sandbox runs in; both the grant and turning the sandbox on are
+  theirs, not the agent's.

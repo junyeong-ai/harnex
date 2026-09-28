@@ -20,7 +20,8 @@
 Guardrails that must always hold live in `.claude/settings.json` (hooks +
 `permissions.deny`), not here:
 - Secrets and destructive operations are denied.
-- Edits are auto-formatted (PostToolUse).
+- Edits are auto-formatted (PostToolUse) where the language profile's
+  formatter is configured.
 - Sessions surface uncommitted work on Stop without trapping.
 
 See `.claude/rules/constitution.md` for the foundation laws,

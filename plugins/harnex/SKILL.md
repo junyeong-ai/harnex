@@ -1,6 +1,6 @@
 ---
 name: harnex
-description: Generate and maintain project-fit, project-native Claude Code harness tooling — hooks, settings.json, CLAUDE.md, path-scoped rules — in the target project's own language, from verified spec-correct templates. Use to scaffold a harness in a fresh repo, extend one with a closed-verb additive change, audit an existing harness for spec drift, or regenerate the managed regions against the current Claude Code spec.
+description: Generate and maintain project-fit, project-native Claude Code harness tooling — hooks, settings.json, CLAUDE.md, path-scoped rules — in the target project's own language, from verified spec-correct templates. Use to scaffold a harness in a fresh repo, extend one with a closed-verb additive change, retire an element on the evidence and the operator's decision, audit an existing harness for spec drift, or regenerate the managed regions against the current Claude Code spec.
 disable-model-invocation: true
 argument-hint: "scaffold | extend <verb> <args> | retire <verb> <args> | audit | regenerate"
 ---
@@ -38,7 +38,7 @@ every session into an `extend` verb.
 
 1. **Compose templates; never free-generate safety-critical code.** Hook
    control flow, permission rules, and timeouts come from `templates/`. The LLM
-   only selects the language profile and fills declared parameters.
+   only selects the language profiles and fills declared parameters.
 2. **Enforced over advisory.** Must-happen → hook or `permissions.deny`.
    Guidance → short path-scoped rules. Workflow → a skill. (enforced-vs-advisory)
 3. **Specific-but-minimal, never crude heuristics.** Apply keep-soften-cut:
@@ -92,24 +92,11 @@ A repo with no `.claude/`.
 
 ### Step 1 — Deep project analysis
 
-Run the full Phase-1 fingerprint (exploration.md), PLUS the following
-project-specific analysis. The goal: every generated file is pre-filled
-with project-fit content, not blank placeholders.
-
-| Analyze | Source | Feeds into |
-|---|---|---|
-| Language + package manager | lockfile + manifest | template selection |
-| Monorepo structure | workspace config | lean vs multi-package scaffold |
-| Build / test / lint commands **and the runner that drives them** | Makefile, Justfile, `package.json` `scripts`, pyproject.toml `[tool.poe.tasks]`/`[tool.hatch.envs.*.scripts]`/`[tool.pdm.scripts]`/`[project.scripts]`, Taskfile.yml, mise `[tasks]`, CI config | CLAUDE.md `## Build & test` **and** the gate-driver grant (language-matrix) |
-| Directory layout | top-level `ls` + workspace member dirs | CLAUDE.md `## Layout` |
-| Project description | README.md first paragraph, manifest `description` field | CLAUDE.md header |
-| Formatter / linter / type checker | biome.json, .eslintrc, ruff in pyproject.toml, rustfmt.toml, tsconfig.json | CLAUDE.md `## Conventions`; whether the language tier's formatter hook finds a config to act on |
-| Existing CI pipeline | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile` | hook event selection, gate sequence |
-| Existing test framework | vitest.config, pytest.ini, Cargo test | `<lang>-conventions.md` testing section |
-| Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners (in deps or CI) | suggest `gcp-strict`/`aws-strict` profile; secret-scan recommendation |
-
-For a monorepo, analyze per workspace member when packages differ in
-toolchain or test framework (exploration Phase 3) — a single root profile
+Run exploration.md's Phase 1 (the structural fingerprint that selects the
+templates) and Phase 2 (the project profile, one row per concern and what it
+feeds). Every generated file is pre-filled from what they observe, not from
+blank placeholders. For a monorepo, analyze per workspace member when packages
+differ in toolchain or test framework (Phase 3) — a single root profile
 flattens real per-package differences.
 
 ### Step 2 — Compose artifacts from templates + analysis
@@ -118,17 +105,13 @@ flattens real per-package differences.
 list.** Read it and emit every artifact it declares, dispatching on
 `content.kind` — into a destination that does not exist, `copy`, `seed` and
 `managed` are written verbatim and `merge` contributes its JSON fragment at
-`content.key` as a **recursive** union: objects merge key-wise at every depth,
-arrays gain the elements they lack in the order they arrive, an empty slot
-takes the fragment whole, and where two shapes disagree that node is left
-exactly as it was and the collision is reported — the siblings around it still
-merge, so one malformed event does not withhold the rest (the manifest header states the rule and why depth is
-not optional — `hooks` is an object whose values are arrays). `chmod 0o755` where `executable` is set. Emit the
-`foundation` tier always, and the `language` tier once per detected stack,
-resolving `{lang}` to that language each time. The manifest is the single home
-for that set — a second list here would be the one that drifts, and the
-oracle's fixture test builds from the same file so a scaffold and its guard
-cannot disagree.
+`content.key` as the recursive union the manifest header defines, reporting
+each collision it leaves in place. `chmod 0o755` where `executable` is set.
+Emit the `foundation` tier always, and the `language` tier once per detected
+stack, resolving `{lang}` to that language each time. The manifest is the
+single home for that set — a second list here would be the one that drifts,
+and the oracle's fixture test builds from the same file so a scaffold and its
+guard cannot disagree.
 
 **Check every destination before writing it.** A repo with no `.claude/` — the
 repo scaffold mode is for — usually still has a `CLAUDE.md`, because Claude
@@ -144,21 +127,13 @@ alone, `seed` is theirs to edit from the first commit, `managed` is theirs
 outside the sentinels, `merge` shares its destination with the other tier and
 with their own entries.
 
-One artifact is a skill rather than a rule, and the rubric is why: the
-promotion-and-retirement pass `governance.md` describes is a procedure over
-several commands with a decision at each step, and invariant 2 sends a workflow
-to a skill. It also needs `allowed-tools`, which a rule cannot carry, and it
-must be in context when someone runs the sweep rather than when they happen to
-edit a rule — which is all a `paths:` scope can offer. Every other foundation
-artifact stays a rule because it is guidance, not a procedure.
-
 The manifest declares template-derived artifacts. Three emissions are outside
 it because their content comes from the project rather than from a template:
 - For Rust, `rustfmt.toml` carrying the edition declared in `Cargo.toml` —
   per-file `rustfmt` does not read the manifest and would otherwise format to
   a different style than `cargo fmt` (language-matrix).
-- Composing `gcp-strict` or `aws-strict` into `permissions` when CI config
-  reveals the project uses docker / terraform / gcloud.
+- Composing `gcp-strict` or `aws-strict` into `permissions` where exploration
+  Phase 2's cloud-CLI row found that cloud's CLI in use.
 - The gate-driver grant, from the task declaration Step 1 already read (the
   language-matrix fingerprint table). A project whose gates run through `just`,
   `make`, `poe` or `task` prompts on every gate invocation without it, and the
@@ -230,9 +205,9 @@ operator to re-phrase using a verb from this list.
   (propagates exit code). The verifier script's BODY is
   project-specific check logic the operator authors — that is not free-
   generated safety-critical control flow, which lives entirely in the two
-  runner templates. Add the event entry to `.claude/settings.json` `hooks`
-  (the managed region) with the correct runner per the rule above; for a
-  PreToolUse/PermissionRequest matcher targeting MCP, use
+  runner templates. Add the event entry to `.claude/settings.json` `hooks` —
+  project-owned, per invariant 6 — with the correct runner per the rule above;
+  for a PreToolUse/PermissionRequest matcher targeting MCP, use
   `mcp__server__tool` / `mcp__server__.*`, never bare `mcp__server`.
 - **`extend rule <slug> <paths-glob>`** — derive a path-scoped rule at
   `.claude/rules/<slug>.md` from `common/rule-template.md`, filling it from
@@ -271,9 +246,9 @@ operator to re-phrase using a verb from this list.
   you wrote; the observations are usually the more interesting half.
 - **`extend skill <name>`** — scaffold a spec-correct domain skill at
   `.claude/skills/<name>/SKILL.md` from `common/skill-template.md`. Frontmatter
-  is composed correct-by-spec (description+when_to_use ≤ 1536 chars, body
-  ≤ 500 lines, `disable-model-invocation: true` so an unfinished or
-  side-effecting skill never auto-fires); the operator fills the procedure and,
+  is composed correct-by-spec (within the `[validate.skills]` budgets,
+  `disable-model-invocation: true` so an unfinished or side-effecting skill
+  never auto-fires); the operator fills the procedure and,
   for a knowledge skill Claude should auto-apply, removes
   `disable-model-invocation`. `name` is omitted (defaults to the directory) so
   it cannot drift from the folder. `harnex validate skills` verifies the
@@ -289,14 +264,13 @@ operator to re-phrase using a verb from this list.
 - **`extend permission allow <pattern>`** — same, into `permissions.allow`.
   Refuse when `<pattern>` is a read-only built-in (`ls`, `grep`, `cat`,
   read-only `git`) — its allow rule is a no-op.
-- **`extend language <lang>`** — bootstrap a new language directory with the
-  three `{lang}` templates `scaffold.toml` names —
-  `permissions.allow.json`, `post-format.sh`, `rules/<lang>-conventions.md` —
-  plus the matching `<lang>-dev` profile stub in `profiles.rs`. The hook
-  wrappers, `session-start.sh`, and `check-on-stop.sh` are foundation-tier and
-  never per-language. Operator fills the toolchain commands; the
-  `scaffold_manifest` and `policy_template_sync` reverse-gap tests enforce
-  both sides exist.
+- **`extend language <lang>`** — run in the harnex repository, not an
+  adopter's: a language profile ships with harnex. It adds the `{lang}`
+  templates the language tier of `scaffold.toml` names and the matching
+  `<lang>-dev` profile in the oracle's `profiles.rs`; `scaffold_manifest` and
+  `policy_template_sync` fail until both sides exist. The hook wrappers,
+  `session-start.sh`, and `check-on-stop.sh` are foundation-tier and never
+  per-language. Operator fills the toolchain commands.
 - **`extend pattern <name>`** — install a proven engineering pattern,
   **customized to the target project**. The pattern set and each pattern's
   files + analysis steps are declared in
@@ -318,35 +292,12 @@ operator to re-phrase using a verb from this list.
   `audit-fill-marker-unresolved` reports each survivor with the line and what
   it asked for.
 
-  **Per-pattern analysis instructions live in
-  `${CLAUDE_SKILL_DIR}/reference/patterns.md`** — read the installed pattern's
-  entry there before Step 2. Each entry names what Step 2 must observe in the
-  target project; a fill resolved from priors instead of an observation is the
-  blank-page problem in disguise.
-
-  Available patterns:
-  - `review-lenses` — the convergent review loop plus two forked read-only
-    bookends (critique, design-review) as **skills**, the fresh-context
-    reviewer **agent** they all run through, the severity × citation rule
-    that decides what may be fixed unattended, and 6 lens files.
-  - `spec-workflow` — the spec orchestrator as a **skill** (gate events with a
-    closed decision-token enum, resume from disk), the threshold-and-lifecycle
-    rule, and `specs/_template/`.
-  - `telemetry-kinds` — the closed-schema event ledger the harness measures
-    itself with: an auto-emit **hook** over `harnex guard telemetry-emit`
-    (Skill / Task / Agent invocations, outcome from the event), the closed
-    payload_schema as the privacy boundary, and the retirement feed.
-  - `deprecation` — allow-marker grammar with sunset dates.
-  - `pr-conventions` — PR template + AI-fill discipline.
-  - `naming-decisions` — team naming vocabulary (tool suffixes, factory
-    verbs, parameter bags, domain terms).
-  - `copy-conventions` — communication register, terminology, error
-    message format, i18n.
-  - `routines` — recurring harness work with a cadence and a record:
-    two recurring hygiene routines, the contract rule, and a SessionStart
-    surface for what is overdue.
-  - `write-guard` — PreToolUse(Edit|Write) enforcement: verifier
-    skeleton + governance rule for write-time convention checking.
+  **The patterns on offer, and what each must observe, live in
+  `${CLAUDE_SKILL_DIR}/reference/patterns.md`** — one entry per `[[pattern]]`
+  in the manifest, which `pattern_manifest_sync` holds to the same set. Choose
+  from there, and read the installed pattern's entry before Step 2; a fill
+  resolved from priors instead of an observation is the blank-page problem in
+  disguise.
 
 In every verb: read the module-map's `existing_harness` first; match the
 incumbent hook-runner pattern, rule mechanism, and gate sequence. Never
@@ -433,8 +384,7 @@ Report what changed and why.
 
 ## Mode: retire (evidence-presented, operator-decided removal)
 
-`extend` adds and nothing removed, so a harness only ever grew. This mode is
-the other direction. It does not decide: the transcript records what a harness
+This mode does not decide: the transcript records what a harness
 element cost and never what it bought, so `retire.md` presents evidence and the
 operator supplies the reason. Read it before running this mode.
 

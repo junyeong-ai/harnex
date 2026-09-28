@@ -78,10 +78,10 @@
 # must contribute the same shape, so the result does not depend on which tier
 # lands first.
 #
-# Adding a language means adding its `<lang>-dev` profile plus the three
-# `{lang}` template files — never an edit here. The language set derives from
-# `PermissionProfile::ALL`, which is what the drift test resolves `{lang}`
-# against in both directions.
+# Adding a language means adding its `<lang>-dev` profile plus the `{lang}`
+# template files the language tier below names — never an edit here. The
+# language set derives from `PermissionProfile::ALL`, which is what the drift
+# test resolves `{lang}` against in both directions.
 
 # ---------- foundation: emitted for every project ----------
 
@@ -201,9 +201,9 @@ executable = true
 #
 # Detection answers with a SET, not a winner. A lockfile is evidence that a
 # stack is present, never evidence that it is the only one, and a repository
-# with two of them has two — one measured here holds 17,085 `.py` files beside
-# 3,433 `.ts`, and picking by row order would have handed it a formatter that
-# silently skips 83% of its source. Every artifact below therefore resolves
+# with two of them has two; picking one by row order hands the other's source
+# a formatter that silently skips it (language-matrix measures one such
+# repository). Every artifact below therefore resolves
 # per language: `permissions.allow` and `hooks.PostToolUse` union across the
 # matched set, and the conventions rule and formatter carry `{lang}` in their
 # destination so two stacks never collide.

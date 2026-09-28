@@ -19,25 +19,20 @@ guides editing it, not using it):
   drift and holds the foundation and language allow sets disjoint
   (constitution IX). Never hand-edit a template's rules. The two floors are
   foundation-tier: a stack with no language profile still receives both.
-- **`reference/spec-facts.md` is perishable.** Re-verify each fact against the
-  live Claude Code docs every change — a frozen spec fact is the failure mode.
+- **`reference/spec-facts.md` is perishable.** Re-verify it against the live
+  Claude Code docs as its header says — a frozen spec fact is the failure mode.
   Closed-set vocabularies inside spec-facts (hook events, …) live in
   `<!-- harnex-managed:start <slug> -->` blocks that the `spec_facts_sync`
   integration test holds in lock-step with the Rust SSoT (constitution IX).
-- **Managed-region convention for generated artifacts.** Markdown templates
-  (`common/CLAUDE.md`, `common/rules/constitution.md`) carry
-  `<!-- harnex-managed:start <slug> -->` / `<!-- harnex-managed:end <slug> -->`
-  sentinels bounding the harnex-owned region. `regenerate` overwrites only
-  inside sentinels; everything outside is project-authored. `.claude/settings.json`
-  is JSON (no comments), so its partition is **item-level within** `permissions`
-  and `hooks` — harnex owns the entries it generated, each identified by its
-  template shape, and an operator's `extend` additions and any incumbent
-  hand-rolled entries are project-owned and survive regenerate. Reading that as
-  whole-key ownership is what would erase them. Every other top-level key is
-  project-owned. [file: plugins/harnex/SKILL.md § Invariants (every mode)] states the same
-  partition; this is the editing contract's echo of it, not a second rule.
-- **Budgets:** `SKILL.md` body < 500 lines (`plugin_scaffold_validates` gates
-  it); `description` + `when_to_use` ≤ 1536 chars, key use case first. A
+- **Managed-region convention for generated artifacts.** Invariant 6 of
+  [file: plugins/harnex/SKILL.md § Invariants (every mode)] owns the partition:
+  sentinel-bounded regions in the Markdown templates, item-level ownership
+  within `permissions` and `hooks` in `.claude/settings.json`. Keep the
+  templates to it — a region `regenerate` cannot find is one it cannot
+  refresh.
+- **Budgets:** `SKILL.md` stays within the `[validate.skills]` budgets the
+  scaffold's `harness.toml` declares, which `plugin_scaffold_validates` runs
+  the skill validator with; put the key use case first in `description`. A
   procedure that does not generate harness tooling belongs in `commands/`,
   which has no such budget and is the honest component class for it — adding a
   `skills/` directory would end single-skill discovery, so the skill is not the
@@ -58,9 +53,8 @@ guides editing it, not using it):
   tier is what a stack with no language profile still receives; nothing in it
   may reference a `language`-tier artifact, and `scaffold_manifest` fails if
   one does.
-- **Add a language** = the three `{lang}` templates the manifest names
-  (`permissions.allow.json`, `post-format.sh`, `rules/<lang>-conventions.md`)
-  plus a `<lang>-dev` profile in the oracle AND a row in
+- **Add a language** = the `{lang}` templates the manifest's language tier
+  names, plus a `<lang>-dev` profile in the oracle AND a row in
   `reference/language-matrix.md` (detection fingerprint + parameters). The
   manifest itself never changes — `{lang}` resolves against
   `PermissionProfile::ALL`, and `scaffold_manifest` fails in both directions:
@@ -69,8 +63,9 @@ guides editing it, not using it):
   non-shell arm probes its own interpreter.
 - **Add a pattern** = a `templates/patterns/<slug>/` directory with the
   skeleton files + a `[[pattern]]` entry in `templates/patterns/manifest.toml`
-  (slug, files, analyze steps). The `pattern_manifest_sync` test fails on
-  drift between manifest and directories. Pattern files ship CONCRETE proven
+  (slug, files, analyze steps) + its entry in `reference/patterns.md`, which
+  is the list the skill offers. The `pattern_manifest_sync` test fails on
+  drift among the three. Pattern files ship CONCRETE proven
   defaults, never blank fill-ins — every `<!-- harnex-fill: … -->` is replaced
   at install time by the skill from project analysis. That is the one marker
   token; `sentinel::fill_markers` owns its grammar and `audit-fill-marker-

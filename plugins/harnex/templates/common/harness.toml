@@ -42,10 +42,10 @@ require_governs = true
 [validate.skills]
 reject_unknown_keys = true
 # Advisory (Minor, never gating): a description carrying `commit`, `deploy`,
-# `delete`, `send`, `publish` or `release` without `disable-model-invocation`
-# is worth a second look, and the check matches prose rather than intent, so a
-# read-only skill that reviews commits trips it. That is why it reports and
-# does not block.
+# `delete`, `submit`, `send`, `publish` or `release` without
+# `disable-model-invocation` is worth a second look, and the check matches prose
+# rather than intent, so a read-only skill that reviews commits trips it. That
+# is why it reports and does not block.
 flag_side_effect_verbs = true
 
 [validate.agents]
@@ -91,8 +91,7 @@ reject_unknown_keys = true
 # bare backtick path is documentation and stays documentation; `api/gateway.io:8443`
 # is a host and a port, and nothing distinguishes that shape from a file and a
 # line. Write the marker whenever a rule states something the code is the truth
-# for — the two harnesses this scaffold is modelled on name an owner in every
-# single rule they carry.
+# for.
 [evidence]
 default_provenance = "internal"
 
