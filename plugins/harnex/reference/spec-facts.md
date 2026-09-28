@@ -161,6 +161,23 @@ already contradicted both a page and the binary's own schema.
   (measured at 2.1.220: a worktree session applied the main checkout's `env`
   marker, not the worktree's own). `guard::floor`'s canonical-root resolution
   mirrors this so hook and engine read the same file.
+- **The Bash sandbox is the only layer that bounds what a shell command
+  writes** (/en/sandboxing). `sandbox.filesystem.denyWrite` is enforced by the
+  OS on every process a sandboxed Bash, PowerShell or Monitor command starts;
+  permission rules and hooks judge the command string before it runs. Every
+  scope may set it and the arrays merge across scopes, so an entry in
+  `.claude/settings.json` takes effect for any developer who turns the sandbox
+  on anywhere, and does nothing while it is off. In project settings `./x` or
+  a bare `x` resolves against the project root and `/x` is absolute (the
+  permission-rule meaning of `/` does not apply); a trailing `/` or `/**` is
+  stripped and a directory entry covers what is below it. Before 2.1.224 a
+  trailing `/` was passed through and the entry guarded nothing; on Linux and
+  WSL2 an entry with `*`, `?` or `[` is skipped. Two exits stay open: an
+  unsandboxed retry (`dangerouslyDisableSandbox`) goes through the permission
+  flow, which a session skipping permission prompts passes unasked unless
+  `sandbox.allowUnsandboxedCommands: false`; and a command in
+  `excludedCommands` runs outside it. A sandboxed git that must rewrite a
+  denied file fails with `unable to unlink old`.
 - **The engine schema-validates its own settings files before hooks run** —
   an invalid Edit to `.claude/settings.json` is rejected by the schema layer
   with no PreToolUse hook consulted; a schema-valid one reaches the hooks

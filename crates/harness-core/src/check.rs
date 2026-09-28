@@ -1,9 +1,9 @@
 //! # check — unified validation gate
 //!
 //! Runs every enabled validator (rules, skills, settings, evidence,
-//! codegen, permission audit) over the configured surfaces and emits
-//! a single aggregated `CheckOutcome` envelope. Each finding's `slug`
-//! attributes it to the producing validator.
+//! codegen, permission audit, the floor's sandbox projection) over the
+//! configured surfaces and emits a single aggregated `CheckOutcome`
+//! envelope. Each finding's `slug` attributes it to the producing validator.
 //!
 //! Supports `--since <git-ref>` to restrict scanning to files changed
 //! since the ref — same semantics as nodex's `check --since`. Without
@@ -244,6 +244,7 @@ impl<'a> ProjectChecker<'a> {
         self.run_advisories(&mut findings, &mut run, &mut skipped)?;
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
         self.run_permissions_audit(&changed, &mut findings, &mut run, &mut skipped)?;
+        self.run_floor_sandbox(&mut findings, &mut run, &mut skipped);
 
         findings.sort_by(|a, b| {
             a.severity
@@ -739,6 +740,77 @@ impl<'a> ProjectChecker<'a> {
         }
         run.push("policy.permissions".into());
         Ok(())
+    }
+
+    /// Every path the floor freezes is one the Bash sandbox refuses to write
+    /// (`guard::floor::sandbox`).
+    ///
+    /// Ignores `--since`: the projection breaks when either of its two files
+    /// moves — a path added to `[guard.floor]` as much as an entry dropped from
+    /// the settings — and reading both costs two reads.
+    fn run_floor_sandbox(
+        &self,
+        findings: &mut Vec<Finding>,
+        run: &mut Vec<String>,
+        skipped: &mut Vec<SkippedRule>,
+    ) {
+        let Some(floor) = self.config.guard.as_ref().and_then(|g| g.floor.as_ref()) else {
+            skipped.push(SkippedRule {
+                slug: "guard.floor".into(),
+                reason: "no [guard.floor] section".into(),
+            });
+            return;
+        };
+        let settings_path = self.working_dir.join(".claude/settings.json");
+        if !settings_path.is_file() {
+            skipped.push(SkippedRule {
+                slug: "guard.floor".into(),
+                reason: ".claude/settings.json not present".into(),
+            });
+            return;
+        }
+        // Unreadable settings are `validate.settings`' finding; this arm records
+        // that it could not judge rather than guessing at an empty list.
+        let Some(settings) = std::fs::read_to_string(&settings_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        else {
+            skipped.push(SkippedRule {
+                slug: "guard.floor".into(),
+                reason: ".claude/settings.json is not readable JSON".into(),
+            });
+            return;
+        };
+        let deny_write: Vec<&str> = settings
+            .pointer("/sandbox/filesystem/denyWrite")
+            .and_then(|v| v.as_array())
+            .map(|entries| entries.iter().filter_map(|e| e.as_str()).collect())
+            .unwrap_or_default();
+        for entry in crate::guard::floor::sandbox::uncovered(
+            crate::guard::floor::floor_entries(&floor.protected_paths),
+            &deny_write,
+        ) {
+            findings.push(Finding {
+                slug: "floor-sandbox-uncovered".into(),
+                severity: Severity::Major,
+                location: Location::file(settings_path.clone()),
+                message: format!(
+                    "`{entry}` is frozen by the floor, and no `sandbox.filesystem.denyWrite` \
+                     entry covers it — a sandboxed Bash command can still write it"
+                ),
+                hint: Some(format!(
+                    "add \"{}\" to `sandbox.filesystem.denyWrite` in .claude/settings.json. \
+                     The sandbox enforces it on every process a command starts, and it does \
+                     nothing where the sandbox is off.",
+                    crate::guard::floor::sandbox::deny_write_entry(entry)
+                )),
+                auto_fixable: false,
+                // No fix command: `.claude/settings.json` is itself frozen, so
+                // the entry is the operator's to add.
+                fix_command: None,
+            });
+        }
+        run.push("guard.floor".into());
     }
 }
 

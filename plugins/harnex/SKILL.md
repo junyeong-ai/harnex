@@ -75,10 +75,11 @@ every session into an `extend` verb.
    the managed regions; `extend` only adds new regions in the incumbent
    idiom; an audit flags edits inside managed regions for operator review.
    For `.claude/settings.json` (JSON, no comments), ownership is **item-level
-   within** `permissions` and `hooks`, NOT whole-key: harnex owns only the
-   entries it generated — the baseline + `workspace` + `<lang>-dev` permission
-   rules and the base hook entries, each identified by its template shape
-   (event + matcher + runner script). Read those shapes from
+   within** `permissions`, `hooks` and `sandbox.filesystem.denyWrite`, NOT
+   whole-key: harnex owns only the entries it generated — the baseline +
+   `workspace` + `<lang>-dev` permission rules, the base hook entries, each
+   identified by its template shape (event + matcher + runner script), and the
+   floor's `denyWrite` entries. Read those shapes from
    `templates/common/hooks.json` and `templates/{lang}/hooks.format.json`
    rather than from a copy here: a matcher restated in prose is the one that
    goes stale, and a stale one makes regenerate read harnex's own entry as

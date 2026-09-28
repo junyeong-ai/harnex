@@ -56,7 +56,7 @@ fn load_cfg(tmp: &TempDir, toml_body: &str) -> Config {
 #[test]
 fn check_runs_every_enabled_validator() {
     let tmp = project();
-    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    let cfg = load_cfg(&tmp, &floor_config_toml());
 
     write(
         &tmp.path().join(".claude/rules/constitution.md"),
@@ -90,6 +90,7 @@ fn check_runs_every_enabled_validator() {
         "advisory",
         "governs",
         "policy.permissions",
+        "guard.floor",
     ] {
         assert!(outcome.run.contains(&v.to_string()), "missing {v}");
     }
@@ -120,6 +121,7 @@ harnex_version = ">=0.29, <0.30"
         "codegen",
         "evidence",
         "governs",
+        "guard.floor",
         "policy.permissions",
         "validate.agents",
         "validate.output_styles",
@@ -191,6 +193,84 @@ fn check_emits_permission_audit_findings() {
         .filter(|f| f.slug == "permission-missing-baseline-deny")
         .collect();
     assert!(!missing.is_empty(), "expected baseline-deny findings");
+}
+
+fn floor_config_toml() -> String {
+    format!(
+        "{}\n[guard.floor]\nprotected_paths = [\"hooks/\", \".github/workflows/\"]\n",
+        minimal_config_toml()
+    )
+}
+
+fn floor_findings(
+    outcome: &harness_core::check::CheckOutcome,
+) -> Vec<&harness_core::envelope::Finding> {
+    outcome
+        .findings
+        .iter()
+        .filter(|f| f.slug == "floor-sandbox-uncovered")
+        .collect()
+}
+
+#[test]
+fn every_floor_path_the_sandbox_leaves_writable_is_named_with_its_entry() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &floor_config_toml());
+    write(
+        &tmp.path().join(".claude/settings.json"),
+        r#"{"sandbox":{"filesystem":{"denyWrite":["./harness.toml","./hooks/pre-commit","./.github"]}}}"#,
+    );
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+
+    assert!(outcome.run.contains(&"guard.floor".to_string()));
+    let hints: Vec<&str> = floor_findings(&outcome)
+        .iter()
+        .map(|f| f.hint.as_deref().unwrap())
+        .collect();
+    assert_eq!(hints.len(), 3, "{hints:?}");
+    for entry in [
+        "./.claude/settings.json",
+        "./.claude/settings.local.json",
+        "./hooks",
+    ] {
+        assert!(
+            hints.iter().any(|h| h.contains(&format!("\"{entry}\""))),
+            "no finding hands over {entry}: {hints:?}"
+        );
+    }
+}
+
+#[test]
+fn a_settings_file_that_projects_the_floor_leaves_nothing_to_report() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &floor_config_toml());
+    write(
+        &tmp.path().join(".claude/settings.json"),
+        r#"{"sandbox":{"filesystem":{"denyWrite":[
+            "./harness.toml","./.claude/settings.json","./.claude/settings.local.json",
+            "./hooks","./.github/workflows"]}}}"#,
+    );
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+
+    assert!(outcome.run.contains(&"guard.floor".to_string()));
+    assert!(
+        floor_findings(&outcome).is_empty(),
+        "{:?}",
+        outcome.findings
+    );
+}
+
+#[test]
+fn a_floor_with_no_settings_file_to_read_is_declared_unjudged() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &floor_config_toml());
+
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+
+    assert!(!outcome.run.contains(&"guard.floor".to_string()));
+    assert!(outcome.skipped.iter().any(|s| s.slug == "guard.floor"));
 }
 
 #[test]
