@@ -294,7 +294,8 @@ patterns covered out of the box:
 - Sentinel-block enum codegen across many files
 - Permission profiles for Claude Code settings: two floors (`baseline` deny,
   `workspace` allow), the tool surfaces (`git-strict`, `gcp-strict`,
-  `aws-strict`), and one `*-dev` toolchain profile per supported language
+  `aws-strict`, `infra-strict`), and one `*-dev` toolchain profile per
+  supported language
 - Permission rules Claude Code accepts and never consults — a path rule for a
   tool the file permission checks skip, or one naming a tool's primary content
   field — refused at every boundary one can be written
