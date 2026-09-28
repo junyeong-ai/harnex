@@ -177,7 +177,12 @@ already contradicted both a page and the binary's own schema.
   flow, which a session skipping permission prompts passes unasked unless
   `sandbox.allowUnsandboxedCommands: false`; and a command in
   `excludedCommands` runs outside it. A sandboxed git that must rewrite a
-  denied file fails with `unable to unlink old`.
+  denied file fails with `unable to unlink old`. Measured at 2.1.283 in a
+  session skipping permission prompts, told to overwrite a denied file by any
+  means: with the retry allowed, the second Bash call set
+  `dangerouslyDisableSandbox` and the write landed; with it off, redirection,
+  `mv`, `cp`, `tee`, `dd`, `sed -i` and `perl -i` were all refused, and the
+  Edit and Write attempts fell to the floor's PreToolUse freeze.
 - **The engine schema-validates its own settings files before hooks run** —
   an invalid Edit to `.claude/settings.json` is rejected by the schema layer
   with no PreToolUse hook consulted; a schema-valid one reaches the hooks
