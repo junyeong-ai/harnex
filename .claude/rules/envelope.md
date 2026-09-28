@@ -19,8 +19,8 @@ List:    `data = {"items": [...], "total": N}`
 
 Construct via `envelope::write_success(out, data, warnings)` or
 `envelope::write_error(out, &error)`. Never write prose to stdout.
-Stderr is reserved for debug logging; production builds emit nothing
-to stderr.
+Stderr carries no contract: only the `guard` hook commands write to it,
+where the runtime reads a hook's notices (`.claude/rules/guard.md`).
 
 Severity enum (kebab-case in JSON): `blocker | major | minor | info`.
 

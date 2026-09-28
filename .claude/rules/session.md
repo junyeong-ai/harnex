@@ -67,7 +67,7 @@ floor, named for that, and carries the coverage it was measured at.
   map key — `canonical` ([file: crates/harness-core/src/session/harness.rs :: fn canonical]) does,
   and its test asserts the ordering it exists for.
 - **A commit is a floor, not a count.** The runtime attaches `gitOperation` to
-  some commits and not others — 29 of git's 42 over this project. Anything
+  some commits and not others. Anything
   denominated in commits reads high, and `repository.authored_in_span` reports
   what the floor is a floor against so a consumer can see the gap.
 - **Never pipe stdin to a subprocess that also writes stdout.** A piped write
@@ -89,8 +89,7 @@ move that document's declared citation count**: the count is the guard's
 denominator, so a document that gains a citation fails the build until the
 citation is either watched or the count is moved deliberately.
 
-A variant no input can produce is deleted rather than kept — `CommitFate` had
-one until git was asked what it actually answers.
+A variant no input can produce is deleted rather than kept.
 
 ## What the oracle does not do
 

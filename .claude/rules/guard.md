@@ -27,7 +27,7 @@ Variants:
   exit code. Used for PreToolUse / PostToolUse / UserPromptSubmit / etc.
   where a non-zero exit blocks the agent action.
 - [`HookRunner::run_stop`] (`harnex guard hook-stop`) — observes the
-  inner exit code but ALWAYS returns 0 to git, capturing the observed
+  inner exit code but ALWAYS returns 0 to the runtime, capturing the observed
   code in the envelope. Used for Stop / SubagentStop where a non-zero
   exit would trap the agent in a Stop loop (per Claude Code spec, Stop
   hook non-zero exits trigger re-stop). Non-zero observations emit a
@@ -35,9 +35,8 @@ Variants:
 
 Each is discovery over a root-taking form — `run_at` / `run_stop_at` — and the
 exit-code contract lives there, as a working directory is a parameter
-everywhere else in this crate. Fused, that contract was only reachable from
-inside a git working tree, so it failed for anyone building from a source
-release while the product behaved correctly. The fail-open branch belongs to
+everywhere else in this crate and the contract then holds outside a git
+working tree too. The fail-open branch belongs to
 discovery alone: given a root there is nothing to fail open about, so
 `SkippedFailOpen` is unreachable from the root-taking forms by construction.
 
@@ -71,7 +70,7 @@ StopAuditor handles the Stop event in three phases:
 3. Spawn the configured critique skill via `claude --print`. Parse the
    returned JSON envelope; any finding that fails the gate
    (`Severity::fails_gate` — blocker or major) blocks the stop. Malformed
-   critique output fails OPEN (allow stop) — Article V, the bounded retry
+   critique output fails OPEN (allow stop) — the bounded retry
    counter is the loop's safety net, not a fail-closed gate.
 
 The retry counter is the deterministic antidote to single-loop

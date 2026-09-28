@@ -14,10 +14,10 @@ lives under `plugins/harnex/`:
 |---|---|
 | `plugins/harnex/SKILL.md` | single-skill plugin entry; modes: scaffold / extend / retire / audit / regenerate |
 | `plugins/harnex/commands/` | user-invoked procedures (`/harnex:measure`) — outside the skill and its budget |
-| `scripts/install.sh` | installs the oracle — the released binary first, source on request; the plugin never does, and reports it missing instead |
+| `scripts/install.sh` | installs the oracle — the released binary first, source where no release fits the platform or on request; the plugin never does, and reports it missing instead |
 | `.github/workflows/release.yml` | builds every asset that installer downloads; `release_install_sync` holds the two to one set of targets and one asset name |
-| `plugins/harnex/agents/` | sub-agents those procedures dispatch; `model` picks the family and `effort` the depth within it, and depth is the larger lever |
-| `plugins/harnex/reference/` | L1 knowledge — spec-facts, enforced-vs-advisory, keep-soften-cut, language-matrix, exploration |
+| `plugins/harnex/agents/` | sub-agents those procedures dispatch; `model` picks the family and `effort` the depth within it |
+| `plugins/harnex/reference/` | L1 knowledge the skill reads on demand |
 | `plugins/harnex/templates/` | L2 deterministic safety-critical templates (`common` + per-language) |
 | `plugins/harnex/templates/scaffold.toml` | composition manifest — every artifact a harness contains, its tier, destination, and merge/managed flags (skill + fixture test + audit coverage all read it) |
 | `plugins/harnex/.claude-plugin/plugin.json` | manifest; `version` omitted (commit SHA drives updates) |
@@ -47,7 +47,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::routines` | scheduled harness tasks — closed frontmatter grammar + schedule states |
 | `harness-core::scaffold` | composition manifest (`scaffold.toml`) + tier model |
 | `harness-core::spec` | measurement stamps for the Claude Code vocabularies |
-| `harness-core::validate` | rule / skill / agent / output-style / settings / commit-msg checks |
+| `harness-core::validate` | rule / skill / agent / output-style / routine / settings / commit-msg checks |
 | `harness-core::always_loaded` | what a repository puts into every session, read as the runtime loads it, member by member — and the budget over it |
 | `harness-core::audit` | harness-engineering compliance gate; `AuditCheckKind` is the check set |
 | `harness-core::lifecycle` | observation + decision ledger + retirement |
@@ -68,11 +68,12 @@ skill composes templates — it never free-generates safety-critical code.
   `plugins/harnex/CLAUDE.md` is the editing contract, loaded when you work there.
 - `README.md` — the only human-facing surface (the two surfaces, install,
   oracle quickstart, what the oracle covers).
-- `.claude/rules/constitution.md` — always-loaded project laws.
+- `.claude/rules/constitution.md` and `making-changes.md` — always-loaded:
+  the project's laws, and how a change to it is made.
 - `.claude/skills/release/SKILL.md` — the milestone procedure: converged
   review, the version decision, and the chain out to a proven release.
-- `.claude/rules/<topic>.md` — path-scoped guidance; loaded automatically
-  when you read files matching that rule's `paths:` frontmatter.
+- `.claude/rules/<topic>.md` — the rest, path-scoped guidance; loaded
+  automatically when you read files matching that rule's `paths:` frontmatter.
 - `crates/<crate>/CLAUDE.md` — crate-scoped guidance; loaded when you
   work inside that crate.
 - `schemas/harness.schema.json` — JSON Schema for `harness.toml` (regen

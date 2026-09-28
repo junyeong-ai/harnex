@@ -26,8 +26,7 @@ Three consumers, one declaration:
 - `tests/plugin_scaffold_validates.rs` builds its fixture from them,
 - `ProjectAuditor` reports coverage and drives the managed-region auditor.
 
-A file list written a second time is the one that drifts — the fixture omitted
-every hook while reporting a clean scaffold before this manifest existed.
+A file list written a second time is the one that drifts.
 
 ## Tiers
 
@@ -99,8 +98,7 @@ can never catch a missing artifact that was the one making the rest reachable.
 
 The fixture reads every policy from the scaffolded `harness.toml`, never from a
 literal. A restated policy is one no real project has: the fixture would pass
-under settings the scaffold does not ship, which is how an always-loaded rule
-and a strict skill policy both went green here while failing in the field.
+under settings the scaffold does not ship.
 
 ## Adding an artifact
 

@@ -17,14 +17,15 @@ Sub-auditors dispatch through [`AuditCheckKind`] — a closed-set
 discriminator enum (single source of truth). `ProjectAuditor::run` iterates
 `AuditCheckKind::ALL` and matches every variant **exhaustively**. Adding a
 new sub-auditor:
-1. Add an `AuditCheckKind` variant + its `from_str` / `as_str` arms.
+1. Add one `Variant => "…"` line to the `AuditCheckKind` `wire_enum!` block
+   (`as_str`, `from_str` and `ALL` are generated).
 2. Add a match arm in `ProjectAuditor::run` — the compiler enforces
    exhaustiveness, so missing this step is a build error.
 3. Implement the sub-auditor in `audit/<name>.rs` (visibility `pub(crate)`
    — only `ProjectAuditor` exposes a public entry).
-4. Add `from_str_round_trips_every_variant` covers the new variant
-   automatically; add slug-specific behavior tests under the sub-auditor's
-   `#[cfg(test)] mod tests`.
+4. Add slug-specific behavior tests under the sub-auditor's
+   `#[cfg(test)] mod tests`; `from_str_round_trips_every_variant` already
+   covers the new variant.
 
 Sub-auditor slugs (current):
 - `settings-drift` — `.claude/settings.json` value compliance
@@ -69,8 +70,7 @@ Sub-auditor slugs (current):
   and the evidence `file:` claim — and each is an exact-match token. Writing one
   literally in prose that a scan reaches makes that file a finding, so an
   example of the syntax goes in a fenced block or an HTML comment, both of which
-  the parsers skip, or is paraphrased. The commit that introduced the claim
-  grammar tripped over this in its own template.
+  the parsers skip, or is paraphrased.
 
 Coverage rides the envelope and is not a finding. Every artifact
 `plugins/harnex/templates/scaffold.toml` declares carries a `present` flag
@@ -82,7 +82,7 @@ harness lacks.
 
 Spec-vocabulary staleness is deliberately not an audit finding: it describes
 this binary's knowledge, not the project under audit, so it rides the
-envelope's `warnings[]` on every command (`.claude/rules/spec.md`). As a
+envelope's `warnings[]` on every success (`.claude/rules/spec.md`). As a
 finding it would misattribute the problem and make a fixture's zero-findings
 assertion fail on a calendar with no code change.
 

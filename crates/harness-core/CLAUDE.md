@@ -31,7 +31,7 @@ while whatever iterates `ALL` never sees it and nothing fails. Derives are the
 call site's; where one derives `Serialize`, `#[serde(rename_all)]` spells the
 wire string a second time and a test beside that type holds the two equal.
 
-**Suffix is chosen for what the enum names**, not for the pattern:
+**Suffix is chosen for what the type names**, not for the pattern:
 `Strategy` for swappable algorithms (`VerifierStrategy`, `RendererStrategy`,
 `ConsumerStrategy`); `Format` for serialization (`SourceFormat`); `Kind`
 for storage / shape (`StorageKind`, `PermissionFindingKind`); `Profile`
@@ -78,10 +78,12 @@ table — never invent a new one without extending this table first.
 
 ### Adding a config section
 
-1. Add the field to `Config` and its substruct.
+1. Add the field to `Config` and its substruct, the substruct carrying
+   `#[serde(deny_unknown_fields)]` (`every_section_refuses_a_key_it_does_not_declare`).
 2. Add a validation arm to `Config::validate`.
 3. Add a unit test in `config/mod.rs` that constructs an invalid config
    and asserts the matching `ErrorCode`.
+4. Regenerate `schemas/harness.schema.json` (`schema_sync`).
 
 ### Adding a finding emit site
 
@@ -89,9 +91,9 @@ Every `Finding` must carry an actionable `hint`. There are no
 `hint: None` production sites — the audit guard is that the absence is
 visible at code review time. If a finding is `auto_fixable`, its
 `fix_command` is `Option<FixCommand>` — a closed set, not a string —
-because `ProjectChecker::try_fix` dispatches via the enum. It was prose
-asking for `FixCommand::*.as_str()` until two emit sites ignored it and
-shipped commands no dispatcher recognised and no CLI accepted.
+because `ProjectChecker::try_fix` dispatches via the enum, and
+`every_fix_command_is_an_invocation_the_binary_accepts` holds each command to
+the built CLI.
 
 ### Trait abstractions in use
 
@@ -101,6 +103,8 @@ shipped commands no dispatcher recognised and no CLI accepted.
 | `Renderer` | one impl per sentinel-block output format |
 | `ConsumerDetector` | grep + graph-backlinks, each anchored at construction |
 | `NodexRunner` | external-process boundary + test mock seam (see `graph::client`) |
+| `CommandRunner` | external-process boundary + test mock seam (see `guard::stop_audit`) |
+| `SurfaceValidator` | one driver, `ProjectChecker::run_surface_validator`, over every glob-driven validator |
 
 No 1-impl trait exists outside of a documented process/test boundary.
 

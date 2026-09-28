@@ -2,6 +2,8 @@
 paths:
   - "crates/harness-core/src/spec.rs"
   - "crates/harness-core/src/validate/**"
+  - "crates/harness-core/src/always_loaded.rs"
+  - "crates/harness-core/src/guard/floor/sandbox.rs"
   - "crates/harness-core/tests/spec_facts_sync.rs"
   - "plugins/harnex/reference/spec-facts.md"
 governs:
@@ -23,9 +25,12 @@ holds `digest` equal to the live constants, so editing a set without
 re-reading the page fails the build — a stamp can never describe a vocabulary
 it no longer covers.
 
-Each validator declares its own sets in one `SPEC_SETS` beside its constants,
-and the digest covers label-plus-values per set — so a value moving between two
-sets, or a set being renamed, moves the digest.
+Each module that mirrors a vocabulary declares its own sets in one `SPEC_SETS`
+beside its constants, and the digest covers label-plus-values per set — so a
+value moving between two sets, or a set being renamed, moves the digest. A set
+the page does not list is read from the CLI the page describes
+(`IMPORT_TEXT_EXTENSIONS`, `SANDBOX_PROTECTED`), and step 1 below then
+re-reads both: the CLI for the set, the page for the prose.
 
 That a *new* constant reaches that list is **discipline-held**, and the reason
 is a trade rather than an absence of options. Scanning this crate's source is
@@ -51,7 +56,8 @@ catch.
 ## Where staleness surfaces
 
 `spec::stale_warnings_now()` on the envelope's `warnings[]`, attached by
-`write_envelope_success` to every command. Not a finding, and never gating:
+`write_envelope_success` to every success envelope. Not a finding, and never
+gating:
 staleness is a property of this binary rather than of the project a command
 was pointed at, and an old answer is unverified, not known wrong.
 

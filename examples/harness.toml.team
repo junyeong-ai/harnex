@@ -1,4 +1,4 @@
-# Team baseline (≥3 active developers). Exercises every module.
+# Team baseline (≥3 active developers): a broad config across most sections.
 
 [meta]
 harnex_version = ">=0.30, <0.31"
@@ -106,14 +106,8 @@ name = "ALLOWED_KINDS"
 
 [policy.permissions]
 profiles = ["baseline", "git-strict", "gcp-strict"]
-extra_allow = ["Bash(pnpm gate *)", "Bash(harness *)"]
+extra_allow = ["Bash(pnpm gate *)", "Bash(harnex *)"]
 extra_deny = []
-
-[[policy.versions]]
-tool = "harness"
-version = "0.1.0"
-strategy = "minor"
-install_url = "https://github.com/junyeong-ai/harness-toolkit/releases"
 
 [[policy.versions]]
 tool = "nodex"

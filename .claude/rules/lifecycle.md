@@ -93,8 +93,8 @@ pattern, and classifies each match. The silence state is derived from one
 scan of the declared `invocation_kind` records within `silence_window_days`,
 matching each slug as an exact string in a payload; a kind declaring no record,
 or one whose record the window does not hold, yields `Unmeasured` — never a
-fabricated `Silent`. Operators
-`harnex lifecycle retire` covers the entire surface in one call.
+fabricated `Silent`. `harnex lifecycle retire` covers the entire surface in
+one call.
 
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`
 with a reason carrying how many paths its glob carved out — the exclusion

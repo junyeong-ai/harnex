@@ -23,25 +23,11 @@ When adding a new glob-driven validator:
 2. Add one `run_surface_validator::<V>` call in `ProjectChecker::run`.
 3. Include the slug in `check_runs_every_enabled_validator` and in
    `check_skips_validators_with_no_config_section`.
-4. Document the slug in this rule.
 
 A validator that is not glob-driven (`validate.settings` reads two named
 files with independent `--since` status) keeps its own method and says why.
-
-Validator slugs (current):
-- `validate.rules`
-- `validate.skills`
-- `validate.agents`
-- `validate.output_styles`
-- `validate.routines`
-- `validate.settings`
-- `evidence`
-- `advisory`
-- `governs`
-- `codegen`
-- `policy.permissions`
-- `guard.floor`
-- `validate.always_loaded`
+The calls in `ProjectChecker::run` are the arm set; each records its slug in
+`run` or `skipped`.
 
 The `guard.floor` arm holds `sandbox.filesystem.denyWrite` in
 `.claude/settings.json` to cover every path the floor freezes
@@ -126,9 +112,11 @@ enum's exhaustive match in `try_fix`, then re-runs the check. Returns
 `FixReport { before, fixes_attempted, after }` — the consumer compares
 `before.findings.len()` vs `after.findings.len()` to confirm convergence.
 
-Adding a new auto-fixable finding requires three coordinated edits:
-1. Add a `FixCommand` variant + its `as_str()` arm (the enum is the
-   single source of truth — exhaustive match enforces sites 2+3).
+Adding a new auto-fixable finding:
+1. Add one `Variant => "harnex …"` line to the `FixCommand` `wire_enum!`
+   block — the command a downstream agent runs, which
+   `every_fix_command_is_an_invocation_the_binary_accepts` holds to the
+   built CLI.
 2. Emit the finding with
    `fix_command: Some(FixCommand::X)`. The field is typed, so this
    step is the compiler's, not a review's.

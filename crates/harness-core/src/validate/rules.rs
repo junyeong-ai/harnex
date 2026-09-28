@@ -1,8 +1,8 @@
 //! Validator for `.claude/rules/**/*.md`.
 //!
-//! A rule's load scope is decided by one fact: per the Claude Code memory
-//! spec a rule carrying `paths:` loads only when a matching file is read,
-//! and one without it loads unconditionally. Every check here reads that
+//! A rule's load scope is decided by one fact: a rule whose `paths:` scopes
+//! something (`path_globs::declares_scope`) loads only when a matching file
+//! is read, and any other loads unconditionally. Every check here reads that
 //! fact rather than a filename.
 //!
 //! Rules are discovered recursively per the memory spec, so a rule nested in
@@ -11,7 +11,7 @@
 //! Checks:
 //! - Frontmatter parses as YAML.
 //! - `paths:` is a glob string or a list of glob strings.
-//! - `paths:` present unless the rule slug is declared in
+//! - A `paths:` that scopes the rule, unless its slug is declared in
 //!   `always_loaded_slugs` (e.g., constitution).
 //! - Always-loaded rules stay within `max_lines` — the spec's target for a
 //!   file that enters every session's context.

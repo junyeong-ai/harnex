@@ -8,9 +8,9 @@ not yet used).
 
 ## II. JSON envelope is the only output contract
 
-Every CLI command emits exactly one `{ok, data?, error?, warnings[]}`
-JSON object on stdout. Exit 0 = success, 1 = validation finding,
-2 = runtime failure. No prose on stdout.
+Every CLI command emits exactly one JSON object on stdout —
+`{ok, data, warnings[]}` on success, `{ok, error}` on failure. Exit 0 =
+success, 1 = validation finding, 2 = runtime failure. No prose on stdout.
 
 ## III. Single safe write module
 

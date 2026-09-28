@@ -77,9 +77,9 @@ wire_enum! {
     /// than repeating it, because a restated list is what drifts.
     ///
     /// `AuditCheckKind::ALL` drives [`ProjectAuditor::run`]'s exhaustive match —
-    /// adding a variant requires updating the `from_str`, `as_str`, and the match
-    /// arm in `run`, all enforced by the compiler. Document the new variant here
-    /// in the same edit: this is the doc every other surface defers to.
+    /// adding a variant requires its match arm in `run`, which the compiler
+    /// enforces. Document the new variant here in the same edit: this is the
+    /// doc every other surface defers to.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum AuditCheckKind {
         /// Values in `.claude/settings.json` that look plausible and violate the
