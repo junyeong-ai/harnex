@@ -22,15 +22,12 @@ to keep out of a harness.
 Corollaries: boundary test, not behavior coaching · non-bypassability is the
 only thing the model can't give itself · substring/regex/edit-distance over
 prose or source has a false-positive floor → advisory/warn-only at best, never
-a blocking gate. Research backing: over-constraining capable models lowers
-output quality (constraint-decay); long prescriptive review checklists raise
-false positives (systematic overcorrection); excess context degrades all
-frontier models (context rot).
+a blocking gate.
 
 ## KEEP — enforce (low false-positive, model-unverifiable)
 
 - Non-bypassable runtime guards: hooks, `permissions.deny` of destructive ops
-  (`rm -rf` roots, force-push, `reset --hard`, cloud-destroy verbs), atomic /
+  (`rm -rf` roots, force-push, `reset --hard`, cloud and infrastructure destroy verbs), atomic /
   traversal-safe write paths, bounded Stop-audit retry counter.
 - Closed-set / exact-match membership (zero false-positive — a value is in
   the set or not): hook event names (as a typo-catcher), permission-profile
@@ -49,8 +46,10 @@ frontier models (context rot).
   the exception: it is paid on every turn, so its budget gates.
 - Side-effect *verb* detection over a description — matches prose, not intent;
   a model judges "does this skill perform the side effect" better than `\bsend\b`.
-- Unknown-frontmatter-key rejection — valuable but a hardcoded key list lags
-  the upstream spec; keep opt-in, default off, with the full spec surface.
+- Unknown-frontmatter-key rejection — a hardcoded key list lags the upstream
+  spec, so the oracle ships it off; a generated harness turns it on, because
+  Claude Code ignores an unknown key without a signal. A stale list is warned
+  on in every envelope, and the section's switch is the hatch.
 - Any regex/substring over source (await-wrapping, `throw new Error`) — keep
   only with an `allow:`-marker escape hatch.
 

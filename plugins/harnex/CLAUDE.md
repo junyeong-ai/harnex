@@ -9,13 +9,16 @@ contract for this directory (the runtime content ships to installs; this file
 guides editing it, not using it):
 
 - **Compose templates; never free-generate** a hook, permission rule, or
-  timeout. The skill selects a language profile and fills declared params.
+  timeout. The skill selects the language profiles the fingerprint matched and fills
+  declared params.
 - **Permission templates are a projection, not a source.**
   `common/permissions.deny.json`, `common/permissions.allow.json` and
   `<lang>/permissions.allow.json` are generated from the oracle's
   `crates/harness-core/src/policy/profiles.rs` (`baseline` / `workspace` /
   `<lang>-dev`). Edit the profile, regenerate with `harnex policy permissions
-  generate`, copy the array across; the `policy_template_sync` test fails on
+  generate` under a `harness.toml` declaring `[policy.permissions] profiles =
+  ["<profile>"]` (this repository's declares none), one profile at a time, and
+  copy the array across; the `policy_template_sync` test fails on
   drift and holds the foundation and language allow sets disjoint
   (constitution IX). Never hand-edit a template's rules. The two floors are
   foundation-tier: a stack with no language profile still receives both.

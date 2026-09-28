@@ -305,9 +305,15 @@ the two rates are still worth reporting where the difference between them is
 not. `unknown` is a window that recorded no coverage floor: the question was
 not answered, and reading it as agreement is the error the value exists to
 prevent. `harness_change` then says whether the thing being tested moved:
-`unchanged` means whatever moved, a harness change is not why; `changed` means
-one moved and the operator can ask git which; `unknown` means a window did not
-record what it ran under. A delta reported without both is an association
+`unchanged` means the committed harness — each file loaded into every session
+from the project up to the repository root, and `[session] harness_paths` —
+stood at the same commit at both saves with nothing uncommitted, so a
+committed harness change is not why; what git ignores (`settings.local.json`,
+`CLAUDE.local.md`), an import reaching out of the directory whose memory
+imports it, and anything outside the repository are not in it. `changed`
+means it moved and the operator can ask git which; `unknown` means a window
+recorded no harness state — saved without `--project`, or outside a git work
+tree — or ran on uncommitted harness changes. A delta reported without both is an association
 presented as an effect.
 Then the delta from `baseline diff` — never zeros, and with fewer than two
 saved windows of this scope there is no pair yet: say "first measurement" on
@@ -523,7 +529,10 @@ same order, and the text above remains the deliverable of record.
 
 The ledger already holds what this window found recurring (§5); the baseline
 is the loop's other half. Offer, do not run: `harnex session baseline save
---label <name>`. The next measurement starts where this one ended. What this
+--label <name>` with the `--project` this run was scoped to — only a scoped
+save records the harness state `harness_change` compares, and only it joins
+the series `baseline trend --project` returns. The next measurement starts
+where this one ended. What this
 run prescribes is tested by the window that runs under it, and that window is
 only saved at its own close — so the answer to whether any of this worked
 arrives at the §0 two runs out, and the next run's §0 answers the previous

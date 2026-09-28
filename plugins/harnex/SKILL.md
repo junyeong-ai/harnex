@@ -31,8 +31,8 @@ written to `${CLAUDE_PROJECT_DIR}` (the target repo).
 
 Measuring how the operator instructs Claude Code is `/harnex:measure`, a
 command outside this skill. What it finds recurring it records in the
-lifecycle ledger, where `candidates` turns a constraint supplied by hand
-every session into an `extend` verb.
+lifecycle ledger, where `harnex lifecycle candidates` reports a constraint
+past its thresholds as ready for an `extend` the operator decides on.
 
 ## Invariants (every mode)
 
@@ -179,8 +179,8 @@ Suggest them; do not write them unasked.
 
 Verify: `bash -n` on every `.sh` and on every extensionless hook under
 `hooks/`, JSON-parse settings.json. Probe the oracle with `harnex --version`
-— the grant every harness carries — and run `harnex check` / `harnex audit`
-when it answers. A probe the runtime refused did not run: report that, never
+— the grant every harness carries — and run `harnex check` /
+`harnex audit --plugin-root ${CLAUDE_SKILL_DIR}` when it answers. A probe the runtime refused did not run: report that, never
 an absent binary. On a repo that already had artifacts, the scaffolded `harness.toml`
 points validators at them for the first time, so report those findings as part
 of what the scaffold revealed rather than leaving them to be discovered — a
@@ -309,7 +309,8 @@ Two halves, split by what is decidable. The binary decides what is provably
 wrong; the skill judges what is missing, because "missing" depends on what
 the project already guarantees elsewhere and no binary can see that.
 
-**1 — Drive `harnex audit`** and present its `AuditOutcome` envelope. Every
+**1 — Drive `harnex audit --plugin-root ${CLAUDE_SKILL_DIR}`** and present its `AuditOutcome` envelope;
+without the plugin root the checks against the manifest are skipped. Every
 finding is a defect against the spec or against the harness's own wiring:
 - `audit-ms-timeout` — hook timeout values that look like milliseconds
   (≥ 1000) instead of seconds.
@@ -414,5 +415,5 @@ Verify as `regenerate` does: the settings file still parses and still passes
 
 Generated shell hooks pass `bash -n`; generated JSON parses; the harness the
 skill emits would itself pass `harnex check` / `harnex validate settings`
-/ `harnex audit`. For UI-less generation, state what was emitted and what
+/ `harnex audit --plugin-root ${CLAUDE_SKILL_DIR}`. For UI-less generation, state what was emitted and what
 the operator must run.

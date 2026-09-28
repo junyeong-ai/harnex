@@ -176,9 +176,9 @@ repo is never penalised for the tool it does not install.
   patterns are precise file shapes (extensions, the `secrets/` dir, credential
   JSON, home credential paths), never broad substrings that would hard-block
   source files. A Read deny already blocks `cat`/`head`/`tail`/`sed` of the
-  same path. The tool-surface profiles (`gcp-strict`, `aws-strict`,
-  `infra-strict`) add their destroy verbs. Listing the individual rules anywhere but the SSoT is how it drifts —
-  don't.
+  same path. The cloud and infrastructure profiles (`gcp-strict`,
+  `aws-strict`, `infra-strict`) add their destroy verbs. Listing the individual
+  rules anywhere but the SSoT is how it drifts — don't.
 - `<lang>/permissions.allow.json` carries the language toolchain and nothing
   else — the floor above is where `Edit`/`Write` and git live, so the two sets
   are disjoint and a no-profile stack still gets one. Grant only commands that
