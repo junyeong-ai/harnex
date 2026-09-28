@@ -177,7 +177,8 @@ fn the_page_is_served_with_its_script_and_an_answer_set_ends_the_wait() {
 fn a_request_naming_another_host_is_refused_before_it_is_read() {
     let served = Served::start(Duration::from_secs(60), None);
     let page = format!("/{}/page/page.html", served.token);
-    for host in ["localhost:1", "evil.example", ""] {
+    let rebound = format!("127.0.0.1.evil.example:{}", served.port);
+    for host in ["evil.example", rebound.as_str(), ""] {
         let (status, _) = served.send(&format!("GET {page} HTTP/1.1\r\nHost: {host}\r\n\r\n"));
         assert_eq!(status, 403, "{host:?}");
     }
@@ -185,6 +186,35 @@ fn a_request_naming_another_host_is_refused_before_it_is_read() {
     assert_eq!(status, 403, "no host");
     served.post(r#"{"answers": [{"id": "d-1", "answer": "지금 만든다"}]}"#);
     served.outcome().unwrap();
+}
+
+#[test]
+fn a_person_reaching_the_port_through_a_forward_answers_from_there() {
+    let served = Served::start(Duration::from_secs(60), None);
+    let forwarded = "localhost:8123";
+    let (status, _) = served.send(&format!(
+        "GET /{}/page/page.html HTTP/1.1\r\nHost: {forwarded}\r\n\r\n",
+        served.token
+    ));
+    assert_eq!(status, 200);
+    let body = r#"{"answers": [{"id": "d-1", "answer": "지금 만든다"}]}"#;
+    let post = |origin: &str| {
+        served.send(&format!(
+            "POST /{}/answers HTTP/1.1\r\nHost: {forwarded}\r\nOrigin: {origin}\r\nContent-Length: {}\r\n\r\n{body}",
+            served.token,
+            body.len()
+        ))
+    };
+    assert_eq!(
+        post(&served.origin()).0,
+        403,
+        "an origin other than the host's"
+    );
+    assert_eq!(post(&format!("http://{forwarded}")).0, 200);
+    assert!(matches!(
+        served.outcome().unwrap(),
+        Outcome::Answered { .. }
+    ));
 }
 
 #[test]
