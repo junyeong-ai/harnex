@@ -36,7 +36,8 @@ pub enum Outcome {
         url: String,
         answers: Vec<Answer>,
     },
-    /// A source changed after the page was served, so nothing was taken.
+    /// An answer set arrived after a source changed from what the page was
+    /// served with, so nothing was taken.
     Stale {
         url: String,
     },
