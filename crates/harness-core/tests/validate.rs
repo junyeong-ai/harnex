@@ -1439,10 +1439,10 @@ fn output_style_validator_accepts_a_style_without_a_name() {
 }
 
 #[test]
-fn rule_validator_treats_a_paths_key_with_no_globs_as_always_loaded() {
-    // `paths:` with no value, an empty list, and blank entries all carry zero
-    // globs. Claude Code has nothing to match, so the rule loads on every turn
-    // — reading key presence alone would exempt it from both the declaration
+fn rule_validator_treats_paths_that_scope_nothing_as_always_loaded() {
+    // Zero globs, and globs that are nothing but `**` once a trailing `/**`
+    // is removed, leave Claude Code loading the rule on every turn — reading
+    // key presence alone would exempt it from both the declaration
     // requirement and the always-loaded budget.
     let policy = RulesPolicy {
         require_governs: false,
@@ -1451,7 +1451,14 @@ fn rule_validator_treats_a_paths_key_with_no_globs_as_always_loaded() {
         always_loaded_slugs: vec![],
     };
     let v = RuleValidator::new(&policy);
-    for frontmatter in ["paths:", "paths: []", "paths: [\"\", \"  \"]"] {
+    for frontmatter in [
+        "paths:",
+        "paths: []",
+        "paths: [\"\", \"  \"]",
+        "paths: \"**\"",
+        "paths: [\"**/**\"]",
+        "paths: \"/**\"",
+    ] {
         let md = format!("---\n{frontmatter}\n---\n{}", long_body(10));
         let findings = v.validate_text(&md, Path::new("rule.md"));
         let slugs: Vec<&str> = findings.iter().map(|f| f.slug.as_str()).collect();
@@ -1464,6 +1471,19 @@ fn rule_validator_treats_a_paths_key_with_no_globs_as_always_loaded() {
             "`{frontmatter}` leaves the rule always-loaded, so the budget applies: {findings:?}"
         );
     }
+}
+
+#[test]
+fn a_double_star_beside_a_real_glob_still_scopes_the_rule() {
+    let policy = RulesPolicy {
+        require_governs: false,
+        max_lines: 5,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec![],
+    };
+    let md = format!("---\npaths: [\"**\", \"src/**\"]\n---\n{}", long_body(10));
+    let findings = RuleValidator::new(&policy).validate_text(&md, Path::new("rule.md"));
+    assert!(findings.is_empty(), "{findings:?}");
 }
 
 #[test]

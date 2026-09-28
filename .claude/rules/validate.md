@@ -17,10 +17,12 @@ validation and `context resolve`; compile these patterns through that owner.
 
 Rule validator — discovery is recursive (`.claude/rules/**/*.md`, per the
 memory spec), and every check keys on load scope, which is whether `paths:`
-carries at least one glob. A `paths:` key with no value, an empty list, or
-blank entries scopes nothing, so the rule loads unconditionally and is judged
-as always-loaded — reading key presence alone would exempt it from both checks
-below while it costs every turn:
+carries a glob other than `**` once a trailing `/**` is removed —
+`path_globs::declares_scope` states the rule the runtime applies. A `paths:`
+key with no value, an empty list, blank entries, or only `**` scopes nothing,
+so the rule loads unconditionally and is judged as always-loaded — reading key
+presence alone would exempt it from both checks below while it costs every
+turn:
 - `paths:` required unless slug in `always_loaded_slugs`.
 - `paths:` must be a glob string or a list of glob strings (Major).
 - Always-loaded rules: `max_lines` cap (default 200 per Claude Code memory

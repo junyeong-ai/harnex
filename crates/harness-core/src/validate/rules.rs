@@ -220,9 +220,11 @@ impl<'a> RuleValidator<'a> {
                 slug: "rule-missing-paths-frontmatter".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), frontmatter_line),
-                message: "rule has no `paths:` and is not declared always-loaded".into(),
+                message: "rule has no `paths:` that scopes it and is not declared always-loaded"
+                    .into(),
                 hint: Some(
-                    "add `paths: [...]` or list the slug under [validate.rules].always_loaded_slugs"
+                    "add `paths: [...]` naming the files it governs, or list the slug under \
+                     [validate.rules].always_loaded_slugs"
                         .into(),
                 ),
                 auto_fixable: false,
