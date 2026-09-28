@@ -55,6 +55,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::guard` | Claude Code hook adapter + Stop auditor + floor auditor (enforcement-surface freeze and its sandbox projection, hook-bypass tripwire) + telemetry emit (auto-records harness-element invocations) |
 | `harness-core::governs` | rule `governs:` declarations — what a rule is truth about, resolved and audited |
 | `harness-core::context` | explicit file targets to Claude-owned instructions; no prompt injection or workflow orchestration |
+| `harness-core::ask` | a decision put to the person on a page — the asks file, the answers that come back, and whether each still holds when it is recorded |
 | `harness-core::export` | JSON Schema emission |
 | `harness-core::graph` | read-only `nodex` CLI bridge |
 | `harness-core::check` | unified validation gate |

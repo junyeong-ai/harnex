@@ -65,6 +65,7 @@ wire_enum! {
         SessionBaselineLabelRejected => "SESSION_BASELINE_LABEL_REJECTED",
         SessionBaselineNotComparable => "SESSION_BASELINE_NOT_COMPARABLE",
         SessionBaselineUnreadable => "SESSION_BASELINE_UNREADABLE",
+        AskInputInvalid => "ASK_INPUT_INVALID",
     }
 }
 
@@ -225,6 +226,9 @@ pub enum Error {
 
     #[error("{path}: {message}")]
     SessionBaselineUnreadable { path: PathBuf, message: String },
+
+    #[error("{path}: {message}")]
+    AskInputInvalid { path: PathBuf, message: String },
 }
 
 impl Error {
@@ -274,6 +278,7 @@ impl Error {
             Self::SessionBaselineLabelRejected { .. } => ErrorCode::SessionBaselineLabelRejected,
             Self::SessionBaselineNotComparable { .. } => ErrorCode::SessionBaselineNotComparable,
             Self::SessionBaselineUnreadable { .. } => ErrorCode::SessionBaselineUnreadable,
+            Self::AskInputInvalid { .. } => ErrorCode::AskInputInvalid,
         }
     }
 
@@ -365,6 +370,9 @@ impl Error {
             ),
             Self::SessionBaselineUnreadable { .. } => Some(
                 "the line named is not a window this build can place: move the ledger aside and record the next window from here",
+            ),
+            Self::AskInputInvalid { .. } => Some(
+                "the file named breaks the schema `harnex export schema asks` (an asks file) or `ask-outcome` (an answered record) describes; correct what the message names",
             ),
             _ => None,
         }

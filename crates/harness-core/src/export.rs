@@ -15,6 +15,9 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::ask::answers::Outcome;
+use crate::ask::asks::Asks;
+use crate::ask::current::Current;
 use crate::config::Config;
 use crate::envelope::{EnvelopeShape, Finding, ListResponse};
 use crate::error::ErrorCode;
@@ -37,6 +40,9 @@ wire_enum! {
         SessionSubmissions => "session-submissions",
         SessionBaseline => "session-baseline",
         SessionTrend => "session-trend",
+        Asks => "asks",
+        AskOutcome => "ask-outcome",
+        AskCurrent => "ask-current",
         All => "all",
     }
 }
@@ -55,6 +61,9 @@ pub fn schema_for(target: SchemaTarget) -> Value {
         SchemaTarget::SessionSubmissions => to_value(schemars::schema_for!(SubmissionWindow)),
         SchemaTarget::SessionBaseline => to_value(schemars::schema_for!(BaselineDiff)),
         SchemaTarget::SessionTrend => to_value(schemars::schema_for!(BaselineTrend)),
+        SchemaTarget::Asks => to_value(schemars::schema_for!(Asks)),
+        SchemaTarget::AskOutcome => to_value(schemars::schema_for!(Outcome)),
+        SchemaTarget::AskCurrent => to_value(schemars::schema_for!(Current)),
         SchemaTarget::All => all_schemas(),
     }
 }
@@ -195,7 +204,7 @@ mod tests {
             SchemaTarget::ALL.iter().map(|t| t.as_str()).collect();
         assert_eq!(SchemaTarget::ALL.len(), unique.len(), "ALL has a duplicate");
         assert!(
-            SchemaTarget::ALL.len() >= 11,
+            SchemaTarget::ALL.len() >= 14,
             "ALL shrank unexpectedly — target dropped?"
         );
     }
