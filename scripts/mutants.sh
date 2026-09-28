@@ -54,15 +54,24 @@ watch_ceiling() {
   done
 }
 
-# Job control gives the run a process group of its own, which is what lets the
-# cleanup reach a mutant through it. Signalling the run alone leaves that
-# mutant running and no longer watched: the watch ends with its root, and a
-# mutant that allocates without end has nothing left to stop it.
+# Job control gives the run a process group of its own, so the group id names
+# this run and nothing beside it. Signalling the run alone leaves the mutant
+# it was testing running and no longer watched: the watch ends with its root,
+# and a mutant that allocates without end has nothing left to stop it.
 set -m
 
+# The group reaches what inherited it and the walk reaches what did not:
+# `cargo-nextest` makes itself a group leader, so the tests it runs and the
+# compiler runs under them sit outside the run's own group. The walk is taken
+# before anything is signalled, because a process whose parent has gone is
+# reparented to init and no longer answers to a walk of the tree it was in.
 cleanup() {
+  local held
+  held=$(descendants "$RUN")
   kill "$WATCHER" 2>/dev/null || true
   kill -- "-$RUN" 2>/dev/null || true
+  # shellcheck disable=SC2086 # a pid list, split on purpose
+  kill $held "$RUN" 2>/dev/null || true
 }
 
 cargo mutants "$@" &
