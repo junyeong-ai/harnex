@@ -938,7 +938,7 @@ fn settings_validator_accepts_valid_skill_overrides() {
 fn settings_validator_names_an_exclude_harnex_does_not_read_in_committed_settings() {
     let v = SettingsValidator::new();
     let json = r#"{
-        "claudeMdExcludes": ["**/docs/{a,b}/CLAUDE.md", "/r/[unclosed.md"],
+        "claudeMdExcludes": ["**/docs/{a,b}/CLAUDE.md", "/r/@(draft|wip).md"],
         "permissions": {"deny": ["x"]}
     }"#;
     let unread = |scope| {
@@ -949,7 +949,7 @@ fn settings_validator_names_an_exclude_harnex_does_not_read_in_committed_setting
     };
     let project = unread(SettingsScope::Project);
     assert_eq!(project.len(), 1, "{project:?}");
-    assert!(project[0].message.contains("/r/[unclosed.md"));
+    assert!(project[0].message.contains("/r/@(draft|wip).md"));
     assert_eq!(project[0].severity, Severity::Info);
     assert!(
         unread(SettingsScope::Local).is_empty(),
