@@ -384,7 +384,10 @@ pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
 /// `.git` git itself would reject still ends the walk, where git's own search
 /// goes on upward. The walk stops below `home`, whose `.claude` is the user's
 /// own. Outside any repository the runtime still climbs toward `home`, but
-/// nothing it finds there is the repository's, so `project` stands alone.
+/// nothing it finds there is the repository's, so `project` stands alone. A
+/// linked worktree whose top has no `.claude/` skills, commands, agents or
+/// output styles is given the main checkout's by the runtime (2.1.284, read
+/// from the loader); that is another checkout's tree, and is not counted.
 fn levels<'a>(project: &'a Path, home: Option<&Path>) -> Vec<&'a Path> {
     let Some(top) = project.ancestors().find(|dir| dir.join(".git").exists()) else {
         return vec![project];
