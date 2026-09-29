@@ -45,8 +45,8 @@
 //! - `claudeMdExcludes` removes a memory file whose absolute path it matches —
 //!   a rule's path under `.claude/rules/` or its link target — and a relative
 //!   pattern matches nothing. The patterns are picomatch's (2.1.284); one
-//!   outside the dialect [`ExcludeGlob`] reads is named in `unread_excludes`
-//!   and excludes nothing here.
+//!   whose glob lies outside the dialect [`ExcludeGlob`] reads is named in
+//!   `unread_excludes` and excludes here only a path equal to it.
 //! - The output style is the body of the file whose `name`, or else, for a
 //!   file declaring none, whose file name is `outputStyle`, comments included.
 //! - A skill or command lists `description` — else its body's first non-empty
@@ -452,9 +452,10 @@ pub(crate) struct Excludes {
     root: PathBuf,
     canonical_root: PathBuf,
     patterns: Vec<ExcludeGlob>,
-    /// Patterns, as written, that harnex cannot apply whole — outside the
-    /// dialect [`ExcludeGlob`] reads, or reaching through a link to a path
-    /// that is: each excludes nothing here, whatever it excludes in a session.
+    /// Patterns, as written, whose glob harnex cannot apply whole — outside
+    /// the dialect [`ExcludeGlob`] reads, or reaching through a link to a path
+    /// that is: each excludes here only a path equal to it, whatever its glob
+    /// excludes in a session.
     unread: Vec<String>,
 }
 
@@ -486,66 +487,406 @@ impl Excludes {
 
 /// One `claudeMdExcludes` pattern as the runtime reads it — picomatch with
 /// `dot` (2.1.284) — which skips a file whose absolute path equals the
-/// pattern or matches its glob.
+/// pattern, whatever the pattern holds, or matches its glob.
 ///
-/// harnex reads the patterns written in literal text, `*`, `**` other than
-/// `**/**`, and `{…}` groups of two or more non-empty alternatives holding no
-/// `**`, `..` or group of their own, on which globset agrees with picomatch
-/// over the canonical absolute paths a memory file is reached by
-/// (`harnex_reads_its_dialect_as_picomatch_does`). picomatch reads a trailing
-/// `/**` as optional unless a star comes right before it, so `docs/**` also
-/// skips a file at `docs` itself. A pattern holding anything else — `?`, a
-/// bracket, a parenthesis, a leading `!`, another brace — is left unread
-/// rather than applied.
+/// The glob becomes the regex picomatch builds for it
+/// (`harnex_reads_its_dialect_as_picomatch_does`), matched as JavaScript
+/// matches it: over UTF-16 code units, so `?` or a class takes half of a
+/// character beyond the BMP. The glob of a pattern that asks picomatch for
+/// what the translation does not carry — negation, an escape, quoting, a
+/// parenthesis or `|`, braces left open or holding a range or one
+/// alternative, a POSIX class or one JavaScript rejects, a `+` repeating what
+/// precedes it — is left unread rather than applied.
+///
+/// The paths matched are absolute and normalized, and a file's never ends in
+/// `/`: over those, picomatch's guards against a `.` or `..` segment and its
+/// optional trailing slash decide nothing, and are not carried. A caller
+/// passing another path would need them.
 struct ExcludeGlob {
     pattern: String,
-    globs: Vec<globset::GlobMatcher>,
+    /// `None` for a glob outside the dialect.
+    regex: Option<Regex>,
 }
 
+/// Any code unit JavaScript's `.` matches: all but the line terminators.
+const JS_DOT: &str = r"[^\n\r\x{2028}\x{2029}]";
+
 impl ExcludeGlob {
-    /// `None` for a pattern outside the dialect.
-    fn read(pattern: &str) -> Option<Self> {
-        if pattern.starts_with('!') || pattern.contains("**/**") {
-            return None;
-        }
-        let mut group: Option<String> = None;
-        for c in pattern.chars() {
-            match (c, group.as_mut()) {
-                ('?' | '[' | ']' | '(' | ')', _) | ('{', Some(_)) | ('}', None) => return None,
-                ('{', None) => group = Some(String::new()),
-                ('}', Some(alternatives)) => {
-                    let split: Vec<&str> = alternatives.split(',').collect();
-                    if split.len() < 2
-                        || split.iter().any(|a| a.is_empty() || a.contains("**"))
-                        || alternatives.contains("..")
-                    {
-                        return None;
-                    }
-                    group = None;
-                }
-                (c, Some(alternatives)) => alternatives.push(c),
-                (_, None) => {}
-            }
-        }
-        if group.is_some() {
-            return None;
-        }
-        let compile = |pattern| Some(path_globs::compile_glob(pattern).ok()?.compile_matcher());
-        let mut globs = vec![compile(pattern)?];
-        if let Some(bare) = pattern
-            .strip_suffix("/**")
-            .filter(|bare| !bare.is_empty() && !bare.ends_with('*'))
-        {
-            globs.push(compile(bare)?);
-        }
-        Some(Self {
+    fn read(pattern: &str) -> Self {
+        Self {
             pattern: pattern.to_string(),
-            globs,
-        })
+            regex: Self::compile(pattern),
+        }
     }
 
     fn matches(&self, path: &str) -> bool {
-        path == self.pattern || self.globs.iter().any(|glob| glob.is_match(path))
+        path == self.pattern
+            || self
+                .regex
+                .as_ref()
+                .is_some_and(|regex| regex.is_match(&utf16_units(path)))
+    }
+
+    /// The regex for `pattern`'s glob; `None` outside the dialect.
+    fn compile(pattern: &str) -> Option<Regex> {
+        let mut glob = pattern;
+        while let Some(rest) = glob.strip_prefix("./") {
+            glob = rest;
+        }
+        if glob.starts_with('!') {
+            return None;
+        }
+        let chars: Vec<char> = glob.chars().collect();
+        let tokens = GlobToken::parse(&chars, &mut 0, false)?;
+        let (source, _) = GlobPiece::sequence(&tokens, false, true);
+        Regex::new(&format!("^(?:{source})$")).ok()
+    }
+}
+
+/// `text` as the UTF-16 code units a JavaScript regex reads, one `char` each
+/// ([`unit_char`]).
+fn utf16_units(text: &str) -> String {
+    text.encode_utf16().map(unit_char).collect()
+}
+
+/// A UTF-16 code unit as one `char`: a surrogate is carried as the
+/// private-use character `0xF0000` above it, which no text reaches as a
+/// single code unit.
+fn unit_char(unit: u16) -> char {
+    let unit = u32::from(unit);
+    char::from_u32(unit)
+        .or_else(|| char::from_u32(0xF0000 + unit))
+        .expect("a code unit, or a surrogate moved into plane 15, is a char")
+}
+
+/// Append the regex escape for one code unit, as [`unit_char`] carries it.
+fn write_unit(unit: u16, out: &mut String) {
+    out.push_str(&format!(r"\x{{{:x}}}", u32::from(unit_char(unit))));
+}
+
+/// Append `c` as an escape per UTF-16 code unit.
+fn write_units(c: char, out: &mut String) {
+    for &unit in c.encode_utf16(&mut [0; 2]).iter() {
+        write_unit(unit, out);
+    }
+}
+
+/// A unit of a `claudeMdExcludes` glob, as picomatch reads the pattern.
+#[derive(Debug, PartialEq)]
+enum GlobToken {
+    Literal(char),
+    Slash,
+    /// `guarded` is picomatch's `(?=.)`: a lone star opening a segment
+    /// matches nothing at the end of the text.
+    Star {
+        guarded: bool,
+    },
+    /// Exactly two stars that open a segment or a group's alternative, and
+    /// close it or open a group.
+    Globstar,
+    Question,
+    /// A JavaScript class, over UTF-16 code units. `literal`, for one written
+    /// without regex characters, is the text picomatch also matches it as.
+    Class {
+        negated: bool,
+        ranges: Vec<(u16, u16)>,
+        literal: Option<String>,
+    },
+    Group(Vec<Vec<GlobToken>>),
+}
+
+impl GlobToken {
+    /// The tokens from `at` to the end, or in a group to the `,` or `}` that
+    /// ends the alternative, as picomatch's parser reads them; `None` where
+    /// it would write what this does not carry.
+    fn parse(chars: &[char], at: &mut usize, in_group: bool) -> Option<Vec<Self>> {
+        let mut out = Vec::new();
+        // picomatch reads plain text with the run of characters after it
+        // that it gives no meaning, so a `"` inside the run is text.
+        let mut in_text = false;
+        // After a class, a `[` read as text or a group, picomatch writes a
+        // `+` bare, repeating it.
+        let mut repeatable = false;
+        while let Some(&c) = chars.get(*at) {
+            let i = *at;
+            let (token, used) = match c {
+                ',' | '}' if in_group => break,
+                '"' if in_text => (Self::Literal(c), 1),
+                '"' | '\\' | '(' | ')' | '|' => return None,
+                '+' if repeatable || (in_group && out.is_empty()) => return None,
+                '{' => {
+                    *at += 1;
+                    out.push(Self::group(chars, at)?);
+                    in_text = false;
+                    repeatable = true;
+                    continue;
+                }
+                '[' if chars[i + 1..].contains(&']') => {
+                    let (class, used) = Self::class(&chars[i + 1..])?;
+                    (class, used + 1)
+                }
+                '*' => {
+                    let run = chars[i..].iter().take_while(|&&c| c == '*').count();
+                    let opens = match out.last() {
+                        None | Some(Self::Slash) => true,
+                        Some(Self::Group(_)) => in_group,
+                        Some(_) => false,
+                    };
+                    let closes = chars.get(i + run).is_none_or(|&c| {
+                        matches!(c, '/' | '{') || (in_group && matches!(c, ',' | '}'))
+                    });
+                    let token = if run == 2 && opens && closes {
+                        Self::Globstar
+                    } else {
+                        let starts_segment = match out.last() {
+                            None => !in_group,
+                            Some(last) => *last == Self::Slash,
+                        };
+                        Self::Star {
+                            guarded: run == 1 && starts_segment,
+                        }
+                    };
+                    (token, run)
+                }
+                '?' => (Self::Question, 1),
+                '/' => (Self::Slash, 1),
+                c => (Self::Literal(c), 1),
+            };
+            in_text = matches!(token, Self::Literal(c) if !"[]},.+@".contains(c));
+            repeatable = matches!(token, Self::Class { .. } | Self::Literal('['));
+            out.push(token);
+            *at += used;
+        }
+        // picomatch drops a whole-segment `/**` after a globstar, where a `/`
+        // or the end of the pattern comes next.
+        let mut i = 0;
+        while i + 2 < out.len() {
+            let next = match out.get(i + 3) {
+                Some(token) => *token == Self::Slash,
+                None => !in_group,
+            };
+            if next && out[i..i + 3] == [Self::Globstar, Self::Slash, Self::Globstar] {
+                out.drain(i + 1..i + 3);
+            } else {
+                i += 1;
+            }
+        }
+        Some(out)
+    }
+
+    /// The group whose alternatives start at `at`, through its `}`.
+    fn group(chars: &[char], at: &mut usize) -> Option<Self> {
+        let mut alternatives = Vec::new();
+        loop {
+            let alternative = Self::parse(chars, at, true)?;
+            // Two dots in a row ask picomatch for a range.
+            if alternative
+                .windows(2)
+                .any(|pair| pair == [Self::Literal('.'), Self::Literal('.')])
+            {
+                return None;
+            }
+            alternatives.push(alternative);
+            let separator = *chars.get(*at)?;
+            *at += 1;
+            if separator == '}' {
+                break;
+            }
+        }
+        (alternatives.len() > 1).then_some(Self::Group(alternatives))
+    }
+
+    /// The class from the character after `[` through its `]`, which a `]`
+    /// first does not end, and the characters that spans.
+    fn class(chars: &[char]) -> Option<(Self, usize)> {
+        let negated = chars.first() == Some(&'^');
+        let first = usize::from(negated);
+        let end = first + 1 + chars.get(first + 1..)?.iter().position(|&c| c == ']')?;
+        let members = &chars[first..end];
+        // A `\` escapes, and a `:` after a `[` may name a POSIX class.
+        let posix = members
+            .iter()
+            .position(|&c| c == '[')
+            .is_some_and(|open| members[open..].contains(&':'));
+        if posix || members.contains(&'\\') {
+            return None;
+        }
+        let units: Vec<u16> = members.iter().collect::<String>().encode_utf16().collect();
+        let mut ranges = Vec::new();
+        let mut i = 0;
+        while let Some(&from) = units.get(i) {
+            let to = match units.get(i + 1..i + 3) {
+                Some(&[dash, to]) if dash == u16::from(b'-') => {
+                    i += 3;
+                    to
+                }
+                _ => {
+                    i += 1;
+                    from
+                }
+            };
+            if to < from {
+                return None;
+            }
+            ranges.push((from, to));
+        }
+        let written: String = chars[..end].iter().collect();
+        let literal = (!written.contains([
+            '-', '*', '+', '?', '.', '^', '$', '{', '}', '(', '|', ')', '[', ']',
+        ]))
+        .then(|| format!("[{written}]"));
+        let class = Self::Class {
+            negated,
+            ranges,
+            literal,
+        };
+        Some((class, end + 1))
+    }
+
+    /// Append the regex for this token, and say whether it can match
+    /// nothing at the end of the text with what follows it, which
+    /// `rest_empty` says of the rest.
+    fn write(&self, rest_empty: bool, out: &mut String) -> bool {
+        match self {
+            Self::Literal(c) => {
+                write_units(*c, out);
+                false
+            }
+            Self::Slash => {
+                out.push('/');
+                false
+            }
+            Self::Star { guarded } => {
+                out.push_str("[^/]*");
+                rest_empty && !guarded
+            }
+            Self::Globstar => {
+                out.push_str(&format!("{JS_DOT}*"));
+                rest_empty
+            }
+            Self::Question => {
+                out.push_str("[^/]");
+                false
+            }
+            Self::Class {
+                negated,
+                ranges,
+                literal,
+            } => {
+                if let Some(literal) = literal {
+                    out.push_str("(?:");
+                    literal.chars().for_each(|c| write_units(c, out));
+                    out.push('|');
+                }
+                out.push_str(if *negated { "[^/" } else { "[" });
+                for &(from, to) in ranges {
+                    // Apart at the surrogates, which `unit_char` moves.
+                    let spans = [
+                        (from, to.min(0xD7FF)),
+                        (from.max(0xD800), to.min(0xDFFF)),
+                        (from.max(0xE000), to),
+                    ];
+                    for (low, high) in spans.into_iter().filter(|(low, high)| low <= high) {
+                        write_unit(low, out);
+                        if low < high {
+                            out.push('-');
+                            write_unit(high, out);
+                        }
+                    }
+                }
+                out.push(']');
+                if literal.is_some() {
+                    out.push(')');
+                }
+                false
+            }
+            Self::Group(alternatives) => {
+                out.push_str("(?:");
+                let mut empty = false;
+                for (n, alternative) in alternatives.iter().enumerate() {
+                    if n > 0 {
+                        out.push('|');
+                    }
+                    let (regex, alternative_empty) =
+                        GlobPiece::sequence(alternative, true, rest_empty);
+                    out.push_str(&regex);
+                    empty |= alternative_empty;
+                }
+                out.push(')');
+                empty
+            }
+        }
+    }
+}
+
+/// A globstar's form, which picomatch decides from where it stands.
+enum GlobPiece<'a> {
+    Token(&'a GlobToken),
+    /// `**/` opening the pattern.
+    Leading,
+    /// `/**` closing the pattern, after anything but a star.
+    Trailing,
+    /// `/**/` after the pattern's first character, or anywhere in a group.
+    Middle,
+}
+
+impl GlobPiece<'_> {
+    fn place(tokens: &[GlobToken], in_group: bool) -> Vec<GlobPiece<'_>> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < tokens.len() {
+            let (piece, used) = match (&tokens[i], tokens.get(i + 1), tokens.get(i + 2)) {
+                (GlobToken::Globstar, Some(GlobToken::Slash), _) if i == 0 && !in_group => {
+                    (GlobPiece::Leading, 2)
+                }
+                (GlobToken::Slash, Some(GlobToken::Globstar), None)
+                    if i > 0 && !in_group && !matches!(tokens[i - 1], GlobToken::Star { .. }) =>
+                {
+                    (GlobPiece::Trailing, 2)
+                }
+                (GlobToken::Slash, Some(GlobToken::Globstar), Some(GlobToken::Slash))
+                    if i > 0 || in_group =>
+                {
+                    (GlobPiece::Middle, 3)
+                }
+                (token, ..) => (GlobPiece::Token(token), 1),
+            };
+            out.push(piece);
+            i += used;
+        }
+        out
+    }
+
+    /// The regex for `tokens`, and whether it can match nothing at the end of
+    /// the text with what follows, which `rest_empty` says of the rest. It is
+    /// written from the end so that each piece knows the same of what follows
+    /// it. A `/**/` with anything after it, as a group's always has, matches
+    /// there too, which only such a rest reaches: the `(?=.)` on a guarded
+    /// star is the one guard that fails at the end of a normalized path, and
+    /// it is carried by the star not matching empty.
+    fn sequence(tokens: &[GlobToken], in_group: bool, mut rest_empty: bool) -> (String, bool) {
+        let mut out = String::new();
+        for piece in GlobPiece::place(tokens, in_group).iter().rev() {
+            let mut regex = String::new();
+            rest_empty = match piece {
+                GlobPiece::Token(token) => token.write(rest_empty, &mut regex),
+                GlobPiece::Leading => {
+                    regex = format!("(?:{JS_DOT}*/)?");
+                    rest_empty
+                }
+                GlobPiece::Trailing => {
+                    regex = format!("(?:/{JS_DOT}*)?");
+                    true
+                }
+                GlobPiece::Middle => {
+                    let end = rest_empty && (in_group || !out.is_empty());
+                    regex = format!("(?:/{JS_DOT}*/|/{})", if end { "|$" } else { "" });
+                    end
+                }
+            };
+            out.insert_str(0, &regex);
+        }
+        (out, rest_empty)
     }
 }
 
@@ -568,7 +909,7 @@ fn exclude_patterns(settings: &serde_json::Value) -> Vec<String> {
 pub(crate) fn unread_excludes(settings: &serde_json::Value) -> Vec<String> {
     exclude_patterns(settings)
         .into_iter()
-        .filter(|pattern| ExcludeGlob::read(pattern).is_none())
+        .filter(|pattern| ExcludeGlob::compile(pattern).is_none())
         .collect()
 }
 
@@ -598,10 +939,9 @@ impl ProjectSettings {
         for pattern in value.as_ref().map(exclude_patterns).unwrap_or_default() {
             let mut whole = true;
             for variant in with_resolved_prefix(&pattern) {
-                match ExcludeGlob::read(&variant) {
-                    Some(glob) => patterns.push(glob),
-                    None => whole = false,
-                }
+                let glob = ExcludeGlob::read(&variant);
+                whole &= glob.regex.is_some();
+                patterns.push(glob);
             }
             if !whole {
                 unread.push(pattern);
@@ -1646,6 +1986,18 @@ mod tests {
         "/r/ab.md",
         "/r/a",
         "/r/docs",
+        "/CLAUDE.md",
+        "/r",
+        "/r/[draft.md",
+        "/r/s/CLAUDE.md",
+        "/r/é",
+        "/r/😀",
+        "/r/CLAUDE.local.md",
+        "/r/a\"b",
+        "/r/]",
+        "/r/[",
+        "/r/a,b}",
+        "/r/q/[[a]",
     ];
     const PICOMATCH_VERDICTS: &[(&str, &[&str])] = &[
         ("/r/CLAUDE.md", &["/r/CLAUDE.md"]),
@@ -1659,6 +2011,7 @@ mod tests {
                 "/r/{a,b}/CLAUDE.md",
                 "/r/[slug]/CLAUDE.md",
                 "/r/a+b@c/CLAUDE.md",
+                "/r/s/CLAUDE.md",
             ],
         ),
         (
@@ -1673,6 +2026,7 @@ mod tests {
                 "/r/{a,b}/CLAUDE.md",
                 "/r/[slug]/CLAUDE.md",
                 "/r/a+b@c/CLAUDE.md",
+                "/r/s/CLAUDE.md",
             ],
         ),
         (
@@ -1688,6 +2042,8 @@ mod tests {
                 "/r/[slug]/CLAUDE.md",
                 "/r/a+b@c/CLAUDE.md",
                 "/x/CLAUDE.md",
+                "/CLAUDE.md",
+                "/r/s/CLAUDE.md",
             ],
         ),
         (
@@ -1715,6 +2071,17 @@ mod tests {
                 "/r/ab.md",
                 "/r/a",
                 "/r/docs",
+                "/r",
+                "/r/[draft.md",
+                "/r/s/CLAUDE.md",
+                "/r/é",
+                "/r/😀",
+                "/r/CLAUDE.local.md",
+                "/r/a\"b",
+                "/r/]",
+                "/r/[",
+                "/r/a,b}",
+                "/r/q/[[a]",
             ],
         ),
         (
@@ -1726,6 +2093,14 @@ mod tests {
                 "/r/ab.md",
                 "/r/a",
                 "/r/docs",
+                "/r/[draft.md",
+                "/r/é",
+                "/r/😀",
+                "/r/CLAUDE.local.md",
+                "/r/a\"b",
+                "/r/]",
+                "/r/[",
+                "/r/a,b}",
             ],
         ),
         (
@@ -1746,7 +2121,14 @@ mod tests {
         ),
         (
             "/r/*.{md,txt}",
-            &["/r/CLAUDE.md", "/r/claude.md", "/r/x.txt", "/r/ab.md"],
+            &[
+                "/r/CLAUDE.md",
+                "/r/claude.md",
+                "/r/x.txt",
+                "/r/ab.md",
+                "/r/[draft.md",
+                "/r/CLAUDE.local.md",
+            ],
         ),
         ("/r/{a,b}{.md,b.md}", &["/r/ab.md"]),
         (
@@ -1762,6 +2144,226 @@ mod tests {
             &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a+b@c/CLAUDE.md"],
         ),
         ("**/docs/**", &["/r/docs/x.md", "/r/docs"]),
+        ("/r/?", &["/r/a", "/r/é", "/r/]", "/r/["]),
+        ("/r/??", &["/r/😀"]),
+        ("/r?a", &[]),
+        ("/r[^a]a", &[]),
+        ("/r/[^a]", &["/r/é", "/r/]", "/r/["]),
+        (
+            "/r/[slug]/CLAUDE.md",
+            &["/r/[slug]/CLAUDE.md", "/r/s/CLAUDE.md"],
+        ),
+        ("/r/[draft.md", &["/r/[draft.md"]),
+        ("/r/[a-\u{ffff}]?", &["/r/😀"]),
+        (
+            "/r/a/**/***",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a"],
+        ),
+        ("/r/a/**/*", &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md"]),
+        ("/r/a/**/", &[]),
+        (
+            "/r/a/**/{*,x}",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a"],
+        ),
+        (
+            "/r/**{CLAUDE.md,x.md}",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.claude/rules/x.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/s/CLAUDE.md",
+            ],
+        ),
+        (
+            "/r/**/**/CLAUDE.md",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/s/CLAUDE.md",
+            ],
+        ),
+        (
+            "/r/a/**/**{*,x}",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a"],
+        ),
+        (
+            "**/***/CLAUDE.md",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/x/CLAUDE.md",
+                "/CLAUDE.md",
+                "/r/s/CLAUDE.md",
+            ],
+        ),
+        (
+            "/r/{[,s],a}/CLAUDE.md",
+            &["/r/a/CLAUDE.md", "/r/s/CLAUDE.md"],
+        ),
+        ("/r/[slug]/*.md", &["/r/[slug]/CLAUDE.md", "/r/s/CLAUDE.md"]),
+        (
+            "/r/CLAUDE{,.local}.md",
+            &["/r/CLAUDE.md", "/r/CLAUDE.local.md"],
+        ),
+        ("/r/a/**/{,x}", &["/r/a"]),
+        ("/r/a\"*", &["/r/a\"b"]),
+        ("/r/a+*/CLAUDE.md", &["/r/a+b@c/CLAUDE.md"]),
+        ("/r/*,b}", &["/r/a,b}"]),
+        (
+            "/r/{x,{a,docs}}/**",
+            &[
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/a",
+                "/r/docs",
+            ],
+        ),
+        ("/r/{docs/**,a/b/**}", &["/r/a/b/CLAUDE.md", "/r/docs/x.md"]),
+        (
+            "/r/{**,x}/CLAUDE.md",
+            &[
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/s/CLAUDE.md",
+            ],
+        ),
+        (
+            "/r/{x,**}",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.claude/rules/x.md",
+                "/r/.claude/rules/sub/y.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/claude.md",
+                "/r/x.txt",
+                "/r/ab.md",
+                "/r/a",
+                "/r/docs",
+                "/r/[draft.md",
+                "/r/s/CLAUDE.md",
+                "/r/é",
+                "/r/😀",
+                "/r/CLAUDE.local.md",
+                "/r/a\"b",
+                "/r/]",
+                "/r/[",
+                "/r/a,b}",
+                "/r/q/[[a]",
+            ],
+        ),
+        (
+            "/r/{x,{a,b}**}",
+            &[
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/ab.md",
+                "/r/a",
+                "/r/a\"b",
+                "/r/a,b}",
+            ],
+        ),
+        (
+            "/r/{a/**/CLAUDE.md,x}",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md"],
+        ),
+        ("/r/{a/**/,x}", &["/r/a"]),
+        (
+            "/r/{a/**/**/CLAUDE.md,x}",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md"],
+        ),
+        (
+            "/r/{a/**/**,x}",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a"],
+        ),
+        (
+            "./**/CLAUDE.md",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/x/CLAUDE.md",
+                "/CLAUDE.md",
+                "/r/s/CLAUDE.md",
+            ],
+        ),
+        ("/r/[]a]", &["/r/a", "/r/]"]),
+        ("/r/[[a]", &["/r/a", "/r/["]),
+        ("/r[/]a", &["/r/a"]),
+        ("/r/[😀][😀]", &["/r/😀"]),
+        (
+            "/r/{**/CLAUDE.md,x}",
+            &[
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/s/CLAUDE.md",
+            ],
+        ),
+        (
+            "/r{/**/CLAUDE.md,x}",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/s/CLAUDE.md",
+            ],
+        ),
+        ("/r/*/[[a]", &[]),
     ];
 
     #[test]
@@ -1770,8 +2372,11 @@ mod tests {
         let patterns = exclude_patterns(&serde_json::json!({ "claudeMdExcludes": written }));
         assert_eq!(patterns.len(), PICOMATCH_VERDICTS.len());
         for ((written, expected), pattern) in PICOMATCH_VERDICTS.iter().zip(&patterns) {
-            let glob = ExcludeGlob::read(pattern)
-                .unwrap_or_else(|| panic!("`{written}` is written in the dialect harnex reads"));
+            let glob = ExcludeGlob::read(pattern);
+            assert!(
+                glob.regex.is_some(),
+                "`{written}` is written in the dialect harnex reads"
+            );
             let matched: Vec<&str> = PICOMATCH_PATHS
                 .iter()
                 .copied()
@@ -1780,46 +2385,68 @@ mod tests {
             assert_eq!(&matched, expected, "`{written}`");
         }
         for unread in [
-            "/r/?/CLAUDE.md",
-            "/r/[unclosed.md",
-            "/r/[slug]/CLAUDE.md",
             "/r/{a}/CLAUDE.md",
             "/r/{a/CLAUDE.md",
-            "/r/}x/CLAUDE.md",
-            "/r/{a,{b,c}}/CLAUDE.md",
+            "/r/{a,{b,c}/CLAUDE.md",
             "/r/c{1..2}/CLAUDE.md",
-            "/r/{,a}/CLAUDE.md",
-            "/r/{a,**}/CLAUDE.md",
+            "/r/{a..c,x}/CLAUDE.md",
+            "/r/{+a,b}/CLAUDE.md",
+            "/r/{a,b}+/CLAUDE.md",
+            "/r/[ab]+/CLAUDE.md",
             "/r/My Drive (Work)/CLAUDE.md",
+            "/r/(a/CLAUDE.md",
+            "/r/a)/CLAUDE.md",
             "/r/@(a|b)/CLAUDE.md",
+            "/r/a|b/CLAUDE.md",
+            "/r/\"a\"/CLAUDE.md",
+            "/r/a.\"b\"/CLAUDE.md",
+            "/r/a]\"b\"/CLAUDE.md",
+            "/r/a}\"b\"/CLAUDE.md",
+            "/r/a,\"b\"/CLAUDE.md",
+            "/r/a+\"b\"/CLAUDE.md",
+            "/r/a@\"b\"/CLAUDE.md",
+            "/r/[\"b\"/CLAUDE.md",
+            "/r/a\\b/CLAUDE.md",
+            "/r/[a\\b]/CLAUDE.md",
+            "/r/[[:alpha:]]/CLAUDE.md",
+            "/r/[z-a]/CLAUDE.md",
+            "/r/[^z-a]/CLAUDE.md",
             "!/r/CLAUDE.md",
-            "/r/**/**/CLAUDE.md",
+            "./!/r/CLAUDE.md",
         ] {
-            assert!(ExcludeGlob::read(unread).is_none(), "`{unread}`");
+            let glob = ExcludeGlob::read(unread);
+            assert!(glob.regex.is_none(), "`{unread}`");
+            assert!(glob.matches(unread), "`{unread}` still names itself");
         }
     }
 
     // 2.1.284 read an unclosed bracket as a literal one and applied every
-    // other pattern in the list; harnex names that one instead of refusing
-    // the settings.
+    // other pattern in the list: picomatch compiles each on its own, and
+    // compares the path with the pattern before any glob. harnex names a
+    // pattern whose glob it cannot read instead of refusing the settings.
     #[test]
     fn a_pattern_outside_the_dialect_is_named_and_the_rest_still_apply() {
         let dir = project(&[
             ("CLAUDE.md", "memory\n"),
             (".claude/rules/[unclosed.md", "bracket\n"),
+            (".claude/rules/draft.md", "draft\n"),
+            (".claude/rules/(wip).md", "group\n"),
             (".claude/rules/plain.md", "plain\n"),
         ]);
         let top = std::fs::canonicalize(dir.path()).unwrap();
         let bracket = format!("{}/.claude/rules/[unclosed.md", top.display());
+        let extglob = format!("{}/.claude/rules/@(draft|wip).md", top.display());
+        let verbatim = format!("{}/.claude/rules/(wip).md", top.display());
         let backslashed = format!("{}\\.claude\\rules\\plain.md", top.display());
         std::fs::write(
             dir.path().join(".claude/settings.json"),
-            serde_json::json!({ "claudeMdExcludes": [&bracket, backslashed] }).to_string(),
+            serde_json::json!({ "claudeMdExcludes": [bracket, &extglob, &verbatim, backslashed] })
+                .to_string(),
         )
         .unwrap();
         let set = resolve(dir.path()).unwrap();
-        assert_eq!(paths(&set), [".claude/rules/[unclosed.md", "CLAUDE.md"]);
-        assert_eq!(set.unread_excludes, [bracket]);
+        assert_eq!(paths(&set), [".claude/rules/draft.md", "CLAUDE.md"]);
+        assert_eq!(set.unread_excludes, [extglob, verbatim]);
     }
 
     #[cfg(unix)]

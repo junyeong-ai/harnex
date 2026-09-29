@@ -73,9 +73,9 @@ read the one a vendored package ships and resolve its paths here.
 file — a `CLAUDE.md` and a rule — because one the runtime never loads makes no
 claim; it is read through `always_loaded::Excludes`, which matches the
 absolute path as the runtime does, so a relative pattern excludes nothing. A
-pattern it cannot apply whole excludes nothing here either: `validate
-always-loaded` lists it in `unread_excludes`, and `validate.settings` names one
-written outside the dialect (`settings-exclude-unread`).
+pattern whose glob it cannot apply whole excludes only a path equal to it:
+`validate always-loaded` lists it in `unread_excludes`, and `validate.settings`
+names one written outside the dialect (`settings-exclude-unread`).
 `settings.local.json` is the developer's, and a gate that read it would pass
 a tree locally that CI fails. When git cannot answer — no repository,
 dubious ownership — the nested set is declared unmeasured in `skipped` as

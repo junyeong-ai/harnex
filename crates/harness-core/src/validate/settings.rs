@@ -16,8 +16,8 @@
 //!   effective but become no-ops.
 //! - `skillOverrides` values are valid trigger modes.
 //! - `claudeMdExcludes` patterns in the committed file that harnex does not
-//!   read as the runtime does (`always_loaded`), so what they exclude is
-//!   still counted and checked here.
+//!   read as the runtime does (`always_loaded`), so what their glob excludes
+//!   is still counted and checked here.
 //! - Overly permissive `permissions.allow` patterns without a corresponding deny.
 //! - Permission rules Claude Code accepts and never consults, per
 //!   `harness_core::policy::rule`.
@@ -558,12 +558,13 @@ impl SettingsValidator {
                     location: Location::file(path.to_path_buf()),
                     message: format!(
                         "claudeMdExcludes pattern '{pattern}' is written in syntax harnex does \
-                         not read as Claude Code does, so a memory file it excludes still counts \
-                         toward the always-loaded budget and still has its claims checked"
+                         not read as Claude Code does, so a memory file its glob excludes still \
+                         counts toward the always-loaded budget and still has its claims checked"
                     ),
                     hint: Some(
-                        "write it with literal paths, `*`, `**` and `{a,b}` groups, which harnex \
-                         reads as Claude Code does, or accept the file counted"
+                        "write it with literal paths, `*`, `**`, `?`, `[…]` classes and `{a,b}` \
+                         groups, which harnex reads as Claude Code does, or accept the file \
+                         counted"
                             .into(),
                     ),
                     auto_fixable: false,
