@@ -264,11 +264,12 @@ measured: the build, the paragraph floor, and — where the window was scoped to
 a git work tree — the commit the project's harness stood at and whether it had
 uncommitted changes. `baseline diff` answers `harness_change` from those, so a
 delta across an unchanged harness is not read as the effect of one. What counts
-as the harness is what each directory from the work tree's root down to the
-project puts into every session, an import or a linked `AGENTS.md` included,
-plus `[session] harness_paths`, defaulting to where a scaffolded harness lands.
-Git answers for these, so a file it ignores does not count, and neither does an
-import reaching out of the directory whose memory imports it. `baseline trend`
+as the harness is what a session in the project loads from its repository —
+each directory from the work tree's root down, read with the project's own
+settings — an import or a linked `AGENTS.md` included, plus `[session]
+harness_paths`, defaulting to where a scaffolded harness lands. Git answers for
+these, so a file it ignores does not count, and neither does an import reaching
+out of the repository. `baseline trend`
 lays every window of one scope side by side, one series per metric, and
 subtracts nothing — pairwise comparison, with its overlap and support guards,
 stays with `diff`.

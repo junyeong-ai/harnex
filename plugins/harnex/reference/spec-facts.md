@@ -351,6 +351,13 @@ already contradicted both a page and the binary's own schema.
   upward and orders them root→cwd (so the deepest, closest file is read last);
   within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`.
   Subdir CLAUDE.md (below cwd) loads lazily when Claude reads files there.
+- **The rest of the harness walks up too** (2.1.284, from the request sent): a
+  session in a subdirectory reads the rules, skills, commands, agents and
+  output styles of each directory above it up to the repository root — rules,
+  like CLAUDE.md, beyond it as well — but `settings.json` only from its own
+  `.claude/`: a root `outputStyle` or `claudeMdExcludes` did not reach it,
+  while its own reached every level. A name defined at two levels is the
+  nearest one's, and a skill hides a command of its name at any level.
 - **Target ≤ 200 lines** per file; longer reduces adherence. A file over 4 MiB
   is skipped whole rather than truncated.
 - **Path-scoped rules:** `.claude/rules/**/*.md`; with `paths:` frontmatter (glob,

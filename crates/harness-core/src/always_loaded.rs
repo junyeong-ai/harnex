@@ -8,8 +8,13 @@
 //! the whole set rather than over one rule file at a time ([`over_budget`]).
 //!
 //! The reading is the runtime's, measured on Claude Code 2.1.283 from the
-//! request it sends and the loader it ships:
+//! request it sends and the loader it ships, and its first bullet on 2.1.284:
 //!
+//! - A session reads its own directory and each one above it up to the
+//!   repository's top, every kind alike, with its own directory's settings
+//!   alone ([`levels`]). A skill, command, agent or output style defined at
+//!   two levels is the nearest one's, and a skill's name hides a command's
+//!   wherever either is defined.
 //! - `CLAUDE.md` and `.claude/CLAUDE.md` both load; `AGENTS.md` and
 //!   `.claude/AGENTS.md` load in their place when neither exists
 //!   ([`memory_files`]).
@@ -57,11 +62,12 @@
 //! ## What this module refuses to do
 //!
 //! - Never counts what the repository does not own. `CLAUDE.local.md`, a
-//!   user-level or ancestor memory file, auto memory and `settings.local.json`
-//!   are each developer's own, and reading the last would pass a tree locally
-//!   that CI fails. Text whose file lies outside the project — an import
-//!   reaching out, a link pointing out — and an output style the project does
-//!   not ship are [`Unmeasured`], named rather than guessed.
+//!   user-level memory file, a memory file or rule above the repository, auto
+//!   memory and `settings.local.json` are each developer's own, and reading
+//!   the last would pass a tree locally that CI fails. Text whose file lies
+//!   outside the repository — an import reaching out, a link pointing out —
+//!   and an output style it does not ship are [`Unmeasured`], named rather
+//!   than guessed.
 //! - Never runs a hook. A `SessionStart` hook's output joins every session
 //!   too, and its size is the script's to bound.
 //! - Never counts tokens. That needs the model's tokenizer, which is not
@@ -257,10 +263,11 @@ wire_enum! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
     #[serde(rename_all = "kebab-case")]
     pub enum UnmeasuredReason {
-        /// Text whose file lies outside the project: an import reaching out,
-        /// `~/` included, or a link pointing out.
+        /// Text whose file lies outside the project's repository: an import
+        /// reaching out, `~/` included, or a link pointing out.
         OutsideProject => "outside-project",
-        /// An output style the project does not ship: built in, or a user's.
+        /// An output style no level of the repository ships: built in, or a
+        /// user's.
         NotInProject => "not-in-project",
     }
 }
@@ -291,43 +298,57 @@ pub struct AlwaysLoaded {
     pub unmeasured: Vec<Unmeasured>,
 }
 
-/// Read the set rooted at `root`, the directory `harness.toml` lives in.
-pub fn resolve(root: &Path) -> Result<AlwaysLoaded> {
-    let root = canonical_root(root)?;
-    let settings = ProjectSettings::read(&root)?;
+/// Read the set a session started in `project`, the directory `harness.toml`
+/// lives in, loads from the repository it lies in.
+pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
+    let project = canonical_root(project)?;
+    let levels = levels(&project);
+    let settings = ProjectSettings::read(&project)?;
     let mut walk = Walk {
-        root: &root,
+        top: levels.last().expect("a project is its own first level"),
+        project: &project,
         excludes: &settings.excludes,
         listing_cap: settings.listing_cap,
         overrides: &settings.skill_overrides,
         seen: HashSet::new(),
         listed: HashSet::new(),
+        names: HashSet::new(),
         agents: HashSet::new(),
         members: Vec::new(),
         unmeasured: Vec::new(),
     };
 
-    for path in memory_files(&root) {
-        walk.memory_file(&path, MemberKind::Memory, 0, Tree::Memory);
-    }
-    for path in discover(&root, <RuleValidator as SurfaceValidator>::GLOB)? {
-        walk.memory_file(&path, MemberKind::Rule, 0, Tree::Rules);
+    for level in &levels {
+        for path in memory_files(level) {
+            walk.memory_file(&path, MemberKind::Memory, 0, Tree::Memory);
+        }
+        for path in discover(level, <RuleValidator as SurfaceValidator>::GLOB)? {
+            walk.memory_file(&path, MemberKind::Rule, 0, Tree::Rules);
+        }
     }
     if let Some(name) = &settings.output_style {
-        walk.output_style(name)?;
+        walk.output_style(name, &levels)?;
     }
-    for path in discover(&root, <SkillValidator as SurfaceValidator>::GLOB)? {
-        let name = path
-            .parent()
-            .and_then(Path::file_name)
-            .map(|dir| dir.to_string_lossy().into_owned());
-        walk.listing(&path, MemberKind::Skill, name);
+    // Every level's skills before any command: a skill's name hides a
+    // command's wherever either is defined.
+    for level in &levels {
+        for path in discover(level, <SkillValidator as SurfaceValidator>::GLOB)? {
+            let name = path
+                .parent()
+                .and_then(Path::file_name)
+                .map(|dir| dir.to_string_lossy().into_owned());
+            walk.listing(&path, MemberKind::Skill, name);
+        }
     }
-    for (path, name) in commands(&root)? {
-        walk.listing(&path, MemberKind::Command, Some(name));
+    for level in &levels {
+        for (path, name) in commands(level)? {
+            walk.listing(&path, MemberKind::Command, Some(name));
+        }
     }
-    for path in discover(&root, <AgentValidator as SurfaceValidator>::GLOB)? {
-        walk.listing(&path, MemberKind::Agent, None);
+    for level in &levels {
+        for path in discover(level, <AgentValidator as SurfaceValidator>::GLOB)? {
+            walk.listing(&path, MemberKind::Agent, None);
+        }
     }
 
     let Walk {
@@ -342,6 +363,22 @@ pub fn resolve(root: &Path) -> Result<AlwaysLoaded> {
         members,
         unmeasured,
     })
+}
+
+/// `project` and each directory above it up to the top of the repository it
+/// lies in, nearest first: where a session started in `project` reads its
+/// harness from. The top is the nearest directory holding `.git` — the
+/// directory, or the file a linked worktree or a submodule keeps — and outside
+/// any repository `project` stands alone. A `.git` git itself would reject
+/// still ends the walk, where git's own search goes on upward.
+fn levels(project: &Path) -> Vec<&Path> {
+    match project.ancestors().find(|dir| dir.join(".git").exists()) {
+        Some(top) => project
+            .ancestors()
+            .take_while(|dir| dir.starts_with(top))
+            .collect(),
+        None => vec![project],
+    }
 }
 
 /// The project memory files the runtime reads at launch: `CLAUDE.md` and
@@ -526,28 +563,49 @@ enum Tree {
 }
 
 struct Walk<'a> {
-    /// Canonical, so a member's content is inside the project exactly when
-    /// its own canonical path starts with this.
-    root: &'a Path,
+    /// The repository's top, canonical, so a member's content is the
+    /// repository's exactly when its own canonical path starts with this.
+    top: &'a Path,
+    /// Canonical; a member's path is written relative to it.
+    project: &'a Path,
     excludes: &'a Excludes,
     listing_cap: usize,
     overrides: &'a serde_json::Map<String, serde_json::Value>,
     /// Canonical paths already read: a file reached twice loads once.
     seen: HashSet<PathBuf>,
-    /// Canonical paths of skills and commands already listed, and agent
-    /// names already registered: the runtime lists each once.
+    /// Canonical paths of skills and commands already listed, the names
+    /// skills and commands already hold, and agent names already registered:
+    /// the runtime lists each once, from the nearest level that defines it.
     listed: HashSet<PathBuf>,
+    names: HashSet<String>,
     agents: HashSet<String>,
     members: Vec<Member>,
     unmeasured: Vec<Unmeasured>,
 }
 
 impl Walk<'_> {
+    /// `path` relative to the project, climbing out of it for a level above.
     fn relative(&self, path: &Path) -> String {
-        path.strip_prefix(self.root)
-            .expect("every path the walk reads was found or kept under the root")
-            .to_string_lossy()
-            .into_owned()
+        let below = path
+            .strip_prefix(self.top)
+            .expect("every path the walk reads was found or kept under the top");
+        let project = self
+            .project
+            .strip_prefix(self.top)
+            .expect("the project is one of the levels below the top");
+        let shared = below
+            .components()
+            .zip(project.components())
+            .take_while(|(a, b)| a == b)
+            .count();
+        let mut relative = PathBuf::new();
+        for _ in project.components().skip(shared) {
+            relative.push(Component::ParentDir);
+        }
+        for part in below.components().skip(shared) {
+            relative.push(part);
+        }
+        relative.to_string_lossy().into_owned()
     }
 
     fn unmeasured(&mut self, kind: MemberKind, name: String, reason: UnmeasuredReason) {
@@ -558,7 +616,7 @@ impl Walk<'_> {
     /// `target`, or name it where that content lies outside the project.
     fn admit(&mut self, kind: MemberKind, path: &Path, target: &Path, text: &str) -> bool {
         let name = self.relative(path);
-        if !target.starts_with(self.root) {
+        if !target.starts_with(self.top) {
             self.unmeasured(kind, name, UnmeasuredReason::OutsideProject);
             return false;
         }
@@ -592,10 +650,10 @@ impl Walk<'_> {
         if loads {
             self.admit(kind, path, &target, text);
         }
-        if !target.starts_with(self.root) || depth == MAX_IMPORT_HOPS {
+        if !target.starts_with(self.top) || depth == MAX_IMPORT_HOPS {
             return;
         }
-        let from = target.parent().unwrap_or(self.root).to_path_buf();
+        let from = target.parent().unwrap_or(self.top).to_path_buf();
         for written in read.imports {
             self.import(&from, &written, depth + 1, tree);
         }
@@ -617,7 +675,7 @@ impl Walk<'_> {
             Some(path)
         };
         match path {
-            Some(path) if path.starts_with(self.root) => {
+            Some(path) if path.starts_with(self.top) => {
                 self.memory_file(&path, MemberKind::Import, depth, tree);
             }
             Some(path) if self.excludes.matches(&path, MemberKind::Import) => {}
@@ -629,16 +687,35 @@ impl Walk<'_> {
         }
     }
 
-    fn output_style(&mut self, selected: &str) -> Result<()> {
+    /// The style `selected` names, from the nearest level that defines it.
+    fn output_style(&mut self, selected: &str, levels: &[&Path]) -> Result<()> {
+        for level in levels {
+            if self.output_style_in(level, selected)? {
+                return Ok(());
+            }
+        }
+        if !selected.eq_ignore_ascii_case("default") {
+            self.unmeasured(
+                MemberKind::OutputStyle,
+                selected.to_string(),
+                UnmeasuredReason::NotInProject,
+            );
+        }
+        Ok(())
+    }
+
+    /// Admit the style `level` defines under `selected`: the file whose
+    /// `name` it is, else one declaring no name whose file name it is.
+    fn output_style_in(&mut self, level: &Path, selected: &str) -> Result<bool> {
         let mut by_stem = None;
-        for path in discover(self.root, OUTPUT_STYLE_GLOB)? {
+        for path in discover(level, OUTPUT_STYLE_GLOB)? {
             let Some((target, source)) = read(&path, DEFINITION_FILE_LIMIT) else {
                 continue;
             };
             match source.fields.get("name").and_then(js_string) {
                 Some(name) if name == selected => {
                     self.admit(MemberKind::OutputStyle, &path, &target, source.body.trim());
-                    return Ok(());
+                    return Ok(true);
                 }
                 None if by_stem.is_none() && path.file_stem().is_some_and(|s| s == selected) => {
                     by_stem = Some((path, target, source.body));
@@ -646,18 +723,13 @@ impl Walk<'_> {
                 _ => {}
             }
         }
-        match by_stem {
+        Ok(match by_stem {
             Some((path, target, body)) => {
                 self.admit(MemberKind::OutputStyle, &path, &target, body.trim());
+                true
             }
-            None if selected.eq_ignore_ascii_case("default") => {}
-            None => self.unmeasured(
-                MemberKind::OutputStyle,
-                selected.to_string(),
-                UnmeasuredReason::NotInProject,
-            ),
-        }
-        Ok(())
+            None => false,
+        })
     }
 
     /// One listing entry: a skill or command offered under `name`, or an
@@ -675,6 +747,11 @@ impl Walk<'_> {
                 .filter(|(name, _)| self.agents.insert(name.clone()))
                 .map(|(_, entry)| entry),
             _ => {
+                if let Some(name) = &name
+                    && !self.names.insert(name.clone())
+                {
+                    return;
+                }
                 let offered = name
                     .and_then(|name| self.overrides.get(&name))
                     .and_then(|mode| mode.as_str());
@@ -1010,7 +1087,7 @@ fn has_text_extension(path: &Path) -> bool {
 }
 
 /// `path` with `.` and `..` resolved lexically, or `None` above the root.
-fn normalize(path: &Path) -> Option<PathBuf> {
+pub(crate) fn normalize(path: &Path) -> Option<PathBuf> {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {
@@ -1142,13 +1219,20 @@ fn discover(root: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
 mod tests {
     use super::*;
 
-    fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
+    fn tree(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         for (path, content) in files {
             let path = dir.path().join(path);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, content).unwrap();
         }
+        dir
+    }
+
+    /// A repository of its own, so no directory above the temp dir is read.
+    fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tree(files);
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
         dir
     }
 
@@ -1200,6 +1284,166 @@ mod tests {
         assert_eq!(paths(&with), [".claude/CLAUDE.md", "CLAUDE.md"]);
         let without = loaded(&[("AGENTS.md", "agents\n"), (".claude/AGENTS.md", "dot\n")]);
         assert_eq!(paths(&without), [".claude/AGENTS.md", "AGENTS.md"]);
+    }
+
+    // What Claude Code 2.1.284 sent from a session started in a package: every
+    // level up to the repository's top, nothing from a sibling, and above the
+    // top memory files and rules, which are not the repository's to count.
+    #[test]
+    fn a_session_reads_its_directory_and_each_one_above_it_up_to_the_top() {
+        let dir = tree(&[
+            ("CLAUDE.md", "above\n"),
+            (".claude/rules/above.md", "above\n"),
+            ("repo/CLAUDE.md", "top\n"),
+            ("repo/.claude/rules/top.md", "top\n"),
+            (
+                "repo/.claude/skills/top/SKILL.md",
+                "---\ndescription: top\n---\n",
+            ),
+            (
+                "repo/.claude/commands/top-cmd.md",
+                "---\ndescription: top\n---\n",
+            ),
+            (
+                "repo/.claude/agents/top.md",
+                "---\nname: top\ndescription: top\n---\n",
+            ),
+            ("repo/packages/CLAUDE.md", "mid\n"),
+            ("repo/packages/app/CLAUDE.md", "app\n"),
+            ("repo/packages/app/.claude/rules/app.md", "app\n"),
+            ("repo/packages/other/CLAUDE.md", "sibling\n"),
+        ]);
+        std::fs::create_dir(dir.path().join("repo/.git")).unwrap();
+        let set = resolve(&dir.path().join("repo/packages/app")).unwrap();
+        assert_eq!(
+            paths(&set),
+            [
+                "../../.claude/agents/top.md",
+                "../../.claude/commands/top-cmd.md",
+                "../../.claude/rules/top.md",
+                "../../.claude/skills/top/SKILL.md",
+                "../../CLAUDE.md",
+                "../CLAUDE.md",
+                ".claude/rules/app.md",
+                "CLAUDE.md",
+            ]
+        );
+    }
+
+    #[test]
+    fn outside_any_repository_the_project_stands_alone() {
+        let dir = tree(&[("CLAUDE.md", "above\n"), ("project/CLAUDE.md", "own\n")]);
+        assert!(
+            dir.path().ancestors().all(|d| !d.join(".git").exists()),
+            "{} lies inside a repository; point TMPDIR outside one",
+            dir.path().display()
+        );
+        let set = resolve(&dir.path().join("project")).unwrap();
+        assert_eq!(paths(&set), ["CLAUDE.md"]);
+    }
+
+    // 2.1.284 read a package session's settings from the package alone: the
+    // top's selected nothing and excluded nothing there, while the package's
+    // reached every level.
+    #[test]
+    fn only_the_project_s_own_settings_apply_and_they_apply_at_every_level() {
+        let dir = project(&[
+            (
+                ".claude/settings.json",
+                r#"{"outputStyle": "top-style", "claudeMdExcludes": ["**/packages/CLAUDE.md"]}"#,
+            ),
+            (
+                ".claude/output-styles/top.md",
+                "---\nname: top-style\n---\ntop\n",
+            ),
+            ("CLAUDE.md", "top\n"),
+            (
+                ".claude/skills/top/SKILL.md",
+                "---\ndescription: top\n---\n",
+            ),
+            ("packages/CLAUDE.md", "mid\n"),
+        ]);
+        let top = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(dir.path().join("packages/app/.claude")).unwrap();
+        std::fs::write(
+            dir.path().join("packages/app/.claude/settings.json"),
+            serde_json::json!({
+                "outputStyle": "top-style",
+                "skillOverrides": {"top": "off"},
+                "claudeMdExcludes": [top.join("CLAUDE.md")],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let app = resolve(&dir.path().join("packages/app")).unwrap();
+        assert_eq!(
+            paths(&app),
+            ["../../.claude/output-styles/top.md", "../CLAUDE.md"]
+        );
+        let at_top = resolve(dir.path()).unwrap();
+        assert_eq!(
+            paths(&at_top),
+            [
+                ".claude/output-styles/top.md",
+                ".claude/skills/top/SKILL.md",
+                "CLAUDE.md"
+            ]
+        );
+    }
+
+    // 2.1.284 kept one definition per name, the nearest level's, and listed a
+    // skill over a command of its name whichever level held either.
+    #[test]
+    fn a_name_is_the_nearest_level_s_and_a_skill_s_name_hides_a_command() {
+        let skill = |d: &str| format!("---\ndescription: {d}\n---\n");
+        let agent = |d: &str| format!("---\nname: shared\ndescription: {d}\n---\n");
+        let style = |d: &str| format!("---\nname: shared\n---\n{d}\n");
+        let files = [
+            (".claude/output-styles/shared.md", style("top")),
+            (".claude/agents/shared.md", agent("top")),
+            (".claude/skills/shared/SKILL.md", skill("top")),
+            (".claude/commands/cmd.md", skill("top")),
+            (".claude/skills/dup1/SKILL.md", skill("top")),
+            (".claude/commands/dup3.md", skill("top")),
+            ("packages/.claude/commands/cmd.md", skill("mid")),
+            (
+                "packages/app/.claude/settings.json",
+                r#"{"outputStyle": "shared"}"#.into(),
+            ),
+            ("packages/app/.claude/output-styles/shared.md", style("app")),
+            ("packages/app/.claude/agents/shared.md", agent("app")),
+            ("packages/app/.claude/skills/shared/SKILL.md", skill("app")),
+            ("packages/app/.claude/commands/dup1.md", skill("app")),
+            ("packages/app/.claude/skills/dup2/SKILL.md", skill("app")),
+            ("packages/app/.claude/commands/dup2.md", skill("app")),
+            ("packages/app/.claude/skills/dup3/SKILL.md", skill("app")),
+        ];
+        let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+        let dir = project(&files);
+        let set = resolve(&dir.path().join("packages/app")).unwrap();
+        assert_eq!(
+            paths(&set),
+            [
+                "../../.claude/skills/dup1/SKILL.md",
+                "../.claude/commands/cmd.md",
+                ".claude/agents/shared.md",
+                ".claude/output-styles/shared.md",
+                ".claude/skills/dup2/SKILL.md",
+                ".claude/skills/dup3/SKILL.md",
+                ".claude/skills/shared/SKILL.md",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_import_into_another_directory_of_the_repository_is_counted() {
+        let dir = project(&[
+            ("shared/conventions.md", "shared\n"),
+            ("packages/app/CLAUDE.md", "@../../shared/conventions.md\n"),
+        ]);
+        let set = resolve(&dir.path().join("packages/app")).unwrap();
+        assert_eq!(paths(&set), ["../../shared/conventions.md", "CLAUDE.md"]);
+        assert!(set.unmeasured.is_empty(), "{:?}", set.unmeasured);
     }
 
     #[test]
