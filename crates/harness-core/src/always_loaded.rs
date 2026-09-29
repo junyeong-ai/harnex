@@ -11,12 +11,13 @@
 //! loader it ships, on Claude Code 2.1.283 unless a bullet names 2.1.284:
 //!
 //! - A session reads its own directory and each one above it up to the
-//!   repository's top, below the home directory, every kind alike, with its
-//!   own directory's settings alone ([`levels`]). Memory is read from the top
-//!   down, so a file two levels reach goes by the higher one. A skill,
-//!   command, agent or output style defined at two levels is the nearest
-//!   one's, and a skill's name hides a command's wherever either is defined,
-//!   unless the skill waits on `paths:` (2.1.284).
+//!   repository's top, with its own directory's settings alone ([`levels`]).
+//!   The home directory's `.claude/` holds the user's memory and rules, and
+//!   no skill, command, agent or output style is read from it or above it.
+//!   Memory is read from the top down, so a file two levels reach goes by the
+//!   higher one. A skill, command, agent or output style defined at two
+//!   levels is the nearest one's, and a skill's name hides a command's
+//!   wherever either is defined, unless the skill waits on `paths:` (2.1.284).
 //! - `CLAUDE.md` and `.claude/CLAUDE.md` both load; `AGENTS.md` and
 //!   `.claude/AGENTS.md` load in their place when neither exists
 //!   ([`memory_files`]).
@@ -308,9 +309,23 @@ pub struct AlwaysLoaded {
 /// Read the set a session started in `project`, the directory `harness.toml`
 /// lives in, loads from the repository it lies in.
 pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
-    let project = canonical_root(project)?;
     let home = std::env::home_dir().and_then(|home| std::fs::canonicalize(home).ok());
-    let levels = levels(&project, home.as_deref());
+    resolve_under(project, home.as_deref())
+}
+
+/// [`resolve`] for a user whose home directory is `home`, canonical.
+fn resolve_under(project: &Path, home: Option<&Path>) -> Result<AlwaysLoaded> {
+    let project = canonical_root(project)?;
+    let levels = levels(&project);
+    // The home directory's `.claude/` is the user's: the runtime reads its
+    // memory and rules as the user's, and reads skills, commands, agents and
+    // output styles only from the levels below it.
+    let user_dir = home.map(|home| home.join(".claude"));
+    let definitions: Vec<&Path> = levels
+        .iter()
+        .copied()
+        .take_while(|level| Some(*level) != home)
+        .collect();
     let settings = ProjectSettings::read(&project)?;
     let mut walk = Walk {
         top: levels.last().expect("a project is its own first level"),
@@ -329,20 +344,24 @@ pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
     // Memory from the top down: a file two levels reach — a rule imported from
     // another level — goes by the first that reads it, and reading a rule
     // marks it read even where its `paths:` then holds it back.
+    let own = |path: &PathBuf| user_dir.as_ref().is_none_or(|dir| !path.starts_with(dir));
     for level in levels.iter().rev() {
-        for path in memory_files(level) {
+        for path in memory_files(level).into_iter().filter(own) {
             walk.memory_file(&path, MemberKind::Memory, 0, Tree::Memory);
         }
-        for path in discover(level, <RuleValidator as SurfaceValidator>::GLOB)? {
+        for path in discover(level, <RuleValidator as SurfaceValidator>::GLOB)?
+            .into_iter()
+            .filter(own)
+        {
             walk.memory_file(&path, MemberKind::Rule, 0, Tree::Rules);
         }
     }
     if let Some(name) = &settings.output_style {
-        walk.output_style(name, &levels)?;
+        walk.output_style(name, &definitions)?;
     }
     // Every level's skills before any command: a skill's name hides a
     // command's wherever either is defined.
-    for level in &levels {
+    for level in &definitions {
         for path in discover(level, <SkillValidator as SurfaceValidator>::GLOB)? {
             let name = path
                 .parent()
@@ -351,12 +370,12 @@ pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
             walk.listing(&path, MemberKind::Skill, name);
         }
     }
-    for level in &levels {
+    for level in &definitions {
         for (path, name) in commands(level)? {
             walk.listing(&path, MemberKind::Command, Some(name));
         }
     }
-    for level in &levels {
+    for level in &definitions {
         for path in discover(level, <AgentValidator as SurfaceValidator>::GLOB)? {
             walk.listing(&path, MemberKind::Agent, None);
         }
@@ -382,20 +401,18 @@ pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
 /// harness from. The top is the nearest directory holding `.git` — the
 /// directory, or the file a linked worktree or a submodule keeps — and a
 /// `.git` git itself would reject still ends the walk, where git's own search
-/// goes on upward. The walk stops below `home`, whose `.claude` is the user's
-/// own. Outside any repository the runtime still climbs toward `home`, but
+/// goes on upward. Outside any repository the runtime still climbs, but
 /// nothing it finds there is the repository's, so `project` stands alone. A
 /// linked worktree whose top has no `.claude/` skills, commands, agents or
 /// output styles is given the main checkout's by the runtime (2.1.284, read
 /// from the loader); that is another checkout's tree, and is not counted.
-fn levels<'a>(project: &'a Path, home: Option<&Path>) -> Vec<&'a Path> {
+fn levels(project: &Path) -> Vec<&Path> {
     let Some(top) = project.ancestors().find(|dir| dir.join(".git").exists()) else {
         return vec![project];
     };
     project
         .ancestors()
         .take_while(|dir| dir.starts_with(top))
-        .take_while(|dir| *dir == project || home.is_none_or(|home| !home.starts_with(dir)))
         .collect()
 }
 
@@ -1882,17 +1899,62 @@ mod tests {
     }
 
     #[test]
-    fn the_walk_stops_below_the_home_directory() {
-        let dir = tree(&[]);
-        let home = std::fs::canonicalize(dir.path()).unwrap().join("home/me");
-        std::fs::create_dir_all(home.join("project")).unwrap();
-        std::fs::create_dir(home.join(".git")).unwrap();
-        let project = home.join("project");
-        assert_eq!(levels(&project, Some(&home)), [project.as_path()]);
-        assert_eq!(levels(&project, None), [project.as_path(), home.as_path()]);
-        std::fs::remove_dir(home.join(".git")).unwrap();
-        std::fs::create_dir(dir.path().join(".git")).unwrap();
-        assert_eq!(levels(&project, Some(&home)), [project.as_path()]);
+    fn the_home_directory_s_claude_is_the_user_s_and_nothing_is_listed_from_it_or_above() {
+        let skill = |d: &str| format!("---\ndescription: {d}\n---\n");
+        let files = [
+            ("CLAUDE.md", "top\n".to_string()),
+            (".claude/skills/top/SKILL.md", skill("top")),
+            ("home/CLAUDE.md", "home\n".into()),
+            ("home/.claude/CLAUDE.md", "user\n".into()),
+            ("home/.claude/rules/user.md", "user rule\n".into()),
+            ("home/.claude/skills/user/SKILL.md", skill("user")),
+            ("home/.claude/output-styles/terse.md", "terse\n".into()),
+            ("home/app/CLAUDE.md", "own\n".into()),
+            ("home/app/.claude/skills/own/SKILL.md", skill("own")),
+            (
+                "home/app/.claude/settings.json",
+                r#"{"outputStyle": "terse"}"#.into(),
+            ),
+        ];
+        let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+        let dir = project(&files);
+        let top = std::fs::canonicalize(dir.path()).unwrap();
+        let app = top.join("home/app");
+
+        let at_home = resolve_under(&app, Some(&top.join("home"))).unwrap();
+        assert_eq!(
+            paths(&at_home),
+            [
+                "../../CLAUDE.md",
+                "../CLAUDE.md",
+                ".claude/skills/own/SKILL.md",
+                "CLAUDE.md"
+            ]
+        );
+        assert_eq!(at_home.unmeasured.len(), 1, "{:?}", at_home.unmeasured);
+
+        let at_top = resolve_under(&app, Some(&top)).unwrap();
+        assert_eq!(
+            paths(&at_top),
+            [
+                "../../CLAUDE.md",
+                "../.claude/CLAUDE.md",
+                "../.claude/output-styles/terse.md",
+                "../.claude/rules/user.md",
+                "../.claude/skills/user/SKILL.md",
+                "../CLAUDE.md",
+                ".claude/skills/own/SKILL.md",
+                "CLAUDE.md"
+            ]
+        );
+
+        // A home off the way up is met by neither walk.
+        let elsewhere = resolve_under(&app, Some(&top.join("elsewhere"))).unwrap();
+        assert_eq!(
+            paths(&elsewhere),
+            paths(&resolve_under(&app, None).unwrap())
+        );
+        assert!(paths(&elsewhere).contains(&"../../.claude/skills/top/SKILL.md"));
     }
 
     #[test]

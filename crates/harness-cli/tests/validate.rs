@@ -3,6 +3,47 @@ use std::process::Command;
 use harness_core::path_guard::write_atomic;
 
 #[test]
+fn always_loaded_takes_the_home_directory_from_the_environment() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(temp.path()).unwrap();
+    let config = format!("[meta]\nharnex_version = {:?}\n", env!("CARGO_PKG_VERSION"));
+    for (path, text) in [
+        ("app/harness.toml", config.as_str()),
+        ("app/CLAUDE.md", "app\n"),
+        (
+            ".claude/skills/top/SKILL.md",
+            "---\ndescription: top\n---\n",
+        ),
+    ] {
+        write_atomic(&root.join(path), text.as_bytes()).unwrap();
+    }
+    std::fs::create_dir(root.join(".git")).unwrap();
+    std::fs::create_dir(root.join("elsewhere")).unwrap();
+    let members = |home: &std::path::Path| {
+        let out = Command::new(env!("CARGO_BIN_EXE_harnex"))
+            .current_dir(root.join("app"))
+            .env("HOME", home)
+            .args(["validate", "always-loaded"])
+            .output()
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        json["data"]["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["path"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+
+    let skill = "../.claude/skills/top/SKILL.md".to_string();
+    assert!(members(&root.join("elsewhere")).contains(&skill));
+    assert!(
+        !members(&root).contains(&skill),
+        "a skill in the home directory's `.claude/` is the user's"
+    );
+}
+
+#[test]
 fn always_loaded_measures_from_the_config_root_and_gates_only_on_a_declared_budget() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
