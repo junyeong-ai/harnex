@@ -367,7 +367,10 @@ already contradicted both a page and the binary's own schema.
   like CLAUDE.md, beyond it as well — but `settings.json` only from its own
   `.claude/`: a root `outputStyle` or `claudeMdExcludes` did not reach it,
   while its own reached every level. A name defined at two levels is the
-  nearest one's, and a skill hides a command of its name at any level.
+  nearest one's, and a skill hides a command of its name at any level unless
+  the skill waits on `paths:`. Memory is read from the top down, and reading a
+  rule marks it read even where its `paths:` then holds it back, so the top's
+  scoped rule stayed out though the package's CLAUDE.md imported it.
 - **Target ≤ 200 lines** per file; longer reduces adherence. A file over 4 MiB
   is skipped whole rather than truncated.
 - **Path-scoped rules:** `.claude/rules/**/*.md`; with `paths:` frontmatter (glob,

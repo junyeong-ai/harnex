@@ -517,6 +517,36 @@ fn a_window_scoped_below_the_root_is_told_about_the_whole_harness() {
 }
 
 #[test]
+fn a_window_scoped_below_the_root_is_told_about_what_its_own_settings_select_above_it() {
+    let dir = repo();
+    let app = dir.path().join("packages/app");
+    std::fs::create_dir_all(app.join(".claude")).unwrap();
+    std::fs::write(
+        app.join(".claude/settings.json"),
+        r#"{"outputStyle": "mid"}"#,
+    )
+    .unwrap();
+    commit_touching(dir.path(), "package", &["packages/app/CLAUDE.md"]);
+    let style = commit_touching(
+        dir.path(),
+        "style",
+        &["packages/.claude/output-styles/mid.md"],
+    );
+    commit_touching(dir.path(), "unrelated", &["crates/core/src/lib.rs"]);
+
+    let state = repository::harness_state(&app, &harness_core::config::default_harness_paths())
+        .unwrap()
+        .expect("a directory inside a work tree is one");
+
+    assert_eq!(
+        state.head.as_deref(),
+        Some(style.as_str()),
+        "the package's own settings select a style a level above it, which every \
+         session there loads"
+    );
+}
+
+#[test]
 fn a_repository_with_nothing_committed_yet_answers_rather_than_failing() {
     let dir = repo();
 

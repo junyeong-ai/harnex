@@ -19,6 +19,8 @@ fn always_loaded_measures_from_the_config_root_and_gates_only_on_a_declared_budg
     ] {
         write_atomic(&root.join(path), text.as_bytes()).unwrap();
     }
+    // A repository of its own, so no directory above the temp dir is read.
+    std::fs::create_dir(root.join(".git")).unwrap();
     let run = || {
         let out = Command::new(env!("CARGO_BIN_EXE_harnex"))
             .current_dir(root.join("src"))
