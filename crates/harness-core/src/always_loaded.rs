@@ -478,22 +478,24 @@ impl Excludes {
 /// `dot` (2.1.284) — which skips a file whose absolute path equals the
 /// pattern or matches its glob.
 ///
-/// harnex reads the patterns written in literal text, `*`, `**`, and `{…}`
-/// groups of two or more non-empty alternatives holding no `**`, `..` or
-/// group of their own, on which globset agrees with picomatch over the
-/// canonical absolute paths a memory file is reached by
-/// (`harnex_reads_its_dialect_as_picomatch_does`). A pattern holding anything
-/// else — `?`, a bracket, a parenthesis, a leading `!`, another brace — is
-/// left unread rather than applied.
+/// harnex reads the patterns written in literal text, `*`, `**` other than
+/// `**/**`, and `{…}` groups of two or more non-empty alternatives holding no
+/// `**`, `..` or group of their own, on which globset agrees with picomatch
+/// over the canonical absolute paths a memory file is reached by
+/// (`harnex_reads_its_dialect_as_picomatch_does`). picomatch reads a trailing
+/// `/**` as optional unless a star comes right before it, so `docs/**` also
+/// skips a file at `docs` itself. A pattern holding anything else — `?`, a
+/// bracket, a parenthesis, a leading `!`, another brace — is left unread
+/// rather than applied.
 struct ExcludeGlob {
     pattern: String,
-    glob: globset::GlobMatcher,
+    globs: Vec<globset::GlobMatcher>,
 }
 
 impl ExcludeGlob {
     /// `None` for a pattern outside the dialect.
     fn read(pattern: &str) -> Option<Self> {
-        if pattern.starts_with('!') {
+        if pattern.starts_with('!') || pattern.contains("**/**") {
             return None;
         }
         let mut group: Option<String> = None;
@@ -518,15 +520,22 @@ impl ExcludeGlob {
         if group.is_some() {
             return None;
         }
-        let glob = path_globs::compile_glob(pattern).ok()?.compile_matcher();
+        let compile = |pattern| Some(path_globs::compile_glob(pattern).ok()?.compile_matcher());
+        let mut globs = vec![compile(pattern)?];
+        if let Some(bare) = pattern
+            .strip_suffix("/**")
+            .filter(|bare| !bare.is_empty() && !bare.ends_with('*'))
+        {
+            globs.push(compile(bare)?);
+        }
         Some(Self {
             pattern: pattern.to_string(),
-            glob,
+            globs,
         })
     }
 
     fn matches(&self, path: &str) -> bool {
-        path == self.pattern || self.glob.is_match(path)
+        path == self.pattern || self.globs.iter().any(|glob| glob.is_match(path))
     }
 }
 
@@ -1413,6 +1422,18 @@ mod tests {
     }
 
     #[test]
+    fn a_git_file_ends_the_walk_as_a_git_directory_does() {
+        let dir = tree(&[
+            ("CLAUDE.md", "above\n"),
+            ("worktree/.git", "gitdir: /elsewhere/.git/worktrees/w\n"),
+            ("worktree/CLAUDE.md", "top\n"),
+            ("worktree/app/CLAUDE.md", "app\n"),
+        ]);
+        let set = resolve(&dir.path().join("worktree/app")).unwrap();
+        assert_eq!(paths(&set), ["../CLAUDE.md", "CLAUDE.md"]);
+    }
+
+    #[test]
     fn outside_any_repository_the_project_stands_alone() {
         let dir = tree(&[("CLAUDE.md", "above\n"), ("project/CLAUDE.md", "own\n")]);
         assert!(
@@ -1548,6 +1569,8 @@ mod tests {
         "/x/CLAUDE.md",
         "/r/x.txt",
         "/r/ab.md",
+        "/r/a",
+        "/r/docs",
     ];
     const PICOMATCH_VERDICTS: &[(&str, &[&str])] = &[
         ("/r/CLAUDE.md", &["/r/CLAUDE.md"]),
@@ -1615,11 +1638,20 @@ mod tests {
                 "/r/claude.md",
                 "/r/x.txt",
                 "/r/ab.md",
+                "/r/a",
+                "/r/docs",
             ],
         ),
         (
             "/r/*",
-            &["/r/CLAUDE.md", "/r/claude.md", "/r/x.txt", "/r/ab.md"],
+            &[
+                "/r/CLAUDE.md",
+                "/r/claude.md",
+                "/r/x.txt",
+                "/r/ab.md",
+                "/r/a",
+                "/r/docs",
+            ],
         ),
         (
             "/r/a**/CLAUDE.md",
@@ -1629,7 +1661,13 @@ mod tests {
         ("CLAUDE.md", &[]),
         (
             "/r/{a,docs}/**",
-            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/docs/x.md"],
+            &[
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/a",
+                "/r/docs",
+            ],
         ),
         (
             "/r/*.{md,txt}",
@@ -1643,6 +1681,12 @@ mod tests {
         ("/r/한 글/CLAUDE.md", &["/r/한 글/CLAUDE.md"]),
         ("/r/a+b@c/CLAUDE.md", &["/r/a+b@c/CLAUDE.md"]),
         ("/r/a\\b/CLAUDE.md", &["/r/a/b/CLAUDE.md"]),
+        ("/r/a/**", &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a"]),
+        (
+            "/r/a*/**",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a+b@c/CLAUDE.md"],
+        ),
+        ("**/docs/**", &["/r/docs/x.md", "/r/docs"]),
     ];
 
     #[test]
@@ -1674,6 +1718,7 @@ mod tests {
             "/r/My Drive (Work)/CLAUDE.md",
             "/r/@(a|b)/CLAUDE.md",
             "!/r/CLAUDE.md",
+            "/r/**/**/CLAUDE.md",
         ] {
             assert!(ExcludeGlob::read(unread).is_none(), "`{unread}`");
         }
