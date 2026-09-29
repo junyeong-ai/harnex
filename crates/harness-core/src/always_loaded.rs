@@ -7,14 +7,14 @@
 //! does and counts what each member contributes, so a budget can be held over
 //! the whole set rather than over one rule file at a time ([`over_budget`]).
 //!
-//! The reading is the runtime's, measured on Claude Code 2.1.283 from the
-//! request it sends and the loader it ships, and its first bullet on 2.1.284:
+//! The reading is the runtime's, measured from the request it sends and the
+//! loader it ships, on Claude Code 2.1.283 unless a bullet names 2.1.284:
 //!
 //! - A session reads its own directory and each one above it up to the
 //!   repository's top, every kind alike, with its own directory's settings
 //!   alone ([`levels`]). A skill, command, agent or output style defined at
 //!   two levels is the nearest one's, and a skill's name hides a command's
-//!   wherever either is defined.
+//!   wherever either is defined (2.1.284).
 //! - `CLAUDE.md` and `.claude/CLAUDE.md` both load; `AGENTS.md` and
 //!   `.claude/AGENTS.md` load in their place when neither exists
 //!   ([`memory_files`]).
@@ -42,7 +42,9 @@
 //!   included, reaches [`MAX_IMPORT_HOPS`] deep, and loads a file once.
 //! - `claudeMdExcludes` removes a memory file whose absolute path it matches —
 //!   a rule's path under `.claude/rules/` or its link target — and a relative
-//!   pattern matches nothing.
+//!   pattern matches nothing. The patterns are picomatch's (2.1.284); one
+//!   outside the dialect [`ExcludeGlob`] reads is named in `unread_excludes`
+//!   and excludes nothing here.
 //! - The output style is the body of the file whose `name`, or else, for a
 //!   file declaring none, whose file name is `outputStyle`, comments included.
 //! - A skill or command lists `description` — else its body's first non-empty
@@ -296,6 +298,9 @@ pub struct AlwaysLoaded {
     pub total_chars: usize,
     pub members: Vec<Member>,
     pub unmeasured: Vec<Unmeasured>,
+    /// `claudeMdExcludes` patterns harnex does not read as the runtime does:
+    /// a memory file one of them excludes is counted all the same.
+    pub unread_excludes: Vec<String>,
 }
 
 /// Read the set a session started in `project`, the directory `harness.toml`
@@ -362,6 +367,7 @@ pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
         total_chars: members.iter().map(|m| m.chars).sum(),
         members,
         unmeasured,
+        unread_excludes: settings.excludes.unread.clone(),
     })
 }
 
@@ -427,13 +433,16 @@ pub fn over_budget(loaded: &AlwaysLoaded, max_chars: usize, root: &Path) -> Opti
     })
 }
 
-/// `claudeMdExcludes` as the runtime reads it: glob patterns matched against
-/// the absolute path of a memory file, with the project root as the runtime
-/// sees it — resolved through links — so a relative pattern matches nothing.
+/// `claudeMdExcludes` as the runtime reads it: patterns matched against the
+/// absolute path of a memory file, with the project root as the runtime sees
+/// it — resolved through links — so a relative pattern matches nothing.
 pub(crate) struct Excludes {
     root: PathBuf,
     canonical_root: PathBuf,
-    patterns: Vec<globset::GlobMatcher>,
+    patterns: Vec<ExcludeGlob>,
+    /// Patterns written outside the dialect [`ExcludeGlob`] reads: each
+    /// excludes nothing here, whatever it excludes in a session.
+    unread: Vec<String>,
 }
 
 impl Excludes {
@@ -455,10 +464,90 @@ impl Excludes {
             MemberKind::Rule => std::fs::canonicalize(path).ok(),
             _ => None,
         };
-        std::iter::once(reached)
-            .chain(target)
-            .any(|candidate| self.patterns.iter().any(|glob| glob.is_match(&candidate)))
+        std::iter::once(reached).chain(target).any(|candidate| {
+            let candidate = candidate.to_string_lossy().replace('\\', "/");
+            self.patterns.iter().any(|glob| glob.matches(&candidate))
+        })
     }
+}
+
+/// One `claudeMdExcludes` pattern as the runtime reads it — picomatch with
+/// `dot` (2.1.284) — which skips a file whose absolute path equals the
+/// pattern or matches its glob.
+///
+/// harnex reads the patterns written in literal text, `*`, `**`, and `{…}`
+/// groups of two or more non-empty alternatives holding no `**`, `..` or
+/// group of their own, on which globset agrees with picomatch over the
+/// canonical absolute paths a memory file is reached by
+/// (`harnex_reads_its_dialect_as_picomatch_does`). A pattern holding anything
+/// else — `?`, a bracket, a parenthesis, a leading `!`, another brace — is
+/// left unread rather than applied.
+struct ExcludeGlob {
+    pattern: String,
+    glob: globset::GlobMatcher,
+}
+
+impl ExcludeGlob {
+    /// `None` for a pattern outside the dialect.
+    fn read(pattern: &str) -> Option<Self> {
+        if pattern.starts_with('!') {
+            return None;
+        }
+        let mut group: Option<String> = None;
+        for c in pattern.chars() {
+            match (c, group.as_mut()) {
+                ('?' | '[' | ']' | '(' | ')', _) | ('{', Some(_)) | ('}', None) => return None,
+                ('{', None) => group = Some(String::new()),
+                ('}', Some(alternatives)) => {
+                    let split: Vec<&str> = alternatives.split(',').collect();
+                    if split.len() < 2
+                        || split.iter().any(|a| a.is_empty() || a.contains("**"))
+                        || alternatives.contains("..")
+                    {
+                        return None;
+                    }
+                    group = None;
+                }
+                (c, Some(alternatives)) => alternatives.push(c),
+                (_, None) => {}
+            }
+        }
+        if group.is_some() {
+            return None;
+        }
+        let glob = path_globs::compile_glob(pattern).ok()?.compile_matcher();
+        Some(Self {
+            pattern: pattern.to_string(),
+            glob,
+        })
+    }
+
+    fn matches(&self, path: &str) -> bool {
+        path == self.pattern || self.glob.is_match(path)
+    }
+}
+
+/// The `claudeMdExcludes` patterns `settings` declares, as the runtime
+/// receives them: backslashes turned to slashes, empty ones dropped.
+fn exclude_patterns(settings: &serde_json::Value) -> Vec<String> {
+    settings
+        .get("claudeMdExcludes")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str())
+        .map(|pattern| pattern.replace('\\', "/"))
+        .filter(|pattern| !pattern.is_empty())
+        .collect()
+}
+
+/// The `claudeMdExcludes` patterns `settings` declares that harnex leaves
+/// unread ([`ExcludeGlob`]).
+pub(crate) fn unread_excludes(settings: &serde_json::Value) -> Vec<String> {
+    exclude_patterns(settings)
+        .into_iter()
+        .filter(|pattern| ExcludeGlob::read(pattern).is_none())
+        .collect()
 }
 
 /// What the committed project settings select for every session.
@@ -472,10 +561,9 @@ struct ProjectSettings {
 
 impl ProjectSettings {
     fn read(root: &Path) -> Result<Self> {
-        let scope = ".claude/settings.json";
         // Settings that are absent or not JSON select nothing; the malformed
         // file is `validate.settings`' finding.
-        let value = std::fs::read_to_string(root.join(scope))
+        let value = std::fs::read_to_string(root.join(".claude/settings.json"))
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
         let output_style = value
@@ -484,23 +572,13 @@ impl ProjectSettings {
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let mut patterns = Vec::new();
-        for pattern in value
-            .as_ref()
-            .and_then(|v| v.get("claudeMdExcludes"))
-            .and_then(|v| v.as_array())
-            .into_iter()
-            .flatten()
-            .filter_map(|v| v.as_str())
-        {
-            for variant in with_resolved_prefix(pattern) {
-                let glob =
-                    path_globs::compile_glob(&variant).map_err(|e| Error::ConfigInvalid {
-                        message: format!(
-                            "{scope}: claudeMdExcludes pattern '{pattern}' is invalid: {e}"
-                        ),
-                        location: None,
-                    })?;
-                patterns.push(glob.compile_matcher());
+        let mut unread = Vec::new();
+        for pattern in value.as_ref().map(exclude_patterns).unwrap_or_default() {
+            for variant in with_resolved_prefix(&pattern) {
+                match ExcludeGlob::read(&variant) {
+                    Some(glob) => patterns.push(glob),
+                    None => unread.push(variant),
+                }
             }
         }
         let listing_cap = value
@@ -523,6 +601,7 @@ impl ProjectSettings {
                 root: root.to_path_buf(),
                 canonical_root: canonical_root(root)?,
                 patterns,
+                unread,
             },
         })
     }
@@ -1444,6 +1523,195 @@ mod tests {
         let set = resolve(&dir.path().join("packages/app")).unwrap();
         assert_eq!(paths(&set), ["../../shared/conventions.md", "CLAUDE.md"]);
         assert!(set.unmeasured.is_empty(), "{:?}", set.unmeasured);
+    }
+
+    /// Verdicts of picomatch 4.0.7 with `{ dot: true }` — the matcher Claude
+    /// Code 2.1.284 compiles `claudeMdExcludes` with — on the patterns after
+    /// its backslash-to-slash turn, over canonical absolute paths.
+    const PICOMATCH_PATHS: &[&str] = &[
+        "/r/CLAUDE.md",
+        "/r/a/CLAUDE.md",
+        "/r/a/b/CLAUDE.md",
+        "/r/.claude/rules/x.md",
+        "/r/.claude/rules/sub/y.md",
+        "/r/.hidden/CLAUDE.md",
+        "/r/docs/x.md",
+        "/r/한 글/CLAUDE.md",
+        "/r/My Drive (Work)/CLAUDE.md",
+        "/r/{a,b}/CLAUDE.md",
+        "/r/[slug]/CLAUDE.md",
+        "/r/a+b@c/CLAUDE.md",
+        "/r/claude.md",
+        "/x/CLAUDE.md",
+        "/r/x.txt",
+        "/r/ab.md",
+    ];
+    const PICOMATCH_VERDICTS: &[(&str, &[&str])] = &[
+        ("/r/CLAUDE.md", &["/r/CLAUDE.md"]),
+        (
+            "/r/*/CLAUDE.md",
+            &[
+                "/r/a/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+            ],
+        ),
+        (
+            "/r/**/CLAUDE.md",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+            ],
+        ),
+        (
+            "**/CLAUDE.md",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/x/CLAUDE.md",
+            ],
+        ),
+        (
+            "**/.claude/rules/**",
+            &["/r/.claude/rules/x.md", "/r/.claude/rules/sub/y.md"],
+        ),
+        ("/r/.claude/rules/*.md", &["/r/.claude/rules/x.md"]),
+        (
+            "/r/**",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.claude/rules/x.md",
+                "/r/.claude/rules/sub/y.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/claude.md",
+                "/r/x.txt",
+                "/r/ab.md",
+            ],
+        ),
+        (
+            "/r/*",
+            &["/r/CLAUDE.md", "/r/claude.md", "/r/x.txt", "/r/ab.md"],
+        ),
+        (
+            "/r/a**/CLAUDE.md",
+            &["/r/a/CLAUDE.md", "/r/a+b@c/CLAUDE.md"],
+        ),
+        ("*CLAUDE.md", &[]),
+        ("CLAUDE.md", &[]),
+        (
+            "/r/{a,docs}/**",
+            &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/docs/x.md"],
+        ),
+        (
+            "/r/*.{md,txt}",
+            &["/r/CLAUDE.md", "/r/claude.md", "/r/x.txt", "/r/ab.md"],
+        ),
+        ("/r/{a,b}{.md,b.md}", &["/r/ab.md"]),
+        (
+            "/r/{a,b}/CLAUDE.md",
+            &["/r/a/CLAUDE.md", "/r/{a,b}/CLAUDE.md"],
+        ),
+        ("/r/한 글/CLAUDE.md", &["/r/한 글/CLAUDE.md"]),
+        ("/r/a+b@c/CLAUDE.md", &["/r/a+b@c/CLAUDE.md"]),
+        ("/r/a\\b/CLAUDE.md", &["/r/a/b/CLAUDE.md"]),
+    ];
+
+    #[test]
+    fn harnex_reads_its_dialect_as_picomatch_does() {
+        let written: Vec<&str> = PICOMATCH_VERDICTS.iter().map(|(p, _)| *p).collect();
+        let patterns = exclude_patterns(&serde_json::json!({ "claudeMdExcludes": written }));
+        assert_eq!(patterns.len(), PICOMATCH_VERDICTS.len());
+        for ((written, expected), pattern) in PICOMATCH_VERDICTS.iter().zip(&patterns) {
+            let glob = ExcludeGlob::read(pattern)
+                .unwrap_or_else(|| panic!("`{written}` is written in the dialect harnex reads"));
+            let matched: Vec<&str> = PICOMATCH_PATHS
+                .iter()
+                .copied()
+                .filter(|path| glob.matches(path))
+                .collect();
+            assert_eq!(&matched, expected, "`{written}`");
+        }
+        for unread in [
+            "/r/?/CLAUDE.md",
+            "/r/[unclosed.md",
+            "/r/[slug]/CLAUDE.md",
+            "/r/{a}/CLAUDE.md",
+            "/r/{a/CLAUDE.md",
+            "/r/}x/CLAUDE.md",
+            "/r/{a,{b,c}}/CLAUDE.md",
+            "/r/c{1..2}/CLAUDE.md",
+            "/r/{,a}/CLAUDE.md",
+            "/r/{a,**}/CLAUDE.md",
+            "/r/My Drive (Work)/CLAUDE.md",
+            "/r/@(a|b)/CLAUDE.md",
+            "!/r/CLAUDE.md",
+        ] {
+            assert!(ExcludeGlob::read(unread).is_none(), "`{unread}`");
+        }
+    }
+
+    // 2.1.284 read an unclosed bracket as a literal one and applied every
+    // other pattern in the list; harnex names that one instead of refusing
+    // the settings.
+    #[test]
+    fn a_pattern_outside_the_dialect_is_named_and_the_rest_still_apply() {
+        let dir = project(&[
+            ("CLAUDE.md", "memory\n"),
+            (".claude/rules/[unclosed.md", "bracket\n"),
+            (".claude/rules/plain.md", "plain\n"),
+        ]);
+        let top = std::fs::canonicalize(dir.path()).unwrap();
+        let bracket = format!("{}/.claude/rules/[unclosed.md", top.display());
+        let backslashed = format!("{}\\.claude\\rules\\plain.md", top.display());
+        std::fs::write(
+            dir.path().join(".claude/settings.json"),
+            serde_json::json!({ "claudeMdExcludes": [&bracket, backslashed] }).to_string(),
+        )
+        .unwrap();
+        let set = resolve(dir.path()).unwrap();
+        assert_eq!(paths(&set), [".claude/rules/[unclosed.md", "CLAUDE.md"]);
+        assert_eq!(set.unread_excludes, [bracket]);
+    }
+
+    // 2.1.284 skipped a rule named `a\b.md` for `**/.claude/rules/a/b.md`, and
+    // loaded it with no exclude: the path's backslashes turn too.
+    #[cfg(unix)]
+    #[test]
+    fn a_backslash_in_the_path_reads_as_a_slash() {
+        let set = loaded(&[
+            (
+                ".claude/settings.json",
+                r#"{"claudeMdExcludes": ["**/.claude/rules/a/b.md"]}"#,
+            ),
+            (".claude/rules/a\\b.md", "rule\n"),
+        ]);
+        assert!(set.members.is_empty(), "{:?}", set.members);
     }
 
     #[test]
