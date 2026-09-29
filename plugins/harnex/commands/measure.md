@@ -309,8 +309,8 @@ prevent. `harness_change` then says whether the thing being tested moved:
 from the project up to the repository root, and `[session] harness_paths` —
 stood at the same commit at both saves with nothing uncommitted, so a
 committed harness change is not why; what git ignores (`settings.local.json`,
-`CLAUDE.local.md`), an import reaching out of the directory whose memory
-imports it, and anything outside the repository are not in it. `changed`
+`CLAUDE.local.md`) and anything outside the repository, an import reaching out
+included, are not in it. `changed`
 means it moved and the operator can ask git which; `unknown` means a window
 recorded no harness state — saved without `--project`, or outside a git work
 tree — or ran on uncommitted harness changes. A delta reported without both is an association

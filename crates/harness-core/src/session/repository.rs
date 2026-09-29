@@ -6,8 +6,8 @@
 //! project a window was scoped to.
 //!
 //! The same repository says what a window ran under: [`harness_state`] asks
-//! git about what `always_loaded` resolves at each directory from the work
-//! tree's root down to the project, beside the declared `harness_paths`.
+//! git about what `always_loaded` resolves for a session in the project, beside
+//! the declared `harness_paths`.
 //!
 //! The transcript abbreviates a commit to seven or nine characters — measured,
 //! 2,071 at nine and 241 at seven — so nothing here resolves one itself. Git is
@@ -234,27 +234,31 @@ pub fn harness_state(project: &Path, declared: &[String]) -> Result<Option<Harne
             ),
         })?;
     let mut paths: BTreeSet<String> = declared.iter().cloned().collect();
-    // A session in a package loads what every directory above it puts into
-    // each session, up to the root, so each of those is read as the runtime
-    // reads it. Git follows no link: a file reached through one is named both
-    // where it was reached, which a retargeted link changes, and where its
-    // content lives, which an edit changes.
-    let mut levels: Vec<&Path> = below.ancestors().collect();
-    levels.reverse();
-    for level in levels {
-        for member in crate::always_loaded::resolve(&root.join(level))?.members {
-            let reached = level.join(&member.path);
-            let content =
-                std::fs::canonicalize(root.join(&reached)).map_err(|source| Error::IoFailure {
-                    path: root.join(&reached),
-                    source,
-                })?;
-            let content = content
-                .strip_prefix(&root)
-                .expect("a member's content lies inside the directory it was read from");
-            paths.insert(format!(":(literal){}", reached.display()));
-            paths.insert(format!(":(literal){}", content.display()));
-        }
+    // Git follows no link: a file reached through one is named both where it
+    // was reached, which a retargeted link changes, and where its content
+    // lives, which an edit changes.
+    for member in crate::always_loaded::resolve(project)?.members {
+        let reached =
+            crate::always_loaded::normalize(&below.join(&member.path)).ok_or_else(|| {
+                Error::CheckGitFailure {
+                    message: format!(
+                        "{} loads {} from above the work tree git names for it, {}",
+                        project.display(),
+                        member.path,
+                        root.display()
+                    ),
+                }
+            })?;
+        let content =
+            std::fs::canonicalize(root.join(&reached)).map_err(|source| Error::IoFailure {
+                path: root.join(&reached),
+                source,
+            })?;
+        let content = content
+            .strip_prefix(&root)
+            .expect("a member's content lies inside the repository it was read from");
+        paths.insert(format!(":(literal){}", reached.display()));
+        paths.insert(format!(":(literal){}", content.display()));
     }
 
     let mut args = vec!["log", "-1", "--format=%H", "HEAD", "--"];
