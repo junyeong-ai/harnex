@@ -522,8 +522,8 @@ impl Excludes {
 /// `/`: over those, picomatch's guards against a `.` or `..` segment and its
 /// optional trailing slash decide nothing, and are not carried. A caller
 /// passing another path would need them. Its `(?=.)` also fails before a
-/// JavaScript line terminator, which is not carried: a segment opening with
-/// one is read as though it opened with any other character.
+/// JavaScript line terminator, which is not carried: one where a guarded star
+/// begins is read as any other character would be.
 struct ExcludeGlob {
     pattern: String,
     /// `None` for a glob outside the dialect.
