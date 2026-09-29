@@ -405,6 +405,9 @@ pub fn over_budget(loaded: &AlwaysLoaded, max_chars: usize, root: &Path) -> Opti
         return None;
     }
     let first = loaded.members.first()?;
+    // A member above the project is written `../`; below a relative root there
+    // is nothing to climb lexically, and the joined path names the same file.
+    let at = root.join(&first.path);
     let largest: Vec<String> = loaded
         .members
         .iter()
@@ -414,7 +417,7 @@ pub fn over_budget(loaded: &AlwaysLoaded, max_chars: usize, root: &Path) -> Opti
     Some(Finding {
         slug: "always-loaded-over-budget".into(),
         severity: Severity::Major,
-        location: Location::file(root.join(&first.path)),
+        location: Location::file(normalize(&at).unwrap_or(at)),
         message: format!(
             "{} characters load into every session, over max_chars={max_chars}; largest of \
              {}: {}",
@@ -2389,6 +2392,15 @@ mod tests {
         assert!(over_budget(&set, 6, dir.path()).is_none());
         let finding = over_budget(&set, 5, dir.path()).unwrap();
         assert_eq!(finding.slug, "always-loaded-over-budget");
+        assert_eq!(finding.location.path, dir.path().join("CLAUDE.md"));
+    }
+
+    #[test]
+    fn a_largest_member_above_the_project_is_located_where_it_lies() {
+        let dir = project(&[("CLAUDE.md", "12345\n"), ("app/CLAUDE.md", "1\n")]);
+        let app = dir.path().join("app");
+        let set = resolve(&app).unwrap();
+        let finding = over_budget(&set, 5, &app).unwrap();
         assert_eq!(finding.location.path, dir.path().join("CLAUDE.md"));
     }
 }
