@@ -11,10 +11,12 @@
 //! loader it ships, on Claude Code 2.1.283 unless a bullet names 2.1.284:
 //!
 //! - A session reads its own directory and each one above it up to the
-//!   repository's top, every kind alike, with its own directory's settings
-//!   alone ([`levels`]). A skill, command, agent or output style defined at
-//!   two levels is the nearest one's, and a skill's name hides a command's
-//!   wherever either is defined (2.1.284).
+//!   repository's top, below the home directory, every kind alike, with its
+//!   own directory's settings alone ([`levels`]). Memory is read from the top
+//!   down, so a file two levels reach goes by the higher one. A skill,
+//!   command, agent or output style defined at two levels is the nearest
+//!   one's, and a skill's name hides a command's wherever either is defined,
+//!   unless the skill waits on `paths:` (2.1.284).
 //! - `CLAUDE.md` and `.claude/CLAUDE.md` both load; `AGENTS.md` and
 //!   `.claude/AGENTS.md` load in their place when neither exists
 //!   ([`memory_files`]).
@@ -307,7 +309,8 @@ pub struct AlwaysLoaded {
 /// lives in, loads from the repository it lies in.
 pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
     let project = canonical_root(project)?;
-    let levels = levels(&project);
+    let home = std::env::home_dir().and_then(|home| std::fs::canonicalize(home).ok());
+    let levels = levels(&project, home.as_deref());
     let settings = ProjectSettings::read(&project)?;
     let mut walk = Walk {
         top: levels.last().expect("a project is its own first level"),
@@ -323,7 +326,10 @@ pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
         unmeasured: Vec::new(),
     };
 
-    for level in &levels {
+    // Memory from the top down: a file two levels reach — a rule imported from
+    // another level — goes by the first that reads it, and reading a rule
+    // marks it read even where its `paths:` then holds it back.
+    for level in levels.iter().rev() {
         for path in memory_files(level) {
             walk.memory_file(&path, MemberKind::Memory, 0, Tree::Memory);
         }
@@ -374,17 +380,20 @@ pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
 /// `project` and each directory above it up to the top of the repository it
 /// lies in, nearest first: where a session started in `project` reads its
 /// harness from. The top is the nearest directory holding `.git` — the
-/// directory, or the file a linked worktree or a submodule keeps — and outside
-/// any repository `project` stands alone. A `.git` git itself would reject
-/// still ends the walk, where git's own search goes on upward.
-fn levels(project: &Path) -> Vec<&Path> {
-    match project.ancestors().find(|dir| dir.join(".git").exists()) {
-        Some(top) => project
-            .ancestors()
-            .take_while(|dir| dir.starts_with(top))
-            .collect(),
-        None => vec![project],
-    }
+/// directory, or the file a linked worktree or a submodule keeps — and a
+/// `.git` git itself would reject still ends the walk, where git's own search
+/// goes on upward. The walk stops below `home`, whose `.claude` is the user's
+/// own. Outside any repository the runtime still climbs toward `home`, but
+/// nothing it finds there is the repository's, so `project` stands alone.
+fn levels<'a>(project: &'a Path, home: Option<&Path>) -> Vec<&'a Path> {
+    let Some(top) = project.ancestors().find(|dir| dir.join(".git").exists()) else {
+        return vec![project];
+    };
+    project
+        .ancestors()
+        .take_while(|dir| dir.starts_with(top))
+        .take_while(|dir| *dir == project || home.is_none_or(|home| !home.starts_with(dir)))
+        .collect()
 }
 
 /// The project memory files the runtime reads at launch: `CLAUDE.md` and
@@ -443,8 +452,9 @@ pub(crate) struct Excludes {
     root: PathBuf,
     canonical_root: PathBuf,
     patterns: Vec<ExcludeGlob>,
-    /// Patterns written outside the dialect [`ExcludeGlob`] reads: each
-    /// excludes nothing here, whatever it excludes in a session.
+    /// Patterns, as written, that harnex cannot apply whole — outside the
+    /// dialect [`ExcludeGlob`] reads, or reaching through a link to a path
+    /// that is: each excludes nothing here, whatever it excludes in a session.
     unread: Vec<String>,
 }
 
@@ -586,11 +596,15 @@ impl ProjectSettings {
         let mut patterns = Vec::new();
         let mut unread = Vec::new();
         for pattern in value.as_ref().map(exclude_patterns).unwrap_or_default() {
+            let mut whole = true;
             for variant in with_resolved_prefix(&pattern) {
                 match ExcludeGlob::read(&variant) {
                     Some(glob) => patterns.push(glob),
-                    None => unread.push(variant),
+                    None => whole = false,
                 }
+            }
+            if !whole {
+                unread.push(pattern);
             }
         }
         let listing_cap = value
@@ -838,6 +852,13 @@ impl Walk<'_> {
                 .filter(|(name, _)| self.agents.insert(name.clone()))
                 .map(|(_, entry)| entry),
             _ => {
+                // A skill waiting on `paths:` is set aside at launch, name and
+                // all, so a command or a farther skill of its name still lists.
+                if kind == MemberKind::Skill
+                    && path_globs::declares_scope(source.fields.get("paths"))
+                {
+                    return;
+                }
                 if let Some(name) = &name
                     && !self.names.insert(name.clone())
                 {
@@ -941,9 +962,6 @@ fn needs_quotes(value: &str) -> bool {
 /// launch.
 fn invocable_entry(source: &Source, kind: MemberKind, listing_cap: usize) -> Option<String> {
     let fields = &source.fields;
-    if kind == MemberKind::Skill && path_globs::declares_scope(fields.get("paths")) {
-        return None;
-    }
     if truthy(fields.get("disable-model-invocation")) {
         return None;
     }
@@ -1421,6 +1439,63 @@ mod tests {
         );
     }
 
+    // 2.1.284, a session in `packages/app`: the top's rule waiting on `paths:`
+    // stayed out though the package's CLAUDE.md imported it, and the
+    // package's such rule loaded once the top's CLAUDE.md imported it.
+    #[test]
+    fn memory_is_read_from_the_top_down_so_the_higher_level_decides_a_shared_file() {
+        let scoped = "---\npaths: [\"src/**\"]\n---\nscoped\n";
+        let held = project(&[
+            (".claude/rules/scoped.md", scoped),
+            ("packages/app/CLAUDE.md", "@../../.claude/rules/scoped.md\n"),
+        ]);
+        let set = resolve(&held.path().join("packages/app")).unwrap();
+        assert_eq!(paths(&set), ["CLAUDE.md"]);
+        let loaded = project(&[
+            ("CLAUDE.md", "@packages/app/.claude/rules/scoped.md\n"),
+            ("packages/app/.claude/rules/scoped.md", scoped),
+        ]);
+        let set = resolve(&loaded.path().join("packages/app")).unwrap();
+        assert_eq!(paths(&set), ["../../CLAUDE.md", ".claude/rules/scoped.md"]);
+    }
+
+    // 2.1.284 listed the command, and the top's skill, beside a skill of their
+    // name that waits on `paths:`.
+    #[test]
+    fn a_skill_waiting_on_paths_holds_no_name() {
+        let waiting = "---\npaths: [\"src/**\"]\n---\nwaiting\n";
+        let set = loaded(&[
+            (".claude/skills/deploy/SKILL.md", waiting),
+            (
+                ".claude/commands/deploy.md",
+                "---\ndescription: deploy\n---\n",
+            ),
+            (
+                ".claude/skills/dup/SKILL.md",
+                "---\ndescription: top\n---\n",
+            ),
+            ("app/.claude/skills/dup/SKILL.md", waiting),
+        ]);
+        assert_eq!(
+            paths(&set),
+            [".claude/commands/deploy.md", ".claude/skills/dup/SKILL.md"]
+        );
+    }
+
+    #[test]
+    fn the_walk_stops_below_the_home_directory() {
+        let dir = tree(&[]);
+        let home = std::fs::canonicalize(dir.path()).unwrap().join("home/me");
+        std::fs::create_dir_all(home.join("project")).unwrap();
+        std::fs::create_dir(home.join(".git")).unwrap();
+        let project = home.join("project");
+        assert_eq!(levels(&project, Some(&home)), [project.as_path()]);
+        assert_eq!(levels(&project, None), [project.as_path(), home.as_path()]);
+        std::fs::remove_dir(home.join(".git")).unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        assert_eq!(levels(&project, Some(&home)), [project.as_path()]);
+    }
+
     #[test]
     fn a_git_file_ends_the_walk_as_a_git_directory_does() {
         let dir = tree(&[
@@ -1745,6 +1820,27 @@ mod tests {
         let set = resolve(dir.path()).unwrap();
         assert_eq!(paths(&set), [".claude/rules/[unclosed.md", "CLAUDE.md"]);
         assert_eq!(set.unread_excludes, [bracket]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pattern_whose_link_target_is_outside_the_dialect_is_named_as_written() {
+        let dir = tree(&[
+            ("real (x)/CLAUDE.md", "memory\n"),
+            ("real (x)/.claude/rules/r.md", "rule\n"),
+        ]);
+        let top = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir(top.join("real (x)/.git")).unwrap();
+        std::os::unix::fs::symlink(top.join("real (x)"), top.join("link")).unwrap();
+        let written = format!("{}/link/.claude/rules/**", top.display());
+        std::fs::write(
+            top.join("real (x)/.claude/settings.json"),
+            serde_json::json!({ "claudeMdExcludes": [&written] }).to_string(),
+        )
+        .unwrap();
+        let set = resolve(&top.join("real (x)")).unwrap();
+        assert_eq!(paths(&set), [".claude/rules/r.md", "CLAUDE.md"]);
+        assert_eq!(set.unread_excludes, [written]);
     }
 
     // 2.1.284 skipped a rule named `a\b.md` for `**/.claude/rules/a/b.md`, and
