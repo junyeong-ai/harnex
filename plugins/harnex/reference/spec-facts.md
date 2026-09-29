@@ -195,6 +195,16 @@ already contradicted both a page and the binary's own schema.
   `dangerouslyDisableSandbox` and the write landed; with it off, redirection,
   `mv`, `cp`, `tee`, `dd`, `sed -i` and `perl -i` were all refused, and the
   Edit and Write attempts fell to the floor's PreToolUse freeze.
+- **A sandboxed command serving on a local port** (2.1.284, `harnex ask
+  serve --no-open` tried from outside the sandbox): on macOS the bind fails
+  with `EPERM` until `sandbox.network.allowLocalBinding: true`, after which
+  the port is reached. On Linux, where the network is restricted, the loader
+  wraps the command in `bwrap --unshare-net`: the bind succeeds in a network
+  of its own that nothing outside reaches, and `allowLocalBinding` is read by
+  the macOS profile alone. `excludedCommands` runs the command outside the
+  sandbox on both, and an entry matches as a permission rule does — `x:*` or
+  `x *` covers `x` with arguments, a bare `x` only `x` alone, and a command
+  chained to another stays sandboxed unless every part matches.
 - **The engine schema-validates its own settings files before hooks run** —
   an invalid Edit to `.claude/settings.json` is rejected by the schema layer
   with no PreToolUse hook consulted; a schema-valid one reaches the hooks
