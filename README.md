@@ -297,9 +297,13 @@ labels, answers and ids the sentences name, and digits for counts and the
 deadline (`YYYY-MM-DD HH:MM`), that is every character harnex adds, so a page
 that carries its own font subset can cover them. A sandboxed session on macOS
 binds the port only with `sandbox.network.allowLocalBinding`, or with
-`harnex ask serve` in `sandbox.excludedCommands`. On Linux the browser
-receives the address as a command-line argument, which other users of the
-machine can read; on a shared host, serve with `--no-open` and open the
+`harnex ask serve:*` in `sandbox.excludedCommands`, which runs the command
+outside the sandbox when nothing is chained to it; a bare `harnex ask serve`
+there matches only the command with no arguments. On Linux the sandbox gives
+the command a network of its own, where no browser reaches the page and the
+wait runs out, so serve through `excludedCommands` there. On Linux the browser
+also receives the address as a command-line argument, which other users of
+the machine can read; on a shared host, serve with `--no-open` and open the
 address from stderr.
 
 By default every command emits one JSON envelope on stdout; the explicit raw

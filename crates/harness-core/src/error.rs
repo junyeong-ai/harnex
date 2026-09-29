@@ -391,7 +391,7 @@ impl Error {
                 if source.kind() == std::io::ErrorKind::PermissionDenied =>
             {
                 Some(
-                    "a sandboxed session on macOS may not bind a local port: set `sandbox.network.allowLocalBinding` to true, or run `harnex ask serve` outside the sandbox through `sandbox.excludedCommands`",
+                    "a sandboxed session on macOS may not bind a local port: set `sandbox.network.allowLocalBinding` to true, or add `harnex ask serve:*` to `sandbox.excludedCommands` to run the command outside the sandbox",
                 )
             }
             Self::AskBrowserUnopened { .. } => Some(
@@ -447,9 +447,9 @@ mod error_code_tests {
         };
         let refused = listen(std::io::ErrorKind::PermissionDenied);
         assert!(
-            refused
-                .hint()
-                .is_some_and(|h| h.contains("allowLocalBinding"))
+            refused.hint().is_some_and(
+                |h| h.contains("allowLocalBinding") && h.contains("harnex ask serve:*")
+            )
         );
         assert_eq!(listen(std::io::ErrorKind::AddrInUse).hint(), None);
     }
