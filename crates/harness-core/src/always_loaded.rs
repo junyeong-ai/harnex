@@ -504,7 +504,9 @@ impl Excludes {
 /// The paths matched are absolute and normalized, and a file's never ends in
 /// `/`: over those, picomatch's guards against a `.` or `..` segment and its
 /// optional trailing slash decide nothing, and are not carried. A caller
-/// passing another path would need them.
+/// passing another path would need them. Its `(?=.)` also fails before a
+/// JavaScript line terminator, which is not carried: a segment opening with
+/// one is read as though it opened with any other character.
 struct ExcludeGlob {
     pattern: String,
     /// `None` for a glob outside the dialect.
@@ -532,15 +534,20 @@ impl ExcludeGlob {
 
     /// The regex for `pattern`'s glob; `None` outside the dialect.
     fn compile(pattern: &str) -> Option<Regex> {
-        let mut glob = pattern;
-        while let Some(rest) = glob.strip_prefix("./") {
-            glob = rest;
-        }
-        if glob.starts_with('!') {
-            return None;
-        }
-        let chars: Vec<char> = glob.chars().collect();
-        let tokens = GlobToken::parse(&chars, &mut 0, false)?;
+        let tokens = match GlobToken::shortcut(pattern) {
+            Some(tokens) => tokens,
+            None => {
+                let mut glob = pattern;
+                while let Some(rest) = glob.strip_prefix("./") {
+                    glob = rest;
+                }
+                if glob.starts_with('!') {
+                    return None;
+                }
+                let chars: Vec<char> = glob.chars().collect();
+                GlobToken::parse(&chars, &mut 0, false)?
+            }
+        };
         let (source, _) = GlobPiece::sequence(&tokens, false, true);
         Regex::new(&format!("^(?:{source})$")).ok()
     }
@@ -579,8 +586,8 @@ fn write_units(c: char, out: &mut String) {
 enum GlobToken {
     Literal(char),
     Slash,
-    /// `guarded` is picomatch's `(?=.)`: a lone star opening a segment
-    /// matches nothing at the end of the text.
+    /// `guarded` is picomatch's `(?=.)` before the star, which then matches
+    /// nothing at the end of the text.
     Star {
         guarded: bool,
     },
@@ -599,6 +606,47 @@ enum GlobToken {
 }
 
 impl GlobToken {
+    /// The tokens of a pattern picomatch compiles without parsing: one
+    /// opening with `*` or `.` whose shape, after a leading `./`, is one of a
+    /// few, each optionally followed by extensions. There `**` crosses
+    /// segments whatever follows it, and the star after a dot is guarded.
+    fn shortcut(pattern: &str) -> Option<Vec<Self>> {
+        if !pattern.starts_with(['*', '.']) {
+            return None;
+        }
+        Self::shape(pattern.strip_prefix("./").unwrap_or(pattern))
+    }
+
+    fn shape(glob: &str) -> Option<Vec<Self>> {
+        let star = |guarded| Self::Star { guarded };
+        Some(match glob {
+            "*" => vec![star(true)],
+            ".*" => vec![Self::Literal('.'), star(true)],
+            "*.*" => vec![star(false), Self::Literal('.'), star(true)],
+            "*/*" => vec![star(false), Self::Slash, star(true)],
+            "**" => vec![Self::Globstar],
+            "**/*" => vec![Self::Globstar, Self::Slash, star(true)],
+            "**/*.*" => vec![
+                Self::Globstar,
+                Self::Slash,
+                star(false),
+                Self::Literal('.'),
+                star(true),
+            ],
+            "**/.*" => vec![Self::Globstar, Self::Slash, Self::Literal('.'), star(true)],
+            _ => {
+                let (base, extension) = glob.rsplit_once('.')?;
+                let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+                if extension.is_empty() || !extension.chars().all(word) {
+                    return None;
+                }
+                let mut tokens = Self::shape(base)?;
+                tokens.extend(format!(".{extension}").chars().map(Self::Literal));
+                tokens
+            }
+        })
+    }
+
     /// The tokens from `at` to the end, or in a group to the `,` or `}` that
     /// ends the alternative, as picomatch's parser reads them; `None` where
     /// it would write what this does not carry.
@@ -872,6 +920,14 @@ impl GlobPiece<'_> {
         for piece in GlobPiece::place(tokens, in_group).iter().rev() {
             let mut regex = String::new();
             rest_empty = match piece {
+                // Closing the pattern, a guarded star stands where `(?=.)`
+                // fails unless it takes a character.
+                GlobPiece::Token(GlobToken::Star { guarded: true })
+                    if !in_group && out.is_empty() =>
+                {
+                    regex.push_str("[^/]+");
+                    false
+                }
                 GlobPiece::Token(token) => token.write(rest_empty, &mut regex),
                 GlobPiece::Leading => {
                     regex = format!("(?:{JS_DOT}*/)?");
@@ -2001,6 +2057,10 @@ mod tests {
         "/r/[",
         "/r/a,b}",
         "/r/q/[[a]",
+        "/r/a.",
+        "/r/.h",
+        "/r/x.md.bak",
+        "/r/x.m-d",
     ];
     const PICOMATCH_VERDICTS: &[(&str, &[&str])] = &[
         ("/r/CLAUDE.md", &["/r/CLAUDE.md"]),
@@ -2085,6 +2145,10 @@ mod tests {
                 "/r/[",
                 "/r/a,b}",
                 "/r/q/[[a]",
+                "/r/a.",
+                "/r/.h",
+                "/r/x.md.bak",
+                "/r/x.m-d",
             ],
         ),
         (
@@ -2104,6 +2168,10 @@ mod tests {
                 "/r/]",
                 "/r/[",
                 "/r/a,b}",
+                "/r/a.",
+                "/r/.h",
+                "/r/x.md.bak",
+                "/r/x.m-d",
             ],
         ),
         (
@@ -2148,7 +2216,7 @@ mod tests {
         ),
         ("**/docs/**", &["/r/docs/x.md", "/r/docs"]),
         ("/r/?", &["/r/a", "/r/é", "/r/]", "/r/["]),
-        ("/r/??", &["/r/😀"]),
+        ("/r/??", &["/r/😀", "/r/a.", "/r/.h"]),
         ("/r?a", &[]),
         ("/r[^a]a", &[]),
         ("/r/[^a]", &["/r/é", "/r/]", "/r/["]),
@@ -2157,7 +2225,7 @@ mod tests {
             &["/r/[slug]/CLAUDE.md", "/r/s/CLAUDE.md"],
         ),
         ("/r/[draft.md", &["/r/[draft.md"]),
-        ("/r/[a-\u{ffff}]?", &["/r/😀"]),
+        ("/r/[a-\u{ffff}]?", &["/r/😀", "/r/a."]),
         (
             "/r/a/**/***",
             &["/r/a/CLAUDE.md", "/r/a/b/CLAUDE.md", "/r/a"],
@@ -2289,6 +2357,10 @@ mod tests {
                 "/r/[",
                 "/r/a,b}",
                 "/r/q/[[a]",
+                "/r/a.",
+                "/r/.h",
+                "/r/x.md.bak",
+                "/r/x.m-d",
             ],
         ),
         (
@@ -2301,6 +2373,7 @@ mod tests {
                 "/r/a",
                 "/r/a\"b",
                 "/r/a,b}",
+                "/r/a.",
             ],
         ),
         (
@@ -2367,6 +2440,124 @@ mod tests {
             ],
         ),
         ("/r/*/[[a]", &[]),
+        (
+            "**.md",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.claude/rules/x.md",
+                "/r/.claude/rules/sub/y.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/claude.md",
+                "/x/CLAUDE.md",
+                "/r/ab.md",
+                "/CLAUDE.md",
+                "/r/[draft.md",
+                "/r/s/CLAUDE.md",
+                "/r/CLAUDE.local.md",
+            ],
+        ),
+        (
+            "./**",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.claude/rules/x.md",
+                "/r/.claude/rules/sub/y.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/claude.md",
+                "/x/CLAUDE.md",
+                "/r/x.txt",
+                "/r/ab.md",
+                "/r/a",
+                "/r/docs",
+                "/CLAUDE.md",
+                "/r",
+                "/r/[draft.md",
+                "/r/s/CLAUDE.md",
+                "/r/é",
+                "/r/😀",
+                "/r/CLAUDE.local.md",
+                "/r/a\"b",
+                "/r/]",
+                "/r/[",
+                "/r/a,b}",
+                "/r/q/[[a]",
+                "/r/a.",
+                "/r/.h",
+                "/r/x.md.bak",
+                "/r/x.m-d",
+            ],
+        ),
+        (
+            "./**.md",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.claude/rules/x.md",
+                "/r/.claude/rules/sub/y.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/claude.md",
+                "/x/CLAUDE.md",
+                "/r/ab.md",
+                "/CLAUDE.md",
+                "/r/[draft.md",
+                "/r/s/CLAUDE.md",
+                "/r/CLAUDE.local.md",
+            ],
+        ),
+        (
+            "**/*.*",
+            &[
+                "/r/CLAUDE.md",
+                "/r/a/CLAUDE.md",
+                "/r/a/b/CLAUDE.md",
+                "/r/.claude/rules/x.md",
+                "/r/.claude/rules/sub/y.md",
+                "/r/.hidden/CLAUDE.md",
+                "/r/docs/x.md",
+                "/r/한 글/CLAUDE.md",
+                "/r/My Drive (Work)/CLAUDE.md",
+                "/r/{a,b}/CLAUDE.md",
+                "/r/[slug]/CLAUDE.md",
+                "/r/a+b@c/CLAUDE.md",
+                "/r/claude.md",
+                "/x/CLAUDE.md",
+                "/r/x.txt",
+                "/r/ab.md",
+                "/CLAUDE.md",
+                "/r/[draft.md",
+                "/r/s/CLAUDE.md",
+                "/r/CLAUDE.local.md",
+                "/r/.h",
+                "/r/x.md.bak",
+                "/r/x.m-d",
+            ],
+        ),
+        ("**/.*", &["/r/.h"]),
+        ("**.md.bak", &["/r/x.md.bak"]),
+        ("**.m-d", &[]),
     ];
 
     #[test]
