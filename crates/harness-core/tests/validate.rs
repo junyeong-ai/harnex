@@ -935,6 +935,29 @@ fn settings_validator_accepts_valid_skill_overrides() {
 }
 
 #[test]
+fn settings_validator_names_an_exclude_harnex_does_not_read_in_committed_settings() {
+    let v = SettingsValidator::new();
+    let json = r#"{
+        "claudeMdExcludes": ["**/docs/{a,b}/CLAUDE.md", "/r/[unclosed.md"],
+        "permissions": {"deny": ["x"]}
+    }"#;
+    let unread = |scope| {
+        v.validate_text(json, Path::new(".claude/settings.json"), scope)
+            .into_iter()
+            .filter(|f| f.slug == "settings-exclude-unread")
+            .collect::<Vec<_>>()
+    };
+    let project = unread(SettingsScope::Project);
+    assert_eq!(project.len(), 1, "{project:?}");
+    assert!(project[0].message.contains("/r/[unclosed.md"));
+    assert_eq!(project[0].severity, Severity::Info);
+    assert!(
+        unread(SettingsScope::Local).is_empty(),
+        "harnex reads no exclude from the developer's own settings"
+    );
+}
+
+#[test]
 fn settings_validator_flags_absent_permissions_as_no_deny() {
     // A settings.json with no permissions block at all has zero guardrails —
     // the no-deny advisory must fire, not silently skip.

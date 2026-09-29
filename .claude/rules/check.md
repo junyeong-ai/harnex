@@ -72,7 +72,9 @@ read the one a vendored package ships and resolve its paths here.
 `claudeMdExcludes` in `.claude/settings.json` is honored for every memory
 file — a `CLAUDE.md` and a rule — because one the runtime never loads makes no
 claim; it is read through `always_loaded::Excludes`, which matches the
-absolute path as the runtime does, so a relative pattern excludes nothing.
+absolute path as the runtime does, so a relative pattern excludes nothing. A
+pattern outside the dialect it reads excludes nothing here either, and
+`validate.settings` names it (`settings-exclude-unread`).
 `settings.local.json` is the developer's, and a gate that read it would pass
 a tree locally that CI fails. When git cannot answer — no repository,
 dubious ownership — the nested set is declared unmeasured in `skipped` as

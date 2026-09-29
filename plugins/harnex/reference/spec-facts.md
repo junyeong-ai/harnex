@@ -388,7 +388,11 @@ already contradicted both a page and the binary's own schema.
   A rule reached through a link is matched at its path under `.claude/rules/`
   and at its target (2.1.239+), and an absolute pattern whose directory is a
   link also matches over the link's target. Merges across settings layers.
-  Managed-policy files cannot be excluded.
+  Managed-policy files cannot be excluded. The list is compiled with
+  picomatch (`dot`) once backslashes in pattern and path alike turn to
+  slashes, and a path equal to a pattern matches it too; a bracket or brace
+  left open is literal, so 2.1.284 excluded a rule named `[unclosed.md` by
+  that very pattern.
 - **Frontmatter as every loader reads it** (2.1.283, from the shipped
   parser): a block opens with `---` and closes at the next `---` wherever it
   falls, mid-line included; without one the whole file is body. YAML that
