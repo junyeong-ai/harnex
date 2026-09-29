@@ -371,7 +371,10 @@ already contradicted both a page and the binary's own schema.
   nearest one's, and a skill hides a command of its name at any level unless
   the skill waits on `paths:`. Memory is read from the top down, and reading a
   rule marks it read even where its `paths:` then holds it back, so the top's
-  scoped rule stayed out though the package's CLAUDE.md imported it.
+  scoped rule stayed out though the package's CLAUDE.md imported it. Read
+  from the loader: the walk for skills, commands, agents and output styles
+  stops at the home directory, and the memory walk does not, but the home
+  directory's `.claude/` is read as the user's before any level's.
 - **Target ≤ 200 lines** per file; longer reduces adherence. A file over 4 MiB
   is skipped whole rather than truncated.
 - **Path-scoped rules:** `.claude/rules/**/*.md`; with `paths:` frontmatter (glob,
