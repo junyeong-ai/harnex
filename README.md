@@ -277,11 +277,11 @@ stays with `diff`.
 `ask serve` puts a decision to the person where a session would otherwise
 assume it. The page is any HTML file that keeps the markup promise at the
 head of [`script.js`](crates/harness-core/src/ask/script.js): a `fieldset` of
-radios per ask, one slot whose content the send controls replace, and three
-events the page's own script can hear, one of them naming the asks a refused
-send is about. The asks file (`export schema asks`)
-names what is asked, carries the caller's version of what each ask shows, and
-lists the `sources` the page was made from, read from the working directory.
+radios per ask, one slot whose content the send controls replace, and the
+events the page's own script can hear, among them which asks a refused send is
+about. The asks file (`export schema asks`) names what is asked, carries the
+caller's version of what each ask shows, and lists the `sources` the page was
+made from, read from the working directory.
 The page's directory, apart from anything under a dot-name, is served on
 127.0.0.1 under a random path, the address goes to stderr and the browser, and
 the command ends on one answer set (exit 0), an answer set sent after a source
