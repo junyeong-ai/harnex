@@ -31,10 +31,16 @@ const ASKS = {
   ],
 };
 
-/** What the page's own script records of the transport's events. */
+/**
+ * What the page's own script records of the transport's events: of a refusal,
+ * the asks it names and whether the status line already says its problem.
+ */
 const LISTENER = `<script>
   window.heard = [];
   document.addEventListener("ask-ready", (e) => heard.push(["ready", e.detail.asks.asks.length]));
+  document.addEventListener("ask-refused", (e) =>
+    heard.push(["refused", e.detail.asks, document.querySelector(".ask-status").textContent === e.detail.problem]),
+  );
   document.addEventListener("ask-closed", (e) => heard.push(["closed", e.detail.answered]));
 </script>`;
 
@@ -49,6 +55,23 @@ const FIELDS = `
   <label><input type="radio" name="d-2" value="고칠 곳" disabled>고칠 곳</label>
   <div data-ask-note="고칠 곳" hidden><textarea disabled></textarea></div>
 </fieldset>`;
+
+const THIRD = {
+  ask: {
+    id: "d-3",
+    label: "색",
+    version: "v3",
+    answers: [
+      { name: "빨강", note: "none" },
+      { name: "파랑", note: "none" },
+    ],
+  },
+  field: `
+<fieldset data-ask="d-3" data-version="v3"><legend>색</legend>
+  <label><input type="radio" name="d-3" value="빨강" disabled>빨강</label>
+  <label><input type="radio" name="d-3" value="파랑" disabled>파랑</label>
+</fieldset>`,
+};
 
 const page = (body: string) =>
   `<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -134,6 +157,7 @@ test("a served page turns on, keeps each note with its answer, and sends", async
   await expect(send).toBeDisabled();
   expect(await tab.evaluate(() => (window as any).heard)).toEqual([
     ["ready", 2],
+    ["refused", ["d-2"], true],
     ["closed", true],
   ]);
 
@@ -180,7 +204,7 @@ test("an answer the page ships checked is counted and sent, and waits for the re
 
   const send = tab.locator(".ask-send");
   await send.click();
-  await expect(tab.locator(".ask-status")).toHaveText("결정과 설계: 함께 답한다. 2개 가운데 1개만 답했다.");
+  await expect(tab.locator(".ask-status")).toHaveText("결정과 설계: 함께 답한다. '설계'에 아직 답하지 않았다.");
   await expect(send).toBeEnabled();
 
   await tab.getByLabel("동의").check();
@@ -193,6 +217,45 @@ test("an answer the page ships checked is counted and sent, and waits for the re
     ["d-1", "나중", "다음 분기"],
     ["d-2", "동의", null],
   ]);
+});
+
+test("a set sent in part is refused naming the asks it still waits on", async ({ page: tab }) => {
+  const served = await serve(page(FIELDS + THIRD.field), {
+    asks: { ...ASKS, asks: [...ASKS.asks, THIRD.ask], together: [{ label: "결정 묶음", ids: ["d-1", "d-2", "d-3"] }] },
+  });
+  await tab.goto(served.url);
+  const status = tab.locator(".ask-status");
+  /** Click send, and resolve to the reply the transport wrote to it. */
+  const send = async () => {
+    const reply = tab.waitForResponse((response) => response.url().endsWith("/answers"));
+    await tab.locator(".ask-send").click();
+    return (await reply).json();
+  };
+
+  expect(await send()).toEqual({ problem: "고른 답이 없다.", final: false, asks: [] });
+  await expect(status).toHaveText("고른 답이 없다.");
+
+  await tab.getByLabel("지금").check();
+  const two = "결정 묶음: 함께 답한다. '설계', '색'에 아직 답하지 않았다.";
+  expect(await send()).toEqual({ problem: two, final: false, asks: ["d-2", "d-3"] });
+  await expect(status).toHaveText(two);
+
+  await tab.getByLabel("동의").check();
+  const one = "결정 묶음: 함께 답한다. '색'에 아직 답하지 않았다.";
+  expect(await send()).toEqual({ problem: one, final: false, asks: ["d-3"] });
+  await expect(status).toHaveText(one);
+
+  await tab.getByLabel("파랑").check();
+  await tab.locator(".ask-send").click();
+  await expect(status).toHaveText("보냈다. 세션이 답을 받았다. 이 창은 닫아도 된다.");
+  expect(await tab.evaluate(() => (window as any).heard)).toEqual([
+    ["ready", 3],
+    ["refused", [], true],
+    ["refused", ["d-2", "d-3"], true],
+    ["refused", ["d-3"], true],
+    ["closed", true],
+  ]);
+  expect((await served.exit).code).toBe(0);
 });
 
 test("a page under a strict content security policy turns on and sends", async ({ page: tab }) => {
@@ -241,6 +304,10 @@ test("a send after the session stopped waiting says the session was not reached"
     "세션에 닿지 않았다. 답을 기다리던 명령이 끝났을 수 있다.",
   );
   await expect(tab.locator(".ask-send")).toBeEnabled();
+  expect(await tab.evaluate(() => (window as any).heard)).toEqual([
+    ["ready", 2],
+    ["refused", [], true],
+  ]);
 });
 
 test.describe("in a browser set to another locale and time zone", () => {

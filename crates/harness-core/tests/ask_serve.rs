@@ -122,6 +122,10 @@ fn body(response: &str) -> &str {
     response.split_once("\r\n\r\n").unwrap().1
 }
 
+fn reply(response: &str) -> serde_json::Value {
+    serde_json::from_str(body(response)).unwrap()
+}
+
 #[test]
 fn the_page_is_served_with_its_script_and_an_answer_set_ends_the_wait() {
     let served = Served::start(Duration::from_secs(60), None);
@@ -155,7 +159,14 @@ fn the_page_is_served_with_its_script_and_an_answer_set_ends_the_wait() {
     let (status, refused) =
         served.post(r#"{"answers": [{"id": "d-1", "answer": "고칠 곳이 있다"}]}"#);
     assert_eq!(status, 400);
-    assert!(body(&refused).contains("적을 것이 있다"), "{refused}");
+    assert_eq!(
+        reply(&refused),
+        serde_json::json!({
+            "problem": "결정 1: '고칠 곳이 있다'에는 적을 것이 있다.",
+            "final": false,
+            "asks": ["d-1"]
+        })
+    );
 
     let (status, taken) =
         served.post(r#"{"answers": [{"id": "d-1", "answer": "고칠 곳이 있다", "note": "3번"}]}"#);
@@ -276,7 +287,10 @@ fn an_answer_set_past_the_body_limit_is_refused_and_the_wait_goes_on() {
         64 * 1024 + 1
     ));
     assert_eq!(status, 413);
-    assert!(body(&response).contains("너무 크다"));
+    assert_eq!(
+        reply(&response),
+        serde_json::json!({ "problem": "보낸 답이 너무 크다.", "final": false, "asks": [] })
+    );
     assert_eq!(
         served
             .post(r#"{"answers": [{"id": "d-1", "answer": "지금 만든다"}]}"#)
@@ -296,8 +310,9 @@ fn a_source_changed_while_the_page_was_open_ends_the_wait_as_stale() {
     let (status, response) =
         served.post(r#"{"answers": [{"id": "d-1", "answer": "지금 만든다"}]}"#);
     assert_eq!(status, 409);
-    let reply: serde_json::Value = serde_json::from_str(body(&response)).unwrap();
+    let reply = reply(&response);
     assert_eq!(reply["final"], true);
+    assert_eq!(reply["asks"], serde_json::json!([]));
     assert!(
         reply["problem"]
             .as_str()

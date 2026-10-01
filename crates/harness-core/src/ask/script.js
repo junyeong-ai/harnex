@@ -16,11 +16,18 @@
 // Content-Security-Policy allows `script-src 'self'` and `connect-src 'self'`:
 // this script is served from the page's origin and sends there.
 //
-// A page's own script, which runs before this one, hears two events on
-// `document`: `ask-ready` once the controls are on (`detail.asks` is the asks
-// file), and `ask-closed` once they are off for good (`detail.answered` says
-// whether the answers were taken). It answers by checking a radio and letting
-// its `change` bubble, and sends by clicking `.ask-send`.
+// A page's own script, which runs before this one, hears three events on
+// `document`. `ask-ready` fires once the controls are on, and `detail.asks` is
+// the asks file. `ask-refused` fires each time a send is not taken and the
+// controls stay on, once the status line says why: `detail.problem` is what it
+// says, and `detail.asks` the ids of the asks it is about. Those are the ask
+// whose answer or note was refused, or the asks a set asked together still
+// waits on in the order the set names them, and none when the refusal is about
+// the answers as a whole or the session was not reached. `ask-closed` fires
+// once the controls are off for good, and `detail.answered` says whether the
+// answers were taken. The page's script answers by checking a radio and
+// letting its `change` bubble, and sends by clicking `.ask-send`. Marking,
+// focusing or scrolling to what a refusal names is the page's.
 //
 // A radio the page ships checked is an answer the person already gave, such
 // as one `ask current` finds `current` or `incomplete`: it counts, and is
@@ -131,6 +138,11 @@
     say(text);
     document.dispatchEvent(new CustomEvent("ask-closed", { detail: { answered } }));
   };
+  const refused = (problem, named) => {
+    button.disabled = false;
+    say(problem);
+    document.dispatchEvent(new CustomEvent("ask-refused", { detail: { problem, asks: named } }));
+  };
   button.addEventListener("click", async () => {
     if (done) return;
     const answers = [];
@@ -149,18 +161,19 @@
         body: JSON.stringify({ answers }),
       });
     } catch {
-      button.disabled = false;
-      say(words.unreachable);
+      refused(words.unreachable, []);
       return;
     }
+    // A refusal the transport writes carries `problem`, `final` and `asks`;
+    // one it does not, such as a 403 to a request it will not read, has no
+    // body.
     const reply = await response.json().catch(() => ({}));
     if (response.ok) {
       finish(words.sent, true);
     } else if (reply.final === true) {
       finish(reply.problem ?? words.unreadable, false);
     } else {
-      button.disabled = false;
-      say(reply.problem ?? words.unreadable);
+      refused(reply.problem ?? words.unreadable, reply.asks ?? []);
     }
   });
 })();

@@ -14,8 +14,9 @@ use super::asks::Locale;
 
 /// Every sentence harnex says around a decision page, in one locale. A
 /// `{name}` is filled where the sentence is shown: with a label, an answer or
-/// an id from the asks file or the page, with a count in ASCII digits, or with
-/// the deadline as `YYYY-MM-DD HH:MM`.
+/// an id from the asks file or the page, with labels from the asks file each
+/// in `'` and separated by `, `, with a count in ASCII digits, or with the
+/// deadline as `YYYY-MM-DD HH:MM`.
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct Words {
     /// The page sent something that is not an answer set.
@@ -28,7 +29,7 @@ pub struct Words {
     pub note_required: &'static str,
     /// `{label}` `{answer}`
     pub note_forbidden: &'static str,
-    /// `{label}` `{of}` `{answered}`
+    /// `{label}` `{missing}`, the labels of the set's asks with no answer
     pub together_partial: &'static str,
     pub too_large: &'static str,
     pub stale: &'static str,
@@ -59,7 +60,7 @@ const EN: Words = Words {
     not_offered: "{label}: that is not one of the answers offered.",
     note_required: "{label}: '{answer}' needs a note.",
     note_forbidden: "{label}: '{answer}' takes no note.",
-    together_partial: "{label}: these are answered together, and {answered} of {of} were answered.",
+    together_partial: "{label}: these are answered together, and no answer was chosen for {missing}.",
     too_large: "The answers sent are too large.",
     stale: "The source documents changed after this page opened, so these answers were not taken. The session has been told.",
     send: "Send",
@@ -82,7 +83,7 @@ const KO: Words = Words {
     not_offered: "{label}: 고를 수 있는 답이 아니다.",
     note_required: "{label}: '{answer}'에는 적을 것이 있다.",
     note_forbidden: "{label}: '{answer}'에는 적을 것이 없다.",
-    together_partial: "{label}: 함께 답한다. {of}개 가운데 {answered}개만 답했다.",
+    together_partial: "{label}: 함께 답한다. {missing}에 아직 답하지 않았다.",
     too_large: "보낸 답이 너무 크다.",
     stale: "이 페이지를 연 뒤 원천 문서가 바뀌어서 이 답은 받지 않았다. 세션에 그렇게 알렸다.",
     send: "보내기",
