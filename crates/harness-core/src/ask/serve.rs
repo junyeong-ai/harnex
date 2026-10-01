@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use jiff::Timestamp;
 
-use super::answers::{self, Outcome};
+use super::answers::{self, Named, Outcome};
 use super::asks::Asks;
 use super::files::Site;
 use super::http::{self, BODY_LIMIT, HEAD_LIMIT, Parsed, Request, Status};
@@ -302,6 +302,17 @@ impl Reply {
         }
     }
 
+    /// An answer set not taken, as the page script reads it: what to say,
+    /// whether no other answer set is taken after it, and the ids of the asks
+    /// it is about.
+    fn refusal(status: Status, problem: &str, closes: bool, asks: &[Named]) -> Self {
+        let asks: Vec<&str> = asks.iter().map(|ask| ask.id.as_str()).collect();
+        Self::json(
+            status,
+            serde_json::json!({ "problem": problem, "final": closes, "asks": asks }),
+        )
+    }
+
     fn empty(status: Status) -> Self {
         Self {
             status,
@@ -377,10 +388,7 @@ impl Server<'_> {
         let words = self.asks.locale.words();
         if self.sources_moved() {
             return (
-                Reply::json(
-                    Status::Conflict,
-                    serde_json::json!({ "problem": words.stale, "final": true }),
-                ),
+                Reply::refusal(Status::Conflict, words.stale, true, &[]),
                 Some(Outcome::Stale {
                     url: self.url.clone(),
                 }),
@@ -388,9 +396,11 @@ impl Server<'_> {
         }
         match answers::read(&request.body, self.asks, Timestamp::now()) {
             Err(refusal) => (
-                Reply::json(
+                Reply::refusal(
                     Status::BadRequest,
-                    serde_json::json!({ "problem": refusal.said(words) }),
+                    &refusal.said(words),
+                    false,
+                    refusal.asks(),
                 ),
                 None,
             ),
@@ -416,7 +426,7 @@ impl Server<'_> {
             Status::PayloadTooLarge => words.too_large,
             _ => words.unreadable,
         };
-        Reply::json(status, serde_json::json!({ "problem": problem }))
+        Reply::refusal(status, problem, false, &[])
     }
 }
 

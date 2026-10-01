@@ -6,7 +6,7 @@ use std::path::Path;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use super::asks::{Asks, NoteRule, Offered};
+use super::asks::{Ask, Asks, NoteRule, Offered};
 use super::words::{Words, render};
 use crate::error::{Error, Result};
 
@@ -49,6 +49,23 @@ pub enum Outcome {
     },
 }
 
+/// An ask a refusal is about: its id for the page's own script, and its
+/// label for the person.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Named {
+    pub id: String,
+    pub label: String,
+}
+
+impl Named {
+    fn of(ask: &Ask) -> Self {
+        Self {
+            id: ask.id.clone(),
+            label: ask.label.clone(),
+        }
+    }
+}
+
 /// Why an answer set is refused. Each is the person's to correct, so each is
 /// said in the page's locale.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,20 +74,20 @@ pub enum Refusal {
     Empty,
     NotAsked,
     NotOffered {
-        label: String,
+        ask: Named,
     },
     NoteRequired {
-        label: String,
+        ask: Named,
         answer: String,
     },
     NoteForbidden {
-        label: String,
+        ask: Named,
         answer: String,
     },
     TogetherPartial {
         label: String,
-        of: usize,
-        answered: usize,
+        /// The set's asks with no answer, in the order the set names them.
+        missing: Vec<Named>,
     },
 }
 
@@ -80,26 +97,37 @@ impl Refusal {
             Self::Unreadable => words.unreadable.to_string(),
             Self::Empty => words.empty.to_string(),
             Self::NotAsked => words.not_asked.to_string(),
-            Self::NotOffered { label } => render(words.not_offered, &[("label", label)]),
-            Self::NoteRequired { label, answer } => {
-                render(words.note_required, &[("label", label), ("answer", answer)])
-            }
-            Self::NoteForbidden { label, answer } => render(
+            Self::NotOffered { ask } => render(words.not_offered, &[("label", &ask.label)]),
+            Self::NoteRequired { ask, answer } => render(
+                words.note_required,
+                &[("label", &ask.label), ("answer", answer)],
+            ),
+            Self::NoteForbidden { ask, answer } => render(
                 words.note_forbidden,
-                &[("label", label), ("answer", answer)],
+                &[("label", &ask.label), ("answer", answer)],
             ),
-            Self::TogetherPartial {
-                label,
-                of,
-                answered,
-            } => render(
-                words.together_partial,
-                &[
-                    ("label", label),
-                    ("of", &of.to_string()),
-                    ("answered", &answered.to_string()),
-                ],
-            ),
+            Self::TogetherPartial { label, missing } => {
+                let missing: Vec<String> = missing
+                    .iter()
+                    .map(|ask| format!("'{}'", ask.label))
+                    .collect();
+                render(
+                    words.together_partial,
+                    &[("label", label), ("missing", &missing.join(", "))],
+                )
+            }
+        }
+    }
+
+    /// The asks this refusal is about, for the page to point the person to;
+    /// none when it is about the answer set as a whole.
+    pub fn asks(&self) -> &[Named] {
+        match self {
+            Self::Unreadable | Self::Empty | Self::NotAsked => &[],
+            Self::NotOffered { ask }
+            | Self::NoteRequired { ask, .. }
+            | Self::NoteForbidden { ask, .. } => std::slice::from_ref(ask),
+            Self::TogetherPartial { missing, .. } => missing,
         }
     }
 }
@@ -141,7 +169,7 @@ pub fn read(body: &[u8], asks: &Asks, at: Timestamp) -> std::result::Result<Vec<
             .iter()
             .find(|o| o.name == chosen.answer)
             .ok_or_else(|| Refusal::NotOffered {
-                label: ask.label.clone(),
+                ask: Named::of(ask),
             })?;
         let note = chosen
             .note
@@ -150,13 +178,13 @@ pub fn read(body: &[u8], asks: &Asks, at: Timestamp) -> std::result::Result<Vec<
         match (offered.note, &note) {
             (NoteRule::Required, None) => {
                 return Err(Refusal::NoteRequired {
-                    label: ask.label.clone(),
+                    ask: Named::of(ask),
                     answer: offered.name.clone(),
                 });
             }
             (NoteRule::None, Some(_)) => {
                 return Err(Refusal::NoteForbidden {
-                    label: ask.label.clone(),
+                    ask: Named::of(ask),
                     answer: offered.name.clone(),
                 });
             }
@@ -173,16 +201,21 @@ pub fn read(body: &[u8], asks: &Asks, at: Timestamp) -> std::result::Result<Vec<
         });
     }
     for set in &asks.together {
-        let answered = set
+        let missing: Vec<Named> = set
             .ids
             .iter()
-            .filter(|id| answers.iter().any(|a| &a.id == *id))
-            .count();
-        if answered != 0 && answered != set.ids.len() {
+            .filter(|id| !answers.iter().any(|a| &a.id == *id))
+            .map(|id| {
+                Named::of(
+                    asks.ask(id)
+                        .expect("Asks::check refuses a set naming an id not asked"),
+                )
+            })
+            .collect();
+        if !missing.is_empty() && missing.len() != set.ids.len() {
             return Err(Refusal::TogetherPartial {
                 label: set.label.clone(),
-                of: set.ids.len(),
-                answered,
+                missing,
             });
         }
     }
@@ -304,6 +337,13 @@ mod tests {
         assert_eq!(answer.note.as_deref(), Some("3번 칸"));
     }
 
+    fn named(id: &str, label: &str) -> Named {
+        Named {
+            id: id.into(),
+            label: label.into(),
+        }
+    }
+
     #[test]
     fn an_answer_set_that_breaks_the_asks_is_refused_with_its_reason() {
         let label = |s: &str| s.to_string();
@@ -320,20 +360,20 @@ mod tests {
             (
                 serde_json::json!([{"id": "d-1", "answer": "모름"}]),
                 Refusal::NotOffered {
-                    label: label("결정 1"),
+                    ask: named("d-1", "결정 1"),
                 },
             ),
             (
                 serde_json::json!([{"id": "d-2", "answer": "고칠 곳", "note": "   "}]),
                 Refusal::NoteRequired {
-                    label: label("설계"),
+                    ask: named("d-2", "설계"),
                     answer: label("고칠 곳"),
                 },
             ),
             (
                 serde_json::json!([{"id": "d-1", "answer": "지금", "note": "x"}]),
                 Refusal::NoteForbidden {
-                    label: label("결정 1"),
+                    ask: named("d-1", "결정 1"),
                     answer: label("지금"),
                 },
             ),
@@ -341,13 +381,52 @@ mod tests {
                 serde_json::json!([{"id": "c-1", "answer": "통과"}]),
                 Refusal::TogetherPartial {
                     label: label("기준"),
-                    of: 2,
-                    answered: 1,
+                    missing: vec![named("c-2", "기준 2")],
                 },
             ),
         ] {
             assert_eq!(sent(answers.clone()).unwrap_err(), refusal, "{answers}");
         }
+    }
+
+    #[test]
+    fn a_refusal_names_the_asks_it_is_about_in_the_order_a_set_names_them() {
+        let ids = |refusal: &Refusal| -> Vec<String> {
+            refusal.asks().iter().map(|ask| ask.id.clone()).collect()
+        };
+        let refusal = sent(serde_json::json!([{"id": "d-2", "answer": "고칠 곳"}])).unwrap_err();
+        assert_eq!(ids(&refusal), ["d-2"]);
+        for whole in [
+            Refusal::Unreadable,
+            sent(serde_json::json!([])).unwrap_err(),
+            sent(serde_json::json!([{"id": "d-9", "answer": "지금"}])).unwrap_err(),
+        ] {
+            assert!(whole.asks().is_empty(), "{whole:?}");
+        }
+
+        let ask = |id: &str| {
+            serde_json::json!({"id": id, "label": id.to_uppercase(), "version": "v", "answers": [
+                {"name": "예", "note": "none"}, {"name": "아니오", "note": "none"}]})
+        };
+        let asks = Asks::parse(
+            &serde_json::json!({
+                "asks": [ask("a"), ask("b"), ask("c")],
+                "together": [{"label": "묶음", "ids": ["c", "a", "b"]}]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let refusal = read(
+            r#"{"answers": [{"id": "b", "answer": "예"}]}"#.as_bytes(),
+            &asks,
+            Timestamp::UNIX_EPOCH,
+        )
+        .unwrap_err();
+        assert_eq!(ids(&refusal), ["c", "a"]);
+        assert_eq!(
+            refusal.said(Locale::Ko.words()),
+            "묶음: 함께 답한다. 'C', 'A'에 아직 답하지 않았다."
+        );
     }
 
     #[test]
@@ -381,14 +460,16 @@ mod tests {
     fn each_refusal_is_said_in_the_page_locale() {
         let refusal = Refusal::TogetherPartial {
             label: "기준".into(),
-            of: 3,
-            answered: 1,
+            missing: vec![named("c-2", "기준 2")],
         };
         assert_eq!(
             refusal.said(Locale::Ko.words()),
-            "기준: 함께 답한다. 3개 가운데 1개만 답했다."
+            "기준: 함께 답한다. '기준 2'에 아직 답하지 않았다."
         );
-        assert!(refusal.said(Locale::En.words()).contains("1 of 3"));
+        assert_eq!(
+            refusal.said(Locale::En.words()),
+            "기준: these are answered together, and no answer was chosen for '기준 2'."
+        );
     }
 
     #[test]

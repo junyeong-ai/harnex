@@ -277,8 +277,9 @@ stays with `diff`.
 `ask serve` puts a decision to the person where a session would otherwise
 assume it. The page is any HTML file that keeps the markup promise at the
 head of [`script.js`](crates/harness-core/src/ask/script.js): a `fieldset` of
-radios per ask, one slot whose content the send controls replace, and two
-events the page's own script can hear. The asks file (`export schema asks`)
+radios per ask, one slot whose content the send controls replace, and three
+events the page's own script can hear, one of them naming the asks a refused
+send is about. The asks file (`export schema asks`)
 names what is asked, carries the caller's version of what each ask shows, and
 lists the `sources` the page was made from, read from the working directory.
 The page's directory, apart from anything under a dot-name, is served on
@@ -293,9 +294,10 @@ transport that saves answer by answer, and `awaited` names what its set still
 waits on. A page that ships the answers that stand already checked asks only
 for the rest. `ask words <locale>` prints, before any page is served, every
 sentence the script or a refusal may put on a page in that locale. With the
-labels, answers and ids the sentences name, and digits for counts and the
-deadline (`YYYY-MM-DD HH:MM`), that is every character harnex adds, so a page
-that carries its own font subset can cover them. A sandboxed session on macOS
+labels, answers and ids the sentences name, `'` around and `, ` between the
+labels of a set's unanswered asks, and digits for counts and the deadline
+(`YYYY-MM-DD HH:MM`), that is every character harnex adds, so a page that
+carries its own font subset can cover them. A sandboxed session on macOS
 binds the port only with `sandbox.network.allowLocalBinding`, or with
 `harnex ask serve:*` in `sandbox.excludedCommands`, which runs the command
 outside the sandbox when nothing is chained to it; a bare `harnex ask serve`
