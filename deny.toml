@@ -1,5 +1,5 @@
 # Supply chain security — cargo-deny v0.19+ config.
-# CI: EmbarkStudios/cargo-deny-action@v2.
+# CI installs a pinned cargo-deny version in .github/workflows/ci.yml.
 
 [advisories]
 ignore = []
@@ -14,6 +14,7 @@ allow = [
   "ISC",
   "Unicode-3.0",
   "Unicode-DFS-2016",
+  "Zlib",
 ]
 confidence-threshold = 0.8
 

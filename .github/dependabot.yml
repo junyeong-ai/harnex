@@ -19,3 +19,11 @@ updates:
     groups:
       cargo:
         patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /crates/harness-cli/tests/ask-page
+    schedule:
+      interval: weekly
+    groups:
+      browser-tests:
+        patterns: ["*"]
