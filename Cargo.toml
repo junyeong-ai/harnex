@@ -14,12 +14,12 @@ repository = "https://github.com/junyeong-ai/harnex"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = "1.1"
+serde_json = "1.0.154"
+toml = "1.1.8"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
-jiff = { version = "0.2", features = ["serde"] }
+jiff = { version = "0.2.38", features = ["serde"] }
 url = "2"
 glob = "0.3"
 globset = "0.4"
@@ -38,7 +38,7 @@ walkdir = "2"
 httparse = "1"
 percent-encoding = "2"
 getrandom = "0.4"
-schemars = { version = "1", features = ["preserve_order", "jiff02", "semver1"] }
+schemars = { version = "1.2.3", features = ["preserve_order", "jiff02", "semver1"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

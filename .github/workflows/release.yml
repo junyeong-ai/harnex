@@ -28,7 +28,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The tag names a version and so does the manifest the binary is built
       # from. They are one fact, so a disagreement stops the release rather
@@ -89,18 +89,18 @@ jobs:
       id-token: write # sign the provenance
       attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Linux ships musl, statically linked, so the runner's glibc floor never
       # becomes the user's. cross builds it; installing it prebuilt saves the
       # `cargo install cross` the upload action would otherwise run.
       - if: runner.os == 'Linux'
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
-          tool: cross
+          tool: cross@0.2.5
 
       - id: build
-        uses: taiki-e/upload-rust-binary-action@v1
+        uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         with:
           bin: harnex
           target: ${{ matrix.target }}
@@ -109,6 +109,6 @@ jobs:
           dry-run: ${{ github.event_name == 'workflow_dispatch' }}
 
       - if: github.event_name == 'push'
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ steps.build.outputs.tar }}
