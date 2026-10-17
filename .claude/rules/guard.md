@@ -24,13 +24,12 @@ inner repository. If neither answers, returns `SkippedFailOpen` and emits
 
 Variants:
 - [`HookRunner::run`] (`harnex guard hook-run`) — propagates the inner
-  exit code. Used for PreToolUse / PostToolUse / UserPromptSubmit / etc.
-  where a non-zero exit blocks the agent action.
+  exit code. Exit 2 blocks on PreToolUse and UserPromptSubmit; PostToolUse
+  cannot undo the tool call. Other non-zero codes are non-blocking errors.
 - [`HookRunner::run_stop`] (`harnex guard hook-stop`) — observes the
   inner exit code but ALWAYS returns 0 to the runtime, capturing the observed
-  code in the envelope. Used for Stop / SubagentStop where a non-zero
-  exit would trap the agent in a Stop loop (per Claude Code spec, Stop
-  hook non-zero exits trigger re-stop). Non-zero observations emit a
+  code in the envelope. Used for Stop / SubagentStop where exit 2
+  prevents stopping and forces continuation. Non-zero observations emit a
   `[harness-stop-advisory]` line to stderr for operator visibility.
 
 Each is discovery over a root-taking form — `run_at` / `run_stop_at` — and the

@@ -4,7 +4,7 @@ use harness_core::config::{AgentsPolicy, OutputStylesPolicy, RulesPolicy, Skills
 use harness_core::envelope::Severity;
 use harness_core::validate::{
     AgentValidator, OutputStyleValidator, RuleValidator, SettingsScope, SettingsValidator,
-    SkillValidator,
+    SkillScope, SkillValidator,
 };
 use std::path::Path;
 use tempfile::TempDir;
@@ -130,7 +130,7 @@ fn skill_validator_flags_bad_name_shape() {
         flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
-    let md = "---\nname: Bad_Name\ndescription: short\n---\nBody\n";
+    let md = "---\nname: bad\u{200b}name\ndescription: short\n---\nBody\n";
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("bad_name/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -139,7 +139,7 @@ fn skill_validator_flags_bad_name_shape() {
 }
 
 #[test]
-fn skill_validator_flags_name_mismatch() {
+fn skill_validator_accepts_declared_names_independently_of_the_directory() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,
         max_description_chars: 400,
@@ -147,12 +147,85 @@ fn skill_validator_flags_name_mismatch() {
         flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
-    let md = "---\nname: other-name\ndescription: short\n---\nBody\n";
-    let tmp = TempDir::new().unwrap();
-    let path = tmp.path().join("dir-name/SKILL.md");
-    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let findings = v.validate_text(md, &path);
-    assert!(findings.iter().any(|f| f.slug == "skill-name-mismatch"));
+    let path = Path::new(".claude/skills/deploy-staging/SKILL.md");
+    for name in [
+        "deploy",
+        "Bad_Name",
+        "review.v2",
+        "코드 검토",
+        "plugin:review",
+        "👩‍💻-review",
+        "❤️-review",
+    ] {
+        let md = format!("---\nname: {name}\ndescription: short\n---\nBody\n");
+        let findings = v.validate_text(&md, path);
+        assert!(findings.is_empty(), "{name}: {findings:?}");
+    }
+}
+
+#[test]
+fn skill_validator_rejects_names_the_runtime_cannot_display() {
+    let policy: SkillsPolicy = toml::from_str("").unwrap();
+    let v = SkillValidator::new(&policy);
+    for name in [
+        "",
+        " x",
+        "x ",
+        "x  y",
+        "x\u{a0}y",
+        "x\u{200b}y",
+        "x\u{202e}y",
+        "<x>",
+        "x\u{e000}",
+        "x\u{2800}",
+        "x\u{fffc}",
+    ] {
+        let md = format!("---\nname: '{name}'\n---\nBody\n");
+        let findings = v.validate_text(&md, Path::new(".claude/skills/review/SKILL.md"));
+        assert!(
+            findings.iter().any(|f| f.slug == "skill-name-shape"),
+            "{name:?}: {findings:?}"
+        );
+    }
+    for (name, valid) in [
+        ("x".repeat(256), true),
+        ("😀".repeat(128), true),
+        ("x".repeat(257), false),
+        ("😀".repeat(129), false),
+    ] {
+        let md = format!("---\nname: '{name}'\n---\nBody\n");
+        let findings = v.validate_text(&md, Path::new(".claude/skills/review/SKILL.md"));
+        assert_eq!(findings.is_empty(), valid, "{name:?}: {findings:?}");
+    }
+    assert!(
+        v.validate_text(
+            "---\n{}\n---\nBody\n",
+            Path::new(".claude/skills/review/SKILL.md")
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn skill_validator_distinguishes_directory_identity_from_plugin_sanitization() {
+    let policy: SkillsPolicy = toml::from_str("").unwrap();
+    for scope in SkillScope::ALL {
+        let validator = SkillValidator::new(&policy).with_scope(*scope);
+        for (directory, alias, valid) in [
+            ("bad\u{200b}name", "review", *scope == SkillScope::Plugin),
+            ("review", "bad\u{200b}name", false),
+            ("review", "👩‍💻-review", true),
+        ] {
+            let path = Path::new(directory).join("SKILL.md");
+            let text = format!("---\nname: {alias}\n---\nBody\n");
+            let findings = validator.validate_text(&text, &path);
+            assert_eq!(
+                findings.is_empty(),
+                valid,
+                "{scope:?} {directory:?} {alias:?}: {findings:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -1374,7 +1447,7 @@ fn agents_policy(reject_unknown_keys: bool) -> AgentsPolicy {
 fn agent_validator_accepts_a_fully_declared_definition() {
     let policy = agents_policy(true);
     let v = AgentValidator::new(&policy);
-    let md = "---\nname: code-reviewer\ndescription: Reviews a change set\ntools: Read, Grep\ndisallowedTools: [Agent]\nmodel: claude-opus-5\npermissionMode: plan\nmaxTurns: 12\nskills: [lint-rules]\nhooks:\n  PreToolUse: []\nmemory: project\nbackground: false\neffort: high\nisolation: worktree\ncolor: cyan\ninitialPrompt: start\n---\n\nSystem prompt.\n";
+    let md = "---\nname: code-reviewer\ndescription: Reviews a change set\ntools: Read, Grep\ndisallowedTools: [Agent]\nmodel: claude-opus-5\npermissionMode: plan\nmaxTurns: 12\nautoCompactWindow: 100000\nskills: [lint-rules]\nhooks:\n  PreToolUse: []\nmemory: project\nbackground: false\nomitClaudeMd: true\nexperimental:\n  cacheTtl: 5m\neffort: high\nisolation: worktree\ncolor: cyan\ninitialPrompt: start\n---\n\nSystem prompt.\n";
     let findings = v.validate_text(md, Path::new(".claude/agents/code-reviewer.md"));
     assert!(findings.is_empty(), "unexpected: {findings:?}");
 }
@@ -1450,6 +1523,28 @@ fn agent_validator_accepts_a_name_that_differs_from_the_filename() {
     let md = "---\nname: reviewer\ndescription: d\n---\nBody\n";
     let findings = v.validate_text(md, Path::new(".claude/agents/review/deep.md"));
     assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+#[test]
+fn agent_validator_uses_the_runtime_name_boundaries() {
+    let policy = agents_policy(true);
+    let v = AgentValidator::new(&policy);
+    for (name, valid) in [
+        ("Code_Reviewer".to_string(), true),
+        ("코드 검토".to_string(), true),
+        ("x".repeat(256), true),
+        ("😀".repeat(128), true),
+        ("x".repeat(257), false),
+        ("😀".repeat(129), false),
+        ("-reviewer".to_string(), false),
+        ("my:reviewer".to_string(), false),
+        ("my\u{ff1a}reviewer".to_string(), false),
+        (String::new(), false),
+    ] {
+        let md = format!("---\nname: '{name}'\ndescription: Reviews changes\n---\n");
+        let findings = v.validate_text(&md, Path::new(".claude/agents/reviewer.md"));
+        assert_eq!(findings.is_empty(), valid, "{name:?}: {findings:?}");
+    }
 }
 
 #[test]

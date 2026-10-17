@@ -85,14 +85,14 @@ impl SpecSurface {
         Self {
             name: "skills",
             doc: "/en/skills",
-            measured: "2026-08-17",
+            measured: "2026-10-17",
             digest: 0x7eef_4d1d_783a_4980,
         },
         Self {
             name: "sub-agents",
             doc: "/en/sub-agents",
-            measured: "2026-08-17",
-            digest: 0xd562_4c75_b2f4_6403,
+            measured: "2026-10-17",
+            digest: 0xf1ba7f17d41acf68,
         },
         Self {
             name: "output-styles",

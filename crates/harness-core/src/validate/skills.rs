@@ -2,13 +2,11 @@
 //!
 //! Checks per Claude Code skills spec (<https://code.claude.com/docs/en/skills>):
 //! - Frontmatter present and parses as YAML.
-//! - Effective `name` (frontmatter or directory) matches `[a-z0-9-]{1,64}`.
-//! - If frontmatter `name` declared, it equals directory name.
+//! - Effective `name` (frontmatter or directory) has no documented forbidden characters.
 //! - The listing text `description - when_to_use` ≤ `max_description_chars`,
 //!   measured as Claude Code measures it (`always_loaded::runtime_len`), which
 //!   cuts an entry at `always_loaded::LISTING_ENTRY_CAP`.
-//! - SKILL.md body line count ≤ `max_skill_md_lines` (compaction budget
-//!   ≈ 5000 tokens ≈ 500 lines).
+//! - SKILL.md line count ≤ `max_skill_md_lines` (independent of token budgets).
 //! - Opt-in via `SkillsPolicy.flag_side_effect_verbs`: emit a Minor
 //!   advisory when description contains a side-effect verb
 //!   (`commit`, `deploy`, `delete`, `submit`, `send`, `publish`,
@@ -39,9 +37,34 @@ use crate::envelope::{Finding, Location, Severity};
 use crate::validate::frontmatter;
 use crate::validate::path_globs;
 use crate::validate::settings::KNOWN_HOOK_EVENTS;
+use crate::wire_enum::wire_enum;
 
-static NAME_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[a-z0-9-]{1,64}$").expect("NAME_PATTERN"));
+wire_enum! {
+    /// Plugin skill folders are sanitized by the loader; directory skills are not.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+    pub enum SkillScope {
+        #[default]
+        Project => "project",
+        User => "user",
+        Plugin => "plugin",
+    }
+}
+
+static FORBIDDEN_NAME_CHARACTERS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[<>\p{Cc}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Bidi_Control}\u{200b}\u{2800}\u{fffc}\u{1d159}\u{13441}\u{13442}\u{16fe4}]|[\p{Zs}&&[^ ]]")
+        .expect("FORBIDDEN_NAME_CHARACTERS")
+});
+
+/// Reject context-independent invalid names. Emoji and script-specific joiner
+/// composition is the runtime's to judge; a character blacklist cannot model it.
+fn name_is_valid(name: &str) -> bool {
+    !name.is_empty()
+        && name.encode_utf16().count() <= 256
+        && !name.starts_with(' ')
+        && !name.ends_with(' ')
+        && !name.contains("  ")
+        && !FORBIDDEN_NAME_CHARACTERS.is_match(name)
+}
 
 static SIDE_EFFECT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(commit|deploy|delete|submit|send|publish|release)\b")
@@ -92,6 +115,7 @@ pub const SPEC_SETS: &[(&str, &[&str])] = &[
 
 pub struct SkillValidator<'a> {
     policy: &'a SkillsPolicy,
+    scope: SkillScope,
 }
 
 /// Strongly typed subset of skill frontmatter fields. Fields that need
@@ -129,7 +153,15 @@ struct SkillFrontmatter {
 
 impl<'a> SkillValidator<'a> {
     pub fn new(policy: &'a SkillsPolicy) -> Self {
-        Self { policy }
+        Self {
+            policy,
+            scope: SkillScope::Project,
+        }
+    }
+
+    pub fn with_scope(mut self, scope: SkillScope) -> Self {
+        self.scope = scope;
+        self
     }
 
     pub fn validate_file(&self, path: &Path) -> Vec<Finding> {
@@ -142,7 +174,23 @@ impl<'a> SkillValidator<'a> {
 
     pub fn validate_text(&self, content: &str, path: &Path) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let dir_name = path
+        let identity = match std::path::absolute(path) {
+            Ok(identity) => identity,
+            Err(error) => {
+                return vec![Finding {
+                    slug: "skill-path-unresolved".into(),
+                    severity: Severity::Blocker,
+                    location: Location::file(path),
+                    message: format!("cannot resolve skill path: {error}"),
+                    hint: Some(
+                        "use an absolute path or restore the current working directory".into(),
+                    ),
+                    auto_fixable: false,
+                    fix_command: None,
+                }];
+            }
+        };
+        let dir_name = identity
             .parent()
             .and_then(|p| p.file_name())
             .and_then(|s| s.to_str())
@@ -156,7 +204,7 @@ impl<'a> SkillValidator<'a> {
                 severity: Severity::Major,
                 location: Location::file(path.to_path_buf()),
                 message: format!(
-                    "{total} lines exceeds max_skill_md_lines={} (compaction budget ≈ 5000 tokens)",
+                    "{total} lines exceeds max_skill_md_lines={}",
                     self.policy.max_skill_md_lines
                 ),
                 hint: Some(
@@ -205,8 +253,8 @@ impl<'a> SkillValidator<'a> {
                     location: Location::line(path.to_path_buf(), fm.begin_line),
                     message: format!("yaml parse: {e}"),
                     hint: Some(
-                        "fix the YAML between the `---` fences; SKILL.md requires `name`, \
-                         `description`, `when_to_use` at minimum (see code.claude.com/docs/en/skills)"
+                        "fix the YAML between the `---` fences; frontmatter fields are optional \
+                         (see code.claude.com/docs/en/skills)"
                             .into(),
                     ),
                     auto_fixable: false,
@@ -245,31 +293,22 @@ impl<'a> SkillValidator<'a> {
             }
         }
 
-        let effective_name = parsed.name.clone().unwrap_or_else(|| dir_name.clone());
-        if !NAME_PATTERN.is_match(&effective_name) {
+        let names = parsed
+            .name
+            .iter()
+            .map(|name| ("frontmatter name", name.as_str()))
+            .chain(
+                (self.scope != SkillScope::Plugin).then_some(("directory name", dir_name.as_str())),
+            );
+        for (field, name) in names.filter(|(_, name)| !name_is_valid(name)) {
             findings.push(Finding {
                 slug: "skill-name-shape".into(),
                 severity: Severity::Blocker,
                 location: Location::line(path.to_path_buf(), fm.begin_line),
                 message: format!(
-                    "name '{effective_name}' must match [a-z0-9-]{{1,64}} per Claude Code spec"
+                    "{field} {name:?} is empty, exceeds 256 UTF-16 code units, or contains forbidden characters"
                 ),
-                hint: Some("lowercase letters, digits, hyphens only".into()),
-                auto_fixable: false,
-                fix_command: None,
-            });
-        }
-        if let Some(declared) = &parsed.name
-            && declared != &dir_name
-        {
-            findings.push(Finding {
-                slug: "skill-name-mismatch".into(),
-                severity: Severity::Major,
-                location: Location::line(path.to_path_buf(), fm.begin_line),
-                message: format!(
-                    "frontmatter name '{declared}' does not match directory '{dir_name}'"
-                ),
-                hint: Some("align frontmatter name with the skill directory name".into()),
+                hint: Some("use visible characters without angle brackets, control characters, or leading, trailing, repeated, or nonstandard spaces".into()),
                 auto_fixable: false,
                 fix_command: None,
             });
@@ -572,5 +611,47 @@ impl<'p> crate::validate::SurfaceValidator<'p> for SkillValidator<'p> {
 
     fn validate_path(&self, path: &Path) -> Vec<Finding> {
         self.validate_file(path)
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::name_is_valid;
+
+    #[test]
+    fn context_independent_name_boundaries_match_the_runtime() {
+        for name in [
+            "",
+            " x",
+            "x ",
+            "x  y",
+            "<x>",
+            "x\u{0001}",
+            "x\u{e000}",
+            "x\u{0378}",
+            "x\u{2028}",
+            "x\u{2029}",
+            "x\u{202e}",
+            "x\u{200b}",
+            "x\u{2800}",
+            "x\u{fffc}",
+            "x\u{1d159}",
+            "x\u{13441}",
+            "x\u{13442}",
+            "x\u{16fe4}",
+            "x\u{00a0}",
+        ] {
+            assert!(!name_is_valid(name), "{name:?}");
+        }
+        for name in [
+            "코드 검토",
+            "👩‍💻-review",
+            "❤️-review",
+            "plugin:review",
+            "क्‍ष",
+            "ب‌ت",
+        ] {
+            assert!(name_is_valid(name), "{name:?}");
+        }
     }
 }

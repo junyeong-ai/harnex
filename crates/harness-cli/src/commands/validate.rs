@@ -10,13 +10,22 @@ use harness_core::envelope::{Finding, ListResponse};
 use harness_core::error::{Error, Result};
 use harness_core::validate::{
     AgentValidator, CommitMsgValidator, OutputStyleValidator, RuleValidator, SettingsScope,
-    SettingsValidator, SkillValidator,
+    SettingsValidator, SkillScope, SkillValidator,
 };
 
 use super::{load_config, write_envelope_success};
 
 /// Closed-set value parser for clap, sourced from the enum's `ALL` (single
 /// source of truth — drift impossible).
+fn skill_scope_values() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(
+        SkillScope::ALL
+            .iter()
+            .map(|scope| scope.as_str())
+            .collect::<Vec<_>>(),
+    )
+}
+
 fn settings_scope_values() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new(
         SettingsScope::ALL
@@ -37,6 +46,9 @@ pub enum ValidateCommand {
     Skills {
         #[arg(required = true)]
         paths: Vec<PathBuf>,
+        /// Plugin folders are sanitized by Claude Code instead of rejected.
+        #[arg(long, value_parser = skill_scope_values(), default_value = "project")]
+        scope: String,
     },
     /// Validate `.claude/agents/*.md` subagent definitions
     Agents {
@@ -121,7 +133,7 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                 findings.extend(v.validate_file(&p));
             }
         }
-        ValidateCommand::Skills { paths } => {
+        ValidateCommand::Skills { paths, scope } => {
             let policy = config
                 .validate
                 .as_ref()
@@ -130,7 +142,8 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
                     message: "no [validate.skills] section in harness.toml".into(),
                     location: None,
                 })?;
-            let v = SkillValidator::new(policy);
+            let scope = SkillScope::from_str(&scope).expect("clap validates skill scope");
+            let v = SkillValidator::new(policy).with_scope(scope);
             for p in paths {
                 findings.extend(v.validate_file(&p));
             }

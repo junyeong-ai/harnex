@@ -167,7 +167,7 @@ harnex policy permissions generate | audit [--path <p>]
 harnex policy versions show | check --tool T --installed V
 
 harnex validate rules <files...>
-harnex validate skills <files...>
+harnex validate skills <files...> [--scope project|user|plugin]
 harnex validate agents <files...>
 harnex validate output-styles <files...>
 harnex validate settings [<path>]
@@ -438,6 +438,16 @@ and individual repos cannot weaken them. The integration points:
 See `https://code.claude.com/docs/en/managed-settings` for how managed
 settings are delivered per OS (`managed-settings.d/`, plist, registry, Group
 Policy) and `https://code.claude.com/docs/en/settings-reference` for the keys.
+
+## Development
+
+Use `rust-toolchain.toml` for the build toolchain; `Cargo.toml` declares the
+minimum supported Rust version. `.github/workflows/ci.yml` defines the gates.
+
+Browser tests live in `crates/harness-cli/tests/ask-page`. Use the Node LTS
+version in `.node-version`, build the CLI with `cargo build --locked`, then
+run `npm ci`, `npx playwright install chromium firefox webkit`, and `npm test`
+from that directory. The lockfile pins Playwright and its browser revisions.
 
 ## Operating context
 
