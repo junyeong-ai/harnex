@@ -1,95 +1,66 @@
 # Making a change
 
-The constitution says what this codebase is. This says how a change to it is
-made. Where the constitution already governs something, this file names it
-rather than restating it.
+The constitution owns the project invariants. This file owns the change workflow.
 
 ## Order of precedence, when they conflict
 
-1. **Correctness.** A general solution over every valid input, not over the
-   test cases. Never hardcode past a failing test. If the requirement is
-   unreasonable or the test is wrong, say so rather than route around it.
-2. **Proven design.** This repository's existing conventions and structures
-   first, then the ecosystem's. Use what is already provided before adding an
-   abstraction.
-3. **Simplicity.** The least complexity the current requirement needs.
+1. **Correctness.** Solve for every valid input. Reproduce suspected defects
+   against the actual implementation; a test or review claim may be wrong.
+2. **Proven design.** Use repository conventions and existing mechanisms,
+   then established ecosystem practice.
+3. **Simplicity.** Add only the complexity the current requirement needs.
 
 ## The next reader is an agent
 
-It has no tribal knowledge, learns from surrounding code as a pattern, and
-reads search results rather than files. So these three are the accuracy of the
-next change, not decoration:
-
-- **Discoverability.** Match existing naming and architectural boundaries.
-  Registrations and entry points stay enumerable by grep. Prefer explicit
-  structure to implicit magic — runtime discovery, hidden globals, collection
-  by metaclass.
-- **Locality.** A fact needed to make a change is found near the change. An
-  invariant sits beside the code that enforces it; an assumption and the
-  condition that breaks it sit in that code's comment; a test sits near its
-  subject.
-- **Enforceability.** A convention that repeats becomes a type, a schema, a
-  lint, or a test. Prose erodes and gates do not — Article IX is the same rule
-  applied to duplicated facts. Before writing a rule down again, check whether
-  it can be enforced instead. Where what a rule produces has no closed form,
-  state the rule and let a test carry the instances: a list that cannot close
-  is incomplete at every reading, so review of it has no end.
-
-"Still right in six months" means the reader can reconstruct the intent then,
-not that an extension point was built for it now.
+- Match existing names and boundaries; keep registrations and entry points
+  explicit and discoverable by search.
+- Keep an invariant beside its enforcer and a test beside its subject.
+- Turn repeated, decidable conventions into types, schemas, lints or tests.
+  Constitution IX owns facts with multiple representations. For an open-ended
+  requirement, state the rule and test representative boundary cases.
 
 ## Scope
 
-Change what was asked and what it directly requires. Do not add comments,
-types, or refactors to code left untouched, and do not fold cleanup into a bug
-fix. No flexibility, options, or abstraction for a hypothetical future:
-speculative generality is harder to remove later than to add later. Prefer a
-principled solution to a special-case heuristic or a magic constant. Propose an
-adjacent improvement in one line rather than making it.
+Change what was asked and what it directly requires. Keep unrelated cleanup
+separate. Introduce no speculative abstraction, configuration or extension
+point. Propose an adjacent improvement rather than implementing it unasked.
 
 ## Failure
 
-Surface failure explicitly. Never write a fallback, a default, or a swallowed
-exception that hides a wrong state — a silent fallback turns a loud bug into a
-quiet one. Validate untrusted input at the boundary (user input, external API,
-I/O, deserialization) and trust internal calls inside it. Never take a
-destructive shortcut or bypass a gate — `--no-verify`, skipped validation,
-deleted tests — when blocked.
+Validate untrusted input at the boundary and trust validated internal calls.
+Surface failure explicitly; never hide a wrong state behind a fallback,
+default or swallowed exception. Never bypass a gate, skip validation or delete
+coverage to make a change pass.
 
 ## Verification
 
-Find the repository's own signals first: tests, lints, types, build commands.
-If there are none, say so. Reproduce a defect that crosses a boundary before
-fixing it, and read the actual source of the suspect rather than its summary.
-A surface symptom, an issue, or a subagent's report is a hypothesis to verify,
-never a conclusion to ship. Claim completion with the commands already run and
-their output, not with another pass.
+Use the repository's tests, lints, types and build commands. Reproduce a defect
+before fixing it and inspect the responsible source. Claim completion with
+commands actually run and their results; state verification limits explicitly.
 
-A guard claiming that something does not happen is proven by making it happen:
-remove what it catches, watch it fail, restore. Green and absent read alike
-until then — a pin on a negative, a guard whose own error path swallows the
-finding, an arm no fixture reaches. A test asserting a result has that result
-as its evidence and is not this case. Put one well-formed change through the
-same harness too: a harness that misreports is grading itself, not the guard.
-Where the guard is over a set, mutate a member at a time: a whole-set mutant
-that kills what one member's mutant kills has said nothing about the rest.
+For a guard claiming something cannot happen, introduce that violation and
+observe a test failure, then restore it. Verify the same test passes before
+mutation; a compilation failure or rejected runner argument proves nothing
+about the guard. Mutate each independently guarded member separately and run
+a valid input through the same harness to check false positives. A behavior
+assertion already proves its result and needs no redundant mutation exercise.
+
+Run checks appropriate to the changed contracts. Broaden testing for a new
+failure or unresolved risk, not to repeat evidence already established.
 
 ## Commits
 
-One commit, one decision, in a revertible unit. Implement as though it had
-always been this way: delete what was replaced in the same change, update every
-consumer, and leave no compatibility shim, dead branch, or "used to be" note.
-Announce before changing a contract outside this repository — a public API,
-schema, config key, CLI surface, or what a gate reports about unmodified input.
-A finding the gate newly reports because it was always true is it catching up,
-and not that. The minor version is that announcement, and it is the only one an
-installed harness can act on: `[meta] harnex_version` pins a range and
-`Config::validate` enforces it, so a break shipped inside the pinned range makes
-the gate state a compatibility that does not hold. Break freely, and bump the
-minor in the same release — except where a release withdraws one instead, which
-`.claude/skills/release/SKILL.md` decides and states. Supersede a decision
-record rather than deleting it.
+Keep each decision revertible. Remove replaced code and update its consumers
+in the same change, without compatibility shims, dead branches or historical
+comments. Supersede decision records instead of deleting them.
 
-Record depth follows blast radius: one line for a self-contained reversible
-change, and root cause, scope, invariant and verification only where a change
-crosses a boundary, alters shared state, or fixes a defect.
+Announce changes to an external contract: public API, schema, config, CLI or
+what a gate reports on unmodified input. A newly detected pre-existing defect
+is a correction. Other changes require a minor version bump in the same
+release: `[meta] harnex_version` is the compatibility boundary enforced by
+`Config::validate`. `.claude/skills/release/SKILL.md` owns the patch exception
+for withdrawing a regression already shipped inside a pinned range.
+
+Record a self-contained reversible change in one line. For a shared-state,
+boundary or defect change, record the root cause, scope, invariant and actual
+verification.

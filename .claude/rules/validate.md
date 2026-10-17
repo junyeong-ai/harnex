@@ -41,13 +41,18 @@ turn:
   `governs` arm, which has the tree.
 
 Skill validator (per <https://code.claude.com/docs/en/skills>):
-- `name` ∈ `[a-z0-9-]{1,64}` and equals directory name when declared.
+- `name` may differ from the directory. Reject context-independent invalid
+  names: length, controls, blank-like characters, angle brackets and spacing.
+  Leave contextual emoji and script shaping to the runtime.
+- Validate directory identity independently of the display alias for project
+  and user skills. `SkillScope::Plugin` leaves folder sanitization to the
+  runtime; callers declare scope rather than inferring it from a path.
 - The listing text ≤ `max_description_chars`. `always_loaded` owns both the
   text (`skill_listing_text`, the runtime's fallback to the body included)
   and how it is counted (`runtime_len`, UTF-16 code units); the default is
   the runtime's own cut (`LISTING_ENTRY_CAP`), which a project's
   `skillListingMaxDescChars` moves and this default does not follow.
-- Body ≤ `max_skill_md_lines` (compaction budget ≈ 5000 tokens).
+- File ≤ `max_skill_md_lines`; line limits do not measure compaction tokens.
 - `user-invocable` must be boolean if present (Major).
 - `context` must be `"fork"` if present (Major).
 - `allowed-tools` is a string OR an array of strings — spec accepts both;
@@ -62,8 +67,8 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
   (a finding for a correct config is CUT-tier noise).
 - `reject_unknown_keys` (opt-in, default off): flag any top-level
   frontmatter key outside `KNOWN_SKILL_KEYS` as Major (Claude Code
-  silently ignores unknown keys). Skills-only — rule frontmatter is
-  intentionally extensible. Extend `KNOWN_SKILL_KEYS` when the spec adds
+  silently ignores unknown keys). Rule frontmatter is intentionally
+  extensible. Extend `KNOWN_SKILL_KEYS` when the spec adds
   a key.
 - `flag_side_effect_verbs` (opt-in, default off): match `SIDE_EFFECT_PATTERN`
   against the description; recommend `disable-model-invocation: true` if
@@ -71,8 +76,8 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
   (a read-only skill named `review-commits` should not trip).
 
 Agent validator (per <https://code.claude.com/docs/en/sub-agents>):
-- `name` and `description` present; `name` matches `[a-z0-9-]+` (`:` is the
-  plugin namespace separator and `agent_type` cannot carry it).
+- `name` and `description` present; `agents::name_is_valid` owns the name
+  contract shared with the always-loaded listing.
 - `permissionMode` ∈ `KNOWN_PERMISSION_MODES`, `effort` ∈
   `KNOWN_EFFORT_LEVELS`, `isolation` ∈ `KNOWN_ISOLATION_MODES`, `memory` ∈
   `KNOWN_MEMORY_SCOPES`, `color` ∈ `KNOWN_COLORS` (Major).
@@ -88,7 +93,7 @@ Agent validator (per <https://code.claude.com/docs/en/sub-agents>):
 - `model` is free-form — aliases and full ids are both valid and the set moves
   with the vendor, the same call the skill validator makes.
 - `name` is never checked against the filename: the spec resolves an agent by
-  its declared name, unlike a skill whose command comes from its directory.
+  its declared name. Skill names also admit a frontmatter override.
 - No body budget — the body is a system prompt and no documented cap bounds it.
 - `reject_unknown_keys` (opt-in, default off): flag any key outside
   `KNOWN_AGENT_KEYS` as Major.

@@ -18,7 +18,7 @@ use harness_core::config::{AgentsPolicy, SkillsPolicy};
 use harness_core::envelope::Finding;
 use harness_core::scaffold::{Content, ScaffoldManifest, Tier};
 use harness_core::validate::{
-    AgentValidator, RuleValidator, SettingsScope, SettingsValidator, SkillValidator,
+    AgentValidator, RuleValidator, SettingsScope, SettingsValidator, SkillScope, SkillValidator,
 };
 mod common;
 
@@ -422,7 +422,7 @@ fn run_scaffold_validation(lang: &str) {
             flag_side_effect_verbs: false,
             ..skill_policy.clone()
         };
-        let sv = SkillValidator::new(&lenient);
+        let sv = SkillValidator::new(&lenient).with_scope(SkillScope::Plugin);
         let findings = sv.validate_file(&dst);
         assert_no_findings(lang, "validate.skills(harnex SKILL.md)", &findings);
     }

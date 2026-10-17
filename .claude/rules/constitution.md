@@ -14,6 +14,7 @@ Every CLI command emits exactly one JSON object on stdout —
 `{ok, data, warnings[]}` on success, `{ok, error}` on failure. Exit 0 =
 success, 1 = a finding or a result that did not pass, 2 = runtime failure.
 No prose on stdout.
+`.claude/rules/envelope.md` owns the explicit raw-output and hook exceptions.
 
 ## III. Single safe write module
 
@@ -21,6 +22,7 @@ Every file mutation routes through `harness_core::path_guard` — either
 `write_atomic` (full replace via temp + rename) or `append_line`
 (append-only ledgers). Both enforce traversal rejection + symlink-write
 rejection. CLI handlers MUST NOT call `std::fs::write` directly.
+`.claude/rules/file-mutation.md` owns the locked telemetry append exception.
 
 ## IV. Config validates at load time
 
@@ -30,9 +32,9 @@ schemas — all fail at load, never silently at runtime.
 
 ## V. Closed schemas
 
-Every typed surface (telemetry payload, frontmatter, finding) is a closed
-schema. Fields outside the declared shape are rejected at the boundary,
-never silently accepted.
+Toolkit-owned schemas reject fields outside their declared shape at the
+boundary. External frontmatter follows the upstream schema; unknown-key
+rejection is opt-in where the upstream surface can grow independently.
 
 ## VI. Typed errors, stable codes
 

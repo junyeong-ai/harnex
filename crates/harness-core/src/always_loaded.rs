@@ -1411,18 +1411,12 @@ fn listed(source: &Source, kind: MemberKind) -> String {
     }
 }
 
-/// An agent's name and listing text, its `description`, where the name is one
-/// the runtime registers: not led by `-`, and holding no character NFKC folds
-/// to a `:` (Unicode 16).
+/// An agent's registered name and listing text.
 fn agent_entry(fields: &Mapping) -> Option<(String, String)> {
-    const COLONS: [char; 5] = [':', '\u{2a74}', '\u{fe13}', '\u{fe55}', '\u{ff1a}'];
     let name = fields
         .get("name")?
         .as_str()
-        .filter(|name| !name.is_empty())?;
-    if name.starts_with('-') || name.contains(COLONS) {
-        return None;
-    }
+        .filter(|name| crate::validate::agents::name_is_valid(name))?;
     let description = fields
         .get("description")?
         .as_str()
@@ -2072,6 +2066,61 @@ mod tests {
                 ".claude/skills/shared/SKILL.md",
             ]
         );
+    }
+
+    #[test]
+    fn skill_overrides_and_precedence_use_the_directory_name() {
+        for (key, mode, listed) in [
+            ("deploy", "on", true),
+            ("deploy", "off", true),
+            ("deploy", "user-invocable-only", true),
+            ("deploy", "name-only", true),
+            ("deploy-staging", "off", false),
+        ] {
+            let settings = serde_json::json!({"skillOverrides": {key: mode}}).to_string();
+            let dir = project(&[
+                (".claude/settings.json", &settings),
+                (
+                    ".claude/skills/deploy-staging/SKILL.md",
+                    "---\nname: deploy\ndescription: Deploy staging\n---\n",
+                ),
+                (
+                    ".claude/commands/deploy-staging.md",
+                    "---\ndescription: Shadowed command\n---\n",
+                ),
+            ]);
+            let set = resolve(dir.path()).unwrap();
+            let expected = if listed {
+                vec![".claude/skills/deploy-staging/SKILL.md"]
+            } else {
+                vec![]
+            };
+            assert_eq!(paths(&set), expected, "{key}: {mode}");
+        }
+    }
+
+    #[test]
+    fn display_aliases_do_not_shadow_other_skill_directories() {
+        for alias in ["b", "shared", "👩‍💻"] {
+            let md = format!("---\nname: {alias}\ndescription: Other skill\n---\n");
+            let dir = project(&[
+                (
+                    ".claude/skills/a/SKILL.md",
+                    "---\nname: b\ndescription: Shared skill\n---\n",
+                ),
+                (".claude/skills/b/SKILL.md", &md),
+                (
+                    ".claude/commands/b.md",
+                    "---\ndescription: Hidden command\n---\n",
+                ),
+            ]);
+            let set = resolve(dir.path()).unwrap();
+            assert_eq!(
+                paths(&set),
+                [".claude/skills/a/SKILL.md", ".claude/skills/b/SKILL.md"],
+                "{alias:?}"
+            );
+        }
     }
 
     #[test]

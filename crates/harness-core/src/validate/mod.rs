@@ -1,6 +1,6 @@
 //! # validate — frontmatter and structural checks for Claude Code surfaces
 //!
-//! Six sub-validators scoped to Claude Code + git surfaces:
+//! Validators scoped to Claude Code + git surfaces:
 //! - [`rules`] — `.claude/rules/*.md`: `paths:` frontmatter + line budget
 //!   keyed on load scope.
 //! - [`skills`] — `.claude/skills/*/SKILL.md`: full SKILL.md frontmatter
@@ -12,6 +12,7 @@
 //! - [`settings`] — `.claude/settings.json`: hook event name typo
 //!   detection (per /en/hooks), permission tier shape, project-scope
 //!   no-op key detection, `defaultMode` closed-enum check.
+//! - [`routines`] — routine frontmatter and schedule declaration shape.
 //! - [`commit_msg`] — git commit messages: closed-enum trailer values
 //!   and required-trailer presence per `[validate.commit_msg]` config.
 //!
@@ -133,7 +134,7 @@ pub use settings::{
     KNOWN_DEFAULT_MODE_VALUES, KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS,
     KNOWN_SESSION_START_SOURCES, KNOWN_SKILL_OVERRIDE_VALUES, SettingsScope, SettingsValidator,
 };
-pub use skills::{KNOWN_SKILL_KEYS, SkillValidator};
+pub use skills::{KNOWN_SKILL_KEYS, SkillScope, SkillValidator};
 
 #[cfg(test)]
 mod glob_tests {

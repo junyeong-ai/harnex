@@ -320,7 +320,10 @@ already contradicted both a page and the binary's own schema.
   model, effort, context, agent, background, hooks, paths, shell, metadata,
   license, compatibility.
   <!-- harnex-managed:end spec-facts-skill-keys -->
-  Constraints: name (`[a-z0-9-]{1,64}`), effort (`low|medium|high|xhigh|max`),
+  Constraints: names are limited to 256 UTF-16 units. Reject control and
+  blank-like characters, angle brackets and invalid spacing; preserve legitimate
+  emoji and script-specific joiners. Contextual shaping checks belong to the
+  runtime. Effort (`low|medium|high|xhigh|max`),
   context (`fork`), background (bool, only with `context: fork`, ≥ v2.1.218),
   metadata (a mapping — any other value is silently dropped). `license` and
   `compatibility` come from the Agent Skills standard: accepted, never acted on.
@@ -332,10 +335,11 @@ already contradicted both a page and the binary's own schema.
 - **`disable-model-invocation: true`** is the field that blocks programmatic
   (Claude-triggered) invocation and hides the description from context — use it
   for side-effect skills (generate/write/deploy). `user-invocable: false` only
-  hides the menu; it does NOT block the Skill tool.
-- **`allowed-tools` GRANTS (pre-approves) tools while the skill is active; it
+  hides the menu and disables typed invocation; it does NOT block the Skill tool.
+- **`allowed-tools` GRANTS (pre-approves) tools for the invoking turn; it
   does NOT restrict.** `disallowed-tools` REMOVES tools from Claude's pool
-  while the skill is active (the inverse). To deny outright, use
+  for the invoking turn (the inverse). Both tool changes clear on the next
+  user message; skill hooks last for the session. To deny outright, use
   `permissions.deny`.
 - Budgets: a listing entry is cut at 1,536 characters (§ Memory, "What loads
   every session from a repository", says what it holds and how it counts);
@@ -444,8 +448,9 @@ already contradicted both a page and the binary's own schema.
     runtime's `.length`. None under `disable-model-invocation`, or where
     `skillOverrides` names it `off` or `user-invocable-only`; `name-only`
     lists the name alone. A skill whose `paths:` scopes something waits for a
-    matching file and is not listed. A skill is named by its directory, a
-    command by its path below `.claude/commands/` with `:` between parts, and
+    matching file and is not listed. Overrides and precedence use a skill
+    directory's internal name, independently of its frontmatter display alias;
+    commands use their path below `.claude/commands/` with `:` between parts, and
     a file reached twice is listed once.
   - One entry per agent `name`, its `description`.
   - When the whole listing outgrows a budget that scales with the context

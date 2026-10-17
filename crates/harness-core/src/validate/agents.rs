@@ -33,9 +33,7 @@
 //!   bounds it.
 
 use std::path::Path;
-use std::sync::LazyLock;
 
-use regex::Regex;
 use serde::Deserialize;
 
 use crate::config::AgentsPolicy;
@@ -44,13 +42,13 @@ use crate::validate::frontmatter;
 use crate::validate::settings::KNOWN_HOOK_EVENTS;
 use crate::validate::skills::KNOWN_EFFORT_LEVELS;
 
-/// `name` addresses the agent as `agent_type` in hook payloads and in
-/// `Agent(...)` permission rules. Uppercase, whitespace, and `:` (the plugin
-/// namespace separator) make a name those surfaces cannot carry. Digits are
-/// accepted because the spec bounds the character class loosely and the set
-/// errs toward accepting, exactly as `KNOWN_HOOK_EVENTS` does.
-static NAME_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[a-z0-9-]+$").expect("NAME_PATTERN"));
+pub(crate) fn name_is_valid(name: &str) -> bool {
+    const COLONS: [char; 5] = [':', '\u{2a74}', '\u{fe13}', '\u{fe55}', '\u{ff1a}'];
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.contains(COLONS)
+        && name.encode_utf16().count() <= 256
+}
 
 pub const KNOWN_PERMISSION_MODES: &[&str] = &[
     "default",
@@ -83,11 +81,14 @@ pub const KNOWN_AGENT_KEYS: &[&str] = &[
     "model",
     "permissionMode",
     "maxTurns",
+    "autoCompactWindow",
     "skills",
     "mcpServers",
     "hooks",
     "memory",
     "background",
+    "omitClaudeMd",
+    "experimental",
     "effort",
     "isolation",
     "color",
@@ -256,12 +257,12 @@ impl<'a> AgentValidator<'a> {
                 auto_fixable: false,
                 fix_command: None,
             }),
-            Some(name) if !NAME_PATTERN.is_match(name) => findings.push(Finding {
+            Some(name) if !name_is_valid(name) => findings.push(Finding {
                 slug: "agent-name-shape".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), line),
                 message: format!(
-                    "agent name '{name}' must be lowercase letters, digits, and hyphens"
+                    "agent name {name:?} must be nonempty, at most 256 UTF-16 code units, not start with '-', and contain no namespace colon"
                 ),
                 hint: Some(
                     "rename to the `agent_type` form; `:` is reserved for the plugin namespace"

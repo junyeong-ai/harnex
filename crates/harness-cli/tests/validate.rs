@@ -3,6 +3,50 @@ use std::process::Command;
 use harness_core::path_guard::write_atomic;
 
 #[test]
+fn skill_directory_validation_resolves_relative_paths_and_honors_scope() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = format!(
+        "[meta]\nharnex_version = {:?}\n[validate.skills]\n",
+        env!("CARGO_PKG_VERSION")
+    );
+    write_atomic(&temp.path().join("harness.toml"), config.as_bytes()).unwrap();
+    for (directory, scope, exit) in [
+        ("review", "project", 0),
+        ("bad\u{200b}name", "project", 1),
+        ("bad\u{200b}name", "user", 1),
+        ("bad\u{200b}name", "plugin", 0),
+    ] {
+        let dir = temp.path().join(".claude/skills").join(directory);
+        write_atomic(&dir.join("SKILL.md"), b"---\nname: review\n---\nBody\n").unwrap();
+        for path in [
+            std::path::PathBuf::from("SKILL.md"),
+            "./SKILL.md".into(),
+            dir.join("SKILL.md"),
+        ] {
+            let output = Command::new(env!("CARGO_BIN_EXE_harnex"))
+                .current_dir(&dir)
+                .args(["validate", "skills", "--scope", scope])
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(exit),
+                "{scope} {path:?}: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            if exit == 1 {
+                assert_eq!(
+                    json["data"]["items"][0]["location"]["path"],
+                    path.to_string_lossy().as_ref()
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn always_loaded_takes_the_home_directory_from_the_environment() {
     let temp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(temp.path()).unwrap();

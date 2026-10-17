@@ -11,17 +11,16 @@ Engineer a Claude Code harness that fits THIS project, in ITS language. The
 knowledge lives in `reference/`, the safety-critical pieces in `templates/`;
 this skill composes them — it never free-generates a hook or a permission rule.
 
-Read these first (they are the contract, load on demand):
-- `${CLAUDE_SKILL_DIR}/reference/spec-facts.md` — the Claude Code spec a
-  generated harness MUST obey. Re-verify against the live docs each run.
-- `${CLAUDE_SKILL_DIR}/reference/enforced-vs-advisory.md` — where each
-  guardrail belongs.
-- `${CLAUDE_SKILL_DIR}/reference/keep-soften-cut.md` — what never to impose.
-- `${CLAUDE_SKILL_DIR}/reference/language-matrix.md` — stack detection +
-  per-language parameters.
-- `${CLAUDE_SKILL_DIR}/reference/exploration.md` — divide-and-conquer repo map.
-- `${CLAUDE_SKILL_DIR}/reference/retire.md` — the removal contract: what
-  the evidence supports, and where it stops short of a verdict.
+Read references under `${CLAUDE_SKILL_DIR}/reference/` for the active mode:
+
+| Mode | Required references |
+|---|---|
+| Every mode | `spec-facts.md`; verify the surface being judged against the live docs |
+| scaffold | `exploration.md`, `language-matrix.md`, `enforced-vs-advisory.md`, `keep-soften-cut.md` |
+| extend | `enforced-vs-advisory.md`, `keep-soften-cut.md`; `exploration.md` for project analysis, `language-matrix.md` for toolchain changes |
+| audit | `exploration.md`, `enforced-vs-advisory.md` |
+| regenerate | `language-matrix.md` for the detected profiles |
+| retire | `retire.md` |
 
 Templates live under `${CLAUDE_SKILL_DIR}/templates/`: language-agnostic
 pieces in `common/`, and one directory per supported language
