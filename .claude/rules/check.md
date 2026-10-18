@@ -58,6 +58,8 @@ The `evidence` arm reads every surface this gate validates for shape — the
 rule, skill, agent, output-style and routine globs the validators discover
 with — plus the project's memory files, because a file checked for
 frontmatter while its claims go unchecked reads as verified.
+It runs in full under `--since`: changing a cited target can invalidate a
+claim in an unchanged document.
 `check_reads_a_claim_from_every_shape_validated_surface` holds the list to the
 validators `run` dispatches. A claim is project-relative wherever it is
 written; a nested `CLAUDE.md` citing paths from its own directory resolves
@@ -104,6 +106,8 @@ independently — a change to one is never masked by the other.
 `--since <ref>` filtering uses `git diff --name-only <ref>`. When `git`
 fails to resolve the ref, the entire check surfaces `CheckGitFailure`
 — never silently degrades to scanning everything.
+A changed or untracked `harness.toml` revalidates every surface from the
+config's own root, because the validators' inputs include their policy.
 
 Codegen drift is reported with `auto_fixable: true` and
 `fix_command: Some(FixCommand::CodegenSync)` — downstream

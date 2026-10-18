@@ -31,9 +31,11 @@ linter's job, never a rule the model must remember.
 
 ## V. The session never traps
 
-Stop-class hooks exit 0. For Stop/SubagentStop, exit 2 specifically prevents the
-stop and forces continuation (a re-stop loop); findings are surfaced as advisory
-context, never as a blocking exit.
+Reporting Stop-class hooks exit 0: exit 2 prevents Stop/SubagentStop and forces
+continuation. `[guard.stop_audit]` is an explicit opt-in exception: a recognised
+gating finding requests continuation, but the retry budget ends automatic
+critiques on exhaustion and asks the operator to review. An unavailable audit
+allows the stop and reports why.
 
 ## VI. Constraints earn their place
 

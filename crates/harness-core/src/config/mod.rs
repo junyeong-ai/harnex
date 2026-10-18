@@ -31,7 +31,7 @@ use crate::error::{Error, Result};
 static KIND_NAME_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$").expect("KIND_NAME_PATTERN"));
 
-const CONFIG_FILE_NAME: &str = "harness.toml";
+pub(crate) const CONFIG_FILE_NAME: &str = "harness.toml";
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

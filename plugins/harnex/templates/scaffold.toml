@@ -148,6 +148,12 @@ destination = ".claude/skills/harness-curate/SKILL.md"
 [[artifact]]
 tier = "foundation"
 content = { kind = "copy" }
+template = "common/_format-target.sh"
+destination = "hooks/_format-target.sh"
+
+[[artifact]]
+tier = "foundation"
+content = { kind = "copy" }
 template = "common/_runner.sh"
 destination = "hooks/_runner.sh"
 executable = true
@@ -208,8 +214,8 @@ executable = true
 # matched set, and the conventions rule and formatter carry `{lang}` in their
 # destination so two stacks never collide.
 #
-# Each `post-format-{lang}.sh` dispatches on the file extension and exits 0 on
-# anything it does not own, so several of them coexist as separate PostToolUse
+# Each `post-format-{lang}.sh` dispatches on its own file extensions,
+# so several of them coexist as separate PostToolUse
 # entries with no arbitration between them.
 
 [[artifact]]

@@ -12,6 +12,9 @@ The constitution owns the project invariants. This file owns the change workflow
 
 ## The next reader is an agent
 
+- Use English for identifiers, comments, rules and technical documentation.
+  Keep toolkit messages in English by default; preserve user text and
+  multilingual fixtures, and localize page copy only by an explicit locale.
 - Match existing names and boundaries; keep registrations and entry points
   explicit and discoverable by search.
 - Keep an invariant beside its enforcer and a test beside its subject.

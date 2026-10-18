@@ -43,13 +43,16 @@ without extending this list:
 - `guard hook-run`: propagates the wrapped hook's exit code verbatim (the
   code is meaningful to Claude Code — e.g. PreToolUse exit 2 blocks the
   action). See guard.md.
+- `guard hook-stop`: always exits 0, including a spawn or reporting failure.
+  It emits one success or error envelope when stdout is writable; child
+  output goes to stderr and cannot supply Stop control fields. See guard.md.
 - `guard stop-audit`: speaks the Stop hook contract instead of the envelope —
   a Block exits 2 with its reason on stderr (the sole exception to Article II's
   exit-code set, and the only channel a blocked stop's reason is read from), a
-  skip emits one `{systemMessage, suppressOutput}` object and exits 0, and an
-  allowed stop emits nothing. Exit 2 is spelled only for that verdict, because
-  the runtime reads the error path's exit 2 as a Block the retry counter never
-  bounds. See guard.md.
+  skip or escalation emits one `{systemMessage, suppressOutput}` object and
+  exits 0, and an allowed stop emits nothing. Exit 2 is spelled only for that
+  verdict, because the runtime reads the error path's exit 2 as a Block the
+  retry counter never bounds. See guard.md.
 - `guard floor`: speaks the PreToolUse hook contract instead of the envelope —
   a Block exits 2 with its reason on stderr (the documented feedback channel),
   a skip or grant emits one `{systemMessage, suppressOutput}` object, and a

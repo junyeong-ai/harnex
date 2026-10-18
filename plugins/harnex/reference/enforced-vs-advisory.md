@@ -1,5 +1,12 @@
 # Enforced vs advisory (the organizing principle)
 
+- [Enforced surfaces](#enforced--deterministic-non-bypassable-by-the-model)
+- [Advisory surfaces](#advisory--shapes-behavior-no-guarantee)
+- [Placement rules](#the-rule-harnex-generates-by)
+- [Unmeasured results](#unmeasured-is-not-passed)
+- [Freshness gates](#the-advisory-class--freshness-gates-findings-never-do)
+- [Generated harnesses](#what-this-means-for-a-generated-harness)
+
 The single axis that decides where a guardrail belongs. Quality scales across
 many different developers only through the enforced layer — it is the only
 thing that survives a confused, careless, or adversarial agent turn.
@@ -72,7 +79,7 @@ it. Every enforced surface harnex ships names its own:
 | `plan audit` acceptance | a criterion nothing answered, counted as passed | `unmeasured`, blocking an approval exactly as a Blocker does |
 | `hooks/pre-commit` | a secret scan that failed, exiting like one that found a secret | a code of its own for findings, so a failure is `unjudged` rather than a finding |
 | `lifecycle candidates` | an unwritten or unreadable ledger, read as a corpus that produced nothing | `observations_read` beside the candidates, and an error where the read failed |
-| `guard stop-audit` | a probe that gave no answer, read as "there is work" | a skip naming why, having spent nothing |
+| `guard stop-audit` | a failed probe or critique read as a clean verdict | a skip naming the failure; an exhausted retry budget ends continuation and requests operator review |
 
 Two shapes produce it, and a generated gate is worth checking against both. A
 **default standing in for a measurement** — an empty configuration read as

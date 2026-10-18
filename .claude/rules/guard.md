@@ -9,6 +9,10 @@ governs:
 
 # guard — Claude Code runtime adapter
 
+`guard hook-stop` always exits 0, including a spawn or reporting failure.
+Its envelope reports the observed result or typed error; child stdout goes
+to stderr so it cannot request continuation through a Stop control field.
+
 HookEvent parses stdin JSON for Claude Code hook events. The toolkit
 does not model event-specific fields as typed Rust structs — the
 hook-event surface evolves upstream. Common fields are extracted; the
@@ -65,15 +69,16 @@ StopAuditor handles the Stop event in three phases:
    `StopAuditConfig::changes_probe` owns what a usable probe is and refuses
    the rest at load, because phase 3 spends a model call.
 2. Bump per-session retry counter via `path_guard::write_atomic`.
-   Exceeding `max_retries` escalates with a Block reason.
+   Exceeding `max_retries` returns `Escalate`: allow the stop and tell the
+   operator the work needs review, without another critique.
 3. Spawn the configured critique skill via `claude --print`. Parse the
    returned JSON envelope; any finding that fails the gate
-   (`Severity::fails_gate` — blocker or major) blocks the stop. Malformed
-   critique output fails OPEN (allow stop) — the bounded retry
-   counter is the loop's safety net, not a fail-closed gate.
-
-The retry counter is the deterministic antidote to single-loop
-self-grade inflation. Never bypass — bounded retries are the cure.
+   (`Severity::fails_gate` — blocker or major) blocks the stop. A failed
+   process or unsuccessful envelope is a `Skip`. A recognised gating finding
+   still blocks when another item is unreadable; unreadable items otherwise
+   yield `Skip`, never a clean verdict. Every critique attempt consumes budget,
+   including failures. Only a valid clean verdict clears the retry counter;
+   exhaustion ends automatic critiques for the session.
 
 `harnex guard stop-audit` maps a `StopDecision::Block` to exit 2 — the
 sole sanctioned exception to Article II (where exit 2 = runtime failure).

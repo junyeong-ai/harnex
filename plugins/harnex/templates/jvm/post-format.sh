@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# PostToolUse(Edit|Write): format the edited file. Advisory, always exits 0.
+# PostToolUse(Edit|Write): format the edited file. Formatter failures are advisory.
 # file_path is parsed from stdin with jq — a JVM repo bundles neither a
 # Python nor a Node interpreter, so jq is the canonical shell tool; if it is
 # absent the hook skips rather than hand-roll fragile JSON parsing.
-# Path traversal and non-existent files are skipped.
+# _format-target.sh owns the project file boundary.
 #
 # The formatter is invoked per file and never through the build tool. A
 # `gradlew spotlessApply` / `mvn spotless:apply` starts a JVM and a daemon
@@ -17,7 +17,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 FILE=$(jq -r '.tool_input.file_path // ""' 2>/dev/null) || exit 0
 
-[[ -z "$FILE" || "$FILE" == *..* || ! -f "$FILE" ]] && exit 0
+source "$(dirname -- "$0")/_format-target.sh" || exit 1
+resolve_format_target "$FILE" || exit 0
 
 case "$FILE" in
   *.java)      command -v google-java-format >/dev/null 2>&1 && google-java-format -i "$FILE" >/dev/null 2>&1 || true ;;

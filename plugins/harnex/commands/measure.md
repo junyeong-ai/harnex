@@ -109,8 +109,7 @@ batches in parallel. Each entry returns a kind, and a gap with the clause that
 closes it, or null. Its contract is in its own file; do not restate or relax it
 here.
 
-Report the share that came back `null`. A batch where nothing is null was not
-read, and the same is true of a batch where everything is.
+Report the share that came back `null`.
 
 ## 4 — Cross the judge's kinds with the outcomes the oracle observed
 

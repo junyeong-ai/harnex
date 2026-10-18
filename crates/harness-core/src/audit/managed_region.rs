@@ -130,7 +130,7 @@ impl<'a> ManagedRegionAuditor<'a> {
                          harnex-managed sentinels — partial drift"
                     ),
                     hint: Some(format!(
-                        "run `harnex regenerate` or restore the sentinels:\n\
+                        "restore the sentinels:\n\
                          <!-- harnex-managed:start {slug} --> ... <!-- harnex-managed:end {slug} -->"
                     )),
                     auto_fixable: false,
@@ -149,7 +149,7 @@ impl<'a> ManagedRegionAuditor<'a> {
                          drifted upstream"
                     ),
                     hint: Some(format!(
-                        "compare against {} and re-run `harnex regenerate` to restore",
+                        "restore the managed region from {} while preserving project-authored content",
                         template_path.display()
                     )),
                     auto_fixable: false,

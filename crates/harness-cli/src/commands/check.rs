@@ -10,8 +10,8 @@ use super::{load_config, write_envelope_success};
 
 #[derive(Args)]
 pub struct CheckArgs {
-    /// Restrict scanning to files changed since this git ref
-    /// (e.g. `--since main`, `--since HEAD~5`).
+    /// Restrict file-local checks to changes since this git ref. Config
+    /// changes revalidate every surface; cross-file checks run in full.
     #[arg(long)]
     pub since: Option<String>,
     /// Execute every auto_fixable finding via the safe-fix registry,

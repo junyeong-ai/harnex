@@ -23,9 +23,9 @@
 //!
 //! ## What this module refuses to do
 //!
-//! - Never block the Stop event silently — failures escalate via Block
-//!   decision with reason.
-//! - Never spawn arbitrary commands. The critique skill name is config-pinned.
+//! - Never block the Stop event on an unavailable audit. Report a Skip or
+//!   Escalate to the operator; only a recognised gating finding requests continuation.
+//! - The Stop auditor spawns only its configured changes probe and critique.
 //! - Never bypass the retry counter — multi-retry loops without bound are
 //!   the root cause of premature-termination defects; bounded retries are
 //!   the cure.

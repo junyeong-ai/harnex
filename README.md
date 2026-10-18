@@ -235,11 +235,27 @@ harnex export schema {config|envelope|finding|event|permissions|error-codes|
 
 harnex completions <bash|zsh|fish|powershell|elvish> [--raw]
 ```
+
+`check --since` limits file-local checks to changed files. A changed or untracked
+`harness.toml` revalidates every surface; cross-file checks, including evidence
+references, run in full.
+
 `index`, `facts` and `submissions` take the same window: `--since`, `--project`
 and `--session`, in any combination. Each emits one JSON envelope carrying the
 window's span, coverage, runtime versions and model mix, so a saved envelope is
 self-describing — that is the export, and two of them are readable side by side
 without the binary having to claim they measured the same work.
+
+`guard stop-audit` allows a clean stop only after a successful critique whose
+finding severities are all recognised. A recognised gating finding still
+blocks when another item is unreadable; an otherwise unreadable or failed
+critique is reported as skipped. Every critique attempt consumes budget,
+including failures; a clean verdict resets it. Exhaustion ends automatic
+critiques for the session and asks the operator to review the work.
+
+`guard hook-stop` always exits 0, including a spawn failure. Its envelope
+records the result or typed error; child output goes to stderr so it cannot
+supply a blocking Stop decision.
 
 `context resolve` returns normalized `targets` and `required_instructions` to
 read: root `CLAUDE.md` and `.claude/CLAUDE.md`, unconditional or matching rules,
@@ -413,22 +429,23 @@ and individual repos cannot weaken them. The integration points:
   "junyeong-ai/harnex"}]` (or your fork). Combined with
   `blockedMarketplaces`, this prevents adoption of unreviewed plugins
   while still allowing harnex.
-- **Pin enforced floors.** Set `permissions.allowManagedPermissionRulesOnly: true`
+- **Pin enforced floors.** Set `allowManagedPermissionRulesOnly: true`
   in managed settings so ONLY managed-scope permission rules are honored —
   user / project / local permission rules are then ignored, not merged. To make
   the `baseline` deny a non-removable floor under this policy, DEPLOY that deny
   set in the managed settings itself; a deny shipped only in a project's
-  `permissions.deny.json` would be ignored. (Without this policy, rules from all
-  scopes merge and the project deny applies.)
+  `.claude/settings.json` under `permissions.deny` would be ignored. Without this
+  policy, rules from all scopes merge and the project deny applies.
 - **Pin behavioral guidance.** The managed `claudeMd` key carries the
   organization-wide instructions delivered before any project CLAUDE.md
   ("Always run `make lint` before committing", compliance reminders).
   This survives `claudeMdExcludes` at every other scope.
-- **Optional hard-lock plugin surface.** Set
-  `strictPluginOnlyCustomization: ["skills", "hooks"]` to require that
-  every skill or hook be plugin-managed (not freely added at user /
-  project scope). harnex stays usable because its content ships as a
-  plugin; everything else routes through the marketplace.
+- **Check project customization before locking it.**
+  `strictPluginOnlyCustomization: ["skills", "hooks"]` blocks user and
+  project skills and hooks. The harnex plugin still loads, but the hooks and
+  skills it generates into a target repository are project customization and
+  are blocked. Deploy those controls through managed settings or an approved
+  organization plugin before enabling this lock.
 - **Disable skill shell injection.** Set `disableSkillShellExecution:
   true` in managed settings to neutralise `` !`<command>` `` substitution
   in user / project / plugin / additional-directory skills (bundled and

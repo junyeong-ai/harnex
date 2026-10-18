@@ -5,9 +5,8 @@
 //! configured surfaces and emits a single aggregated `CheckOutcome`
 //! envelope. Each finding's `slug` attributes it to the producing validator.
 //!
-//! Supports `--since <git-ref>` to restrict scanning to files changed
-//! since the ref — same semantics as nodex's `check --since`. Without
-//! `--since`, every discovered candidate is scanned.
+//! `--since <git-ref>` restricts file-local checks to changed files. A changed
+//! configuration revalidates every surface; cross-file checks run in full.
 //!
 //! ## What this module refuses to do
 //!
@@ -29,7 +28,7 @@ use serde::Serialize;
 
 use crate::always_loaded::MemberKind;
 use crate::codegen::SentinelSyncer;
-use crate::config::Config;
+use crate::config::{CONFIG_FILE_NAME, Config};
 use crate::envelope::{Finding, FixCommand, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
@@ -49,7 +48,7 @@ pub struct CheckOutcome {
     pub run: Vec<String>,
     /// Validators that were not run, with the reason.
     pub skipped: Vec<SkippedRule>,
-    /// Count of scans across the windowed validators — a file more than one
+    /// Count of surface and evidence scans — a file more than one
     /// validator reads counts once per reader.
     pub files_scanned: usize,
 }
@@ -234,13 +233,7 @@ impl<'a> ProjectChecker<'a> {
             &mut skipped,
             &mut files_scanned,
         )?;
-        self.run_evidence(
-            &changed,
-            &mut findings,
-            &mut run,
-            &mut skipped,
-            &mut files_scanned,
-        )?;
+        self.run_evidence(&mut findings, &mut run, &mut skipped, &mut files_scanned)?;
         self.run_governs(&mut findings, &mut run, &mut skipped)?;
         self.run_advisories(&mut findings, &mut run, &mut skipped)?;
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
@@ -298,6 +291,18 @@ impl<'a> ProjectChecker<'a> {
             &["diff", "--name-only", "-z", "--relative", since],
         )
         .map_err(|git::Failure(message)| Error::CheckGitFailure { message })?;
+        if listed.contains(&self.working_dir.join(CONFIG_FILE_NAME)) {
+            return Ok(None);
+        }
+        // An ignored local config still supplies the policy being validated.
+        let untracked_config = git::listed_paths(
+            self.working_dir,
+            &["ls-files", "-z", "--others", "--", CONFIG_FILE_NAME],
+        )
+        .map_err(|git::Failure(message)| Error::CheckGitFailure { message })?;
+        if !untracked_config.is_empty() {
+            return Ok(None);
+        }
         Ok(Some(listed.into_iter().collect()))
     }
 
@@ -420,7 +425,6 @@ impl<'a> ProjectChecker<'a> {
 
     fn run_evidence(
         &self,
-        changed: &Option<HashSet<PathBuf>>,
         findings: &mut Vec<Finding>,
         run: &mut Vec<String>,
         skipped: &mut Vec<SkippedRule>,
@@ -472,9 +476,6 @@ impl<'a> ProjectChecker<'a> {
             if !path.is_file() {
                 continue;
             }
-            if !self.passes_filter(path, changed) {
-                continue;
-            }
             // The runtime's own skip list: a memory file it never loads makes
             // no claim, whatever the tree holds. Skills, agents, output styles
             // and routines are not memory files, and no exclude reaches them.
@@ -512,7 +513,7 @@ impl<'a> ProjectChecker<'a> {
     /// that declares it, so filtering rules by the diff window lets a
     /// deleted truth slip through as a false negative. The full sweep reads
     /// only the rules directory and is cheap; it also counts nothing into
-    /// `files_scanned`, which tallies the windowed scan.
+    /// `files_scanned`, which tallies surface and evidence scans.
     fn run_governs(
         &self,
         findings: &mut Vec<Finding>,
