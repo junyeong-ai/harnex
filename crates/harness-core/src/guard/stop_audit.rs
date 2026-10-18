@@ -3,14 +3,17 @@
 //! Flow:
 //! 1. Run the configured changes probe — exit 0 (no changes) allows the stop,
 //!    and anything but its two answers is a [`StopDecision::Skip`].
-//! 2. Bump per-session retry counter; if > max_retries, escalate via Block.
+//! 2. Reserve a critique attempt; a spent budget escalates to the operator
+//!    without requesting continuation.
 //! 3. Spawn the critique skill via `claude --print <critique_skill>` from
 //!    the working directory.
-//! 4. Parse critique output as JSON; if any finding has severity in
-//!    {blocker}, return Block; otherwise reset counter and Allow.
+//! 4. A valid critique blocks on gating findings and otherwise allows the
+//!    stop. A failed or malformed critique is a visible skip.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use serde::Deserialize;
 
 use crate::config::StopAuditConfig;
 use crate::envelope::Severity;
@@ -28,6 +31,10 @@ pub enum StopDecision {
     /// can act on and no retry bound, which is the loop the counter exists to
     /// prevent arriving through the one door it does not watch.
     Skip {
+        reason: String,
+    },
+    /// End automatic continuation and hand the unapproved work to the operator.
+    Escalate {
         reason: String,
     },
     Block {
@@ -137,18 +144,29 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
         }
         let attempt = self.bump_retry_counter()?;
         if attempt > self.config.max_retries {
-            return Ok(StopDecision::Block {
+            return Ok(StopDecision::Escalate {
                 reason: format!(
-                    "retry counter exceeded {} — escalating to user",
+                    "retry budget of {} exhausted — automatic audit stopped; operator review is required",
                     self.config.max_retries
                 ),
             });
         }
-        let critique_output = self.spawn_critique()?;
-        if has_gating_finding(&critique_output) {
+        let output = self.spawn_critique()?;
+        if !output.success() {
+            let reason = match output.code {
+                Some(code) => format!("critique exited {code} without a successful result"),
+                None => "critique was killed without a result".into(),
+            };
+            return Ok(StopDecision::Skip { reason });
+        }
+        let gating = match has_gating_finding(&output.stdout) {
+            Ok(gating) => gating,
+            Err(reason) => return Ok(StopDecision::Skip { reason }),
+        };
+        if gating {
             Ok(StopDecision::Block {
                 reason: format!(
-                    "critique skill '{}' returned blocker-severity findings",
+                    "critique skill '{}' returned gating findings",
                     self.config.critique_skill
                 ),
             })
@@ -217,13 +235,12 @@ impl<'a, R: CommandRunner> StopAuditor<'a, R> {
         Ok(())
     }
 
-    fn spawn_critique(&self) -> Result<String> {
-        let output = self.runner.run(
+    fn spawn_critique(&self) -> Result<ProcessOutput> {
+        self.runner.run(
             "claude",
             &["--print", &self.config.critique_skill],
             self.working_dir,
-        )?;
-        Ok(output.stdout)
+        )
     }
 }
 
@@ -242,28 +259,42 @@ fn safe_session_id(raw: &str) -> String {
     }
 }
 
-/// Inspect a critique envelope for any finding that fails the gate
-/// ([`Severity::fails_gate`] — `blocker` or `major`), the same threshold the
-/// CLI gate uses. Returns false on parse failure (fail-OPEN by design:
-/// Constitution V — the session never traps; a broken critique tool must not
-/// imprison the agent in a re-stop loop. The bounded retry counter, not a
-/// fail-closed gate, is the loop's safety net).
-fn has_gating_finding(critique_output: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(critique_output) else {
-        return false;
-    };
-    let Some(items) = value
-        .get("data")
-        .and_then(|d| d.get("items"))
-        .and_then(|i| i.as_array())
-    else {
-        return false;
-    };
-    items.iter().any(|item| {
-        item.get("severity")
-            .and_then(|s| serde_json::from_value::<Severity>(s.clone()).ok())
-            .is_some_and(Severity::fails_gate)
-    })
+#[derive(Deserialize)]
+struct CritiqueEnvelope {
+    ok: bool,
+    data: CritiqueData,
+}
+
+#[derive(Deserialize)]
+struct CritiqueData {
+    items: Vec<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct CritiqueFinding {
+    severity: Severity,
+}
+
+fn has_gating_finding(critique_output: &str) -> std::result::Result<bool, String> {
+    let critique: CritiqueEnvelope = serde_json::from_str(critique_output)
+        .map_err(|e| format!("critique returned an invalid finding envelope: {e}"))?;
+    if !critique.ok {
+        return Err("critique reported an unsuccessful result".into());
+    }
+    let mut unreadable = None;
+    for item in critique.data.items {
+        match serde_json::from_value::<CritiqueFinding>(item) {
+            Ok(item) if item.severity.fails_gate() => return Ok(true),
+            Ok(_) => {}
+            Err(error) => {
+                unreadable.get_or_insert(error);
+            }
+        }
+    }
+    match unreadable {
+        Some(error) => Err(format!("critique returned an unreadable finding: {error}")),
+        None => Ok(false),
+    }
 }
 
 #[cfg(test)]
@@ -341,6 +372,61 @@ mod tests {
     const BLOCKER_ENVELOPE: &str = r#"{"ok":true,"data":{"items":[
         {"slug":"x","severity":"blocker","location":{"path":"a"},"message":"oops"}
     ],"total":1}}"#;
+
+    #[test]
+    fn a_spent_budget_stops_requesting_continuation_without_another_critique() {
+        let dir = TempDir::new().unwrap();
+        let mut config = audit_config(&dir);
+        config.max_retries = 1;
+        let runner = MockCommandRunner::new(vec![
+            MockCommandRunner::exits(1, ""),
+            MockCommandRunner::exits(0, BLOCKER_ENVELOPE),
+            MockCommandRunner::exits(1, ""),
+            MockCommandRunner::exits(1, ""),
+            MockCommandRunner::exits(1, ""),
+        ]);
+        let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
+        assert!(matches!(auditor.run().unwrap(), StopDecision::Block { .. }));
+        for _ in 0..3 {
+            assert!(matches!(
+                auditor.run().unwrap(),
+                StopDecision::Escalate { .. }
+            ));
+        }
+        assert_eq!(auditor.runner.call_count(), 5);
+    }
+
+    #[test]
+    fn an_unanswered_critique_skips_without_clearing_the_budget() {
+        for (code, stdout) in [
+            (Some(1), CLEAN_ENVELOPE),
+            (None, CLEAN_ENVELOPE),
+            (Some(0), "not json"),
+            (Some(0), r#"{"ok":false,"data":{"items":[]}}"#),
+            (Some(0), r#"{"ok":true,"data":{}}"#),
+            (Some(0), r#"{"ok":true,"data":{"items":[{}]}}"#),
+            (
+                Some(0),
+                r#"{"ok":true,"data":{"items":[{"severity":"unknown"}]}}"#,
+            ),
+        ] {
+            let dir = TempDir::new().unwrap();
+            let config = audit_config(&dir);
+            let runner = MockCommandRunner::new(vec![
+                MockCommandRunner::exits(1, ""),
+                ProcessOutput {
+                    code,
+                    stdout: stdout.into(),
+                },
+            ]);
+            let auditor = StopAuditor::with_runner(&config, dir.path(), "sess".into(), runner);
+            assert!(
+                matches!(auditor.run().unwrap(), StopDecision::Skip { .. }),
+                "{code:?}: {stdout}"
+            );
+            assert_eq!(std::fs::read_to_string(auditor.retry_path()).unwrap(), "1");
+        }
+    }
 
     #[test]
     fn a_probe_that_did_not_answer_skips_rather_than_buying_a_critique() {
@@ -423,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn run_blocks_when_retry_exceeds_max() {
+    fn run_escalates_when_retry_exceeds_max() {
         let dir = TempDir::new().unwrap();
         let config = audit_config(&dir);
         // Only the has_changes probe should run: escalation happens before the
@@ -438,10 +524,10 @@ mod tests {
         .unwrap();
         let decision = auditor.run().unwrap();
         match decision {
-            StopDecision::Block { reason } => {
-                assert!(reason.contains("retry counter exceeded"), "got: {reason}");
+            StopDecision::Escalate { reason } => {
+                assert!(reason.contains("retry budget"), "got: {reason}");
             }
-            other => panic!("expected escalation Block, got {other:?}"),
+            other => panic!("expected escalation, got {other:?}"),
         }
         // The critique was never spawned — only the has_changes probe ran.
         assert_eq!(auditor.runner.call_count(), 1);
@@ -457,8 +543,8 @@ mod tests {
         // it fails safe to max_retries so the next bump escalates.
         path_guard::write_atomic(&auditor.retry_path(), b"not-a-number").unwrap();
         match auditor.run().unwrap() {
-            StopDecision::Block { reason } => {
-                assert!(reason.contains("retry counter exceeded"), "got: {reason}");
+            StopDecision::Escalate { reason } => {
+                assert!(reason.contains("retry budget"), "got: {reason}");
             }
             other => panic!("corrupt ledger must fail safe, not reset: {other:?}"),
         }
@@ -470,7 +556,7 @@ mod tests {
         let json = r#"{"ok":true,"data":{"items":[
             {"slug":"x","severity":"blocker","location":{"path":"a"},"message":"oops"}
         ],"total":1}}"#;
-        assert!(has_gating_finding(json));
+        assert!(has_gating_finding(json).unwrap());
     }
 
     #[test]
@@ -480,7 +566,7 @@ mod tests {
         let json = r#"{"ok":true,"data":{"items":[
             {"slug":"x","severity":"major","location":{"path":"a"},"message":"defect"}
         ],"total":1}}"#;
-        assert!(has_gating_finding(json));
+        assert!(has_gating_finding(json).unwrap());
     }
 
     #[test]
@@ -488,19 +574,37 @@ mod tests {
         let json = r#"{"ok":true,"data":{"items":[
             {"slug":"x","severity":"minor","location":{"path":"a"},"message":"meh"}
         ],"total":1}}"#;
-        assert!(!has_gating_finding(json));
+        assert!(!has_gating_finding(json).unwrap());
     }
 
     #[test]
     fn gating_finding_handles_empty_findings() {
         let json = r#"{"ok":true,"data":{"items":[],"total":0}}"#;
-        assert!(!has_gating_finding(json));
+        assert!(!has_gating_finding(json).unwrap());
     }
 
     #[test]
     fn gating_finding_handles_parse_failure() {
-        // Fail-open: a malformed critique must not trap the session (Const. V).
-        assert!(!has_gating_finding("not json"));
+        assert!(has_gating_finding("not json").is_err());
+    }
+
+    #[test]
+    fn gating_finding_survives_an_unreadable_neighbor_in_either_order() {
+        for unreadable in [
+            serde_json::json!({}),
+            serde_json::json!({"severity": "critical"}),
+            serde_json::Value::Null,
+        ] {
+            for items in [
+                serde_json::json!([unreadable, {"severity": "blocker"}]),
+                serde_json::json!([{"severity": "major"}, unreadable]),
+            ] {
+                let output = serde_json::json!({"ok": true, "data": {"items": items}}).to_string();
+                assert!(has_gating_finding(&output).unwrap(), "{output}");
+            }
+        }
+        let output = r#"{"ok":true,"data":{"items":[{"severity":"minor"},{}]}}"#;
+        assert!(has_gating_finding(output).is_err());
     }
 
     #[test]

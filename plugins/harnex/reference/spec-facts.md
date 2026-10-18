@@ -1,5 +1,11 @@
 # Claude Code spec facts (correctness oracle)
 
+- [Hooks](#hooks-enhooks)
+- [Settings and permissions](#settings-ensettings)
+- [Skills](#skills-enskills)
+- [Memory](#memory-enmemory)
+- [Plugins](#plugins-enplugins)
+
 The perishable knowledge harnex centralizes. Every generated artifact must
 obey these. Re-verify against the live docs before a release; the upstream
 surface evolves and freezing it is the failure mode harnex exists to prevent.

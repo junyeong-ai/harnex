@@ -659,6 +659,153 @@ max_lines = 200
 "#
 }
 
+#[test]
+fn evidence_rechecks_unchanged_claims_when_their_target_changes() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, evidence_config());
+    let source = tmp.path().join("src/api.rs");
+    write(&source, "pub fn load() {}\n");
+    write(
+        &tmp.path().join("CLAUDE.md"),
+        "Owner: [file: src/api.rs :: fn load].\n",
+    );
+    for args in [
+        vec!["add", "."],
+        vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "base",
+        ],
+    ] {
+        assert!(
+            common::git(tmp.path())
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let check = ProjectChecker::new(&cfg, tmp.path()).with_since("HEAD");
+    assert!(check.run().unwrap().findings.is_empty());
+
+    write(&source, "pub fn renamed() {}\n");
+    let broken = check.run().unwrap();
+    assert!(
+        broken
+            .findings
+            .iter()
+            .any(|f| f.slug == "evidence-internal")
+    );
+
+    write(&source, "pub fn load() {}\npub fn added() {}\n");
+    assert!(check.run().unwrap().findings.is_empty());
+}
+
+#[test]
+fn a_changed_config_revalidates_unchanged_surfaces_from_its_own_root() {
+    for directory in ["", "apps/web"] {
+        let tmp = project();
+        let root = tmp.path().join(directory);
+        let config = root.join("harness.toml");
+        let policy = |reject| {
+            format!(
+                "[meta]\nharnex_version = \">=0.34, <0.35\"\n\
+             [validate.skills]\nreject_unknown_keys = {reject}\n"
+            )
+        };
+        write(&config, &policy(false));
+        write(
+            &root.join(".claude/skills/review/SKILL.md"),
+            "---\nname: review\ndescription: Review code\nmisspelled: true\n---\nReview\n",
+        );
+        for args in [
+            vec!["add", "."],
+            vec![
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-qm",
+                "base",
+            ],
+        ] {
+            assert!(
+                common::git(tmp.path())
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        write(&config, &policy(true));
+        let cfg = Config::load_from(&config).unwrap();
+        let outcome = ProjectChecker::new(&cfg, &root)
+            .with_since("HEAD")
+            .run()
+            .unwrap();
+        assert!(
+            outcome
+                .findings
+                .iter()
+                .any(|f| f.slug == "skill-unknown-frontmatter-key"),
+            "{directory}: {outcome:?}"
+        );
+    }
+}
+
+#[test]
+fn an_untracked_config_revalidates_existing_surfaces_even_when_ignored() {
+    for ignored in [false, true] {
+        let tmp = project();
+        write(
+            &tmp.path().join(".claude/skills/review/SKILL.md"),
+            "---\nname: review\ndescription: Review code\nmisspelled: true\n---\nReview\n",
+        );
+        if ignored {
+            write(&tmp.path().join(".gitignore"), "harness.toml\n");
+        }
+        for args in [
+            vec!["add", "."],
+            vec![
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-qm",
+                "base",
+            ],
+        ] {
+            assert!(
+                common::git(tmp.path())
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let cfg = load_cfg(
+            &tmp,
+            "[meta]\nharnex_version=\">=0.34, <0.35\"\n[validate.skills]\nreject_unknown_keys=true\n",
+        );
+        let outcome = ProjectChecker::new(&cfg, tmp.path())
+            .with_since("HEAD")
+            .run()
+            .unwrap();
+        assert!(
+            outcome
+                .findings
+                .iter()
+                .any(|f| f.slug == "skill-unknown-frontmatter-key")
+        );
+    }
+}
+
 /// The path each `evidence-internal` finding names, after `no/such/`.
 fn cited(outcome: &harness_core::check::CheckOutcome) -> Vec<String> {
     let mut cited: Vec<String> = outcome
@@ -794,13 +941,20 @@ fn a_changed_file_named_outside_ascii_is_still_in_the_since_window() {
     }
     write(
         &rule,
-        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/korean.rs:1].\n",
+        "---\npaths: false\n---\n\nOwner: [file: no/such/korean.rs:1].\n",
     );
     let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
     let outcome = ProjectChecker::new(&cfg, tmp.path())
         .with_since("HEAD")
         .run()
         .unwrap();
+    assert!(
+        outcome
+            .findings
+            .iter()
+            .any(|finding| finding.slug == "rule-paths-invalid"),
+        "{outcome:?}"
+    );
     assert_eq!(cited(&outcome), ["korean.rs"], "{:#?}", outcome.findings);
 }
 
@@ -872,13 +1026,20 @@ fn a_config_below_the_git_top_level_still_sees_its_changed_files() {
     );
     write(
         &web.join(".claude/rules/r.md"),
-        "---\npaths: [\"src/**\"]\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
+        "---\npaths: false\n---\n\nOwner: [file: no/such/rule.rs:1].\n",
     );
     let cfg = Config::load_from(&web.join("harness.toml")).unwrap();
     let outcome = ProjectChecker::new(&cfg, &web)
         .with_since("HEAD")
         .run()
         .unwrap();
+    assert!(
+        outcome
+            .findings
+            .iter()
+            .any(|finding| finding.slug == "rule-paths-invalid"),
+        "{outcome:?}"
+    );
     assert_eq!(
         cited(&outcome),
         ["root.rs", "rule.rs"],

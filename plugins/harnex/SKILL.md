@@ -1,6 +1,6 @@
 ---
 name: harnex
-description: Generate and maintain project-fit, project-native Claude Code harness tooling — hooks, settings.json, CLAUDE.md, path-scoped rules — in the target project's own language, from verified spec-correct templates. Use to scaffold a harness in a fresh repo, extend one with a closed-verb additive change, retire an element on the evidence and the operator's decision, audit an existing harness for spec drift, or regenerate the managed regions against the current Claude Code spec.
+description: Generates and maintains project-fit, project-native Claude Code harness tooling — hooks, settings.json, CLAUDE.md, path-scoped rules — in the target project's own language, from verified spec-correct templates. Use to scaffold a harness in a fresh repo, extend one with a closed-verb additive change, retire an element on the evidence and the operator's decision, audit an existing harness for spec drift, or regenerate the managed regions against the current Claude Code spec.
 disable-model-invocation: true
 argument-hint: "scaffold | extend <verb> <args> | retire <verb> <args> | audit | regenerate"
 ---
@@ -15,12 +15,12 @@ Read references under `${CLAUDE_SKILL_DIR}/reference/` for the active mode:
 
 | Mode | Required references |
 |---|---|
-| Every mode | `spec-facts.md`; verify the surface being judged against the live docs |
-| scaffold | `exploration.md`, `language-matrix.md`, `enforced-vs-advisory.md`, `keep-soften-cut.md` |
-| extend | `enforced-vs-advisory.md`, `keep-soften-cut.md`; `exploration.md` for project analysis, `language-matrix.md` for toolchain changes |
-| audit | `exploration.md`, `enforced-vs-advisory.md` |
-| regenerate | `language-matrix.md` for the detected profiles |
-| retire | `retire.md` |
+| Every mode | [spec-facts.md](reference/spec-facts.md); verify the surface being judged against the live docs |
+| scaffold | [exploration.md](reference/exploration.md), [language-matrix.md](reference/language-matrix.md), [enforced-vs-advisory.md](reference/enforced-vs-advisory.md), [keep-soften-cut.md](reference/keep-soften-cut.md) |
+| extend | [enforced-vs-advisory.md](reference/enforced-vs-advisory.md), [keep-soften-cut.md](reference/keep-soften-cut.md); [exploration.md](reference/exploration.md) for project analysis, [language-matrix.md](reference/language-matrix.md) for toolchain changes; [patterns.md](reference/patterns.md) for pattern selection |
+| audit | [exploration.md](reference/exploration.md), [enforced-vs-advisory.md](reference/enforced-vs-advisory.md) |
+| regenerate | [language-matrix.md](reference/language-matrix.md) for the detected profiles |
+| retire | [retire.md](reference/retire.md) |
 
 Templates live under `${CLAUDE_SKILL_DIR}/templates/`: language-agnostic
 pieces in `common/`, and one directory per supported language
@@ -109,8 +109,8 @@ each collision it leaves in place. `chmod 0o755` where `executable` is set.
 Emit the `foundation` tier always, and the `language` tier once per detected
 stack, resolving `{lang}` to that language each time. The manifest is the
 single home for that set — a second list here would be the one that drifts,
-and the oracle's fixture test builds from the same file so a scaffold and its
-guard cannot disagree.
+and the fixture test builds from the same declaration. Verify the generated
+output before finishing.
 
 **Check every destination before writing it.** A repo with no `.claude/` — the
 repo scaffold mode is for — usually still has a `CLAUDE.md`, because Claude
@@ -308,40 +308,16 @@ Two halves, split by what is decidable. The binary decides what is provably
 wrong; the skill judges what is missing, because "missing" depends on what
 the project already guarantees elsewhere and no binary can see that.
 
-**1 — Drive `harnex audit --plugin-root ${CLAUDE_SKILL_DIR}`** and present its `AuditOutcome` envelope;
-without the plugin root the checks against the manifest are skipped. Every
-finding is a defect against the spec or against the harness's own wiring:
-- `audit-ms-timeout` — hook timeout values that look like milliseconds
-  (≥ 1000) instead of seconds.
-- `audit-mcp-matcher-incomplete` — `mcp__server` matcher without the
-  required `__.*` suffix (matches nothing).
-- `audit-hook-script-missing` — a hook names a `${CLAUDE_PROJECT_DIR}` path
-  that is a scaffold-manifest destination and is not on disk, so the handler
-  errors and the action proceeds unguarded. Scoped to manifest destinations
-  on purpose: the anchor proves a token is a project path, never that the
-  project has already built it, and `node_modules/.bin/*` or `target/release/*`
-  are correct wirings that are simply absent on a fresh clone. The cost is
-  that this protects harnex-generated wiring, not an operator's own scripts.
-- `audit-hook-not-executable` — a hook spawns a scaffold artifact directly
-  (the entry carries `args`, so the runtime runs `command` itself with no
-  shell) and the file's exec bit is off. Every invocation of that hook fails
-  before the script starts, so the wrapper's own fail-open never runs. Remedy
-  is `chmod +x`; `scaffold` Step 3 exists to keep this from happening.
-- `audit-managed-region-edited` — content inside a `harnex-managed`
-  region diverges from the corresponding template.
-- `audit-managed-region-missing` — a managed artifact is on disk with its
-  `harnex-managed` sentinels gone, so regenerate has nothing to write into.
-- `audit-copy-drift` (Minor) — a `copy` artifact whose bytes differ from the
-  template that emits it. Usually this is the project's own file at a
-  destination the scaffold claims: it was kept, correctly, and the hook
-  fragments that name that path were merged anyway, so a Claude Code event now
-  dispatches to a script harnex did not write. Report it with the three states
-  that produce it — kept incumbent, edited copy, older plugin version — because
-  the bytes cannot tell them apart and only the operator knows which.
-- `audit-fill-marker-unresolved` — a `<!-- harnex-fill: … -->` the generating
-  step left behind. Expect several on any harness scaffolded without the Step-1
-  analysis: `CLAUDE.md` and every `<lang>-conventions.md` ship them, and each
-  names the observation the file is waiting for.
+**1 — Run `harnex audit --plugin-root ${CLAUDE_SKILL_DIR}`.** Without the
+plugin root, checks against the composition manifest are skipped. Present each
+returned finding with its severity, location and hint; the binary owns the
+settings, wiring, template-integrity and unresolved-marker checks.
+
+Report artifact presence separately: an absent artifact is not itself a
+finding, so an empty finding list does not establish a complete harness.
+For copy drift, explain that the bytes cannot distinguish a kept incumbent,
+an edited generated copy and a copy from an older plugin. Report the difference
+without overwriting it.
 
 **2 — Run the exploration Phase-1 fingerprint** (exploration.md) and compare
 its `existing_harness` block against what a scaffold for the detected stack

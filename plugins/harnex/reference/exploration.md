@@ -1,5 +1,12 @@
 # Exploration (divide-and-conquer)
 
+- [Structural fingerprint](#phase-1--structural-fingerprint-deterministic-no-llm-judgment)
+- [Project profile](#phase-2--project-profile-concern-area-analysis-for-generated-content)
+- [Module exploration](#phase-3--module-exploration-fan-out-only-when-it-pays)
+- [Module map](#module-map-artifact-the-structured-aggregation-point)
+- [Synthesis](#phase-4--synthesis-single-agent)
+- [Existing harnesses](#brownfield-respect-extend--audit)
+
 How harnex builds a map of a repo before generating or auditing a harness.
 Two orthogonal axes: **what concern areas to analyze** (phases 1–2) and
 **how to scale that analysis across a monorepo** (phase 3 fan-out).

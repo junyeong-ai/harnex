@@ -7,10 +7,7 @@
 //! `guard::stop_audit`'s own subject, and its runner seam covers it without
 //! spawning anything.
 //!
-//! Every case reaches its outcome before the critique spawn, so no model call
-//! is made: an unanswerable probe skips, a probe answering "no work" allows,
-//! and a retry counter already past its ceiling blocks. That is computed
-//! rather than promised — see [`stop_audit_in`].
+//! A critique, where needed, is a local stub. No test invokes a model.
 
 use std::path::Path;
 use std::process::{Command, Output};
@@ -107,7 +104,7 @@ fn an_allowed_stop_says_nothing() {
 }
 
 #[test]
-fn a_block_feeds_back_where_exit_two_is_read() {
+fn a_spent_budget_notifies_the_operator_and_allows_the_stop() {
     let dir = tempfile::tempdir().expect("tempdir");
     // The ceiling is already reached, so the escalation lands before the
     // critique is spawned. The ledger directory is declared rather than left to
@@ -129,17 +126,83 @@ fn a_block_feeds_back_where_exit_two_is_read() {
 
     assert_eq!(
         output.status.code(),
-        Some(2),
-        "exit 2 is what prevents the stop"
+        Some(0),
+        "escalation must end automatic continuation"
     );
-    let stderr = String::from_utf8(output.stderr.clone()).expect("stderr is utf-8");
+    let body: serde_json::Value = serde_json::from_str(&stdout_of(&output)).unwrap();
     assert!(
-        stderr.contains("retry counter exceeded"),
-        "on exit 2 the runtime builds the block reason from stderr alone: {stderr}"
+        body["systemMessage"]
+            .as_str()
+            .unwrap()
+            .contains("operator review is required")
     );
-    assert_eq!(
-        stdout_of(&output),
-        "",
-        "stdout is ignored on exit 2, so a reason written there is a reason lost"
-    );
+    assert!(body.get("hookSpecificOutput").is_none());
+    assert!(output.stderr.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn critique_results_reach_their_reader_without_a_model_call() {
+    use std::os::unix::fs::PermissionsExt;
+    for (code, response, blocked, silent) in [
+        (
+            0,
+            r#"{"ok":true,"data":{"items":[{"severity":"major"}]}}"#,
+            true,
+            false,
+        ),
+        (0, r#"{"ok":true,"data":{"items":[]}}"#, false, true),
+        (
+            0,
+            r#"{"ok":true,"data":{"items":[{}, {"severity":"blocker"}]}}"#,
+            true,
+            false,
+        ),
+        (1, r#"{"ok":true,"data":{"items":[]}}"#, false, false),
+        (0, "unreadable", false, false),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("claude");
+        std::fs::write(
+            &stub,
+            format!("#!/bin/sh\nprintf '%s\\n' '{response}'\nexit {code}\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(
+            dir.path().join("harness.toml"),
+            harness_toml(&format!(
+                "[guard.stop_audit]\ncritique_skill=\"/critique\"\nhas_changes_check=[\"{}\"]\n",
+                resolved("false")
+            )),
+        )
+        .unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_harnex"))
+            .args(["guard", "stop-audit", "--session", "contract"])
+            .current_dir(dir.path())
+            .env("PATH", dir.path())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(if blocked { 2 } else { 0 }));
+        if blocked {
+            assert!(
+                String::from_utf8(output.stderr)
+                    .unwrap()
+                    .contains("gating findings")
+            );
+            assert!(output.stdout.is_empty());
+        } else if silent {
+            assert!(output.stdout.is_empty());
+            assert!(output.stderr.is_empty());
+        } else {
+            let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert!(
+                body["systemMessage"]
+                    .as_str()
+                    .unwrap()
+                    .contains("stop-audit skipped")
+            );
+            assert!(output.stderr.is_empty());
+        }
+    }
 }

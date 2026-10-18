@@ -15,7 +15,7 @@
 //! fail-open branch belongs to discovery alone.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use serde::Serialize;
 
@@ -64,14 +64,15 @@ impl HookRunner {
     /// PostToolUse gating works.
     pub fn run_at(root: &Path, program: &str, args: &[&str]) -> Result<HookRunOutcome> {
         Ok(HookRunOutcome::Completed {
-            exit_code: Self::spawn(root, program, args)?,
+            exit_code: Self::spawn(root, program, args, Stdio::inherit())?,
         })
     }
 
     /// Stop / SubagentStop hook wrapper: spawn the inner program, observe
     /// its exit code, but always return exit 0 to prevent the agent from
     /// being trapped in a Stop loop. Non-zero observations are reported
-    /// in the envelope payload AND emitted to stderr as an advisory.
+    /// in the envelope payload AND emitted to stderr as an advisory. Child
+    /// stdout goes to stderr so it cannot supply Stop control fields.
     pub fn run_stop(program: &str, args: &[&str]) -> Result<HookRunOutcome> {
         match Self::resolve_root() {
             Some(root) => Self::run_stop_at(&root, program, args),
@@ -81,9 +82,9 @@ impl HookRunner {
 
     /// The Stop exit-code contract, from a caller-supplied root: the inner code
     /// is observed and reported as [`HookRunOutcome::StopForcedSuccess`], never
-    /// propagated, because a non-zero Stop exit re-triggers the stop.
+    /// propagated, because exit 2 requests continuation at Stop.
     pub fn run_stop_at(root: &Path, program: &str, args: &[&str]) -> Result<HookRunOutcome> {
-        let exit_code = Self::spawn(root, program, args)?;
+        let exit_code = Self::spawn(root, program, args, Stdio::from(std::io::stderr()))?;
         if exit_code != 0 {
             eprintln!(
                 "[harness-stop-advisory] inner '{program}' exited {exit_code}; \
@@ -95,10 +96,11 @@ impl HookRunner {
         })
     }
 
-    fn spawn(root: &Path, program: &str, args: &[&str]) -> Result<i32> {
+    fn spawn(root: &Path, program: &str, args: &[&str], stdout: Stdio) -> Result<i32> {
         let status = Command::new(program)
             .args(args)
             .current_dir(root)
+            .stdout(stdout)
             .status()
             .map_err(|e| Error::GuardSpawnFailure {
                 message: format!("spawn {program}: {e}"),

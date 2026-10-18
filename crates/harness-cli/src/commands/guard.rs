@@ -25,7 +25,7 @@ pub enum GuardCommand {
     },
     /// Stop / SubagentStop hook wrapper — spawn `program`, observe its
     /// exit code, but always return exit 0 to prevent the agent from being
-    /// trapped in a Stop loop (non-zero exit triggers re-stop). The
+    /// trapped in a Stop loop (exit 2 requests continuation). The
     /// observed exit code is captured in the envelope for telemetry.
     HookStop {
         /// Inner program to spawn
@@ -37,8 +37,8 @@ pub enum GuardCommand {
     /// Run the fresh-context Stop audit. Reads session_id from --session
     /// or from hook stdin JSON's `session_id` field if not given. Wire as a
     /// Stop hook directly (NOT through `_stop_runner.sh`): Block exits 2 to
-    /// force continuation, which the bounded retry counter prevents from
-    /// looping. Allow exits 0.
+    /// force continuation. A spent retry budget exits 0 with an operator
+    /// notice; an allowed stop exits 0 silently.
     StopAudit {
         #[arg(long)]
         session: Option<String>,
@@ -97,18 +97,6 @@ fn floor<W: Write>(out: &mut W) -> Result<ExitCode> {
         tool_name: String,
         #[serde(default)]
         tool_input: serde_json::Value,
-    }
-
-    fn notice<W: Write>(out: &mut W, message: &str) -> Result<ExitCode> {
-        let body = serde_json::json!({
-            OPERATOR_CHANNEL_KEY: message,
-            SUPPRESS_OUTPUT_KEY: true,
-        });
-        writeln!(out, "{body}").map_err(|e| Error::IoFailure {
-            path: PathBuf::from("(stdout)"),
-            source: e,
-        })?;
-        Ok(ExitCode::SUCCESS)
     }
 
     fn skip<W: Write>(out: &mut W, reason: &str) -> Result<ExitCode> {
@@ -170,6 +158,18 @@ fn hook_event<W: Write>(out: &mut W) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn notice<W: Write>(out: &mut W, message: &str) -> Result<ExitCode> {
+    let body = serde_json::json!({
+        OPERATOR_CHANNEL_KEY: message,
+        SUPPRESS_OUTPUT_KEY: true,
+    });
+    writeln!(out, "{body}").map_err(|e| Error::IoFailure {
+        path: PathBuf::from("(stdout)"),
+        source: e,
+    })?;
+    Ok(ExitCode::SUCCESS)
+}
+
 fn hook_run<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<ExitCode> {
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let outcome = HookRunner::run(program, &arg_refs)?;
@@ -191,10 +191,19 @@ fn hook_run<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<Exi
 
 fn hook_stop<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<ExitCode> {
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let outcome = HookRunner::run_stop(program, &arg_refs)?;
-    // Stop hook contract: ALWAYS exit 0. The observed exit code lives in
-    // the envelope payload for telemetry but never propagates to git.
-    write_envelope_success(out, outcome)?;
+    let outcome = match HookRunner::run_stop(program, &arg_refs) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            eprintln!("[hook-stop skipped: {error}]");
+            if let Err(error) = harness_core::envelope::write_error(out, &error) {
+                eprintln!("[hook-stop could not report its result: {error}]");
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+    };
+    if let Err(error) = write_envelope_success(out, outcome) {
+        eprintln!("[hook-stop could not report its result: {error}]");
+    }
     Ok(ExitCode::SUCCESS)
 }
 
@@ -214,15 +223,7 @@ fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode
     // would exit 2 through the generic path, which the runtime reads as "keep
     // going": the same failure at every Stop, past the retry counter.
     fn skip<W: Write>(out: &mut W, reason: &str) -> Result<ExitCode> {
-        let body = serde_json::json!({
-            OPERATOR_CHANNEL_KEY: format!("[stop-audit skipped: {reason}]"),
-            SUPPRESS_OUTPUT_KEY: true,
-        });
-        writeln!(out, "{body}").map_err(|e| Error::IoFailure {
-            path: PathBuf::from("(stdout)"),
-            source: e,
-        })?;
-        Ok(ExitCode::SUCCESS)
+        notice(out, &format!("[stop-audit skipped: {reason}]"))
     }
 
     let (config, config_path, working_dir) = match load_config() {
@@ -260,6 +261,9 @@ fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode
     };
     match decision {
         StopDecision::Skip { reason } => skip(out, &reason),
+        StopDecision::Escalate { reason } => {
+            notice(out, &format!("[stop-audit escalated: {reason}]"))
+        }
         StopDecision::Allow => Ok(ExitCode::SUCCESS),
         // Exit 2 prevents the stop and forces continuation; exit 1 would be
         // non-blocking, and the Block would have no effect. The bounded retry

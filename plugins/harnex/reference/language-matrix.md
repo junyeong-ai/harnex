@@ -1,5 +1,11 @@
 # Language / toolchain matrix (deterministic parameterization)
 
+- [Stack detection](#detection-fingerprint-read-manifests--lockfiles-first)
+- [Gate drivers](#gate-driver-detection-evidence-not-a-per-language-default)
+- [Template parameters](#per-language-template-parameters)
+- [Shared constants and formatter contracts](#language-agnostic-constants-every-generated-harness)
+- [Monorepos](#monorepo-exploration-divide-and-conquer)
+
 How harnex detects a project's stack and parameterizes the templates. Detection
 is from build/lock/workspace files — structural signals, never heuristic
 guessing. Never cross-wire a language (a TS repo gets biome, a Python repo gets
@@ -48,8 +54,8 @@ making that hook runtime-agnostic first, which is a change to the hook and not
 to this table.
 
 Nothing arbitrates between two matched stacks at runtime either: each
-`hooks/post-format-<lang>.sh` dispatches on the file extension and exits 0 on
-anything it does not own, so they coexist as separate PostToolUse entries.
+`hooks/post-format-<lang>.sh` dispatches on its own file extensions, so they
+coexist as separate PostToolUse entries.
 `permissions.allow` unions both toolchains, and each stack gets its own
 `<lang>-conventions.md`.
 
@@ -195,6 +201,11 @@ repo is never penalised for the tool it does not install.
   `harnex validate rules` reports a rule that disagrees with the list in
   either direction.
 - **The per-file formatter must resolve the same config the gate does.**
+  `common/_format-target.sh` resolves the edited file inside the physical
+  project root for every language hook. A missing helper is an installation
+  error; formatter failures are advisory. TypeScript starts Biome at the nearest
+  declared configuration and prefers the closest project installation; neither
+  search leaves the project.
   A PostToolUse hook formats one file; the CI gate formats the workspace.
   Where the two read configuration differently, every edit reverts what the
   gate requires and the loop is invisible until CI reds. Rust is the live

@@ -1,5 +1,11 @@
 # Retire — removing what the operator decides is not earning its place
 
+- [Evidence limits](#evidence-is-a-candidate-never-a-verdict)
+- [Invariants](#invariants--every-verb-no-exceptions)
+- [Drop a hook](#retire-drop-hook-command)
+- [Drop a rule](#retire-drop-rule-path)
+- [Scope](#what-is-not-here-and-why)
+
 `extend` adds; this is the verb menu that removes.
 
 ## Evidence is a candidate, never a verdict
