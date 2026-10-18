@@ -313,6 +313,17 @@ plugin root, checks against the composition manifest are skipped. Present each
 returned finding with its severity, location and hint; the binary owns the
 settings, wiring, template-integrity and unresolved-marker checks.
 
+| Finding | Meaning |
+|---|---|
+| `audit-ms-timeout` | Review a timeout that resembles milliseconds. |
+| `audit-mcp-matcher-incomplete` | An MCP matcher lacks its tool suffix. |
+| `audit-hook-script-missing` | A declared scaffold hook script is absent. |
+| `audit-hook-not-executable` | A directly spawned hook lacks executable permission. |
+| `audit-managed-region-edited` | Managed content differs from its template. |
+| `audit-managed-region-missing` | A managed artifact lacks its sentinels. |
+| `audit-copy-drift` | Copied machinery differs from its template. |
+| `audit-fill-marker-unresolved` | A generation marker still needs an observed value. |
+
 Report artifact presence separately: an absent artifact is not itself a
 finding, so an empty finding list does not establish a complete harness.
 For copy drift, explain that the bytes cannot distinguish a kept incumbent,
