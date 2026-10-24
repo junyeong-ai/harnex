@@ -205,7 +205,9 @@ repo is never penalised for the tool it does not install.
   file breaks an unfinished one: `ruff check --fix` and `google-java-format`
   remove the import the next edit uses, and `biome check --write` turns a `let`
   the next edit reassigns into `const`. Lint fixes stay with the gate, which
-  sees the finished change.
+  sees the finished change. ktlint has no format-only mode: `-F` applies every
+  autocorrecting rule the project's `.editorconfig` enables, so a project that
+  enables `no-unused-imports` there meets the same hazard.
 - **The per-file formatter must resolve the same config the gate does.**
   `common/_format-target.sh` resolves the edited file inside the physical
   project root for every language hook. A missing helper is an installation

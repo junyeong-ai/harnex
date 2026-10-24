@@ -347,7 +347,10 @@ already contradicted both a page and the binary's own schema.
   A subagent's `skills:` injects each listed skill's full content at startup,
   drawn from the skills Claude can invoke — so one that sets
   `disable-model-invocation` is skipped, and a knowledge skill meant for an
-  agent hides from the menu with `user-invocable: false` instead.
+  agent hides from the menu with `user-invocable: false` instead. A
+  `context: fork` skill whose `agent:` preloads skills starts with them too —
+  measured on 2.1.310: the fork named a word only the preloaded skill held, and
+  answered that it had none once the agent's `skills:` line was removed.
 - **`allowed-tools` GRANTS (pre-approves) tools for the invoking turn; it
   does NOT restrict.** `disallowed-tools` REMOVES tools from Claude's pool
   for the invoking turn (the inverse). Both tool changes clear on the next
