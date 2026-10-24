@@ -492,3 +492,105 @@ fn a_repository_whose_path_holds_a_newline_is_still_reported() {
         "git runs hooks from elsewhere, whatever the path spells: {said}"
     );
 }
+
+fn git_ok(root: &Path, args: &[&str]) {
+    let status = common::git(root)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .status()
+        .expect("git runs");
+    assert!(status.success(), "git {args:?} failed");
+}
+
+fn commit(root: &Path, message: &str) {
+    git_ok(root, &["commit", "-q", "--allow-empty", "-m", message]);
+}
+
+/// A remote with one commit on `main`, and a clone of it holding the probe —
+/// the clone's upstream and the remote's default branch as git records them.
+fn remote_and_clone() -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let origin = dir.path().join("origin");
+    std::fs::create_dir_all(&origin).expect("origin dir");
+    git_ok(&origin, &["init", "-q", "-b", "main", "."]);
+    commit(&origin, "one");
+    git_ok(dir.path(), &["clone", "-q", "origin", "clone"]);
+    let clone = dir.path().join("clone");
+    std::fs::create_dir_all(clone.join("hooks")).expect("hooks dir");
+    std::fs::copy(template(), clone.join("hooks/session-start.sh")).expect("copy probe");
+    (dir, origin, clone)
+}
+
+#[test]
+fn a_branch_is_told_where_it_stands_against_its_upstream() {
+    let (_dir, origin, clone) = remote_and_clone();
+    commit(&origin, "two");
+    git_ok(&clone, &["fetch", "-q"]);
+    commit(&clone, "local");
+    let said = probe(&clone);
+    assert!(
+        said.contains("Upstream origin/main: 1 behind, 1 ahead (as of the last fetch)"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("Default branch"),
+        "the upstream is the default branch, so it is said once: {said}"
+    );
+}
+
+#[test]
+fn a_topic_branch_is_told_what_the_default_branch_has_that_it_does_not() {
+    let (_dir, origin, clone) = remote_and_clone();
+    git_ok(&clone, &["switch", "-q", "-c", "topic"]);
+    commit(&origin, "two");
+    commit(&origin, "three");
+    git_ok(&clone, &["fetch", "-q"]);
+    let said = probe(&clone);
+    assert!(
+        said.contains("Default branch origin/main: 2 commit(s) not in this branch"),
+        "{said}"
+    );
+    assert!(!said.contains("Upstream"), "topic has no upstream: {said}");
+}
+
+#[test]
+fn each_worktree_hears_of_the_others() {
+    let (dir, _origin, clone) = remote_and_clone();
+    let side = dir.path().join("side tree");
+    git_ok(
+        &clone,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "side",
+            side.to_str().unwrap(),
+        ],
+    );
+    let from_clone = probe(&clone);
+    assert!(
+        from_clone.contains("Other worktrees of this clone:"),
+        "{from_clone}"
+    );
+    assert!(from_clone.contains("- side at "), "{from_clone}");
+    assert!(
+        !from_clone.contains("- main at "),
+        "not itself: {from_clone}"
+    );
+    let from_side = probe_from(&side, &clone.join("hooks/session-start.sh"));
+    assert!(from_side.contains("- main at "), "{from_side}");
+    assert!(!from_side.contains("- side at "), "not itself: {from_side}");
+}
+
+#[test]
+fn a_lone_clone_with_no_remote_hears_no_orientation() {
+    let dir = clone_with(&[]);
+    let said = probe(dir.path());
+    for line in ["Upstream", "Default branch", "Other worktrees"] {
+        assert!(!said.contains(line), "{line}: {said}");
+    }
+}
