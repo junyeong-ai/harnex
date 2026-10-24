@@ -251,6 +251,20 @@ fn plan_audit_reports_its_findings_and_fails_the_gate() {
         assert!(stdout.contains(slug), "{slug} missing from: {stdout}");
     }
 
+    // An arm generated before 0.36 still passes the round budget. Refused, the
+    // arm would read the argument error as a skipped gate; accepted, the same
+    // findings fail the gate and a warning names the regeneration.
+    let legacy = harness()
+        .args(["plan", "audit", "--plan"])
+        .arg(&plan)
+        .args(["--max-rounds", "5"])
+        .output()
+        .unwrap();
+    assert_eq!(legacy.status.code(), Some(1), "{legacy:?}");
+    let stdout = String::from_utf8(legacy.stdout).unwrap();
+    assert!(stdout.contains("plan-open-blocker"), "{stdout}");
+    assert!(stdout.contains("plan-max-rounds-ignored"), "{stdout}");
+
     // The same inputs with nothing to report: exit 0 and an empty finding set,
     // so the assertion above is about the findings and not about the command.
     std::fs::write(&plan, "# t — Plan\n\n## Outstanding issues\n").unwrap();

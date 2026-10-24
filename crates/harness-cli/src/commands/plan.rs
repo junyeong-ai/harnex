@@ -4,11 +4,11 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 
-use harness_core::envelope::ListResponse;
+use harness_core::envelope::{ListResponse, Warning};
 use harness_core::error::{Error, Result};
 use harness_core::plan::PlanAuditor;
 
-use super::write_envelope_success;
+use super::write_envelope_success_warned;
 
 #[derive(Subcommand)]
 pub enum PlanCommand {
@@ -36,8 +36,17 @@ pub enum PlanCommand {
         /// gate
         #[arg(long, value_delimiter = ',')]
         gates: Option<Vec<String>>,
+        /// The round budget arms generated before 0.36 still pass. Accepted and
+        /// not read, because such an arm turns an argument error into a
+        /// skipped gate; a warning names the regeneration instead.
+        #[arg(long, hide = true)]
+        max_rounds: Option<String>,
     },
 }
+
+/// Warning code for an arm that still passes `--max-rounds`. Stable: a
+/// consumer filters on it.
+pub const MAX_ROUNDS_IGNORED_CODE: &str = "plan-max-rounds-ignored";
 
 /// No `harness.toml` is loaded: the grammar is harness vocabulary, the files
 /// are named by the caller, and a gate that must run in any repo the pattern
@@ -49,6 +58,7 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         baseline,
         baseline_spec,
         gates,
+        max_rounds,
     } = cmd;
 
     // An absent plan is a judged state when anything else anchors the audit —
@@ -98,7 +108,16 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
     .audit();
 
     let has_gating_finding = findings.iter().any(|f| f.severity.fails_gate());
-    write_envelope_success(out, ListResponse::new(findings))?;
+    let warnings = max_rounds
+        .map(|_| Warning {
+            code: MAX_ROUNDS_IGNORED_CODE.to_string(),
+            message: "`--max-rounds` is not read: no count of rounds bounds a review. Regenerate \
+                      hooks/pre-commit.d/check-plan.sh from the spec-workflow pattern"
+                .to_string(),
+        })
+        .into_iter()
+        .collect();
+    write_envelope_success_warned(out, ListResponse::new(findings), warnings)?;
     Ok(if has_gating_finding {
         ExitCode::from(1)
     } else {

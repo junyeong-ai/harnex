@@ -49,3 +49,28 @@ pub fn git(root: &Path) -> Command {
         .env("GIT_CONFIG_SYSTEM", "/dev/null");
     command
 }
+
+/// Every bash a shipped script must parse under that this machine has: the one
+/// on `PATH`, and `/bin/bash`, which macOS keeps at 3.2 whatever `PATH` holds.
+pub fn bashes() -> Vec<&'static str> {
+    ["bash", "/bin/bash"]
+        .into_iter()
+        .filter(|bash| Command::new(bash).arg("--version").output().is_ok())
+        .collect()
+}
+
+/// `bash -n` under every bash in [`bashes`]; `Err` names the one that refused
+/// and what it said.
+pub fn parses_under_every_bash(path: &Path) -> Result<(), String> {
+    for bash in bashes() {
+        let out = Command::new(bash)
+            .arg("-n")
+            .arg(path)
+            .output()
+            .map_err(|e| format!("{bash}: {e}"))?;
+        if !out.status.success() {
+            return Err(format!("{bash}: {}", String::from_utf8_lossy(&out.stderr)));
+        }
+    }
+    Ok(())
+}

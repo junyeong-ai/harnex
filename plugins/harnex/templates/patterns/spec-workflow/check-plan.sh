@@ -17,7 +17,9 @@
 # must reach the audit like any other path.
 #
 # Fail-open on a missing binary and on a runtime failure of the tool itself;
-# only findings block. Escape hatch via HARNEX_SKIP_PLANCHECK=1 when the
+# only findings block — and an argument this arm passes that the installed
+# harnex does not read, because skipping there would end the floor in silence
+# on every commit after an upgrade. Escape hatch via HARNEX_SKIP_PLANCHECK=1 when the
 # operator has decided the state may land as it stands. Set, it says so on the
 # commit it skips, and the block message below names no way around itself: the
 # loop this floor bounds is what reads it first.
@@ -33,6 +35,12 @@ command -v harnex >/dev/null 2>&1 || {
   exit 0
 }
 
+# The process substitution that feeds the loop below lists one plan path per
+# spec: a staged spec.md alone is enough to rewrite the decision log, so both
+# artifacts trigger, mapped to their spec's plan path and de-duplicated. Its
+# case arms open with a parenthesis because bash 3.2 cannot parse a bare arm
+# there, and bash 3.2 re-parses that body when it runs, so nothing inside it
+# may carry an unbalanced quote, parenthesis or backtick, comments included.
 PLAN_GLOB="specs/*/plan.md"
 SPEC_GLOB="specs/*/spec.md"
 
@@ -83,19 +91,25 @@ while IFS= read -r -d '' f; do
     status=1
     ;;
   *)
-    echo "[harnex] plan audit could not run on $f (exit $code) — skipped." >&2
+    # `plan audit` loads no config, so CONFIG_INVALID is an argument it
+    # refused: this arm and the installed binary disagree.
+    if [[ "$out" == *'"code":"CONFIG_INVALID"'* ]]; then
+      echo "[harnex] this arm passes arguments the installed harnex does not read — commit blocked." >&2
+      echo "$out" >&2
+      echo "         Regenerate it from the spec-workflow pattern, or install the harnex harness.toml pins." >&2
+      status=1
+    else
+      echo "[harnex] plan audit could not run on $f (exit $code) — skipped." >&2
+    fi
     ;;
   esac
 done < <(
-  # A staged spec.md alone is enough to rewrite the decision log, so both
-  # artifacts trigger, mapped to their spec's plan path and de-duplicated —
-  # one audit per spec, whichever half the commit stages.
   git -c core.quotePath=off diff --cached --name-only -z --no-renames --diff-filter=ACMRD |
     while IFS= read -r -d '' p; do
       # shellcheck disable=SC2254 -- the globs are the match
       case "$p" in
-      $PLAN_GLOB) printf '%s\0' "$p" ;;
-      $SPEC_GLOB) printf '%s\0' "${p%spec.md}plan.md" ;;
+      ($PLAN_GLOB) printf '%s\0' "$p" ;;
+      ($SPEC_GLOB) printf '%s\0' "${p%spec.md}plan.md" ;;
       esac
     done | sort -zu
 )
