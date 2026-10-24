@@ -7,26 +7,21 @@
 //! the failure surfaces to a first-time operator as `CONFIG_INVALID` on the
 //! very first command.
 //!
-//! Discovery is a directory read rather than a literal list, so a new example
-//! is covered the moment it lands.
+//! Discovery asks git rather than a literal list, so a new example is covered
+//! the moment it is added, and a file this machine keeps there untracked is
+//! not one.
+
+mod common;
 
 use std::path::PathBuf;
 
 use harness_core::config::Config;
 
-fn examples_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples")
-}
-
 fn example_files() -> Vec<PathBuf> {
-    let dir = examples_dir();
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
-        .map(|entry| entry.expect("directory entry").path())
-        .filter(|p| p.is_file())
-        .collect();
-    files.sort();
-    files
+    common::tracked(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        "examples",
+    )
 }
 
 #[test]
