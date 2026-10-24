@@ -16,7 +16,8 @@ blank-page problem in disguise.
   count file-name casing per kind, read the construction verbs
   off the functions that build things, read the suffixes off the option/config
   types, and take the domain vocabulary from type and table names rather than
-  from prose. Name the file that settles each answer. Where the code is
+  from prose — with the alternatives the code refuses, and the user-facing term
+  from locale keys where the copy speaks another language. Name the file that settles each answer. Where the code is
   inconsistent, say which concept has two names — that is the decision the
   team still owes, and it is the most valuable line in the file. A convention
   imported from another project contradicts the code a reader is looking at,

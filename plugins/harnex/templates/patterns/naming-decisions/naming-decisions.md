@@ -62,8 +62,10 @@ than inventing a meaning nobody has used.
 
 The ubiquitous language: one word per concept, and the word the code uses.
 
-<!-- harnex-fill: each concept where this repo has settled on one word over
-     obvious alternatives, with the module that defines it. Read the type and
-     table names, not the prose — "tenant" (not organization/workspace/account)
-     is a finding only if the code says tenant. Flag the ones where the code is
-     inconsistent: those are the decisions the team still owes. -->
+<!-- harnex-fill: a table — concept | the word the code uses | the module
+     that defines it | the alternatives a writer reaches for that the code
+     does not use | the user-facing term, where the product's copy speaks
+     another language. Read type, table and locale-key names, not the prose —
+     "tenant" (not organization/workspace/account) is a row only if the code
+     says tenant. Flag the concepts the code spells two ways: those are the
+     decisions the team still owes. -->
