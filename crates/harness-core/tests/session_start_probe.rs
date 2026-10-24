@@ -594,3 +594,14 @@ fn a_lone_clone_with_no_remote_hears_no_orientation() {
         assert!(!said.contains(line), "{line}: {said}");
     }
 }
+
+#[test]
+fn a_clone_whose_path_holds_a_backslash_is_still_itself() {
+    let (dir, _origin, clone) = remote_and_clone();
+    let odd = dir.path().join("back\\slash");
+    std::fs::rename(&clone, &odd).expect("move the clone");
+    git_ok(&odd, &["worktree", "add", "-q", "-b", "side", "../side"]);
+    let said = probe(&odd);
+    assert!(said.contains("- side at "), "{said}");
+    assert!(!said.contains("- main at "), "not itself: {said}");
+}

@@ -30,7 +30,9 @@ if default=$(git symbolic-ref -q --short "refs/remotes/${remote:-origin}/HEAD" 2
   printf 'Default branch %s: %s commit(s) not in this branch (as of the last fetch)\n' "$default" "$missing"
 fi
 here=$(git rev-parse --show-toplevel 2>/dev/null)
-others=$(git worktree list --porcelain 2>/dev/null | awk -v here="$here" '
+# Read through ENVIRON: `awk -v` would read a backslash in the path as an escape.
+others=$(git worktree list --porcelain 2>/dev/null | here="$here" awk '
+  BEGIN        { here = ENVIRON["here"] }
   /^worktree / { path = substr($0, 10); name = ""; bare = 0 }
   /^branch /   { name = substr($0, 8); sub("^refs/heads/", "", name) }
   /^detached/  { name = "(detached)" }
