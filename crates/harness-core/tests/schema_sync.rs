@@ -3,8 +3,7 @@
 //! `schemas/harness.schema.json` is what an editor and a generated harness
 //! read `harness.toml` against, and it is emitted from `Config` — so a doc
 //! comment or a field that moves without it leaves the reader holding a
-//! contract the binary no longer keeps. CI compares the two; this holds the
-//! same comparison where a change is made, before it is pushed.
+//! contract the binary no longer keeps.
 
 use std::path::PathBuf;
 

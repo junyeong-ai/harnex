@@ -1,0 +1,5 @@
+rules:
+  # Updates are taken as soon as they are released; CI is the gate each one
+  # passes, so a cooldown would only delay fixes.
+  dependabot-cooldown:
+    disable: true
