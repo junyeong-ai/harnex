@@ -61,17 +61,10 @@ fn resolve_fill_markers(path: &Path) {
     fs::write(path, out).unwrap_or_else(|e| panic!("fill {path:?}: {e}"));
 }
 
-/// `bash -n <path>` — syntax-check a generated shell script without running it.
-/// On non-unix (no bash), assume OK; the unix CI lane is the gate.
+/// `bash -n <path>` under every bash the machine has — a generated script
+/// runs wherever the project is checked out, macOS's bash 3.2 included.
 fn bash_n_ok(path: &Path) -> bool {
-    match std::process::Command::new("bash")
-        .arg("-n")
-        .arg(path)
-        .status()
-    {
-        Ok(status) => status.success(),
-        Err(_) => true,
-    }
+    common::parses_under_every_bash(path).is_ok()
 }
 
 /// Materialise a project from `templates/scaffold.toml` exactly as the skill
