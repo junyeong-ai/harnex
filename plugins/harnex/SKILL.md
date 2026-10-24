@@ -180,13 +180,14 @@ Verify: `bash -n` on every `.sh` and on every extensionless hook under
 `hooks/`, JSON-parse settings.json. Probe the oracle with `harnex --version`
 — the grant every harness carries — and run `harnex check` /
 `harnex audit --plugin-root ${CLAUDE_SKILL_DIR}` when it answers. A probe the runtime refused did not run: report that, never
-an absent binary. An absent binary is reported as missing with its installer
-at the release the scaffolded pin starts from,
-`curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash -s -- --version v<floor>`
-with `<floor>` the lower bound of `[meta] harnex_version` written in full, a
-part it leaves out as 0 (`>=0.35` starts at `0.35.0`), which puts it on the
-machine directly rather than behind a tool manager's shim that every hook call
-would pass through; the skill never installs it. On a repo that already had artifacts, the scaffolded `harness.toml`
+an absent binary. An absent binary is reported as missing with its installer,
+`curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash -s -- --version <tag>`
+with `<tag>` the newest release of that repository that `[meta] harnex_version`
+admits, since a later patch carries corrections, and at the least `v` with the
+pin's lower bound written in full, a part it leaves out as 0 (`>=0.35` starts
+at `v0.35.0`). The installer puts it on the machine directly rather than behind
+a tool manager's shim that every hook call would pass through; the skill never
+installs it. On a repo that already had artifacts, the scaffolded `harness.toml`
 points validators at them for the first time, so report those findings as part
 of what the scaffold revealed rather than leaving them to be discovered — a
 brownfield harness typically has some, and they are the reason the scaffold was
