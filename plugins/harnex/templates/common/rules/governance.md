@@ -16,6 +16,20 @@ The harness improves by promoting recurring observations into rules, and by
 retiring artifacts that stopped earning their context cost. The loop is
 operator-driven and evidence-gated — never auto-applied, never AI-invented.
 
+## Where a lesson goes
+
+A lesson the work taught goes where the next session doing that work reads
+while doing it:
+
+| The lesson | Where it goes |
+|---|---|
+| holds on every edit of some files | a path-scoped rule, through the promotion gate below |
+| holds while following a procedure | the step of the skill that directs it, through the same gate |
+| holds while running a command | the message the command prints where the condition arises |
+| is a constraint of one piece of code | that code's comment, or its test |
+| was seen once and may recur | an observation (below) |
+| says how a change came to be — what was measured, what happened | the change's commit body |
+
 ## Where observations accumulate
 
 A candidate starts as an observation, not a rule. Record it where it survives
