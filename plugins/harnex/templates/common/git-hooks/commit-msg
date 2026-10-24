@@ -5,7 +5,9 @@
 # otherwise skips. The oracle validates closed-enum trailer values and
 # required-trailer presence.
 #
-# Fail-open: missing harnex binary → skip.
+# Fail-open: a missing binary is install-to-enable silence, and one that
+# cannot run — a release the pin refuses, among them — lets the commit through
+# and says so, with the envelope that names the cause.
 # Escape hatch via HARNEX_SKIP_COMMITMSG=1. Set, it says so on the commit it
 # skips: a floor that is off silently is a floor nobody knows is off.
 set -uo pipefail
@@ -25,5 +27,7 @@ case $STATUS in
   1) echo "[harnex] commit message validation failed:" >&2
      echo "$OUTPUT" >&2
      exit 1 ;;
-  *) exit 0 ;;
+  *) echo "[harnex] commit message not checked — harnex could not run (exit $STATUS):" >&2
+     echo "$OUTPUT" >&2
+     exit 0 ;;
 esac
