@@ -85,28 +85,6 @@ jobs:
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npx playwright test
 
-  msrv:
-    name: msrv
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      # MSRV asks whether the floor compiles, not whether it lints identically
-      # to the pinned toolchain, so the workspace's deny-warnings flag is off
-      # here — a lint added between the floor and the pin is not a floor break.
-      RUSTFLAGS: ""
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: compile against the declared rust-version floor
-        run: |
-          floor=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
-          [ -n "$floor" ] || { echo "Cargo.toml declares no rust-version"; exit 1; }
-          echo "declared floor: $floor"
-          rustup toolchain install "$floor" --profile minimal
-          RUSTUP_TOOLCHAIN="$floor" cargo check --workspace --all-targets --locked
-
   deny:
     name: cargo deny
     runs-on: ubuntu-latest

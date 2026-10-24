@@ -85,10 +85,10 @@ scripts/install.sh --check            # what is installed, changing nothing
 scripts/install.sh --help             # every option
 ```
 
-`--build` needs Rust 1.98+; the script reads that floor from `Cargo.toml`
-rather than holding a second copy, and `rust-toolchain.toml` pins the exact
-toolchain so a checkout builds with the same compiler CI uses. `cargo build
---release` still works for a local build without installing.
+`--build` needs the Rust that `rust-toolchain.toml` pins, the compiler CI
+builds with; the script checks for it against the `rust-version` in
+`Cargo.toml` rather than holding a second copy. `cargo build --release` still
+works for a local build without installing.
 
 Every asset is built by `.github/workflows/release.yml` from the tag it is
 attached to, and carries provenance saying so:

@@ -181,14 +181,18 @@ required_rust() {
   sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/Cargo.toml" | head -1
 }
 
-# Numeric comparison, so 1.100 sorts above 1.97 rather than below it.
+# Numeric comparison of major.minor.patch, so 1.100 sorts above 1.97 rather
+# than below it. A pre-release suffix is dropped, as cargo drops it when it
+# holds a compiler to `rust-version`.
 version_at_least() {
-  local have="$1" want="$2" h w
-  IFS=. read -r h w _ <<<"$have";   local h1=${h:-0} h2=${w:-0}
-  IFS=. read -r h w _ <<<"$want";   local w1=${h:-0} w2=${w:-0}
-  [ "$h1" -gt "$w1" ] && return 0
-  [ "$h1" -lt "$w1" ] && return 1
-  [ "$h2" -ge "$w2" ]
+  local have want i
+  IFS=. read -r -a have <<<"${1%%-*}"
+  IFS=. read -r -a want <<<"${2%%-*}"
+  for i in 0 1 2; do
+    [ "${have[i]:-0}" -gt "${want[i]:-0}" ] && return 0
+    [ "${have[i]:-0}" -lt "${want[i]:-0}" ] && return 1
+  done
+  return 0
 }
 
 build_from_source() {
