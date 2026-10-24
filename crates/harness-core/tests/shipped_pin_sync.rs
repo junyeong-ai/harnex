@@ -6,7 +6,7 @@
 //! harness written from this release uses may be a patch's addition: a lower
 //! floor admits a binary that refuses it as an unknown key rather than as the
 //! version it is. The floor is written in full because it is also a tag: the
-//! skill installs `v<floor>`, and no release is tagged `v0.36`.
+//! skill installs at least `v<floor>`, and no release is tagged `v0.36`.
 //! Constitution IX.
 
 mod common;
