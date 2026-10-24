@@ -175,7 +175,7 @@ download_release() {
 
   step "downloading $archive from $tag"
   curl -fsSL "$base/$archive" -o "$dir/$archive" ||
-    die "$tag has no $archive — see $REPO_URL/releases, or build it with --build --rev $tag"
+    die "could not download $archive from $tag — the output above says why; see $REPO_URL/releases, and if $tag is listed without this archive, run --build --rev $tag in place of --version"
   curl -fsSL "$base/$sums" -o "$dir/$sums" ||
     die "$archive downloaded but $sums did not — refusing to install bytes it cannot verify"
 
