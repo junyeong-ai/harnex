@@ -118,17 +118,19 @@ fn readme_text(readme: &str) -> Vec<String> {
     blocks
 }
 
-/// Every value written as `<key> = "…"` in that text. Each occurrence of the
-/// key is read where it stands, so a value naming the key is not split there,
-/// and a quote left open is reported as the typo it is.
+/// Every value written as `<key> = "…"` or, as a TOML literal string,
+/// `<key> = '…'` in that text. Each occurrence of the key is read where it
+/// stands, so a value naming the key is not split there, and a quote left open
+/// is reported as the typo it is.
 fn assigned(blocks: &[String], key: &str) -> Vec<String> {
     blocks
         .iter()
         .flat_map(|text| {
             text.match_indices(key).filter_map(move |(at, _)| {
                 let value = text[at + key.len()..].trim_start().strip_prefix('=')?;
-                let value = value.trim_start().strip_prefix('"')?;
-                let (value, _) = value.split_once('"').unwrap_or_else(|| {
+                let value = value.trim_start();
+                let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+                let (value, _) = value[1..].split_once(quote).unwrap_or_else(|| {
                     panic!("{README} leaves the quote after {key} open: `{text}`")
                 });
                 Some(value.to_string())
