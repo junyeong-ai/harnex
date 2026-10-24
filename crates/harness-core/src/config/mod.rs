@@ -670,6 +670,16 @@ impl Config {
             path: path.to_path_buf(),
             source: e,
         })?;
+        // The pin is held before the closed schema reads the rest: a key a
+        // later release added is unknown to an older binary, and refusing the
+        // key first would name it instead of the version that explains it. A
+        // file the pin cannot be read from fails the full parse below.
+        let pin = toml::from_str::<toml::Table>(&contents)
+            .ok()
+            .and_then(|t| Some(t.get("meta")?.get("harnex_version")?.as_str()?.to_owned()));
+        if let Some(pin) = pin {
+            Self::validate_version(&pin)?;
+        }
         let config: Config = toml::from_str(&contents).map_err(|e| Error::ConfigInvalid {
             message: format!("toml parse failure: {e}"),
             location: Some(crate::envelope::Location::file(path.to_path_buf())),
@@ -680,7 +690,7 @@ impl Config {
 
     /// Validate all cross-section invariants. Idempotent.
     pub fn validate(&self) -> Result<()> {
-        self.validate_version()?;
+        Self::validate_version(&self.meta.harnex_version)?;
         self.validate_kinds()?;
         self.validate_evidence()?;
         self.validate_telemetry()?;
@@ -692,8 +702,8 @@ impl Config {
         Ok(())
     }
 
-    fn validate_version(&self) -> Result<()> {
-        let raw = self.meta.harnex_version.trim();
+    fn validate_version(pin: &str) -> Result<()> {
+        let raw = pin.trim();
         if raw.is_empty() {
             return Err(Error::ConfigInvalid {
                 message: "[meta] harnex_version is empty".into(),
@@ -1767,6 +1777,21 @@ mod tests {
         "#;
         assert_eq!(
             parse(src).unwrap_err().code(),
+            ErrorCode::ConfigVersionMismatch
+        );
+    }
+
+    #[test]
+    fn a_pin_outside_the_binary_is_reported_before_a_key_it_does_not_know() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        std::fs::write(
+            &path,
+            "[meta]\nharnex_version = \">=9.0, <10.0\"\n[a_section_a_later_release_adds]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            Config::load_from(&path).unwrap_err().code(),
             ErrorCode::ConfigVersionMismatch
         );
     }
