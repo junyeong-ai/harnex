@@ -175,7 +175,7 @@ download_release() {
 
   step "downloading $archive from $tag"
   curl -fsSL "$base/$archive" -o "$dir/$archive" ||
-    die "$tag has no $archive — see $REPO_URL/releases, or pass --build"
+    die "$tag has no $archive — see $REPO_URL/releases, or build it with --build --rev $tag"
   curl -fsSL "$base/$sums" -o "$dir/$sums" ||
     die "$archive downloaded but $sums did not — refusing to install bytes it cannot verify"
 
@@ -263,7 +263,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 if [ "$BUILD" -eq 0 ]; then
-  have curl || die "curl is not installed — install it, or pass --build"
+  have curl || die "curl is not installed — install it, or build from source with --build (--rev <tag> for a release)"
   TAG="$VERSION"
   if [ -z "$TAG" ]; then
     TAG="$(latest_tag)" || exit 1
