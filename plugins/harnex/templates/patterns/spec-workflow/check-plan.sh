@@ -64,7 +64,7 @@ while IFS= read -r -d '' f; do
   fi
   # The gate list is this workflow's own, so a firing under any other name is
   # refused. Add a gate here when the workflow gains one.
-  args=(--plan "$f" --gates clarify,design_review,review,acceptance,resume)
+  args=(--plan "$f" --gates "clarify,design_review,review,acceptance,resume")
   git show ":$f" >"$tmp/$f" 2>/dev/null || rm -f "$tmp/$f"
   # The four inputs are always supplied, and absent is spelled as empty. A
   # staged plan whose spec is not in the index would otherwise skip every
@@ -106,7 +106,7 @@ while IFS= read -r -d '' f; do
 done < <(
   git -c core.quotePath=off diff --cached --name-only -z --no-renames --diff-filter=ACMRD |
     while IFS= read -r -d '' p; do
-      # shellcheck disable=SC2254 -- the globs are the match
+      # shellcheck disable=SC2254 # the globs are the match
       case "$p" in
       ($PLAN_GLOB) printf '%s\0' "$p" ;;
       ($SPEC_GLOB) printf '%s\0' "${p%spec.md}plan.md" ;;
