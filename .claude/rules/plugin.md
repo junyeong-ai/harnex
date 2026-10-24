@@ -80,8 +80,8 @@ to `plugins/harnex/`.
   is the list the skill offers — what the pattern gives a project, then what
   its analysis observes. The `pattern_manifest_sync` test fails on
   drift among the three. Pattern files ship CONCRETE proven
-  defaults, never blank fill-ins — every `<!-- harnex-fill: … -->` is replaced
-  at install time by the skill from project analysis. That is the one marker
+  defaults, never blank fill-ins — every `harnex-fill` marker is replaced at
+  install time by the skill from project analysis. That is the one marker
   token; `sentinel::fill_markers` owns its grammar and `audit-fill-marker-
   unresolved` reports any that ship.
 - **Extend mode is a closed verb menu.** When adding a new extend verb,
