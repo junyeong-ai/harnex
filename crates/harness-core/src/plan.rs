@@ -147,8 +147,8 @@ wire_enum! {
 
 /// The gates whose firings must write counts into their decision lines, and
 /// which token each owes. Gate names are otherwise open — a project may
-/// declare more at install time — but these ship in the templates and carry
-/// the convergence contract.
+/// declare more at install time — but these ship in the templates and owe the
+/// counts each round is read back by.
 pub const COUNTED_GATES: [(&str, GateClass); 3] = [
     ("design_review", GateClass::Review),
     ("review", GateClass::Review),

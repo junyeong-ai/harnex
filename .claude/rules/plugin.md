@@ -16,7 +16,7 @@ alongside two component classes the skill does not own — `commands/`
 (user-invoked procedures) and `agents/` (the sub-agents those procedures
 dispatch). Everything under `plugins/harnex/` ships to installs, so guidance
 for editing it lives here rather than in the plugin. Paths below are relative
-to `plugins/harnex/`.
+to `plugins/harnex/`, and a bare `common/` or `<lang>/` to its `templates/`.
 
 - **Compose templates; never free-generate** a hook, permission rule, or
   timeout. The skill selects the language profiles the fingerprint matched and fills
@@ -82,8 +82,8 @@ to `plugins/harnex/`.
   drift among the three. Pattern files ship CONCRETE proven
   defaults, never blank fill-ins — every `harnex-fill` marker is replaced at
   install time by the skill from project analysis. That is the one marker
-  token; `sentinel::fill_markers` owns its grammar and `audit-fill-marker-
-  unresolved` reports any that ship.
+  token; `sentinel::fill_markers` owns its grammar and
+  `audit-fill-marker-unresolved` reports any that ship.
 - **Extend mode is a closed verb menu.** When adding a new extend verb,
   add its bullet to the `## Mode: extend` menu in `SKILL.md`, add a tested
   composition path in templates, and (if the verb mutates a SSoT) extend

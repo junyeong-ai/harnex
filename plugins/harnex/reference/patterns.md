@@ -44,7 +44,12 @@ blank-page problem in disguise.
   same list, and it also supplies the **bookend trigger's project signals**
   (a migration surface, an auth path, a generated-file guard). Name the
   **fast gate command** the loop's verify step runs and grant it in the
-  review skill's `allowed-tools`.
+  review skill's `allowed-tools`. A project that installed this pattern
+  before 0.36 holds the same vocabulary as `.claude/rules/review-lenses.md`
+  with `review-lenses` in `[validate.rules] always_loaded_slugs`: carry its
+  filled authorities and trigger signals into the skill, then delete the rule
+  and the slug, or the vocabulary has two owners and still loads every
+  session.
 - `spec-workflow` — the spec orchestrator as a skill (gate events with a
   closed decision-token enum, resume from disk), the threshold-and-lifecycle
   rule, `specs/_template/`, and a pre-commit arm that audits a plan's review
