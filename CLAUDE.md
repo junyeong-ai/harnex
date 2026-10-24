@@ -66,7 +66,7 @@ skill composes templates — it never free-generates safety-critical code.
 - `plugins/harnex/` (`SKILL.md` + `reference/` + `templates/`) — the harnex
   plugin, distributed via `.claude-plugin/marketplace.json`; consumed by Claude
   Code when the plugin is installed, not by this repo's own sessions.
-  `plugins/harnex/CLAUDE.md` is the editing contract, loaded when you work there.
+  `.claude/rules/plugin.md` is the editing contract, loaded when you work there.
 - `README.md` — the only human-facing surface (the two surfaces, install,
   oracle quickstart, what the oracle covers).
 - `.claude/rules/constitution.md` and `making-changes.md` — always-loaded:
