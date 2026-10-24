@@ -69,12 +69,14 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
     ),
     (
         "commands/measure.md",
-        72,
+        75,
         &[
             "BaselineDiff.from",
             "BaselineDiff.to",
             "BaselineWindow.observed_to",
             "Config.lifecycle",
+            "Config.meta",
+            "MetaConfig.harnex_version",
             "Submission.citation",
             "Submission.prompt_ids",
             "Submission.rule_loads",

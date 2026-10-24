@@ -109,15 +109,17 @@ range refuses every command that loads it, except the `guard` hooks, which
 skip rather than block a session. A break ships only in a new minor; a patch
 changes a gate's verdict on an unchanged tree only to catch a defect that was
 already there or to withdraw a regression it shipped. So the pin moves at a
-breaking release, or when a harness starts using what a later patch added. A
-machine working in repositories pinned to different minors keeps one binary
-per repository with a tool manager, for example mise:
+breaking release, or when a harness starts using what a later patch added.
 
-```toml
-# mise.toml
-[tools]
-"github:junyeong-ai/harnex" = "0.36"
-```
+Install the binary directly, at a release the pin admits —
+`curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash -s -- --version <tag>`,
+or `scripts/install.sh --version <tag>` from a clone — rather than through a
+tool manager's shim. The hooks call harnex on every commit and session event,
+a shim adds its own resolution to each call, and once installed it answers
+`harnex` for every repository whose `PATH` puts the shims first. A machine therefore holds one
+binary, and repositories pinned to different minors move to one, each by its
+own decision; until then the one left behind refuses with
+`CONFIG_VERSION_MISMATCH`.
 
 ## IDE integration
 

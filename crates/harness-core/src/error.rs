@@ -301,8 +301,9 @@ impl Error {
                 Some("create harness.toml at the project root (see examples/)")
             }
             Self::ConfigVersionMismatch { .. } => Some(
-                "run a harnex release that harness.toml's [meta] harnex_version admits (README \
-                 shows a per-repository pin), or move that pin after reading what the newer \
+                "install a harnex release that harness.toml's [meta] harnex_version admits \
+                 (curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh \
+                 | bash -s -- --version <tag>), or move that pin after reading what the newer \
                  release changed",
             ),
             Self::PathTraversal { .. } => Some("paths must not contain '..' segments"),
