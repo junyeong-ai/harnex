@@ -1,6 +1,7 @@
 ---
 paths:
   - ".claude/lenses/**"
+  - ".claude/skills/review-lenses/**"
   - ".claude/skills/review/**"
   - ".claude/skills/critique/**"
   - ".claude/skills/design-review/**"
@@ -8,6 +9,7 @@ governs:
   concept: where the review procedures live and what a lens file declares
   live_truth:
     - .claude/lenses
+    - .claude/skills/review-lenses
     - .claude/skills/review
     - .claude/skills/critique
     - .claude/skills/design-review
@@ -16,9 +18,11 @@ governs:
 
 # Review lens files
 
-What a review judges by is `.claude/rules/review-lenses.md`, which loads in every
-session because judgment answers to no file. This is the other half: which file holds
-which procedure, and what a lens file must declare to be walked.
+What a review judges by is the `review-lenses` skill
+(`.claude/skills/review-lenses/SKILL.md`) — the severities, what a finding
+blocks, the authorities, the two refutation regimes and the witness both
+require, and the trigger. This is the other half: which file holds which
+procedure, and what a lens file must declare to be walked.
 
 ## Where each procedure lives
 
@@ -28,11 +32,8 @@ which procedure, and what a lens file must declare to be walked.
   change set. Findings are its only output.
 - `.claude/skills/design-review/SKILL.md` — forked refutation of a design
   document before code exists, self-gated on the trigger below.
-- `.claude/agents/reviewer.md` — the fresh context every forked pass runs as.
-
-This file is the vocabulary all of them judge by — the severities, what a
-finding blocks, the authorities, the two refutation regimes and the witness
-both require, the trigger, and the lens contract.
+- `.claude/agents/reviewer.md` — the fresh context every forked pass runs as,
+  with `review-lenses` preloaded.
 
 ## Lens file contract
 
@@ -44,7 +45,8 @@ id: <kebab-case>
 applies_to: [code, prose]
 anchors:
   - rule:constitution   # authorities this lens cites, as <source>:<id> per
-                        # the column above. Add project rules during install.
+                        # the review-lenses authorities column. Add project
+                        # rules during install.
 ---
 ```
 
@@ -67,6 +69,7 @@ loop will walk it somewhere it has nothing to say.
 
 Body: a high-signal question, optionally with a few clarifying facets —
 never a linter-style exhaustive checklist. Findings reference an anchor's
-bare `<id>` (an authority id per the column above, never a file path) — no
+bare `<id>` (an authority id per the `review-lenses` authorities column,
+never a file path) — no
 finding without a citation. On install, re-point or add anchors to the
 project's actual rules where they exist.

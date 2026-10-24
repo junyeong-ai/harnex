@@ -21,7 +21,7 @@ prose sibling in — the rule whose `paths:` matches it and the nearest
 rather than inventing one.
 
 This is a change-set audit, so the code regime applies
-([file: .claude/rules/review-lenses.md § Two refutation regimes, chosen by subject]).
+([file: .claude/skills/review-lenses/SKILL.md § Two refutation regimes, chosen by subject]).
 Walk each lens in
 `.claude/lenses/` over the files its `applies_to:` covers, and return findings
 per the agent contract — nothing here loops, fixes, or writes; convergence

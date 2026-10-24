@@ -14,7 +14,7 @@ contract — regime selection, coverage, refutation, the close, delivery. This
 charge adds the gate, the subject, and the stall guard.
 
 **Gate first.** Read the document and evaluate the bookend trigger
-([file: .claude/rules/review-lenses.md § The bookend trigger]) against the surface
+([file: .claude/skills/review-lenses/SKILL.md § The bookend trigger]) against the surface
 it declares. No signal firing: report `Design review: not required — no
 trigger signal`, still closed per the agent contract — coverage names the
 document and the consult, the VERDICT counts zero — and stop; the skipped
@@ -29,7 +29,7 @@ every refutation in the tree: read the artifact the decision cites at its
 `file:line`, or run a cheap synthetic check; never re-derive the design's own
 logic and call the agreement verification. A decision you cannot ground-truth
 as sound is a finding — Major at most until a witness shows it wrong
-([file: .claude/rules/review-lenses.md § Two refutation regimes, chosen by subject]).
+([file: .claude/skills/review-lenses/SKILL.md § Two refutation regimes, chosen by subject]).
 Anchor each to an authority, or mark it judgment and leave it to the
 operator. Use the lenses as questions to sharpen refutations
 rather than walking them file by file — the lens walk is the change-set

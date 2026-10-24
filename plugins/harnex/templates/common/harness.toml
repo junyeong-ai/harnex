@@ -19,11 +19,11 @@ harnex_version = ">=0.35, <0.36"
 # whose `paths:` scopes nothing. A path-scoped rule's own text costs context
 # only on the files it governs, so `max_scoped_lines` stays unset: a cohesive
 # long rule is not a defect. The slugs below are the artifacts the scaffold
-# emits that are meant to load unconditionally — the laws, the conduct a
-# session is held to, and what a review judges by, none of which is truth
-# about a file that could scope it.
+# emits that are meant to load unconditionally — the laws and the conduct a
+# session is held to, neither of which is truth about a file that could scope
+# it.
 max_lines = 200
-always_loaded_slugs = ["constitution", "agent-conduct", "review-lenses"]
+always_loaded_slugs = ["constitution", "agent-conduct"]
 # Every path-scoped rule declares what it is truth ABOUT (`governs:` —
 # concept + live_truth), which is a different question from when it loads
 # (`paths:`). `harnex governs resolve` inverts the declarations into review

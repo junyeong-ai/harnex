@@ -1,8 +1,7 @@
 ---
-governs:
-  concept: what a review judges by
-  live_truth:
-    - .claude/lenses
+description: "The vocabulary every review in this project judges by: severity, the citation that decides whether a finding may be fixed unattended, the authorities a finding may cite, the refutation regime for a change set and for a design, filing discipline, the finding format and the default lenses."
+when_to_use: "Load before reviewing, critiquing or auditing a change set or a design document — including a review asked for in conversation with no review skill invoked. The reviewer agent preloads it, and the review loop invokes it before its first pass."
+user-invocable: false
 ---
 
 # Review lens framework
@@ -13,12 +12,10 @@ grown scope until convergence. Around it, forked passes restore the one thing
 an in-session loop structurally lacks: a context that did not watch the work
 form its opinion.
 
-This rule carries no `paths:`, so it loads in every session. What it governs is
-an activity, not a set of files: a review-and-fix pass a session runs on its own
-touches whatever it is reviewing and leaves no artifact a gate can read, and a
-loop outlives the one skill invocation that started it. Scoped to the files a
-procedure lives in, the discipline reaches every review except the ones with
-nothing else holding them.
+It loads when a review starts, not in every session: the reviewer agent
+preloads it, the review loop invokes it, and its description reaches a review a
+session runs on its own. A session that is writing code rather than reviewing
+it carries none of it.
 
 ## Severity is priority. The citation decides what gets fixed.
 
