@@ -24,8 +24,9 @@ written out in full. Probe by asking the binary its version, which is inside
 the grant this command carries; a refused probe did not run and is not an
 absent binary. Without the binary there are no numbers
 — say so and stop rather than estimating from the logs by hand, and name
-`curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash`
-as how it is installed. Enabling this plugin does not install it.
+`curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash -s -- --version <tag>`,
+with a release the project's `[meta] harnex_version` admits, as how it is
+installed. Enabling this plugin does not install it.
 
 ## 1 — Fix the window
 

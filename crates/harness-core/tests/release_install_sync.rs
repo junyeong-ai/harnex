@@ -15,9 +15,15 @@ use std::path::PathBuf;
 const WORKFLOW: &str = ".github/workflows/release.yml";
 const INSTALLER: &str = "scripts/install.sh";
 
-/// Documents that hand a reader a command to fetch the installer. A slug that
-/// rots here points a `curl | bash` at a repository this project does not own.
-const INSTALL_URL_DOCS: &[&str] = &["README.md", "plugins/harnex/commands/measure.md"];
+/// Files that hand a reader a command to fetch the installer — the documents,
+/// and the hint a version mismatch carries. A slug that rots here points a
+/// `curl | bash` at a repository this project does not own.
+const INSTALL_URL_SITES: &[&str] = &[
+    "README.md",
+    "plugins/harnex/SKILL.md",
+    "plugins/harnex/commands/measure.md",
+    "crates/harness-core/src/error.rs",
+];
 
 fn repo_file(rel: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -157,7 +163,7 @@ fn every_shipped_install_command_fetches_the_declared_repository() {
     );
     let expected = format!("{declared}/raw/main/scripts/install.sh");
 
-    for doc in INSTALL_URL_DOCS {
+    for doc in INSTALL_URL_SITES {
         let body = repo_file(doc);
         let urls: Vec<String> = body
             .split_whitespace()
@@ -167,7 +173,7 @@ fn every_shipped_install_command_fetches_the_declared_repository() {
 
         assert!(
             !urls.is_empty(),
-            "{doc} hands the reader no install command — drop it from INSTALL_URL_DOCS"
+            "{doc} hands the reader no install command — drop it from INSTALL_URL_SITES"
         );
         for url in urls {
             assert_eq!(url, expected, "{doc} fetches the installer from elsewhere");

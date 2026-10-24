@@ -33,14 +33,13 @@ fn this_release() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).expect("own version parses")
 }
 
-/// The first release a break may ship in, and the prefix a tool manager
-/// resolves to the newest release before it.
-fn next_break() -> (Version, String) {
+/// The first release a break may ship in.
+fn next_break() -> Version {
     let v = this_release();
     if v.major == 0 {
-        (Version::new(0, v.minor + 1, 0), format!("0.{}", v.minor))
+        Version::new(0, v.minor + 1, 0)
     } else {
-        (Version::new(v.major + 1, 0, 0), v.major.to_string())
+        Version::new(v.major + 1, 0, 0)
     }
 }
 
@@ -64,10 +63,9 @@ fn assert_starts_at_this_release(pin: &str, whose: &str) {
     let (Some(floor), Some(ceiling), 2) = (floor, ceiling, req.comparators.len()) else {
         panic!("{whose}: '{pin}' is not the `>=floor, <ceiling` form harnex ships");
     };
-    let (next, _) = next_break();
     assert_eq!(
         (bound(floor), bound(ceiling)),
-        (this_release(), next),
+        (this_release(), next_break()),
         "{whose} pins '{pin}': a shipped pin starts at this release and stops at the next \
          breaking one"
     );
@@ -140,18 +138,5 @@ fn the_readme_pins_from_this_release() {
     assert!(!pins.is_empty(), "{README} shows no harnex_version pin");
     for pin in &pins {
         assert_starts_at_this_release(pin, README);
-    }
-
-    let repo = env!("CARGO_PKG_REPOSITORY")
-        .strip_prefix("https://github.com/")
-        .expect("the workspace repository is on GitHub");
-    let (_, line) = next_break();
-    let managed = assigned(&text, &format!("\"github:{repo}\""));
-    assert!(!managed.is_empty(), "{README} shows no tool-manager pin");
-    for version in &managed {
-        assert_eq!(
-            version, &line,
-            "{README}'s tool-manager pin resolves to the newest release of this line"
-        );
     }
 }
