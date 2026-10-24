@@ -16,7 +16,7 @@
 # tree only to catch a defect that was already there or to withdraw a
 # regression it shipped.
 [meta]
-harnex_version = ">=0.36.0, <0.37"
+harnex_version = ">=0.36.1, <0.37"
 
 [validate.rules]
 # The Claude Code memory budget applies to what loads every turn — a rule
