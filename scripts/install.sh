@@ -192,11 +192,9 @@ download_release() {
 
 # ── the source path ──────────────────────────────────────────────────────────
 
-# The version the workspace declares, so this script never carries a second
-# copy of it to drift from. Only knowable from a clone; without one cargo
-# reports the floor itself when it is not met.
+# The version the clone's workspace declares, so this script never carries a
+# second copy of it to drift from.
 required_rust() {
-  [ -n "$ROOT" ] || return 0
   sed -n 's/^rust-version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/Cargo.toml" | head -1
 }
 
@@ -219,22 +217,30 @@ build_from_source() {
   have cargo || die "cargo is not installed — see https://rustup.rs, then re-run this"
 
   # Cargo runs from the clone when there is one, so rustup selects the
-  # toolchain `rust-toolchain.toml` pins rather than the caller's default.
-  local here="${ROOT:-$PWD}"
+  # toolchain its `rust-toolchain.toml` pins, and otherwise from the work
+  # directory, which no project's toolchain file claims. Only the clone's own
+  # tree is checked against its `rust-version` here: a ref is a tree cargo
+  # fetches, and cargo holds the compiler to that tree's own.
+  local here="${ROOT:-$dir}" from_clone=0
+  if [ -n "$ROOT" ] && [ -z "$REV" ]; then
+    from_clone=1
+  fi
 
   local cargo_version want
   cargo_version="$(cd "$here" && cargo --version)" ||
     die "cargo does not run in $here — the output above says why"
   cargo_version="${cargo_version#cargo }"
   cargo_version="${cargo_version%% *}"
-  want="$(required_rust)"
-  if [ -n "$want" ] && ! version_at_least "$cargo_version" "$want"; then
-    die "cargo $cargo_version is older than the Rust $want this workspace declares — install $want or newer"
+  if [ "$from_clone" -eq 1 ]; then
+    want="$(required_rust)"
+    if [ -n "$want" ] && ! version_at_least "$cargo_version" "$want"; then
+      die "cargo $cargo_version is older than the Rust $want this workspace declares — install $want or newer"
+    fi
   fi
   log "${DIM}cargo $cargo_version${RESET}"
 
   local install=(cargo install --locked --force --root "$dir/out")
-  if [ -n "$ROOT" ] && [ -z "$REV" ]; then
+  if [ "$from_clone" -eq 1 ]; then
     step "building from $ROOT"
     install+=(--path "$ROOT/$CRATE_PATH")
   else
