@@ -1543,7 +1543,11 @@ fn agent_validator_accepts_a_preloadable_or_unseen_skill() {
     let tmp = TempDir::new().unwrap();
     let skill = tmp.path().join("plugin/skills/lenses/SKILL.md");
     std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
-    std::fs::write(&skill, "---\ndescription: d\ndisable-model-invocation: true\n---\n").unwrap();
+    std::fs::write(
+        &skill,
+        "---\ndescription: d\ndisable-model-invocation: true\n---\n",
+    )
+    .unwrap();
     let plugin_agent = tmp.path().join("plugin/agents/reviewer.md");
     assert!(v.validate_text(md, &plugin_agent).is_empty());
 }
