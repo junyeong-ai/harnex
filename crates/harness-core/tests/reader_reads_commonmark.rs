@@ -152,3 +152,10 @@ fn the_one_divergence_from_a_renderer_is_the_one_that_is_written_down() {
         );
     }
 }
+
+/// A document is project input, and a panic ends the command without the
+/// envelope every caller reads. pulldown-cmark 0.13.4 panicked on this one.
+#[test]
+fn a_document_the_parser_once_panicked_on_is_read() {
+    assert!(parse_claims("- [o]:u\n    \t").is_empty());
+}
