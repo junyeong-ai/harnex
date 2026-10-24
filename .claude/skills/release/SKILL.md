@@ -50,10 +50,11 @@ break. Decide which this is before bumping, and say why in the release commit.
 
 Gate output on unmodified input is on that list, and it is the surface a
 release here moves most often. A finding newly reported because it was always
-true is the gate catching up rather than a break. Everything else is a break, a
-withdrawal included — and one withdrawal is worth shipping as a patch anyway:
-the one repairing a regression the pinned range already shipped, where the
-minor announcing it would put a pin edit between an operator and that repair.
+true is the gate catching up rather than a break, and output that leaves every
+verdict standing is an addition. Everything else is a break, a withdrawal
+included — and one withdrawal is worth shipping as a patch anyway: the one
+repairing a regression the pinned range already shipped, where the minor
+announcing it would put a pin edit between an operator and that repair.
 A withdrawal taken for cost repairs nothing and findings only stop, and one of
 behaviour operators have held for minors is no different; both are breaks like
 the rest. Say which it is and why. A second withdrawal of the same behaviour is
@@ -80,11 +81,13 @@ test matrix carries two operating systems and a development machine is one of
 them, so the other leg is only ever green in CI. That is why the run is watched
 rather than predicted.
 
-The pins are not a manual sweep, but they take two gates and not one. A stale
-`harnex_version` in a fixture, a template or a shipped example fails the suite.
-This repository's own `harness.toml` is loaded by no test, so a stale pin
-there is silent until `harnex check` reads it, which is what the audit job
-runs. Run both; neither alone covers every pin.
+The pins are not a manual sweep, but they take two gates and not one. A
+`harnex_version` in a fixture that excludes the new version fails the suite,
+and so does a shipped one — the template's, an example's, the README's — that
+does not start at it (`shipped_pin_sync`). This repository's own
+`harness.toml` is loaded by no test, so a stale pin there is silent until
+`harnex check` reads it, which is what the audit job runs. Run both; neither
+alone covers every pin.
 
 Then: bump, commit, tag, push, and watch CI to completion. `gh run watch
 --exit-status` is the form that fails when the run does.
