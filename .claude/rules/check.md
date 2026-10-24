@@ -46,6 +46,13 @@ whole set `always_loaded::resolve` returns and reports one
 `always-loaded-over-budget` past `max_chars`, located at the largest member.
 It ignores `--since`, because every member is part of one sum.
 
+The `agent-preload` arm shares the agent validator's gate (`[validate.agents]`)
+and glob, and reports `agent-skill-not-preloadable` from
+`validate::agents::audit_preload`. It reads a second file — the project skill
+an agent's `skills:` names — so it lives here rather than in the per-file
+validator, and like governs it ignores `--since`: a change to the skill alone
+is what breaks an unchanged agent.
+
 The `governs` arm shares the rule validator's gate (`[validate.rules]`) and
 glob: shape findings are the validator's, and this arm asks only the
 existence question that needs the tree (`governs-truth-missing`). Like

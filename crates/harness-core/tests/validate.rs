@@ -4,7 +4,7 @@ use harness_core::config::{AgentsPolicy, OutputStylesPolicy, RulesPolicy, Skills
 use harness_core::envelope::Severity;
 use harness_core::validate::{
     AgentValidator, OutputStyleValidator, RuleValidator, SettingsScope, SettingsValidator,
-    SkillScope, SkillValidator,
+    SkillScope, SkillValidator, agents,
 };
 use std::path::Path;
 use tempfile::TempDir;
@@ -1507,16 +1507,13 @@ fn agent_beside_skill(skill_frontmatter: &str) -> (TempDir, std::path::PathBuf) 
 }
 
 #[test]
-fn agent_validator_flags_a_preloaded_skill_the_runtime_skips() {
-    let policy = agents_policy(false);
-    let v = AgentValidator::new(&policy);
+fn agent_preload_flags_a_preloaded_skill_the_runtime_skips() {
     let md = "---\nname: reviewer\ndescription: d\nskills: [lenses, elsewhere]\n---\nBody\n";
     for spelled in ["true", "yes", "ON", "1"] {
         let (_tmp, agent) = agent_beside_skill(&format!(
             "description: d\ndisable-model-invocation: {spelled}"
         ));
-        let slugs: Vec<String> = v
-            .validate_text(md, &agent)
+        let slugs: Vec<String> = agents::audit_preload(md, &agent)
             .into_iter()
             .map(|f| f.slug)
             .collect();
@@ -1525,9 +1522,7 @@ fn agent_validator_flags_a_preloaded_skill_the_runtime_skips() {
 }
 
 #[test]
-fn agent_validator_accepts_a_preloadable_or_unseen_skill() {
-    let policy = agents_policy(false);
-    let v = AgentValidator::new(&policy);
+fn agent_preload_accepts_a_preloadable_or_unseen_skill() {
     let md = "---\nname: reviewer\ndescription: d\nskills: [lenses, elsewhere]\n---\nBody\n";
     for frontmatter in [
         "description: d\nuser-invocable: false",
@@ -1535,7 +1530,7 @@ fn agent_validator_accepts_a_preloadable_or_unseen_skill() {
         "description: d",
     ] {
         let (_tmp, agent) = agent_beside_skill(frontmatter);
-        let findings = v.validate_text(md, &agent);
+        let findings = agents::audit_preload(md, &agent);
         assert!(findings.is_empty(), "{frontmatter}: {findings:?}");
     }
     // A plugin names its skills under its own namespace, so a skill directory
@@ -1549,7 +1544,7 @@ fn agent_validator_accepts_a_preloadable_or_unseen_skill() {
     )
     .unwrap();
     let plugin_agent = tmp.path().join("plugin/agents/reviewer.md");
-    assert!(v.validate_text(md, &plugin_agent).is_empty());
+    assert!(agents::audit_preload(md, &plugin_agent).is_empty());
 }
 
 #[test]

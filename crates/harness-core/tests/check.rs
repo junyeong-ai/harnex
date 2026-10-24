@@ -95,6 +95,7 @@ fn check_runs_every_enabled_validator() {
         "evidence",
         "advisory",
         "governs",
+        "agent-preload",
         "policy.permissions",
         "guard.floor",
         "validate.always_loaded",
@@ -125,6 +126,7 @@ harnex_version = ">=0.35, <0.36"
     assert!(outcome.run.is_empty());
     for expected in [
         "advisory",
+        "agent-preload",
         "codegen",
         "evidence",
         "governs",
@@ -1375,5 +1377,64 @@ fn a_rule_both_pinned_always_loaded_and_scoped_is_a_contradiction() {
             .iter()
             .any(|s| s == "rule-always-loaded-but-scoped" || s == "rule-missing-paths-frontmatter"),
         "the pin is what makes an unscoped rule correct: {unscoped:?}"
+    );
+}
+
+/// The agent and the skill it preloads are two files, and a change to the
+/// skill alone is what makes the agent's preload fail — so the arm reads
+/// every agent whatever `--since` holds.
+#[test]
+fn a_preloaded_skill_changed_alone_is_caught_under_since() {
+    let tmp = project();
+    let cfg = load_cfg(
+        &tmp,
+        "[meta]\nharnex_version = \">=0.35, <0.36\"\n\n[validate.agents]\n",
+    );
+    write(
+        &tmp.path().join(".claude/agents/reviewer.md"),
+        "---\nname: reviewer\ndescription: d\nskills: [lenses]\n---\nBody\n",
+    );
+    let skill = tmp.path().join(".claude/skills/lenses/SKILL.md");
+    write(
+        &skill,
+        "---\ndescription: d\nuser-invocable: false\n---\nBody\n",
+    );
+    for args in [
+        &["add", "."][..],
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-qm",
+            "base",
+        ],
+    ] {
+        assert!(
+            common::git(tmp.path())
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let check = ProjectChecker::new(&cfg, tmp.path()).with_since("HEAD");
+    assert!(check.run().unwrap().findings.is_empty());
+
+    write(
+        &skill,
+        "---\ndescription: d\ndisable-model-invocation: true\n---\nBody\n",
+    );
+    let slugs: Vec<String> = check
+        .run()
+        .unwrap()
+        .findings
+        .into_iter()
+        .map(|f| f.slug)
+        .collect();
+    assert!(
+        slugs.contains(&"agent-skill-not-preloadable".to_string()),
+        "{slugs:?}"
     );
 }
