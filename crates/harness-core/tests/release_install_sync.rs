@@ -270,3 +270,20 @@ fn the_readme_names_every_schema_the_binary_will_emit() {
         );
     }
 }
+
+/// The binary ships prebuilt, so the `rust-version` floor matters only to a
+/// source build, and the one compiler every gate runs is the toolchain the
+/// repository pins. A floor below it would promise a compiler nothing checks.
+#[test]
+fn the_declared_floor_is_the_pinned_toolchain() {
+    let floor = manifest_value(
+        &repo_file("Cargo.toml"),
+        "[workspace.package]",
+        "rust-version",
+    );
+    let channel = manifest_value(&repo_file("rust-toolchain.toml"), "[toolchain]", "channel");
+    assert_eq!(
+        floor, channel,
+        "Cargo.toml rust-version and rust-toolchain.toml channel"
+    );
+}
