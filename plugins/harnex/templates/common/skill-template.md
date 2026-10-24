@@ -8,8 +8,10 @@ disable-model-invocation: true
        the skill directory and link them so they load only when needed.
      - `disable-model-invocation: true` stops Claude auto-running a skill that
        is unfinished or has side effects (deploy / commit / release). For a
-       knowledge skill Claude SHOULD apply automatically, delete that line and
-       sharpen `description` with trigger phrases instead.
+       knowledge skill Claude SHOULD apply automatically, or one an agent
+       preloads through `skills:` (the runtime skips a skill that sets it),
+       delete that line and sharpen `description` with trigger phrases
+       instead.
      - Pre-approve only the tools the procedure needs with
        `allowed-tools: Bash(cmd *) ...` (it GRANTS, it does not restrict).
      - Reference bundled files by `${CLAUDE_SKILL_DIR}/...` so paths resolve

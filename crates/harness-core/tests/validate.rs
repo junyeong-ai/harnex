@@ -795,6 +795,48 @@ fn skill_validator_accepts_array_disallowed_tools() {
     );
 }
 
+/// The runtime reads a skill flag spelled `yes`, `on` or `1` as set; a
+/// validator that wanted a YAML boolean refused a skill that loads as written.
+#[test]
+fn skill_validator_accepts_every_flag_spelling_the_runtime_reads() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: true,
+        flag_side_effect_verbs: true,
+    };
+    let v = SkillValidator::new(&policy);
+    let md = "---\nname: deploy-app\ndescription: Deploy the application\n\
+              disable-model-invocation: yes\nuser-invocable: Off\ncontext: fork\nbackground: 0\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("deploy-app/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let findings = v.validate_text(md, &path);
+    assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+#[test]
+fn skill_validator_flags_a_flag_the_runtime_reads_as_neither() {
+    let policy = SkillsPolicy {
+        max_skill_md_lines: 500,
+        max_description_chars: 400,
+        reject_unknown_keys: false,
+        flag_side_effect_verbs: false,
+    };
+    let v = SkillValidator::new(&policy);
+    let md =
+        "---\nname: my-skill\ndescription: a skill\ndisable-model-invocation: maybe\n---\nBody\n";
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("my-skill/SKILL.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let slugs: Vec<String> = v
+        .validate_text(md, &path)
+        .into_iter()
+        .map(|f| f.slug)
+        .collect();
+    assert_eq!(slugs, ["skill-disable-model-invocation-invalid"]);
+}
+
 #[test]
 fn skill_validator_flags_invalid_user_invocable() {
     let policy = SkillsPolicy {
@@ -1450,6 +1492,60 @@ fn agent_validator_accepts_a_fully_declared_definition() {
     let md = "---\nname: code-reviewer\ndescription: Reviews a change set\ntools: Read, Grep\ndisallowedTools: [Agent]\nmodel: claude-opus-5\npermissionMode: plan\nmaxTurns: 12\nautoCompactWindow: 100000\nskills: [lint-rules]\nhooks:\n  PreToolUse: []\nmemory: project\nbackground: false\nomitClaudeMd: true\nexperimental:\n  cacheTtl: 5m\neffort: high\nisolation: worktree\ncolor: cyan\ninitialPrompt: start\n---\n\nSystem prompt.\n";
     let findings = v.validate_text(md, Path::new(".claude/agents/code-reviewer.md"));
     assert!(findings.is_empty(), "unexpected: {findings:?}");
+}
+
+/// A project skill an agent preloads, written beside the agent as the runtime
+/// resolves it.
+fn agent_beside_skill(skill_frontmatter: &str) -> (TempDir, std::path::PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let skill = tmp.path().join(".claude/skills/lenses/SKILL.md");
+    std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    std::fs::write(&skill, format!("---\n{skill_frontmatter}\n---\nBody\n")).unwrap();
+    let agent = tmp.path().join(".claude/agents/reviewer.md");
+    std::fs::create_dir_all(agent.parent().unwrap()).unwrap();
+    (tmp, agent)
+}
+
+#[test]
+fn agent_validator_flags_a_preloaded_skill_the_runtime_skips() {
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: reviewer\ndescription: d\nskills: [lenses, elsewhere]\n---\nBody\n";
+    for spelled in ["true", "yes", "ON", "1"] {
+        let (_tmp, agent) = agent_beside_skill(&format!(
+            "description: d\ndisable-model-invocation: {spelled}"
+        ));
+        let slugs: Vec<String> = v
+            .validate_text(md, &agent)
+            .into_iter()
+            .map(|f| f.slug)
+            .collect();
+        assert_eq!(slugs, ["agent-skill-not-preloadable"], "{spelled}");
+    }
+}
+
+#[test]
+fn agent_validator_accepts_a_preloadable_or_unseen_skill() {
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    let md = "---\nname: reviewer\ndescription: d\nskills: [lenses, elsewhere]\n---\nBody\n";
+    for frontmatter in [
+        "description: d\nuser-invocable: false",
+        "description: d\ndisable-model-invocation: false",
+        "description: d",
+    ] {
+        let (_tmp, agent) = agent_beside_skill(frontmatter);
+        let findings = v.validate_text(md, &agent);
+        assert!(findings.is_empty(), "{frontmatter}: {findings:?}");
+    }
+    // A plugin names its skills under its own namespace, so a skill directory
+    // beside a plugin's agents is not where the runtime resolves this name.
+    let tmp = TempDir::new().unwrap();
+    let skill = tmp.path().join("plugin/skills/lenses/SKILL.md");
+    std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    std::fs::write(&skill, "---\ndescription: d\ndisable-model-invocation: true\n---\n").unwrap();
+    let plugin_agent = tmp.path().join("plugin/agents/reviewer.md");
+    assert!(v.validate_text(md, &plugin_agent).is_empty());
 }
 
 #[test]

@@ -89,6 +89,7 @@ use yaml_serde::{Mapping, Value};
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
+use crate::validate::frontmatter::{flag, js_string};
 use crate::validate::{
     AgentValidator, RuleValidator, SkillValidator, SurfaceValidator, path_globs,
 };
@@ -1378,7 +1379,7 @@ fn needs_quotes(value: &str) -> bool {
 /// launch.
 fn invocable_entry(source: &Source, kind: MemberKind, listing_cap: usize) -> Option<String> {
     let fields = &source.fields;
-    if truthy(fields.get("disable-model-invocation")) {
+    if fields.get("disable-model-invocation").and_then(flag) == Some(true) {
         return None;
     }
     Some(cap(&listed(source, kind), listing_cap, "\u{2026}"))
@@ -1433,42 +1434,6 @@ fn description(value: Option<&Value>) -> Option<String> {
             .map(str::to_string),
         scalar @ (Value::Bool(_) | Value::Number(_)) => js_string(scalar),
         _ => None,
-    }
-}
-
-/// `String(value)` as the runtime spells a frontmatter value, `None` for null.
-fn js_string(value: &Value) -> Option<String> {
-    match value {
-        Value::Null => None,
-        Value::Bool(b) => Some(b.to_string()),
-        Value::Number(n) => Some(n.to_string()),
-        Value::String(s) => Some(s.clone()),
-        Value::Sequence(items) => Some(
-            items
-                .iter()
-                .map(|item| js_string(item).unwrap_or_default())
-                .collect::<Vec<_>>()
-                .join(","),
-        ),
-        Value::Mapping(_) => Some("[object Object]".to_string()),
-        Value::Tagged(tagged) => js_string(&tagged.value),
-    }
-}
-
-/// A flag the runtime reads as set: `true`, or `1`, `true`, `yes` or `on`
-/// spelled as text or a number.
-fn truthy(value: Option<&Value>) -> bool {
-    match value {
-        Some(Value::Bool(set)) => *set,
-        Some(spelled @ (Value::String(_) | Value::Number(_))) => {
-            js_string(spelled).is_some_and(|s| {
-                matches!(
-                    s.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on"
-                )
-            })
-        }
-        _ => false,
     }
 }
 
@@ -3448,12 +3413,22 @@ mod tests {
 
     #[test]
     fn a_flag_is_set_the_ways_the_runtime_spells_it() {
-        let flag = |yaml: &str| truthy(fields(yaml).get("f"));
-        for set in ["f: true", "f: \"true\"", "f: \"Yes\"", "f: \"on\"", "f: 1"] {
-            assert!(flag(set), "{set}");
+        let read = |yaml: &str| fields(yaml).get("f").and_then(flag);
+        for set in [
+            "f: true",
+            "f: \"true\"",
+            "f: \"Yes\"",
+            "f: \"on\"",
+            "f: 1",
+            "f: ON",
+        ] {
+            assert_eq!(read(set), Some(true), "{set}");
         }
-        for unset in ["f: false", "f: \"no\"", "f: 0", "f: [true]", "g: true"] {
-            assert!(!flag(unset), "{unset}");
+        for unset in ["f: false", "f: \"no\"", "f: 0", "f: Off"] {
+            assert_eq!(read(unset), Some(false), "{unset}");
+        }
+        for neither in ["f: [true]", "f: maybe", "f: 2", "g: true"] {
+            assert_eq!(read(neither), None, "{neither}");
         }
     }
 

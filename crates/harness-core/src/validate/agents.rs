@@ -13,6 +13,8 @@
 //! - `maxTurns` is a positive integer; `background` is a boolean.
 //! - `tools` / `disallowedTools` / `skills` / `mcpServers` carry a shape the
 //!   loader can read.
+//! - A project skill listed under `skills` can be preloaded: the runtime skips
+//!   one that sets `disable-model-invocation`, and the agent starts without it.
 //! - `hooks` keys are in `KNOWN_HOOK_EVENTS`.
 //! - Opt-in via `AgentsPolicy.reject_unknown_keys`: a key outside
 //!   `KNOWN_AGENT_KEYS`.
@@ -26,13 +28,16 @@
 //! - Never resolve `agent` / `model` references. An agent name reaches the
 //!   loader from project, user, plugin, and CLI scopes at once, and only the
 //!   project scope is on disk here; a "does not resolve" finding would fire
-//!   on every user-scope agent. `model` is free-form for the same reason it
+//!   on every user-scope agent. A `skills` entry is read only where the
+//!   project defines it, beside the agent's own `.claude/agents/`, and only
+//!   to report what that skill itself sets. `model` is free-form for the same reason it
 //!   is in the skill validator: aliases and full ids are both valid and the
 //!   set moves with the vendor.
 //! - Never judge the body. It is a system prompt, and no documented budget
 //!   bounds it.
 
-use std::path::Path;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -373,6 +378,34 @@ impl<'a> AgentValidator<'a> {
             });
         }
 
+        if let Some(names) = parsed
+            .skills
+            .as_ref()
+            .and_then(yaml_serde::Value::as_sequence)
+            && let Some(skills_dir) = project_skills_dir(path)
+        {
+            for name in names.iter().filter_map(yaml_serde::Value::as_str) {
+                if disables_model_invocation(&skills_dir.join(name).join("SKILL.md")) {
+                    findings.push(Finding {
+                        slug: "agent-skill-not-preloadable".into(),
+                        severity: Severity::Major,
+                        location: Location::line(path.to_path_buf(), line),
+                        message: format!(
+                            "`{name}` sets `disable-model-invocation`, so the runtime skips \
+                             preloading it and this agent starts without it"
+                        ),
+                        hint: Some(format!(
+                            "remove `disable-model-invocation` from `{name}` — `user-invocable: \
+                             false` hides it from the menu and still lets an agent preload it — \
+                             or drop it from `skills`"
+                        )),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
+                }
+            }
+        }
+
         // `mcpServers` carries either server-name strings or inline server
         // definitions, so only a scalar is provably wrong — and so is a list
         // element that could be neither. A mapping or nested list element
@@ -485,6 +518,37 @@ fn to_kebab(field: &str) -> String {
         }
     }
     out
+}
+
+/// The project skills directory beside the `agents/` directory an agent file
+/// lives in — where the runtime resolves the project skills that agent names.
+/// `None` outside a `.claude/` directory, such as a plugin's `agents/`.
+fn project_skills_dir(agent: &Path) -> Option<PathBuf> {
+    agent
+        .ancestors()
+        .find(|dir| dir.file_name() == Some(OsStr::new("agents")))
+        .and_then(Path::parent)
+        .filter(|claude| claude.file_name() == Some(OsStr::new(".claude")))
+        .map(|claude| claude.join("skills"))
+}
+
+/// Whether the skill at `path` sets `disable-model-invocation`. A skill this
+/// cannot read answers `false`: its own validator reports what is wrong with it.
+fn disables_model_invocation(path: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(Some(fm)) = frontmatter::parse(&text, path) else {
+        return false;
+    };
+    yaml_serde::from_str::<yaml_serde::Mapping>(&fm.yaml_text)
+        .ok()
+        .and_then(|fields| {
+            fields
+                .get("disable-model-invocation")
+                .and_then(frontmatter::flag)
+        })
+        == Some(true)
 }
 
 impl<'p> crate::validate::SurfaceValidator<'p> for AgentValidator<'p> {
