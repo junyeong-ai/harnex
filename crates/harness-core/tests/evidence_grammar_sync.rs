@@ -244,8 +244,7 @@ fn every_tracked_file_carrying_the_marker_is_accounted_for() {
             // Resolved by `plugin_claims_resolve`, against the plugin root.
             || (path.starts_with("plugins/harnex/")
                 && path.ends_with(".md")
-                && !path.starts_with("plugins/harnex/templates/")
-                && path != "plugins/harnex/CLAUDE.md")
+                && !path.starts_with("plugins/harnex/templates/"))
             // Resolved by `pattern_claims_resolve`, in the layout it installs to.
             || (path.starts_with("plugins/harnex/templates/patterns/") && path.ends_with(".md"))
             // Parsed by this guard.

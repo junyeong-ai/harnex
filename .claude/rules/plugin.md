@@ -1,12 +1,22 @@
-# harnex plugin
+---
+paths:
+  - "plugins/harnex/**"
+  - ".claude-plugin/marketplace.json"
+governs:
+  concept: the harnex plugin's editing contract
+  live_truth:
+    - plugins/harnex
+---
+
+# plugin — editing the harnex plugin
 
 The single-skill plugin: `SKILL.md` (entry; the mode menu lives in SKILL.md) +
-`reference/` (L1
-knowledge) + `templates/` (L2 safety-critical templates), alongside two
-component classes the skill does not own — `commands/` (user-invoked
-procedures) and `agents/` (the sub-agents those procedures dispatch). Editing
-contract for this directory (the runtime content ships to installs; this file
-guides editing it, not using it):
+`reference/` (L1 knowledge) + `templates/` (L2 safety-critical templates),
+alongside two component classes the skill does not own — `commands/`
+(user-invoked procedures) and `agents/` (the sub-agents those procedures
+dispatch). Everything under `plugins/harnex/` ships to installs, so guidance
+for editing it lives here rather than in the plugin. Paths below are relative
+to `plugins/harnex/`.
 
 - **Compose templates; never free-generate** a hook, permission rule, or
   timeout. The skill selects the language profiles the fingerprint matched and fills
