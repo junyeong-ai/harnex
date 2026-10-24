@@ -11,9 +11,6 @@ source "$(dirname -- "$0")/_format-target.sh" || exit 1
 resolve_format_target "$FILE" || exit 0
 
 case "$FILE" in
-  *.py)
-    ruff format "$FILE" >/dev/null 2>&1 || true
-    ruff check --fix "$FILE" >/dev/null 2>&1 || true
-    ;;
+  *.py) ruff format "$FILE" >/dev/null 2>&1 || true ;;
 esac
 exit 0
