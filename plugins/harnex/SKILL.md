@@ -248,8 +248,8 @@ operator to re-phrase using a verb from this list.
   is composed correct-by-spec (within the `[validate.skills]` budgets,
   `disable-model-invocation: true` so an unfinished or side-effecting skill
   never auto-fires); the operator fills the procedure and,
-  for a knowledge skill Claude should auto-apply, removes
-  `disable-model-invocation`. `name` is omitted (defaults to the directory) so
+  for a knowledge skill Claude should auto-apply or an agent preloads through
+  `skills:`, removes `disable-model-invocation`. `name` is omitted (defaults to the directory) so
   it cannot drift from the folder. `harnex validate skills` verifies the
   result — and the new skill is a first-class promotion/retirement target the
   lifecycle + governance loop already recognizes (`.claude/skills/**`).

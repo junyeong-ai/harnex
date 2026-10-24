@@ -12,9 +12,9 @@
 //!   (`commit`, `deploy`, `delete`, `submit`, `send`, `publish`,
 //!   `release`) but lacks `disable-model-invocation: true`. Off by
 //!   default — the heuristic matches prose, not intent.
-//! - `user-invocable` must be boolean if present.
+//! - `disable-model-invocation`, `user-invocable` and `background` are flags as
+//!   `frontmatter::flag` reads them.
 //! - `context` must be `"fork"` if present.
-//! - `background` must be boolean if present.
 //! - `allowed-tools` is a string OR an array of strings (spec accepts both).
 //! - `disallowed-tools` is a string OR an array of strings (spec accepts both).
 //! - `paths` is a string OR an array of valid glob patterns (spec accepts both).
@@ -34,7 +34,7 @@ use serde::Deserialize;
 
 use crate::config::SkillsPolicy;
 use crate::envelope::{Finding, Location, Severity};
-use crate::validate::frontmatter;
+use crate::validate::frontmatter::{self, FLAG_SPELLINGS};
 use crate::validate::path_globs;
 use crate::validate::settings::KNOWN_HOOK_EVENTS;
 use crate::wire_enum::wire_enum;
@@ -130,7 +130,7 @@ struct SkillFrontmatter {
     #[serde(default)]
     when_to_use: Option<String>,
     #[serde(default, rename = "disable-model-invocation")]
-    disable_model_invocation: Option<bool>,
+    disable_model_invocation: Option<yaml_serde::Value>,
     #[serde(default, rename = "user-invocable")]
     user_invocable: Option<yaml_serde::Value>,
     #[serde(default)]
@@ -336,7 +336,13 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        if self.policy.flag_side_effect_verbs && parsed.disable_model_invocation != Some(true) {
+        if self.policy.flag_side_effect_verbs
+            && parsed
+                .disable_model_invocation
+                .as_ref()
+                .and_then(frontmatter::flag)
+                != Some(true)
+        {
             let desc_lower = format!(
                 "{} {}",
                 parsed.description.as_deref().unwrap_or(""),
@@ -358,15 +364,31 @@ impl<'a> SkillValidator<'a> {
             }
         }
 
-        // user-invocable: must be boolean if present
+        if let Some(ref val) = parsed.disable_model_invocation
+            && frontmatter::flag(val).is_none()
+        {
+            findings.push(Finding {
+                slug: "skill-disable-model-invocation-invalid".into(),
+                severity: Severity::Major,
+                location: Location::line(path.to_path_buf(), fm.begin_line),
+                message: format!(
+                    "disable-model-invocation must be a flag ({FLAG_SPELLINGS}); the runtime reads \
+                     any other value as unset, so Claude may invoke this skill on its own"
+                ),
+                hint: Some("set `disable-model-invocation: true` or remove the field".into()),
+                auto_fixable: false,
+                fix_command: None,
+            });
+        }
+
         if let Some(ref val) = parsed.user_invocable
-            && !val.is_bool()
+            && frontmatter::flag(val).is_none()
         {
             findings.push(Finding {
                 slug: "skill-user-invocable-invalid".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), fm.begin_line),
-                message: "user-invocable must be a boolean (true or false)".into(),
+                message: format!("user-invocable must be a flag ({FLAG_SPELLINGS})"),
                 hint: Some("set `user-invocable: true` or `user-invocable: false`".into()),
                 auto_fixable: false,
                 fix_command: None,
@@ -388,15 +410,14 @@ impl<'a> SkillValidator<'a> {
             });
         }
 
-        // background: must be boolean if present
         if let Some(ref val) = parsed.background
-            && !val.is_bool()
+            && frontmatter::flag(val).is_none()
         {
             findings.push(Finding {
                 slug: "skill-background-invalid".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), fm.begin_line),
-                message: "background must be a boolean (true or false)".into(),
+                message: format!("background must be a flag ({FLAG_SPELLINGS})"),
                 hint: Some(
                     "set `background: false` to consume a forked skill's result in the invoking turn"
                         .into(),

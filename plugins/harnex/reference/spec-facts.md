@@ -333,6 +333,8 @@ already contradicted both a page and the binary's own schema.
   context (`fork`), background (bool, only with `context: fork`, ≥ v2.1.218),
   metadata (a mapping — any other value is silently dropped). `license` and
   `compatibility` come from the Agent Skills standard: accepted, never acted on.
+  A flag field takes `true`/`false`, `yes`/`no`, `on`/`off` or `1`/`0` in any
+  letter case (≥ v2.1.218); any other value leaves the flag unset.
 - **Location:** `.claude/skills/<name>/SKILL.md` (project/personal),
   `<plugin-root>/skills/<name>/SKILL.md` (plugin), or — since v2.1.142 — a bare
   `SKILL.md` at the plugin root with no `skills/` dir and no `skills` manifest
@@ -342,6 +344,10 @@ already contradicted both a page and the binary's own schema.
   (Claude-triggered) invocation and hides the description from context — use it
   for side-effect skills (generate/write/deploy). `user-invocable: false` only
   hides the menu and disables typed invocation; it does NOT block the Skill tool.
+  A subagent's `skills:` injects each listed skill's full content at startup,
+  drawn from the skills Claude can invoke — so one that sets
+  `disable-model-invocation` is skipped, and a knowledge skill meant for an
+  agent hides from the menu with `user-invocable: false` instead.
 - **`allowed-tools` GRANTS (pre-approves) tools for the invoking turn; it
   does NOT restrict.** `disallowed-tools` REMOVES tools from Claude's pool
   for the invoking turn (the inverse). Both tool changes clear on the next

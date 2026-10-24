@@ -53,7 +53,10 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
   the runtime's own cut (`LISTING_ENTRY_CAP`), which a project's
   `skillListingMaxDescChars` moves and this default does not follow.
 - File ≤ `max_skill_md_lines`; line limits do not measure compaction tokens.
-- `user-invocable` must be boolean if present (Major).
+- `disable-model-invocation`, `user-invocable` and `background` are flags as
+  `frontmatter::flag` reads them — the runtime's spellings, `yes`/`on`/`1`
+  included (Major). The always-loaded listing reads the same owner, so the two
+  cannot disagree about whether a skill is hidden.
 - `context` must be `"fork"` if present (Major).
 - `allowed-tools` is a string OR an array of strings — spec accepts both;
   flag only a non-string/non-array value (Major).
@@ -83,7 +86,11 @@ Agent validator (per <https://code.claude.com/docs/en/sub-agents>):
   `KNOWN_MEMORY_SCOPES`, `color` ∈ `KNOWN_COLORS` (Major).
 - `maxTurns` is a positive integer; `background` is a boolean.
 - `tools` / `disallowedTools` are a string or a list of strings; `skills` is a
-  list of strings; `mcpServers` is neither a scalar nor a list carrying an
+  list of strings, and one naming a project skill beside the agent
+  (`.claude/skills/<name>/SKILL.md`) that sets `disable-model-invocation` is
+  `agent-skill-not-preloadable` (Major), because the runtime skips preloading
+  it. A name with no project skill there — user, plugin, nested — is not
+  judged; `mcpServers` is neither a scalar nor a list carrying an
   element that names nothing (a bool, a number, a null). A mapping element
   stays accepted — an inline definition is one, and judging its interior
   would flag a config the spec allows.
