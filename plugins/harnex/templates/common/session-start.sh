@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# SessionStart: surface branch + uncommitted count + recent commits as
-# context. SessionStart delivers a hook's plain stdout to Claude directly
-# (per the hooks spec), so no JSON envelope — and no language-specific JSON
-# tool — is needed: print the facts as text. Fail-open: a git error in a
+# SessionStart: surface branch + uncommitted count + recent commits, where the
+# branch stands against its upstream and the default branch, and the clone's
+# other worktrees as context. SessionStart delivers a hook's plain stdout to
+# Claude directly (per the hooks spec), so no JSON envelope — and no
+# language-specific JSON tool — is needed: print the facts as text. Fail-open: a git error in a
 # non-repo or detached state emits nothing rather than failing the session.
 set -uo pipefail
 
@@ -12,6 +13,33 @@ commits=$(git log --oneline -3 2>/dev/null || echo "no commits")
 
 printf 'Branch: %s\nUncommitted files: %s\nRecent commits:\n%s\n' \
   "$branch" "$changes" "$commits"
+
+# Where this branch stands, as of the last fetch — no network here. A session
+# building on a stale base finds out at the merge, and work another session has
+# in flight finds out at the collision.
+upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null) || upstream=
+if [[ -n "$upstream" ]] &&
+  counts=$(git rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null); then
+  read -r behind ahead <<<"$counts"
+  printf 'Upstream %s: %s behind, %s ahead (as of the last fetch)\n' "$upstream" "$behind" "$ahead"
+fi
+remote=${upstream%%/*}
+if default=$(git symbolic-ref -q --short "refs/remotes/${remote:-origin}/HEAD" 2>/dev/null) &&
+  [[ "$default" != "$upstream" ]] &&
+  missing=$(git rev-list --count "HEAD..${default}" 2>/dev/null) && [[ "$missing" -gt 0 ]]; then
+  printf 'Default branch %s: %s commit(s) not in this branch (as of the last fetch)\n' "$default" "$missing"
+fi
+here=$(git rev-parse --show-toplevel 2>/dev/null)
+others=$(git worktree list --porcelain 2>/dev/null | awk -v here="$here" '
+  /^worktree / { path = substr($0, 10); name = ""; bare = 0 }
+  /^branch /   { name = substr($0, 8); sub("^refs/heads/", "", name) }
+  /^detached/  { name = "(detached)" }
+  /^bare/      { bare = 1 }
+  /^$/         { if (path != "" && path != here && !bare) print "- " name " at " path; path = "" }
+  END          { if (path != "" && path != here && !bare) print "- " name " at " path }')
+if [[ -n "$others" ]]; then
+  printf 'Other worktrees of this clone:\n%s\n' "$others"
+fi
 
 # Whether the versioned git hooks beside this one will run. Two things decide
 # that and each fails silently: `core.hooksPath` lives in the clone's own
