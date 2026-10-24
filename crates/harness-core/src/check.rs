@@ -235,6 +235,7 @@ impl<'a> ProjectChecker<'a> {
         )?;
         self.run_evidence(&mut findings, &mut run, &mut skipped, &mut files_scanned)?;
         self.run_governs(&mut findings, &mut run, &mut skipped)?;
+        self.run_agent_preload(&mut findings, &mut run, &mut skipped)?;
         self.run_advisories(&mut findings, &mut run, &mut skipped)?;
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
         self.run_permissions_audit(&changed, &mut findings, &mut run, &mut skipped)?;
@@ -545,6 +546,39 @@ impl<'a> ProjectChecker<'a> {
             findings.extend(auditor.audit_rule(&content, path));
         }
         run.push("governs".into());
+        Ok(())
+    }
+
+    /// Every project skill an agent preloads can be preloaded. Shares the
+    /// agent validator's gate and glob, and ignores `--since` as the governs
+    /// arm does: the agent and the skill it names are two files, and a change
+    /// to the skill alone is what turns a clean agent into a finding. Counts
+    /// nothing into `files_scanned`.
+    fn run_agent_preload(
+        &self,
+        findings: &mut Vec<Finding>,
+        run: &mut Vec<String>,
+        skipped: &mut Vec<SkippedRule>,
+    ) -> Result<()> {
+        if self
+            .config
+            .validate
+            .as_ref()
+            .and_then(|v| v.agents.as_ref())
+            .is_none()
+        {
+            skipped.push(SkippedRule {
+                slug: "agent-preload".into(),
+                reason: "no [validate.agents] section".into(),
+            });
+            return Ok(());
+        }
+        for path in &self.discover_glob(<AgentValidator as SurfaceValidator>::GLOB)? {
+            if let Ok(content) = crate::validate::read_text(path) {
+                findings.extend(crate::validate::agents::audit_preload(&content, path));
+            }
+        }
+        run.push("agent-preload".into());
         Ok(())
     }
 

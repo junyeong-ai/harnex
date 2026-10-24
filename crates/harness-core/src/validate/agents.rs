@@ -13,8 +13,8 @@
 //! - `maxTurns` is a positive integer; `background` is a boolean.
 //! - `tools` / `disallowedTools` / `skills` / `mcpServers` carry a shape the
 //!   loader can read.
-//! - A project skill listed under `skills` can be preloaded: the runtime skips
-//!   one that sets `disable-model-invocation`, and the agent starts without it.
+//! - [`audit_preload`]: a project skill listed under `skills` can be preloaded.
+//!   It reads a second file, so `check` runs it outside this validator.
 //! - `hooks` keys are in `KNOWN_HOOK_EVENTS`.
 //! - Opt-in via `AgentsPolicy.reject_unknown_keys`: a key outside
 //!   `KNOWN_AGENT_KEYS`.
@@ -378,34 +378,6 @@ impl<'a> AgentValidator<'a> {
             });
         }
 
-        if let Some(names) = parsed
-            .skills
-            .as_ref()
-            .and_then(yaml_serde::Value::as_sequence)
-            && let Some(skills_dir) = project_skills_dir(path)
-        {
-            for name in names.iter().filter_map(yaml_serde::Value::as_str) {
-                if disables_model_invocation(&skills_dir.join(name).join("SKILL.md")) {
-                    findings.push(Finding {
-                        slug: "agent-skill-not-preloadable".into(),
-                        severity: Severity::Major,
-                        location: Location::line(path.to_path_buf(), line),
-                        message: format!(
-                            "`{name}` sets `disable-model-invocation`, so the runtime skips \
-                             preloading it and this agent starts without it"
-                        ),
-                        hint: Some(format!(
-                            "remove `disable-model-invocation` from `{name}` — `user-invocable: \
-                             false` hides it from the menu and still lets an agent preload it — \
-                             or drop it from `skills`"
-                        )),
-                        auto_fixable: false,
-                        fix_command: None,
-                    });
-                }
-            }
-        }
-
         // `mcpServers` carries either server-name strings or inline server
         // definitions, so only a scalar is provably wrong — and so is a list
         // element that could be neither. A mapping or nested list element
@@ -518,6 +490,49 @@ fn to_kebab(field: &str) -> String {
         }
     }
     out
+}
+
+/// The project skills an agent preloads through `skills:` that the runtime
+/// cannot preload: one that sets `disable-model-invocation` is skipped, and the
+/// agent starts without it. It reads the agent and each skill, so a change to
+/// either moves it — which is why `check` runs it over every agent whatever
+/// `--since` holds, rather than inside the per-file validator.
+pub fn audit_preload(content: &str, path: &Path) -> Vec<Finding> {
+    let Ok(Some(fm)) = frontmatter::parse(content, path) else {
+        return Vec::new();
+    };
+    let Ok(fields) = yaml_serde::from_str::<yaml_serde::Mapping>(&fm.yaml_text) else {
+        return Vec::new();
+    };
+    let (Some(names), Some(skills_dir)) = (
+        fields
+            .get("skills")
+            .and_then(yaml_serde::Value::as_sequence),
+        project_skills_dir(path),
+    ) else {
+        return Vec::new();
+    };
+    names
+        .iter()
+        .filter_map(yaml_serde::Value::as_str)
+        .filter(|name| disables_model_invocation(&skills_dir.join(name).join("SKILL.md")))
+        .map(|name| Finding {
+            slug: "agent-skill-not-preloadable".into(),
+            severity: Severity::Major,
+            location: Location::line(path.to_path_buf(), fm.begin_line),
+            message: format!(
+                "the project's `{name}` sets `disable-model-invocation`, so wherever it is the \
+                 `{name}` that resolves — no personal or enterprise skill of that name — the \
+                 runtime skips preloading it and this agent starts without it"
+            ),
+            hint: Some(format!(
+                "remove `disable-model-invocation` from `{name}` — `user-invocable: false` hides \
+                 it from the menu and still lets an agent preload it — or drop it from `skills`"
+            )),
+            auto_fixable: false,
+            fix_command: None,
+        })
+        .collect()
 }
 
 /// The project skills directory beside the `agents/` directory an agent file
