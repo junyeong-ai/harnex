@@ -174,9 +174,9 @@ fn every_counted_gate_is_documented_and_every_class_shown_in_its_own_token() {
 
 /// The gates the shipped pre-commit arm declares are the gates the shipped
 /// `gates.md` defines. The arm passes them to `plan audit --gates`, which
-/// keys a round budget per name, so a gate documented and not declared runs
-/// on a budget of its own and a name declared and not documented is a
-/// spelling nothing teaches (constitution IX).
+/// refuses a firing under any other name, so a gate documented and not
+/// declared is refused at its first firing and a name declared and not
+/// documented is a spelling nothing teaches (constitution IX).
 #[test]
 fn the_hook_declares_exactly_the_gates_its_workflow_documents() {
     let documented: BTreeSet<String> =

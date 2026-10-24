@@ -13,11 +13,10 @@ governs:
 
 `harness_core::plan` owns the grammar the spec-workflow templates write:
 finding rows under `## Outstanding issues`, decision bullets under
-`## Decision log`, the per-class counts tokens, terminal dispositions
-(`Disposition::ALL`), and the per-gate round budget. The template
-prose is a projection of these constants — `pattern_manifest_sync` holds the
-disposition spelling, the gates.md example line, and `COUNTED_GATES`
-in lock-step. Change the grammar in the module and let the failing tests name
+`## Decision log`, the per-class counts tokens, and terminal dispositions
+(`Disposition::ALL`). The template prose is a projection of these constants —
+`pattern_manifest_sync` holds the disposition spelling, the gates.md example
+line, and `COUNTED_GATES` in lock-step. Change the grammar in the module and let the failing tests name
 every prose site.
 
 - No config load in `plan audit`: files are named by the caller, the grammar
@@ -26,10 +25,9 @@ every prose site.
 - No git in the module: the baseline is text the caller supplies. The shipped
   `check-plan.sh` arm pipes `git show` into it, and `plan_template_sync`
   (harness-cli) holds the flags that arm spells to the clap surface.
-- Gate names stay open, and the caller declares the set its workflow has: the
-  budget is keyed by the name on the line, so a firing under a name nothing
-  declares is a budget of its own and `plan-log-gate-undeclared` blocks it.
-  Undeclared, no name is held — the flag is opt-in like the budget it guards.
+- Gate names stay open, and the caller declares the set its workflow has: a
+  firing under a name nothing declares answers to no gate, and
+  `plan-log-gate-undeclared` blocks it. Undeclared, no name is held.
   Only `COUNTED_GATES` owe counts, each in its declared
   `GateClass`: review gates count findings by rank, `acceptance` counts
   criteria by outcome. The approval rule reads `GateCounts::blocking` and
@@ -37,15 +35,12 @@ every prose site.
   Blocker blocks a review's, because a criterion nothing answered is not one
   that passed. A firing carrying the other class's token is its own finding:
   the wrong token parses and reports a total the gate does not owe.
-- The round budget is the only convergence control. It counts `needs_revision`
-  firings per gate over the spec's life and nothing returns one — the loop the
-  budget bounds writes every word of this log, so any token that could lower
-  the count is a budget the loop hands itself. Never add a round-to-round
-  comparison, a rationale hatch, or a reset. The crossing is reported against
-  the record that appended it, not against the log's history: monotone, a
-  history-held finding blocks the wrapup commits that are the way out of a
-  budget. Closing the gate spends nothing and returns nothing, because the
-  operator's exit at the budget has to be writable at the budget.
+- The module computes the record, never when a loop stops. The loop under
+  review writes every word of the log, so each check reads what that loop
+  cannot rewrite — surviving rows, an appended log, counts held to rows. Never
+  add a round count, a round-to-round comparison, or any other bound on how
+  many rounds run: the operator decides that from where findings land, and
+  the gates.md template states the exits.
 - A finding-shaped list item that does not parse is a Major finding, never a
   silently skipped row. Keep the detector wider than the parser on every axis
   (marker, case, decoration) — narrowing it restores the silence. Position is
@@ -63,10 +58,10 @@ every prose site.
   `plan-log-rewritten` blocks.
 - A commit that adds rows records the round that found them: rows past the
   committed plan and no round past the committed log is
-  `plan-round-unrecorded`. A round is what the budget counts and nothing else
-  — `needs_revision` under a gate that carries one — so an approval, a
-  deferral, a rejection and a gate outside `COUNTED_GATES` record none, and
-  the seam and the budget cannot disagree about what a round is. New is keyed
+  `plan-round-unrecorded`. A round is `needs_revision` under a gate that owes
+  counts and nothing else — `records_a_round` is the one set — so an approval,
+  a deferral, a rejection and a gate outside `COUNTED_GATES` record none, and
+  the seam and the counts cannot disagree about what a round is. New is keyed
   by `FindingRow::identity`, the vanish check's own key, and a committed row
   that did not survive explains one unclaimed row and no more: the surplus is
   what no rewording accounts for, which is what the finding counts.
@@ -75,8 +70,8 @@ every prose site.
   own appended rounds counted. Commit-scoped, never cumulative: a surplus read
   over the spec's life banks, and one round claiming ninety-nine would license
   ninety-nine uncounted rows after it. Credit comes only from records
-  `spends_a_round` reads as rounds — a count parked on an approval or a
-  deferral is credit minted without a round spent for it. An acceptance firing
+  `records_a_round` reads as rounds — a count parked on an approval or a
+  deferral is credit no review stands behind. An acceptance firing
   counts criteria, so it answers for as many rows as it had failed and
   unmeasured criteria and no more; silencing the ranks wherever one appears
   left a single bullet releasing every review round beside it. Silent where no

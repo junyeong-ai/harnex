@@ -1,7 +1,7 @@
 ---
 description: "Convergent review loop. Walks every lens in .claude/lenses/ over a scope, fixes what a cited authority confirms, re-walks the scope the fixes grew, and stops when no fixable Critical or Blocker remains and one fresh-context reviewer that did not watch the loop form its opinion agrees. Modifies files — findings-only audits live in the critique skill."
 when_to_use: "Invoke on fix-and-converge intent over a change set — \"review and fix\", \"converge the review\", \"리뷰 수렴해줘\", \"walk the lenses over <path>\" — or as the engine a spec review gate delegates to. Takes a path, a revision range (main..HEAD), or a glob. Read-only asks — findings without edits — route to the critique skill instead of entering the loop."
-argument-hint: "<path> | <commit-range> | <glob>  [--max-iter N]"
+argument-hint: "<path> | <commit-range> | <glob>"
 allowed-tools: Read Edit Grep Glob Agent Bash(git diff *) Bash(git log *) Bash(git rev-parse *) Bash(git status *)
 ---
 
@@ -13,8 +13,8 @@ the severity and citation vocabulary, the authorities, and the refutation
 regimes, and is the reference for every judgment below.
 
 Read [convergence.md](convergence.md) when the loop needs a decision the
-sections here do not settle: stall detection, scope growth, the iteration cap,
-failed fixes, and how the terminal pass scales.
+sections here do not settle: scope growth, the exits that return the loop to
+the operator, failed fixes, and how the terminal pass scales.
 
 ## Resolve the scope
 
@@ -90,11 +90,11 @@ disposition, because re-walking cannot close what the loop is forbidden to
 fix, and counting it as failure makes convergence unreachable by
 construction. Major and Minor remain as signal and never extend the loop.
 
-Also stop when the pass makes no progress, or at the iteration cap
-(default 5 — a circuit breaker, not the control). On either, report the reason,
-the findings that remain, and what scope was covered. Then return the
-conversation: the operator decides. Never report convergence for a loop that
-stopped early.
+Also stop at the other exits — stalled, diverged, returned, disputed
+([file: .claude/skills/review/convergence.md § No count stops the loop]). No
+count of passes is one. On each, report the reason, the findings that remain,
+and what scope was covered. Then return the conversation: the operator decides.
+Never report convergence for a loop that stopped early.
 
 ## The terminal pass
 
@@ -121,13 +121,14 @@ and never a quietly substituted reviewer.
 
 **What comes back branches on its citation.** Critical or Blocker findings
 citing an authority the rule's column knows enter the fix path as a new
-iteration — not a blind re-walk, which already missed them once. At most two
-such verify rounds; a blocker still standing after the second escalates. A
+iteration — not a blind re-walk, which already missed them once. A
 citation naming an authority the column does not know degrades to surfaced,
 per the rule's conservative boundary. A judgment-cited Critical or Blocker
 escalates its whole batch to the operator immediately — it cannot be
 auto-fixed, and a re-walk would drop it; judgment findings at Major and
-below ride the report as signal.
+below ride the report as signal. A finding the loop refutes instead goes on
+the record with its refutation, and two terminal passes in a row refuted that
+way are a dispute ([file: .claude/skills/review/convergence.md § A dispute]).
 
 ## Report
 

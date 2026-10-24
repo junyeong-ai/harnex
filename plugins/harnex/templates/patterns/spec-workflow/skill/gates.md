@@ -34,8 +34,8 @@ A gate that fires three times leaves three bullets in order — the history of a
 interesting part, and overwriting keeps only the last one. `git log
 specs/<slug>/` is the timeline this rides on. The two ways a record stops being
 one are both reported: off the margin — nested, indented or quoted — it renders
-as a firing and no gate counts it; under a name this workflow never defined, it
-is a gate of its own and carries a round budget of its own.
+as a firing and no gate counts it; under a name this workflow never defined,
+the arm refuses it.
 
 A counted firing writes its counts into the line: the log is where what each
 round found is read back, and the counts stand over the rows that round lands.
@@ -52,32 +52,28 @@ more. Two gate classes count different things and each owes its own token:
 | review | `design_review`, `review` | `<n>C/<n>B/<n>M/<n>m` | Critical + Blocker |
 | acceptance | `acceptance` | `<n>P/<n>F/<n>U` | failed + unmeasured |
 
-One rule bounds both: a gate holds a budget of `needs_revision` firings over
-the spec's life, which the shipped pre-commit arm passes. Nothing returns one.
-Every line in this log is written by the loop the budget bounds, so a count an
-approval, a deferral or a rejection could lower is a budget the loop hands
-itself — measured, a pass that disposed its rows and approved bought back the
-five it had just spent, every round, indefinitely. Reaching the budget is a
-report, not a verdict on the round: a review that needs that many rounds is
-naming a unit too large to finish as one. Answer it by settling the scope —
-split what is under review, so each part carries its own budget, or dispose of
-every blocking row and approve — never by writing a reason to go on. Closing
-the gate stays writable at the budget, because it is the way out of one.
+No count of rounds bounds a gate: a review still finding new defects is doing
+what it is for. The gate goes back to the operator on what its rounds find:
 
-A pass that lands rows spends a round and records it. The commit that adds
-rows to `## Outstanding issues` carries a `needs_revision` bullet under the
-gate that ran — one of the three above, the gates that carry a budget — or the
-arm refuses it: the budget counts records, so a round recorded as anything
-else is a round nothing bounds. A pass that lands rows and also ends the gate
-writes both bullets, the round it spent and the approval behind it.
+- **diverged** — a Critical or Blocker sits in what the previous revision
+  wrote, and no smaller revision removes it (`design_review` below);
+- **returned** — a Critical or Blocker of a class an earlier revision claimed
+  to close comes back where that revision did not reach;
+- **disputed** — two rounds in a row each file a Critical or Blocker, and every
+  one is refuted against ground truth;
+- **stalled** — a round's Critical and Blocker set is one the log already
+  records.
 
-At the budget the loop stops, and both exits land no new row. Disposing every
-blocking row and approving adds nothing to the section, so it passes;
-splitting opens a second spec whose own budget the carried rows are the first
-round of. Running one more review and transcribing what it finds is neither —
-the budget refuses the round, and omitting the round refuses the rows — which
-is the budget doing what it is for: a unit still yielding findings at the
-budget is one to split, not one to review again.
+The operator decides between one more revision, a split that reviews each part
+as its own unit, disposing of every blocking row and approving, and stopping
+the work. Each is recorded as the decision it is.
+
+A pass that lands rows records its round. The commit that adds rows to
+`## Outstanding issues` carries a `needs_revision` bullet under the gate that
+ran — one of the three above, the gates that count — or the arm refuses it: a
+row's round is read back from the log, so rows landing without one are findings
+no record accounts for. A pass that lands rows and also ends the gate writes
+both bullets, the round it ran and the approval behind it.
 
 A row is never deleted, settled as much as open: the section is what review
 found, and a disposition ends a finding rather than retiring its row. The arm
@@ -86,13 +82,10 @@ refuses a commit that drops one. A commit that leaves neither `plan.md` nor
 
 Round-to-round counts are not compared. A round's count samples what one
 reviewer found, and a descent to zero is flat or rising in places; what tells
-a converging loop from a diverging one is where its findings land, which the
-`design_review` event below states. The budget is computed from the log's own
-lines by `harnex plan audit`, never recalled — a convergence floor nothing
-computes is prose, and the measured failure of that shape is a gate that
-recorded eleven firings while its rule said stop at the second. A firing
-carrying the other class's token is a finding: the wrong token parses and
-reads as a total, so a review token on an acceptance line reports zero
+a converging loop from a diverging one is where its findings land. The record
+is computed from the log's own lines by `harnex plan audit`, never recalled. A
+firing carrying the other class's token is a finding: the wrong token parses
+and reads as a total, so a review token on an acceptance line reports zero
 blocking while unmeasured criteria stand.
 
 ## clarify — inline, during specify
@@ -121,7 +114,7 @@ Revise by the smallest change that removes the finding. A Critical or Blocker
 that sits in what the previous revision wrote says that revision failed:
 rework or remove it rather than adding a condition to it. Every condition
 added to answer a round is new surface for the next round to refute, and a
-loop that answers its findings that way reaches the budget rather than a
+loop that answers its findings that way diverges instead of converging on a
 design.
 
 Judge the round on the verdict the reviewer delivered, never on the spawn

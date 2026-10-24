@@ -226,8 +226,8 @@ fn plan_audit_reports_its_findings_and_fails_the_gate() {
     )
     .unwrap();
 
-    // The committed side the pre-commit arm supplies: what this change adds
-    // to the log is what its budget answers for.
+    // The committed side the pre-commit arm supplies, so the checks that read
+    // a baseline run too.
     let baseline = dir.path().join("plan.baseline.md");
     let baseline_spec = dir.path().join("spec.baseline.md");
     std::fs::write(&baseline, "# t — Plan\n\n## Outstanding issues\n").unwrap();
@@ -242,12 +242,12 @@ fn plan_audit_reports_its_findings_and_fails_the_gate() {
         .arg(&baseline)
         .arg("--baseline-spec")
         .arg(&baseline_spec)
-        .args(["--max-rounds", "1", "--gates", "review"])
+        .args(["--gates", "design_review"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1), "a finding fails the gate");
     let stdout = String::from_utf8(out.stdout).unwrap();
-    for slug in ["plan-open-blocker", "plan-log-round-cap"] {
+    for slug in ["plan-open-blocker", "plan-log-gate-undeclared"] {
         assert!(stdout.contains(slug), "{slug} missing from: {stdout}");
     }
 
@@ -259,7 +259,7 @@ fn plan_audit_reports_its_findings_and_fails_the_gate() {
         .arg(&plan)
         .arg("--spec")
         .arg(&spec)
-        .args(["--max-rounds", "5", "--gates", "review"])
+        .args(["--gates", "review"])
         .output()
         .unwrap();
     assert_eq!(clean.status.code(), Some(0), "a clean tree passes");

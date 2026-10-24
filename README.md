@@ -216,10 +216,9 @@ harnex guard telemetry-emit                           # PostToolUse: record a ha
 
 harnex plan audit --plan P [--spec S]                 # spec-workflow review floor:
                   [--baseline B] [--baseline-spec BS] # open C/B rows, vanished rows,
-                  [--max-rounds N] [--gates a,b,c]    # rows added with no round recorded
+                  [--gates a,b,c]                     # rows added with no round recorded
                                                       # or past what its rounds counted,
-                                                      # and the per-gate round budget,
-                                                      # which is held only when given
+                                                      # and firings under undeclared gates
 
 harnex ask serve <page> <asks.json> [--within <min>]  # a decision page on 127.0.0.1: ends on
                  [--no-open]                          # an answer set, taken or stale, or time
@@ -400,9 +399,9 @@ patterns covered out of the box:
 - The spec-workflow review floor — an open Critical/Blocker row, a row
   deleted, reworded or downgraded instead of gaining its terminal
   disposition, a commit adding finding rows without the decision line that
-  makes it a round the budget counts, a commit landing rows past what its own
-  rounds counted at that rank, a gate still revising past its round
-  budget, a committed decision bullet edited instead of appended, and a
+  records the round that found them, a commit landing rows past what its own
+  rounds counted at that rank, a firing under a gate the workflow does not
+  have, a committed decision bullet edited instead of appended, and a
   committed section none of them can be read against — each blocks at
   commit (`plan audit`, driven by the shipped `hooks/pre-commit.d/`
   arm)

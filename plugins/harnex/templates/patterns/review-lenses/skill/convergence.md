@@ -9,13 +9,13 @@ those files' prose siblings. Monotonic growth is what makes termination mean
 something: a loop that dropped files could converge by forgetting them.
 
 The set is bounded in practice because a fix that keeps widening the scope is a
-fix that is not converging, and the stall rule below catches it.
+fix that is not converging, and the exits below catch it.
 
 ## Stalled
 
 A pass is stalled when it produces the same findings as the previous pass and
-changed no file. Stop there rather than at the cap — a loop with nothing left to
-try is done, and spending the remaining iterations on it only delays the report.
+changed no file. Stop there — a loop with nothing left to try is done, and
+another pass only delays the report.
 
 Two passes producing the same finding while files DID change is not stalled: the
 fix moved something the finding did not cover. Let it run.
@@ -53,11 +53,11 @@ invoked the loop — the skill writes nothing outside the files the fixes touch
 - every finding's terminal disposition, end-anchored on its row —
   `[fixed: what pinned it]`, `[refuted: the ground truth]`, or
   `[accepted: who accepted it and why]`. Spec-bound, `harnex plan audit`
-  computes the whole contract — open rows, vanished rows, the round
-  budget — and the pre-commit arm holds it at the commit. A pass that adds
+  computes the whole contract — open rows, vanished rows, unrecorded
+  rounds — and the pre-commit arm holds it at the commit. A pass that adds
   finding rows without its decision-log line is refused there
-  (`plan-round-unrecorded`), so a pass the loop ran outside this skill still
-  spends its round; a line stating fewer findings than the pass filed is
+  (`plan-round-unrecorded`), so a pass the loop ran outside this skill is
+  still on the record; a line stating fewer findings than the pass filed is
   refused too (`plan-log-counts-short`), so the severities on it are the
   ones on the page.
 
@@ -87,17 +87,42 @@ recorded as its own bullet on the line beneath the row,
 hanging prose under it. The loop never re-attempts a recorded fix: without
 the record, the next pass
 re-derives the same fix from the same finding, breaks the same gate, and the
-pair rides to the cap. It surfaces the finding with the attempt beside it.
+loop runs in place. It surfaces the finding with the attempt beside it.
 
-## The cap
+## A class that comes back
 
-Default 5 iterations. It is a circuit breaker for the case the stall rule
-cannot see — a fix that reopens a finding it just closed, a pair of findings
-whose fixes undo each other. Reaching it is a report, never a pass.
+A Critical or Blocker outside the last fix, of a class an earlier pass's fix
+claimed to close, says that fix enumerated cases where the class has a shared
+seam. Fix it at the seam, pinned by one check over the whole class (§ A fix is
+pinned or it is surfaced), and name the earlier fix it supersedes. Where the
+members share no seam, escalate with the earlier findings of the class beside
+it: another case-by-case fix is the same fix again.
 
-Raise it with `--max-iter` when a scope is genuinely large. Do not raise it to
-make a loop converge: a loop that needs 20 passes is telling you the change is
-too big to review as one unit.
+## A dispute
+
+A Critical or Blocker the terminal pass files enters the fix path unless ground
+truth refutes it. When two terminal passes in a row each file one and the loop
+refutes every one, escalate with both passes' findings and the refutations
+beside them: the loop and a fresh context disagree, and a further pass is the
+same disagreement again.
+
+## No count stops the loop
+
+The loop runs while its passes fix what an authority confirms, and returns to
+the operator on what its passes find:
+
+| Exit | When |
+|---|---|
+| converged | a full pass leaves no fixable Critical or Blocker, and the terminal pass agrees |
+| stalled | a pass repeats the previous pass's findings and changed no file |
+| diverged | a finding in the last fix that no simpler form removes (§ A finding in the last fix) |
+| returned | a class an earlier fix claimed to close comes back with no shared seam (§ A class that comes back) |
+| disputed | two terminal passes in a row file Critical or Blocker findings the loop refutes (§ A dispute) |
+
+At every exit but converged, report the reason, the findings that remain and
+the scope covered; the operator decides between another pass, a narrower
+scope, and stopping. A count of passes is not an exit: a loop still fixing
+confirmed defects is doing what it is for.
 
 ## What the loop never does
 
@@ -145,8 +170,8 @@ cross-refutation — one number per round, never one per engine.
 Each reviewer is spawned once, reports, and is done. A reviewer asked to judge a
 second round is no longer the fresh context that was its whole value.
 
-Every axis above multiplies what a round spends, and the cap bounds iterations
-rather than agents. The bound on agents is the runtime's, written in the
+Every axis above multiplies what a round spends. The bound on agents is the
+runtime's, written in the
 settings `env` block as `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` and
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` (spec-facts, settings). Scaling along
 more than one axis without them states a fan-out nothing bounds.

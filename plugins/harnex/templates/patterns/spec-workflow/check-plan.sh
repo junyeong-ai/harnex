@@ -7,8 +7,8 @@
 # disposition, no approval recorded over what its gate still counts against it
 # — an open Blocker, or an acceptance criterion nothing measured — no rows
 # landing without the round that found them or past what that commit's own
-# rounds counted at that rank, no round past the gate's budget, and a decision log
-# that only ever appends. A commit that leaves neither
+# rounds counted at that rank, no firing under a gate this workflow does not
+# have, and a decision log that only ever appends. A commit that leaves neither
 # document retires the spec and is held to none of it. The staged content
 # is what is judged — the worktree may be further along — and HEAD is the
 # baseline both append-only contracts are held against. Paths are read
@@ -54,13 +54,9 @@ while IFS= read -r -d '' f; do
     rm -rf "$tmp"
     continue
   fi
-  # Rounds one gate may spend on one spec before reaching the number is a
-  # report. Raise it for a genuinely large scope; a review that needs many
-  # more is naming a unit too large to finish as one. The gate list is this
-  # workflow's own: the budget is per gate, so a firing under a name nothing
-  # declares carries a budget of its own. Add a gate here when the workflow
-  # gains one.
-  args=(--plan "$f" --max-rounds 5 --gates clarify,design_review,review,acceptance,resume)
+  # The gate list is this workflow's own, so a firing under any other name is
+  # refused. Add a gate here when the workflow gains one.
+  args=(--plan "$f" --gates clarify,design_review,review,acceptance,resume)
   git show ":$f" >"$tmp/$f" 2>/dev/null || rm -f "$tmp/$f"
   # The four inputs are always supplied, and absent is spelled as empty. A
   # staged plan whose spec is not in the index would otherwise skip every
