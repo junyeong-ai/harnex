@@ -183,7 +183,8 @@ Verify: `bash -n` on every `.sh` and on every extensionless hook under
 an absent binary. An absent binary is reported as missing with its installer
 at the release the scaffolded pin starts from,
 `curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash -s -- --version v<floor>`
-with `<floor>` the lower bound of `[meta] harnex_version`, which puts it on the
+with `<floor>` the lower bound of `[meta] harnex_version` written in full, a
+part it leaves out as 0 (`>=0.35` starts at `0.35.0`), which puts it on the
 machine directly rather than behind a tool manager's shim that every hook call
 would pass through; the skill never installs it. On a repo that already had artifacts, the scaffolded `harness.toml`
 points validators at them for the first time, so report those findings as part
