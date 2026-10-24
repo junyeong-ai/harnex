@@ -127,7 +127,7 @@ confirmed defects is doing what it is for.
 ## What the loop never does
 
 - **Never fix on judgment.** The citation decides, per the severity table in
-  `.claude/rules/review-lenses.md`. A finding this loop cannot have confirmed
+  the `review-lenses` skill. A finding this loop cannot have confirmed
   is reported to a person.
 - **Never silently narrow.** If cost forces a bound — a sampled directory, a
   skipped generated tree — say which, in the report. A bound nobody states
@@ -158,8 +158,9 @@ an engine's unavailability never gates the default:
   itself; a same-provider second model does not. A Critical or Blocker either
   engine raises and the other cannot refute enters the fix path.
 
-Every engine gets the same charge: the scope, `.claude/rules/review-lenses.md`
-with its witness rule, and the close `.claude/agents/reviewer.md` mandates. An
+Every engine gets the same charge: the scope,
+`.claude/skills/review-lenses/SKILL.md` with its witness rule, and the close
+`.claude/agents/reviewer.md` mandates. An
 engine outside the reviewer agent reads those files rather than a paraphrase,
 and none is told what an earlier round filed — an engine charged with
 refuting its own previous findings is running that round again.

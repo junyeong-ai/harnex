@@ -347,7 +347,7 @@ enum Surface {
     /// A file a skill reads on demand. The spec declares no shape for one, so
     /// nothing can validate it — its correctness is the review's, not a gate's.
     SkillResource,
-    /// A lens. Its contract is stated in the review-lenses rule, which is prose.
+    /// A lens. Its contract is stated in the review-lens-files rule, which is prose.
     Lens,
     /// A spec artifact template — the project's own document, not a Claude
     /// Code surface.

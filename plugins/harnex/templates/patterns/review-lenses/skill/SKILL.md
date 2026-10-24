@@ -8,9 +8,10 @@ allowed-tools: Read Edit Grep Glob Agent Bash(git diff *) Bash(git log *) Bash(g
 # Convergent review
 
 Walk the lenses, fix what is safe to fix, re-walk what the fixes touched, stop
-on a clean pass. The loop is the engine; `.claude/rules/review-lenses.md` owns
-the severity and citation vocabulary, the authorities, and the refutation
-regimes, and is the reference for every judgment below.
+on a clean pass. The loop is the engine. Invoke the `review-lenses` skill
+before the first pass: it owns the severity and citation vocabulary, the
+authorities and the refutation regimes, and is the reference for every
+judgment below.
 
 Read [convergence.md](convergence.md) when the loop needs a decision the
 sections here do not settle: scope growth, the exits that return the loop to
@@ -44,25 +45,25 @@ no lens can reach if the file is not open.
 1. **Walk each lens** in `.claude/lenses/` over the files in scope its
    `applies_to:` covers — a lens scoped to source has nothing to say about a
    spec, and walking it there is how a loop manufactures findings. A lens that
-   fires produces findings in the rule's format; a lens that fires on nothing is
+   fires produces findings in the `review-lenses` format; a lens that fires on nothing is
    a result, not a skipped step. Say which lenses were walked over what, since
    a narrowed lens is a narrowed pass.
 2. **State the coverage before the verdict.** Name what was actually read —
    the files opened, the symbol search that ran, what a search could not reach.
    A pass that reports zero findings with its coverage shown is a complete
    result; the same report without it is an assertion.
-3. **Refute each candidate before filing it**, under the code regime the rule
-   defines: ground truth that contradicts a finding drops it; an attempt that
+3. **Refute each candidate before filing it**, under the code regime
+   `review-lenses` defines: ground truth that contradicts a finding drops it; an attempt that
    settles nothing down-calibrates it to Major with a note naming what blocked
    the check.
 4. **Fix only what an authority confirms, in what the change owns.** The
-   severity table in `.claude/rules/review-lenses.md` decides, and its
-   authorities column is the definition — including the sources this project
+   severity table in the `review-lenses` skill decides, and its authorities
+   column is the definition — including the sources this project
    added at install. Re-listing them here would be the copy that refuses a
    finding citing an authority the project declared. A finding citing
    judgment is reported, never edited: that citation is the author's own
    opt-out. A pre-existing finding is reported, never edited
-   ([file: .claude/rules/review-lenses.md § What a finding blocks]).
+   ([file: .claude/skills/review-lenses/SKILL.md § What a finding blocks]).
 5. **Run the project's fast gate over the pass's fixes.** A failure is triaged
    to the offending fix, which is undone by applying the inverse of the edit
    that produced it — the loop knows exactly what it changed, and no git
@@ -84,7 +85,7 @@ no lens can reach if the file is not open.
 Stop when a full pass leaves no Critical and no Blocker the loop may fix —
 that is what converged means, however the request phrased it. A
 Critical or Blocker the loop may not fix — judgment-cited, or citing an
-authority the rule's column does not know — is resolved by escalation rather
+authority the `review-lenses` column does not know — is resolved by escalation rather
 than edit: surface it with the convergence report for the operator's
 disposition, because re-walking cannot close what the loop is forbidden to
 fix, and counting it as failure makes convergence unreachable by
@@ -120,10 +121,10 @@ errors, or is unavailable, escalate with the degradation named
 and never a quietly substituted reviewer.
 
 **What comes back branches on its citation.** Critical or Blocker findings
-citing an authority the rule's column knows enter the fix path as a new
+citing an authority the `review-lenses` column knows enter the fix path as a new
 iteration — not a blind re-walk, which already missed them once. A
 citation naming an authority the column does not know degrades to surfaced,
-per the rule's conservative boundary. A judgment-cited Critical or Blocker
+per its conservative boundary. A judgment-cited Critical or Blocker
 escalates its whole batch to the operator immediately — it cannot be
 auto-fixed, and a re-walk would drop it; judgment findings at Major and
 below ride the report as signal. A finding the loop refutes instead goes on

@@ -29,22 +29,21 @@ blank-page problem in disguise.
   register and terminology with observations.
 - `review-lenses` — the convergent review loop and two forked read-only
   bookends (critique, design-review) as skills, the fresh-context reviewer
-  agent they run through, the lens files, and the rule under which a finding's
-  citation decides whether it may be fixed unattended. Auto-link lens
+  agent they run through, the lens files, and the `review-lenses` skill under
+  which a finding's citation decides whether it may be fixed unattended — it
+  loads when a review starts, so a session that is not reviewing pays nothing
+  for it. Auto-link lens
   `anchors:` to the project's existing
   `.claude/rules/` files, as `rule:<slug>`. Customize each lens's
   `applies_to:` based on what file types the project has. Name this project's
-  **authorities** in the rule's source column: a finding may only be
+  **authorities** in that skill's source column: a finding may only be
   auto-fixed when something other than the loop confirms it, so the lint
   codes, named gates and structural tests are what decide the fix/report
   split. Take them from the enforcer sweep (exploration Phase 2) — it is the
   same list, and it also supplies the **bookend trigger's project signals**
   (a migration surface, an auth path, a generated-file guard). Name the
   **fast gate command** the loop's verify step runs and grant it in the
-  review skill's `allowed-tools`. Verify a brownfield `harness.toml` lists
-  `review-lenses` in `[validate.rules] always_loaded_slugs`, and add it if
-  not: the rule carries no `paths:`, so without the slug `harnex check`
-  reports it as a rule missing its scope.
+  review skill's `allowed-tools`.
 - `spec-workflow` — the spec orchestrator as a skill (gate events with a
   closed decision-token enum, resume from disk), the threshold-and-lifecycle
   rule, `specs/_template/`, and a pre-commit arm that audits a plan's review
