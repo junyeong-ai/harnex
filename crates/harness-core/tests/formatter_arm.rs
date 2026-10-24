@@ -125,6 +125,25 @@ fn formatters_accept_regular_files_inside_the_project() {
     }
 }
 
+/// The hook runs between two edits of one change, so it may only format: a
+/// lint fix applied there acts on code the session has not finished writing.
+#[test]
+fn formatters_leave_lint_fixes_to_the_gate() {
+    for &(lang, extension, required) in &[
+        ("typescript", "ts", "--linter-enabled=false"),
+        ("python", "py", "format"),
+        ("jvm", "java", "--skip-removing-unused-imports"),
+    ] {
+        let project = Project::new(lang);
+        write(&project.root.join("biome.json"), "{}");
+        let file = project.root.join(format!("source.{extension}"));
+        write(&file, "source\n");
+        let calls = project.run(lang, &file);
+        assert!(calls.lines().any(|arg| arg == required), "{lang}: {calls}");
+        assert!(!calls.lines().any(|arg| arg == "--fix"), "{lang}: {calls}");
+    }
+}
+
 #[test]
 fn formatters_never_dispatch_an_external_file_or_a_symlinked_leaf() {
     for &(lang, extension) in PROFILES {

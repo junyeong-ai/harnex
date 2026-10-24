@@ -21,7 +21,7 @@ source "$(dirname -- "$0")/_format-target.sh" || exit 1
 resolve_format_target "$FILE" || exit 0
 
 case "$FILE" in
-  *.java)      command -v google-java-format >/dev/null 2>&1 && google-java-format -i "$FILE" >/dev/null 2>&1 || true ;;
+  *.java)      command -v google-java-format >/dev/null 2>&1 && google-java-format -i --skip-removing-unused-imports "$FILE" >/dev/null 2>&1 || true ;;
   *.kt|*.kts)  command -v ktlint >/dev/null 2>&1 && ktlint -F "$FILE" >/dev/null 2>&1 || true ;;
 esac
 exit 0

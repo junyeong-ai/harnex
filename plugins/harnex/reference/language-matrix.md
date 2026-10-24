@@ -124,7 +124,7 @@ is what invariant 5 actually asks for: `.java` reaches a Java formatter and
 
 | Axis | TypeScript (Node) | Python (uv) | Rust (cargo) | JVM (Gradle / Maven) |
 |---|---|---|---|---|
-| Formatter (PostToolUse) | `biome check --write`, only where the project declares biome | `ruff format` + `ruff check --fix` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
+| Formatter (PostToolUse) | `biome check --write --linter-enabled=false`, only where the project declares biome | `ruff format` | `rustfmt <file>` (+ `rustfmt.toml`, below) | `google-java-format -i --skip-removing-unused-imports` on `.java`, `ktlint -F` on `.kt`/`.kts` — never via the build tool |
 | Typecheck | `tsc` (via `turbo run type-check`) | `ty` / `mypy` / `pyright` — whichever the project configures | `cargo check` | `./gradlew compileJava compileKotlin` / `./mvnw -o compile` |
 | Verifier forms to write | `.sh` + `.ts` via `node` | `.sh` + `.py` via `uv run --frozen` | `.sh` only (no per-hook `.rs` build); JSON parsed with `jq` | `.sh` only (no per-hook JVM start); JSON parsed with `jq` |
 | Gate runner (when the project declares none) | the package manager the project's own scripts and CI invoke (+ `turbo`) | `uv run` (hooks via `prek`) | `cargo` | `./gradlew` / `./mvnw` (wrapper first) |
@@ -200,6 +200,12 @@ repo is never penalised for the tool it does not install.
   load every session. Every other rule carries a `paths:` that scopes it, and
   `harnex validate rules` reports a rule that disagrees with the list in
   either direction.
+- **The per-file formatter formats; it never applies a lint fix.** The hook
+  runs between two edits of one change, and a fix that is safe on a finished
+  file breaks an unfinished one: `ruff check --fix` and `google-java-format`
+  remove the import the next edit uses, and `biome check --write` turns a `let`
+  the next edit reassigns into `const`. Lint fixes stay with the gate, which
+  sees the finished change.
 - **The per-file formatter must resolve the same config the gate does.**
   `common/_format-target.sh` resolves the edited file inside the physical
   project root for every language hook. A missing helper is an installation

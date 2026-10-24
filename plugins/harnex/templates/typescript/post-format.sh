@@ -49,6 +49,6 @@ fi
 cd -- "$CONFIG" || exit 0
 
 case "$FILE" in
-  *.ts|*.tsx|*.js|*.jsx|*.json) "${BIOME[@]}" check --write "$FILE" >/dev/null 2>&1 || true ;;
+  *.ts|*.tsx|*.js|*.jsx|*.json) "${BIOME[@]}" check --write --linter-enabled=false "$FILE" >/dev/null 2>&1 || true ;;
 esac
 exit 0
