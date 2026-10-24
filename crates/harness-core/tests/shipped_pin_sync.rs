@@ -5,7 +5,9 @@
 //! breaking one, as Cargo reads `0.y`. Additions ship in patches, so what a
 //! harness written from this release uses may be a patch's addition: a lower
 //! floor admits a binary that refuses it as an unknown key rather than as the
-//! version it is. Constitution IX.
+//! version it is. The floor is written in full because it is also a tag: the
+//! skill installs `v<floor>`, and no release is tagged `v0.36`.
+//! Constitution IX.
 
 mod common;
 
@@ -63,6 +65,10 @@ fn assert_starts_at_this_release(pin: &str, whose: &str) {
     let (Some(floor), Some(ceiling), 2) = (floor, ceiling, req.comparators.len()) else {
         panic!("{whose}: '{pin}' is not the `>=floor, <ceiling` form harnex ships");
     };
+    assert!(
+        floor.minor.is_some() && floor.patch.is_some(),
+        "{whose} pins '{pin}': the floor names a release tag, so it carries all three parts"
+    );
     assert_eq!(
         (bound(floor), bound(ceiling)),
         (this_release(), next_break()),
