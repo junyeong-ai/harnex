@@ -22,7 +22,7 @@
 # PreToolUse entry refuses a command that would skip the hook stack, and it
 # reads nothing from here. What the section would arm is the freeze, which
 # covers harness.toml and `.claude/settings.json` — files this repository edits
-# as ordinary work (every minor release moves the pin below), so each such
+# as ordinary work (every breaking release moves the pin below), so each such
 # change would go through the break-glass grant, and a grant left standing
 # prints `[floor-edit allowed]` on every one, which is how the one signal that
 # the freeze was bypassed stops being one. Adopters for whom editing the gate
@@ -32,7 +32,7 @@
 # repo ships has to show its own friction here, on the corpus that builds it.
 
 [meta]
-harnex_version = ">=0.35, <0.36"
+harnex_version = ">=0.36, <0.37"
 
 # What the retirement sweep walks. Without a declared kind the sweep runs
 # over nothing and answers success — an enabled loop that processes nothing

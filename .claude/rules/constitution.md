@@ -39,8 +39,9 @@ rejection is opt-in where the upstream surface can grow independently.
 ## VI. Typed errors, stable codes
 
 Every failure is a variant of `harness_core::error::Error` with a stable
-`ErrorCode`. The string serialisation of `ErrorCode` is a public contract
-and may only change with a major version bump.
+`ErrorCode`. The string serialisation of `ErrorCode` is a public contract:
+changing it is a break, and `making-changes.md` owns the release a break
+ships in.
 
 ## VII. No project vocabulary
 

@@ -55,14 +55,24 @@ failure or unresolved risk, not to repeat evidence already established.
 
 Keep each decision revertible. Remove replaced code and update its consumers
 in the same change, without compatibility shims, dead branches or historical
-comments. Supersede decision records instead of deleting them.
+comments. A consumer installed outside this repository — a generated hook arm
+— cannot change with it, so a change it meets keeps it working or makes it
+fail loudly, never silently. Supersede decision records instead of deleting
+them.
 
 Announce changes to an external contract: public API, schema, config, CLI or
-what a gate reports on unmodified input. A newly detected pre-existing defect
-is a correction. Other changes require a minor version bump in the same
-release: `[meta] harnex_version` is the compatibility boundary enforced by
-`Config::validate`. `.claude/skills/release/SKILL.md` owns the patch exception
-for withdrawing a regression already shipped inside a pinned range.
+what a gate reports on unmodified input. A break ships in a minor release,
+because under `0.y` the minor is the compatibility boundary, as Cargo reads it.
+`[meta] harnex_version` pins one (`>=0.36.2, <0.37`), and a binary outside it
+refuses every command that loads `harness.toml` — a `guard` hook skips instead,
+because it must never block a session — so a project crosses a break there by
+one decision and never because the binary on its machine moved. A command that
+loads none — `plan audit`, `audit`, the floor tripwire — is out of the pin's
+reach, so an arm generated to call one is the consumer above. An addition that
+leaves every gate's verdict on unmodified input standing ships in a patch, and
+so does a correction: a newly detected pre-existing defect.
+`.claude/skills/release/SKILL.md` owns the patch exception for withdrawing a
+regression already shipped inside a pinned range.
 
 Record a self-contained reversible change in one line. For a shared-state,
 boundary or defect change, record the root cause, scope, invariant and actual

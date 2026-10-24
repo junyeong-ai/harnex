@@ -2,7 +2,7 @@
 //!
 //! Every failure in the toolkit is a variant of [`Error`]. The
 //! `ErrorCode::as_str` mapping is a stable public contract — changing
-//! a variant's string form is a MAJOR version bump.
+//! a variant's string form is a break (constitution VI).
 //!
 //! ## What this module refuses to do
 //!
@@ -300,9 +300,11 @@ impl Error {
             Self::ConfigNotFound { .. } => {
                 Some("create harness.toml at the project root (see examples/)")
             }
-            Self::ConfigVersionMismatch { .. } => {
-                Some("update harness.toml [meta] harnex_version or upgrade the binary")
-            }
+            Self::ConfigVersionMismatch { .. } => Some(
+                "run a harnex release that harness.toml's [meta] harnex_version admits (README \
+                 shows a per-repository pin), or move that pin after reading what the newer \
+                 release changed",
+            ),
             Self::PathTraversal { .. } => Some("paths must not contain '..' segments"),
             Self::GovernsQueryUnresolvable { .. } => {
                 Some("pass a project-relative path, or an absolute path under the project root")

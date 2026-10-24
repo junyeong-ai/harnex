@@ -101,6 +101,24 @@ Installing the plugin does not install the binary. Enabling a plugin is not
 consent to put an executable on the machine, so the two are separate acts and
 the plugin reports the oracle as missing rather than fetching it.
 
+### Pin the oracle per repository
+
+`harness.toml` pins the release a harness was written from, up to the next
+minor — `[meta] harnex_version = ">=0.36, <0.37"` — and a binary outside that
+range refuses every command that loads it, except the `guard` hooks, which
+skip rather than block a session. A break ships only in a new minor; a patch
+changes a gate's verdict on an unchanged tree only to catch a defect that was
+already there or to withdraw a regression it shipped. So the pin moves at a
+breaking release, or when a harness starts using what a later patch added. A
+machine working in repositories pinned to different minors keeps one binary
+per repository with a tool manager, for example mise:
+
+```toml
+# mise.toml
+[tools]
+"github:junyeong-ai/harnex" = "0.36"
+```
+
 ## IDE integration
 
 `schemas/harness.schema.json` ships in this repo. Point your TOML

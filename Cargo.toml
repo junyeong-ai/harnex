@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/harness-core", "crates/harness-cli"]
 
 [workspace.package]
-version = "0.35.0"
+version = "0.36.0"
 edition = "2024"
 # The floor is the toolchain `rust-toolchain.toml` pins. The binary ships
 # prebuilt, so a lower floor would only promise source builds a compiler no
