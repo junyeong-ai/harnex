@@ -73,8 +73,8 @@ on past a suite that failed.
 Every CI job needs a local counterpart before a tag, and
 `.github/workflows/ci.yml` is the list to check that against. Two kinds of gap,
 and only one of them is a hole. A job whose twin was never written is a hole:
-a drift only that job reads ships unseen, which is what `schema_sync.rs`
-answers for the schema-drift job. A job that cannot run here is not a hole: the
+a drift only that job reads ships unseen. The zizmor job's twin is `zizmor .`
+from the repository root. A job that cannot run here is not a hole: the
 test matrix carries two operating systems and a development machine is one of
 them, so the other leg is only ever green in CI. That is why the run is watched
 rather than predicted.

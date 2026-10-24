@@ -26,9 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write
+      contents: write # create the release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The tag names a version and so does the manifest the binary is built
       # from. They are one fact, so a disagreement stops the release rather
@@ -80,35 +82,35 @@ jobs:
         include:
           - { target: aarch64-apple-darwin, os: macos-latest }
           - { target: x86_64-apple-darwin, os: macos-latest }
-          - { target: aarch64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-26.04-arm }
           - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
       contents: write # upload the assets
       id-token: write # sign the provenance
-      attestations: write
+      attestations: write # store the provenance
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Linux ships musl, statically linked, so the runner's glibc floor never
-      # becomes the user's. cross builds it; installing it prebuilt saves the
-      # `cargo install cross` the upload action would otherwise run.
-      - if: runner.os == 'Linux'
-        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
-        with:
-          tool: cross@0.2.5
-
+      # becomes the user's. Each target builds on a runner of its own
+      # architecture, where the toolchain's self-contained musl links it with
+      # cargo alone; the action would otherwise reach for cross on every target
+      # that differs from the host's triple.
       - id: build
         uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         with:
           bin: harnex
           target: ${{ matrix.target }}
+          build-tool: cargo
           locked: true
           checksum: sha256
           dry-run: ${{ github.event_name == 'workflow_dispatch' }}
 
       - if: github.event_name == 'push'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ steps.build.outputs.tar }}

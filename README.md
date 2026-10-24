@@ -461,7 +461,7 @@ Policy) and `https://code.claude.com/docs/en/settings-reference` for the keys.
 Use `rust-toolchain.toml` for the build toolchain; `Cargo.toml` declares the
 minimum supported Rust version. `.github/workflows/ci.yml` defines the gates.
 
-Browser tests live in `crates/harness-cli/tests/ask-page`. Use the Node LTS
+Browser tests live in `crates/harness-cli/tests/ask-page`. Use the Node
 version in `.node-version`, build the CLI with `cargo build --locked`, then
 run `npm ci`, `npx playwright install chromium firefox webkit`, and `npm test`
 from that directory. The lockfile pins Playwright and its browser revisions.
