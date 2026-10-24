@@ -24,7 +24,18 @@ step() { printf '%s==>%s %s\n' "$BOLD" "$RESET" "$*" >&2; }
 warn() { printf '%s!%s   %s\n' "$RED" "$RESET" "$*" >&2; }
 die()  { printf '%serror:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
 
-on_error() { die "install failed at line $1"; }
+# Inside a command substitution or subshell, a failure ends it with its status
+# and prints nothing: the caller handles it, or fails in turn and is reported
+# here, once. Bash leaves three shapes outside this, and the script holds none
+# of them: a substitution in an argument drops its status; under a caller that
+# handles its result, a helper's earlier failed step is run past, except in a
+# command substitution on bash 3.2, which ends there; and bash 3.2 runs no trap
+# when an unhandled `( … )` fails.
+on_error() {
+  local status=$?
+  [ "$BASH_SUBSHELL" -eq 0 ] || exit "$status"
+  die "install failed at line $1"
+}
 trap 'on_error $LINENO' ERR
 
 usage() {
@@ -110,7 +121,6 @@ place() {
   chmod 0755 "$tmp"
   # Rename rather than overwrite: the file being replaced may be executing.
   mv -f "$tmp" "$dest"
-  "$dest" --version >/dev/null || die "$dest was installed but does not run"
 }
 
 report_installed() {
@@ -125,12 +135,15 @@ report_installed() {
 
 # ── the release path ─────────────────────────────────────────────────────────
 
+# The newest release's tag, or a refusal naming which reason there is none:
+# the request failed, or the project has published nothing.
 latest_tag() {
   local url
-  url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$REPO_URL/releases/latest")" || return 1
+  url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$REPO_URL/releases/latest")" ||
+    die "could not ask $REPO_URL for its latest release — the output above says why"
   case "$url" in
     */releases/tag/*) printf '%s\n' "${url##*/}" ;;
-    *) return 1 ;;
+    *) die "$REPO_URL has published no release yet — pass --build to build one" ;;
   esac
 }
 
@@ -249,8 +262,7 @@ if [ "$BUILD" -eq 0 ]; then
     require_sha256
     TAG="$VERSION"
     if [ -z "$TAG" ]; then
-      TAG="$(latest_tag)" ||
-        die "$REPO_URL has published no release yet — pass --build to build one"
+      TAG="$(latest_tag)" || exit 1
     fi
     download_release "$TAG" "$TARGET" "$WORK"
     SOURCE="$WORK/$BINARY"
@@ -269,7 +281,8 @@ step "installing to $BIN_DIR"
 place "$SOURCE"
 
 INSTALLED="$BIN_DIR/$BINARY"
-printf '\n%s%s%s → %s\n' "$GREEN" "$("$INSTALLED" --version)" "$RESET" "$INSTALLED" >&2
+INSTALLED_VERSION="$("$INSTALLED" --version)" || die "$INSTALLED was installed but does not run"
+printf '\n%s%s%s → %s\n' "$GREEN" "$INSTALLED_VERSION" "$RESET" "$INSTALLED" >&2
 
 if ! have "$BINARY"; then
   warn "$BIN_DIR is not on PATH — add it, or the plugin will report the oracle as missing:"
@@ -283,12 +296,11 @@ else
     # manager's shim, which this script does not own and which would be
     # regenerated anyway.
     #
-    # Only the shadow's version is read behind a guard. `place` already refused
-    # an install that does not run, so a failure on the other line is a wrong
-    # state rather than a diagnostic to soften.
+    # Only the shadow's version is read here, behind a guard: an install that
+    # does not run was refused when its version was read above.
     warn "PATH resolves $BINARY to $RESOLVED, not what was just installed:"
     log "    $RESOLVED → $("$RESOLVED" --version 2>/dev/null || echo 'does not run')"
-    log "    $INSTALLED → $("$INSTALLED" --version)"
+    log "    $INSTALLED → $INSTALLED_VERSION"
     log "    put $BIN_DIR first to prefer this one:"
     log "        export PATH=\"$BIN_DIR:\$PATH\""
   fi
