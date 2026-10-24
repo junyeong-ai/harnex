@@ -199,11 +199,18 @@ build_from_source() {
   local dir="$1"
   have cargo || die "cargo is not installed — see https://rustup.rs, then re-run this"
 
+  # Cargo runs from the clone when there is one, so rustup selects the
+  # toolchain `rust-toolchain.toml` pins rather than the caller's default.
+  local here="${ROOT:-$PWD}"
+
   local cargo_version want
-  cargo_version="$(cargo --version | awk '{print $2}')"
+  cargo_version="$(cd "$here" && cargo --version)" ||
+    die "cargo does not run in $here — the output above says why"
+  cargo_version="${cargo_version#cargo }"
+  cargo_version="${cargo_version%% *}"
   want="$(required_rust)"
   if [ -n "$want" ] && ! version_at_least "$cargo_version" "$want"; then
-    die "cargo $cargo_version is older than the $want this workspace declares — run: rustup update"
+    die "cargo $cargo_version is older than the Rust $want this workspace declares — install $want or newer"
   fi
   log "${DIM}cargo $cargo_version${RESET}"
 
@@ -218,7 +225,7 @@ build_from_source() {
     install+=("harness-cli")
   fi
 
-  "${install[@]}" || die "cargo install failed — the output above says why"
+  (cd "$here" && "${install[@]}") || die "cargo install failed — the output above says why"
   [ -x "$dir/out/bin/$BINARY" ] || die "cargo reported success but built no $BINARY"
 }
 
