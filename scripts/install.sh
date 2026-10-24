@@ -49,7 +49,7 @@ Downloads the ${BINARY} binary this project releases for your platform,
 verifies its checksum, and installs it. No Rust toolchain needed.
 
 Options:
-  --version <tag>   install this release instead of the latest (e.g. v1.2.3)
+  --version <tag>   install this release instead of the latest (v1.2.3 or 1.2.3)
   --build           build from source with cargo instead of downloading
   --rev <ref>       with --build, the commit or tag to build
   --bin-dir <path>  where the binary lands (default: \$HOME/.local/bin)
@@ -80,6 +80,12 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$REV" ] && [ "$BUILD" -eq 0 ] && die "--rev applies to --build"
+# Every release is tagged v<version> (release.yml), and a pin's floor is
+# written without the v, so either spelling names the same release.
+case "$VERSION" in
+  "" | v*) ;;
+  *) VERSION="v$VERSION" ;;
+esac
 [ -n "$VERSION" ] && [ "$BUILD" -eq 1 ] && die "--version selects a release; --build selects a source tree"
 
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -147,7 +153,7 @@ latest_tag() {
   esac
 }
 
-# Checked before anything is fetched, so the refusal to install unverified
+# Checked before the archive is fetched, so the refusal to install unverified
 # bytes is a precondition rather than a decision made after the download.
 require_sha256() {
   have sha256sum || have shasum ||
@@ -258,17 +264,19 @@ trap 'rm -rf "$WORK"' EXIT
 
 if [ "$BUILD" -eq 0 ]; then
   have curl || die "curl is not installed — install it, or pass --build"
+  TAG="$VERSION"
+  if [ -z "$TAG" ]; then
+    TAG="$(latest_tag)" || exit 1
+  fi
   if TARGET="$(host_target)"; then
     require_sha256
-    TAG="$VERSION"
-    if [ -z "$TAG" ]; then
-      TAG="$(latest_tag)" || exit 1
-    fi
     download_release "$TAG" "$TARGET" "$WORK"
     SOURCE="$WORK/$BINARY"
   else
-    # An unreleased platform is announced and built, never silently skipped.
-    warn "no release binary for $(uname -s)/$(uname -m) — building from source"
+    # An unreleased platform builds the release it would have downloaded,
+    # announced rather than silently skipped.
+    warn "no release binary for $(uname -s)/$(uname -m) — building $TAG from source"
+    REV="$TAG"
     build_from_source "$WORK"
     SOURCE="$WORK/out/bin/$BINARY"
   fi

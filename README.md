@@ -76,7 +76,7 @@ and installs it to `~/.local/bin` — no Rust toolchain involved. Linux archives
 link musl statically, so one per architecture runs on any distribution.
 
 macOS and Linux, on x86-64 and arm64, have a release binary. Anywhere else the
-installer says so and builds from source instead.
+installer says so and builds that release's tag from source instead.
 
 ```bash
 scripts/install.sh --version v1.2.3   # a specific release rather than the latest
