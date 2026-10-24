@@ -44,8 +44,8 @@ and Blocker set is a subset of what is already recorded is a stall: report
 the stall rather than the subset, because re-surfacing the recorded is churn
 while a genuinely new class is the pass earning its cost — and the round
 that finds the deepest defect is often a late one, which is why this guard
-compares sets. The gate's round budget, not this report, bounds how many
-rounds run.
+compares sets. Whether another round runs is the operator's decision at the
+gate, not this report's.
 
 After the coverage, findings, and close the agent contract mandates, end
 with one line a pipeline can read: `Design review: proceed` when no Critical

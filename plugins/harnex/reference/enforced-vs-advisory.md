@@ -46,16 +46,14 @@ thing that survives a confused, careless, or adversarial agent turn.
    step must read before proceeding. State the computer beside the control;
    one with no computer is an observation for the lifecycle ledger, not a
    rule. The spec-workflow's controls name theirs: `harnex plan audit`
-   computes the round budget, the disposition floor, the append-only row
-   contract, and whether the commit that lands a round's findings records
-   that round at all, and the shipped pre-commit arm holds them at the commit.
-   A control over a loop is computed from something monotone under everything
-   that loop can write: a count of what the loop chooses to record is a budget
-   it hands itself. The numbers a control reads answer to what they count,
-   held rank by rank to the rows rather than to a record's own summary. And
-   the computer decides what a control can be: a count sampled from one
-   reviewer carries no rule about falling, which is why the budget counts
-   rounds instead.
+   computes the disposition floor, the append-only row contract, and whether
+   the commit that lands a round's findings records that round at all, and the
+   shipped pre-commit arm holds them at the commit. A record a loop writes is
+   held to what that loop cannot rewrite — rows that never vanish, a log that
+   only appends, counts held rank by rank to the rows rather than to a record's
+   own summary. And the computer decides what a control can be: a count of
+   passes bounds nothing a reviewer finds, so a review loop returns to the
+   operator on where its findings land, never on how many passes ran.
 
 ## Unmeasured is not passed
 

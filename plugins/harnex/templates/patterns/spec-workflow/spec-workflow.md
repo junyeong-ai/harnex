@@ -114,11 +114,11 @@ what the last one found.
 `hooks/pre-commit.d/check-plan.sh` runs `harnex plan audit` over every staged
 plan: an open Critical/Blocker row, a row deleted, reworded or downgraded
 instead of gaining its terminal disposition, finding rows added without the
-decision line that makes the pass a round the budget counts, rows landing
-past what that commit's own rounds counted at that rank, a gate still revising past
-its round budget, a committed decision bullet edited instead of appended, and
-a committed section none of them can be read against — each blocks the
-commit. The grammar the gates write is computed there, never
+decision line recording the round that found them, rows landing past what
+that commit's own rounds counted at that rank, a firing under a gate the
+workflow does not have, a committed decision bullet edited instead of
+appended, and a committed section none of them can be read against — each
+blocks the commit. The grammar the gates write is computed there, never
 trusted to narration.
 
 For a gate before the session ends rather than at the commit,

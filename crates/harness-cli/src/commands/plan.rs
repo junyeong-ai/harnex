@@ -1,5 +1,4 @@
 use std::io::{Read, Write};
-use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -21,7 +20,7 @@ pub enum PlanCommand {
         /// baseline still holds open
         #[arg(long)]
         plan: PathBuf,
-        /// The spec carrying `## Decision log`, for the convergence checks
+        /// The spec carrying `## Decision log`, for the record checks
         #[arg(long)]
         spec: Option<PathBuf>,
         /// The committed baseline of the plan (`-` reads stdin). Open rows it
@@ -32,17 +31,9 @@ pub enum PlanCommand {
         /// stand verbatim as a prefix of `--spec`'s
         #[arg(long)]
         baseline_spec: Option<PathBuf>,
-        /// Rounds one gate may spend on one spec before reaching the number
-        /// is reported, counted over the spec's whole life and never returned.
-        /// Held only where `--baseline-spec` names the committed log, since
-        /// the crossing is answered by the commit that appends it. Omitted,
-        /// no budget is held: whether the unit under review is one a review
-        /// can finish is the project's to choose
-        #[arg(long)]
-        max_rounds: Option<NonZeroU32>,
         /// The gates this project's workflow defines, comma-separated. Every
         /// firing in the log must name one of them. Omitted, any name is a
-        /// gate — and the round budget it carries is its own
+        /// gate
         #[arg(long, value_delimiter = ',')]
         gates: Option<Vec<String>>,
     },
@@ -57,7 +48,6 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         spec,
         baseline,
         baseline_spec,
-        max_rounds,
         gates,
     } = cmd;
 
@@ -101,10 +91,6 @@ pub fn run<W: Write>(cmd: PlanCommand, out: &mut W) -> Result<ExitCode> {
         baseline_text.as_deref(),
         baseline_spec_text.as_deref(),
     );
-    let auditor = match max_rounds {
-        Some(cap) => auditor.with_round_cap(cap),
-        None => auditor,
-    };
     let findings = match gates.as_deref() {
         Some(gates) => auditor.with_gates(gates),
         None => auditor,
