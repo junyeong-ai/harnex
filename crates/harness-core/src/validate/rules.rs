@@ -36,9 +36,7 @@ use serde::Deserialize;
 use crate::config::RulesPolicy;
 use crate::envelope::{Finding, Location, Severity};
 use crate::validate::frontmatter;
-use crate::validate::path_globs::{
-    SYNTAX_HINT, compile_glob, declares_scope, globs, is_glob_shaped,
-};
+use crate::validate::path_globs::{DeclaredPaths, declares_scope, is_glob_shaped};
 
 pub struct RuleValidator<'a> {
     policy: &'a RulesPolicy,
@@ -137,21 +135,16 @@ impl<'a> RuleValidator<'a> {
                         };
                     if let Some(value) = &parsed.paths {
                         if is_glob_shaped(value) {
-                            for pattern in globs(value) {
-                                if compile_glob(&pattern).is_err() {
-                                    findings.push(Finding {
-                                        slug: "rule-paths-invalid".into(),
-                                        severity: Severity::Major,
-                                        location: Location::line(path.to_path_buf(), fm.begin_line),
-                                        message: format!(
-                                            "`paths:` glob '{pattern}' cannot be compiled by \
-                                             the declared scope matcher; context resolution is refused"
-                                        ),
-                                        hint: Some(SYNTAX_HINT.into()),
-                                        auto_fixable: false,
-                                        fix_command: None,
-                                    });
-                                }
+                            for defect in DeclaredPaths::read(value).err().unwrap_or_default() {
+                                findings.push(Finding {
+                                    slug: "rule-paths-invalid".into(),
+                                    severity: Severity::Major,
+                                    location: Location::line(path.to_path_buf(), fm.begin_line),
+                                    message: format!("`paths:` glob {defect}"),
+                                    hint: Some(defect.hint().into()),
+                                    auto_fixable: false,
+                                    fix_command: None,
+                                });
                             }
                         } else {
                             findings.push(Finding {

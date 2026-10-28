@@ -94,6 +94,16 @@ fn query(root: &Path, input: &str) -> Result<(String, String)> {
         .to_str()
         .ok_or_else(|| invalid(path, "instruction target is not UTF-8"))?
         .to_owned();
+    if ![input, &canonical]
+        .into_iter()
+        .all(path_globs::is_answerable)
+    {
+        return Err(invalid(
+            path,
+            "context targets must not hold or resolve to a line terminator, which Claude Code's \
+             `paths:` matcher does not match a leading `**/` or a trailing `/**` across",
+        ));
+    }
     Ok((
         normalized
             .to_str()
@@ -192,12 +202,10 @@ pub fn resolve(root: &Path, inputs: &[String]) -> Result<Resolution> {
                     "paths must be a glob string or a list of strings",
                 ));
             }
-            for pattern in path_globs::globs(value) {
-                let matcher = path_globs::compile_glob(&pattern)
-                    .map_err(|e| invalid(&path, format!("invalid paths glob: {e}")))?
-                    .compile_matcher();
-                matches |= scope.iter().any(|target| matcher.is_match(target));
-            }
+            let declared = path_globs::DeclaredPaths::read(value)
+                .map_err(|defects| invalid(&path, format!("invalid paths glob {}", defects[0])))?
+                .scope(path_globs::Reading::CLAUDE_CODE);
+            matches |= scope.iter().any(|target| declared.matches(target));
         }
         if matches {
             memory(
@@ -386,12 +394,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_does_not_apply_root_globs_to_descendants() {
+    fn resolve_applies_a_slashless_glob_at_every_depth() {
         let temp = fixture();
         for (file, expected) in [
             ("README.md", true),
-            ("apps/README.md", false),
-            ("readme.MD", false),
+            ("apps/README.md", true),
+            ("readme.MD", true),
+            ("apps/page.tsx", false),
         ] {
             let out = resolve(temp.path(), &[file.into()]).unwrap();
             assert_eq!(
@@ -401,6 +410,33 @@ mod tests {
                 "{file}"
             );
         }
+    }
+
+    #[test]
+    fn resolve_refuses_a_target_holding_a_line_terminator() {
+        let temp = fixture();
+        for path in [
+            "apps/a\nb.ts",
+            "apps\r/a.ts",
+            "a\u{2028}/b.ts",
+            "a\u{2029}.ts",
+        ] {
+            let error = resolve(temp.path(), &[path.into()]).unwrap_err();
+            assert!(
+                error.to_string().contains("line terminator"),
+                "{path}: {error}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_refuses_a_target_resolving_to_a_line_terminator() {
+        let temp = fixture();
+        put(temp.path(), "apps/x\ry/a.ts", "");
+        std::os::unix::fs::symlink("apps/x\ry/a.ts", temp.path().join("alias.ts")).unwrap();
+        let error = resolve(temp.path(), &["alias.ts".into()]).unwrap_err();
+        assert!(error.to_string().contains("line terminator"), "{error}");
     }
 
     #[test]
@@ -445,6 +481,7 @@ mod tests {
             "---\npaths: [\n---\n",
             "---\npaths: [42]\n---\n",
             "---\npaths: ['[']\n---\n",
+            "---\npaths: 'docs/[a,b]*.md'\n---\n",
             "---\npaths: ['ok']\n",
         ] {
             put(temp.path(), ".claude/rules/bad.md", rule);
@@ -621,46 +658,6 @@ mod tests {
         let temp = fixture();
         std::os::unix::fs::symlink(".", temp.path().join(".claude/rules/loop")).unwrap();
         assert!(resolve(temp.path(), &[]).is_err());
-    }
-
-    #[test]
-    fn resolve_scalar_and_list_patterns_agree_for_character_classes() {
-        let temp = fixture();
-        for pattern in [
-            "docs/[],a].md",
-            "docs/[!],a].md",
-            "docs/[^],a].md",
-            "docs/[\\].md",
-        ] {
-            put(
-                temp.path(),
-                ".claude/rules/scalar.md",
-                &format!("---\npaths: '{pattern},extra.md'\n---\n"),
-            );
-            put(
-                temp.path(),
-                ".claude/rules/list.md",
-                &format!("---\npaths: ['{pattern}', 'extra.md']\n---\n"),
-            );
-            for target in [
-                "docs/a.md",
-                "docs/].md",
-                "docs/b.md",
-                "extra.md",
-                "other.md",
-            ] {
-                let result = resolve(temp.path(), &[target.into()]).unwrap();
-                assert_eq!(
-                    result
-                        .required_instructions
-                        .contains(&".claude/rules/scalar.md".into()),
-                    result
-                        .required_instructions
-                        .contains(&".claude/rules/list.md".into()),
-                    "{pattern}: {target}"
-                );
-            }
-        }
     }
 
     #[cfg(unix)]

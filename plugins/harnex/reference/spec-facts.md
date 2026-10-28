@@ -403,13 +403,40 @@ already contradicted both a page and the binary's own schema.
   2.1.283), while `["**", "src/**"]` waits for a match. A harness names the
   rules that intentionally omit `paths:` in `[validate.rules]
   always_loaded_slugs`.
+- **A `paths:` value is one gitignore list** (2.1.311 and 2.1.312; skills use
+  the same format). Each entry is split at every comma outside braces —
+  inside `[...]` too — and trimmed, brace groups are expanded, and one
+  trailing `/**` is dropped from each glob before the `ignore` package (7.0.5,
+  by the bundled code) matches them, case folded by its default, which Claude
+  Code does not change. The last glob a path matches decides, so a `!` glob
+  narrows only the globs before it, and a file under a matched directory stays
+  matched whatever a later `!` glob says. A glob whose only `/` is a trailing
+  one matches at every depth — `*.md` is `**/*.md`, though the memory page's
+  table lists it as the root's files; a leading or inner `/` anchors at the
+  root (`/*.toml`). `[...]` is one character, so a route directory such as
+  `app/[id]` is written `app/\[id\]`. `src/**`, read as `src`, is a `src`
+  directory or file at every depth, and no `!` glob re-includes a file under
+  it: write `src/**/*`, the memory page's own form, for the root `src`, and
+  `**/src/**/*` for every depth — both read alike with the drop and without it.
+- **Some globs read differently across `ignore` releases**, so the next
+  bundle can change what they match. `rule-paths-invalid` and
+  `skill-paths-invalid` name each one with a spelling every release reads
+  alike. Among them are every escape of a letter or digit, since the bundled
+  release reads some as regex syntax (`\d` as any digit); an escaped `\`, `/`,
+  `?` or whitespace other than a space, which it rewrites in some context; and
+  a bracket expression beyond plain characters and ascending ranges within
+  one kind, whose members it hands to a JavaScript regex. Any other escape,
+  as in `\.github/**`, reads as its character.
 - **A `paths:` list is bounded before it is matched.** Brace groups multiply,
-  and the whole list shares one budget of 1,000 expanded patterns and 4 MiB
-  (brace-free patterns do not count against it). A pattern that would exceed
-  the budget is used UNEXPANDED, so its literal braces match nothing. A `[`
-  that does not open a bracket expression is likewise a pattern matching
-  nothing — escape it (`photos \[2024/**`). Both failures are silent: the rule
-  never loads and nothing says so.
+  and the whole list shares one budget of 1,000 expanded patterns and
+  4,194,304 UTF-16 code units, each intermediate expansion counted (brace-free
+  patterns do not count against it). A pattern that would exceed
+  the budget is used UNEXPANDED, so its literal braces match nothing. A
+  pattern the bundled `ignore` cannot compile is dropped and matches nothing:
+  a `[` that does not open a bracket expression (escape it:
+  `photos \[2024/**`), or an escaped `\` before a `/**/` (match it with `?`).
+  These failures are silent: nothing loads the rule for that pattern, and
+  nothing says so.
 - **`@path` import:** relative to the importing file's own directory (a
   link's target, when the file is reached through one), four hops deep, loads at
   launch, each file once; a rule's imports load too. Measured at 2.1.283, an
