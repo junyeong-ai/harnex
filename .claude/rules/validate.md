@@ -181,6 +181,10 @@ When the spec changes, update `KNOWN_HOOK_EVENTS` (or the matching closed
 set) and add a test that asserts the new value is accepted.
 
 Commit-msg validator (`[validate.commit_msg]`):
+- No section → validation is off: exit 0, no findings, a
+  `commit-msg-validation-off` warning. The generated arm runs on every commit
+  of a scaffold that declares none and reports every exit other than 0 and 1
+  as a harnex that could not run.
 - Each `[[validate.commit_msg.trailers]]` declares `key` plus optional
   `allowed_values` (closed enum) and `required` (presence floor).
 - Trailers without `allowed_values` validate by presence-only (any

@@ -136,3 +136,59 @@ fn always_loaded_measures_from_the_config_root_and_gates_only_on_a_declared_budg
         "always-loaded-over-budget"
     );
 }
+
+/// The scaffold declares no `[validate.commit_msg]`, and the shipped arm reports
+/// every exit other than 0 and 1 as a harnex that could not run, so validation
+/// that is off has to answer as success or every commit of a fresh scaffold says
+/// something false.
+#[test]
+fn the_commit_msg_arm_is_silent_while_validation_is_off_and_says_when_harnex_cannot_run() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let arm = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/harnex/templates/common/git-hooks/commit-msg");
+    let bin = root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_harnex"), bin.join("harnex")).unwrap();
+    write_atomic(&root.join("MSG"), b"subject\n").unwrap();
+    let pinned = format!("[meta]\nharnex_version = {:?}\n", env!("CARGO_PKG_VERSION"));
+    let required =
+        format!("{pinned}[[validate.commit_msg.trailers]]\nkey = \"Unit\"\nrequired = true\n");
+
+    for (config, exit, said) in [
+        (pinned.clone(), 0, &[][..]),
+        (required, 1, &["commit message validation failed"][..]),
+        (
+            "[meta]\nharnex_version = \">=0.1, <0.2\"\n".to_string(),
+            0,
+            &["commit message not checked", "CONFIG_VERSION_MISMATCH"][..],
+        ),
+    ] {
+        write_atomic(&root.join("harness.toml"), config.as_bytes()).unwrap();
+        let out = Command::new("bash")
+            .arg(&arm)
+            .arg("MSG")
+            .current_dir(root)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .env_remove("HARNEX_SKIP_COMMITMSG")
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(exit), "{config}: {stderr}");
+        assert_eq!(said.is_empty(), stderr.is_empty(), "{config}: {stderr}");
+        for phrase in said {
+            assert!(stderr.contains(phrase), "{config}: {stderr}");
+        }
+    }
+
+    write_atomic(&root.join("harness.toml"), pinned.as_bytes()).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_harnex"))
+        .current_dir(root)
+        .args(["validate", "commit-msg", "MSG"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["data"]["items"], serde_json::json!([]));
+    assert_eq!(json["warnings"][0]["code"], "commit-msg-validation-off");
+}

@@ -193,9 +193,10 @@ template = "common/git-hooks/pre-commit"
 destination = "hooks/pre-commit"
 executable = true
 
-# Fail-open in three places — no binary, no `[validate.commit_msg]` section,
-# and `HARNEX_SKIP_COMMITMSG` — so a project that has not configured trailers
-# is never blocked by the hook that would enforce them.
+# A project without `[validate.commit_msg]` has validation off, which harnex
+# answers as success, so the hook stays silent there. It lets a commit through
+# and says so when harnex cannot run or `HARNEX_SKIP_COMMITMSG` is set, and
+# silently when no binary is installed.
 [[artifact]]
 tier = "foundation"
 content = { kind = "copy" }
