@@ -95,6 +95,7 @@ fn check_runs_every_enabled_validator() {
         "evidence",
         "advisory",
         "governs",
+        "paths-reading",
         "agent-preload",
         "policy.permissions",
         "guard.floor",
@@ -131,6 +132,7 @@ harnex_version = ">=0.36, <0.37"
         "evidence",
         "governs",
         "guard.floor",
+        "paths-reading",
         "policy.permissions",
         "validate.agents",
         "validate.always_loaded",
@@ -533,6 +535,107 @@ fn check_reports_a_governs_truth_that_no_longer_exists() {
         .collect();
     assert_eq!(truth_missing.len(), 1, "{:?}", outcome.findings);
     assert!(truth_missing[0].message.contains("vanished/registry.rs"));
+}
+
+/// A rule's two readings part only on a file the project has: `docs/**` is
+/// clean while `docs` sits at the root, and reported once a nested `docs`
+/// directory gives the dropped `/**` a file the glob as written leaves out.
+#[test]
+fn check_reports_paths_whose_readings_part_on_a_project_file() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    write(
+        &tmp.path().join(".claude/rules/docs.md"),
+        "---\npaths: [\"docs/**\"]\n---\n# Docs\n",
+    );
+    write(&tmp.path().join("docs/a.md"), "");
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert!(outcome.run.contains(&"paths-reading".to_string()));
+    assert!(
+        outcome
+            .findings
+            .iter()
+            .all(|f| f.slug != "paths-reading-differs"),
+        "{:#?}",
+        outcome.findings
+    );
+
+    write(&tmp.path().join("apps/web/docs/b.md"), "");
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    let parted: Vec<_> = outcome
+        .findings
+        .iter()
+        .filter(|f| f.slug == "paths-reading-differs")
+        .collect();
+    assert_eq!(parted.len(), 1, "{:#?}", outcome.findings);
+    assert!(parted[0].message.contains("`apps/web/docs/b.md`"));
+    assert!(!parted[0].severity.fails_gate());
+}
+
+/// git lists a submodule as its gitlink and an untracked nested repository as
+/// its directory; neither is a file a rule applies to.
+#[test]
+fn paths_reading_reads_files_and_not_a_submodule_or_a_nested_repository() {
+    let tmp = project();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    write(
+        &tmp.path().join(".claude/rules/vendored.md"),
+        "---\npaths: [\"vendor/**\", \"nested/**\"]\n---\n# Vendored\n",
+    );
+    std::fs::create_dir(tmp.path().join("vendor")).unwrap();
+    let gitlink = common::git(tmp.path())
+        .args([
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000,0123456789abcdef0123456789abcdef01234567,vendor",
+        ])
+        .status()
+        .unwrap();
+    assert!(gitlink.success());
+    write(&tmp.path().join("nested/a.md"), "");
+    let nested = common::git(&tmp.path().join("nested"))
+        .args(["init", "-q"])
+        .status()
+        .unwrap();
+    assert!(nested.success());
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert!(outcome.run.contains(&"paths-reading".to_string()));
+    assert!(
+        outcome
+            .findings
+            .iter()
+            .all(|f| f.slug != "paths-reading-differs"),
+        "{:#?}",
+        outcome.findings
+    );
+}
+
+#[test]
+fn paths_reading_is_unmeasured_where_git_cannot_list_the_project() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = load_cfg(&tmp, &minimal_config_toml());
+    let rule = tmp.path().join(".claude/rules/docs.md");
+    // No value drops a `/**`, so no reading can part and nothing is listed.
+    write(&rule, "---\npaths: [\"docs/*.md\"]\n---\n");
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert!(
+        outcome.run.contains(&"paths-reading".to_string()),
+        "{:#?}",
+        outcome.skipped
+    );
+
+    write(&rule, "---\npaths: [\"docs/**\"]\n---\n");
+    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
+    assert!(!outcome.run.contains(&"paths-reading".to_string()));
+    assert!(
+        outcome
+            .skipped
+            .iter()
+            .any(|s| s.slug == "paths-reading" && s.reason.contains("unlisted")),
+        "{:#?}",
+        outcome.skipped
+    );
 }
 
 /// The governs arm ignores `--since`: the defect is created by a change to a

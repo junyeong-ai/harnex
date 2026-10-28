@@ -1,6 +1,6 @@
 ---
 paths:
-  - "specs/**"
+  - "specs/**/*"
 governs:
   concept: the spec lifecycle and its gates
   live_truth:

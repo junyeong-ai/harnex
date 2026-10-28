@@ -15,11 +15,12 @@
 //! - Never mutate any file. The check is read-only.
 //! - Never spawn a subprocess but git, and git only to ask which files are
 //!   the project's: `git diff --name-only -z --relative <ref>` under `--since`,
-//!   and `git ls-files` for the nested `CLAUDE.md` set. The first failing is
-//!   an error, because the caller asked for a git-derived window; the second
-//!   failing declares that set unmeasured in `skipped` and reads the rest,
-//!   because a tarball export or a container with dubious ownership still
-//!   has a root memory file and rules to check.
+//!   and `git ls-files` for the nested `CLAUDE.md` set and, once a `paths:`
+//!   value drops a trailing `/**`, for every file. The first failing is an
+//!   error, because the caller asked for a git-derived window; a listing
+//!   failing declares what it answers unmeasured in `skipped` and reads the
+//!   rest, because a tarball export or a container with dubious ownership
+//!   still has a root memory file and rules to check.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,7 @@ use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::git;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
+use crate::validate::path_globs::{DroppingPaths, PathsReadingAuditor};
 use crate::validate::{
     AgentValidator, OutputStyleValidator, RoutineValidator, RuleValidator, SettingsScope,
     SettingsValidator, SkillValidator, SurfaceValidator,
@@ -235,6 +237,7 @@ impl<'a> ProjectChecker<'a> {
         )?;
         self.run_evidence(&mut findings, &mut run, &mut skipped, &mut files_scanned)?;
         self.run_governs(&mut findings, &mut run, &mut skipped)?;
+        self.run_paths_reading(&mut findings, &mut run, &mut skipped)?;
         self.run_agent_preload(&mut findings, &mut run, &mut skipped)?;
         self.run_advisories(&mut findings, &mut run, &mut skipped)?;
         self.run_codegen(&mut findings, &mut run, &mut skipped)?;
@@ -546,6 +549,70 @@ impl<'a> ProjectChecker<'a> {
             findings.extend(auditor.audit_rule(&content, path));
         }
         run.push("governs".into());
+        Ok(())
+    }
+
+    /// Every rule and skill `paths:` covers the same project files once
+    /// Claude Code drops a trailing `/**` as written. Shape findings stay with
+    /// the validators; this arm asks only the question that needs the
+    /// project's files, which `git::owned_files` answers once a value drops a
+    /// `/**`. When git cannot, the arm is declared unmeasured in `skipped`, as
+    /// the nested memory set is. Ignores `--since` as governs does: a
+    /// directory added anywhere can part the readings of an unchanged rule.
+    /// Counts nothing into `files_scanned`.
+    fn run_paths_reading(
+        &self,
+        findings: &mut Vec<Finding>,
+        run: &mut Vec<String>,
+        skipped: &mut Vec<SkippedRule>,
+    ) -> Result<()> {
+        let validate = self.config.validate.as_ref();
+        let mut globs = Vec::new();
+        if validate.and_then(|v| v.rules.as_ref()).is_some() {
+            globs.push(<RuleValidator as SurfaceValidator>::GLOB);
+        }
+        if validate.and_then(|v| v.skills.as_ref()).is_some() {
+            globs.push(<SkillValidator as SurfaceValidator>::GLOB);
+        }
+        if globs.is_empty() {
+            skipped.push(SkippedRule {
+                slug: "paths-reading".into(),
+                reason: "no [validate.rules] or [validate.skills] section".into(),
+            });
+            return Ok(());
+        }
+        let mut dropping = Vec::new();
+        for glob in globs {
+            for path in &self.discover_glob(glob)? {
+                if let Ok(content) = crate::validate::read_text(path) {
+                    dropping.extend(DroppingPaths::read(&content, path));
+                }
+            }
+        }
+        if !dropping.is_empty() {
+            let owned = match git::owned_files(self.working_dir, &[]) {
+                Ok(owned) => owned,
+                Err(git::Failure(message)) => {
+                    skipped.push(SkippedRule {
+                        slug: "paths-reading".into(),
+                        reason: format!("the project's files are unlisted: {message}"),
+                    });
+                    return Ok(());
+                }
+            };
+            // The listing names a submodule and a nested repository by their
+            // directory and keeps a tracked file deleted from the tree; none
+            // is a file Claude Code reads.
+            let files = owned
+                .iter()
+                .filter(|path| std::fs::symlink_metadata(path).is_ok_and(|meta| !meta.is_dir()))
+                .filter_map(|file| file.strip_prefix(self.working_dir).ok()?.to_str())
+                .map(str::to_string)
+                .collect();
+            let auditor = PathsReadingAuditor::new(files);
+            findings.extend(dropping.iter().filter_map(|paths| auditor.audit(paths)));
+        }
+        run.push("paths-reading".into());
         Ok(())
     }
 

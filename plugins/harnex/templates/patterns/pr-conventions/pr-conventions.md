@@ -1,6 +1,6 @@
 ---
 paths:
-  - ".github/**"
+  - ".github/**/*"
 governs:
   concept: pull request metadata
   live_truth:

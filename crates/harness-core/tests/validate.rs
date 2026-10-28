@@ -921,14 +921,28 @@ fn skill_validator_flags_invalid_paths_glob() {
         flag_side_effect_verbs: false,
     };
     let v = SkillValidator::new(&policy);
-    let md = "---\nname: my-skill\ndescription: a skill\npaths:\n  - \"src/**/*.rs\"\n  - \"[invalid\"\n---\nBody\n";
+    let md = "---\nname: my-skill\ndescription: a skill\npaths:\n  - \"src/**/*.rs\"\n  - \"[invalid\"\n  - 3\n---\nBody\n";
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().join("my-skill/SKILL.md");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let findings = v.validate_text(md, &path);
-    assert!(
-        findings.iter().any(|f| f.slug == "skill-paths-invalid"),
-        "expected skill-paths-invalid for bad glob: {findings:?}"
+    let findings: Vec<(String, Option<String>)> = v
+        .validate_text(md, &path)
+        .into_iter()
+        .filter(|f| f.slug == "skill-paths-invalid")
+        .map(|f| (f.message, f.hint))
+        .collect();
+    assert_eq!(
+        findings,
+        [
+            (
+                "paths glob '[invalid' opens `[` without closing it".to_string(),
+                Some("close it, or escape a literal `[` as `\\[`".to_string()),
+            ),
+            (
+                "paths[2] is not a string".to_string(),
+                Some("each entry in paths must be a glob string".to_string()),
+            ),
+        ]
     );
 }
 

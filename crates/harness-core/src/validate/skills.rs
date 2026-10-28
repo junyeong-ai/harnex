@@ -498,42 +498,36 @@ impl<'a> SkillValidator<'a> {
         }
 
         // paths: a comma-separated STRING or a YAML list of glob patterns
-        // (the spec accepts both). Validate each glob; flag only a non-string,
-        // non-sequence value.
+        // (the spec accepts both). Validate each glob the runtime reads from
+        // it; flag a non-string entry and a non-string, non-sequence value.
         if let Some(ref val) = parsed.paths {
-            let invalid_glob = |s: &str, label: String| -> Option<Finding> {
-                path_globs::compile_glob(s).err().map(|_| Finding {
+            for defect in path_globs::DeclaredPaths::read(val)
+                .err()
+                .unwrap_or_default()
+            {
+                findings.push(Finding {
                     slug: "skill-paths-invalid".into(),
                     severity: Severity::Major,
                     location: Location::line(path.to_path_buf(), fm.begin_line),
-                    message: format!("paths {label} '{s}' is not a valid glob pattern"),
-                    hint: Some(path_globs::SYNTAX_HINT.into()),
+                    message: format!("paths glob {defect}"),
+                    hint: Some(defect.hint().into()),
                     auto_fixable: false,
                     fix_command: None,
-                })
-            };
+                });
+            }
             if let Some(seq) = val.as_sequence() {
-                for (i, item) in seq.iter().enumerate() {
-                    match item.as_str() {
-                        Some(s) => findings.extend(invalid_glob(s, format!("[{i}]"))),
-                        None => findings.push(Finding {
-                            slug: "skill-paths-invalid".into(),
-                            severity: Severity::Major,
-                            location: Location::line(path.to_path_buf(), fm.begin_line),
-                            message: format!("paths[{i}] is not a string"),
-                            hint: Some("each entry in paths must be a glob string".into()),
-                            auto_fixable: false,
-                            fix_command: None,
-                        }),
-                    }
+                for (i, _) in seq.iter().enumerate().filter(|(_, item)| !item.is_string()) {
+                    findings.push(Finding {
+                        slug: "skill-paths-invalid".into(),
+                        severity: Severity::Major,
+                        location: Location::line(path.to_path_buf(), fm.begin_line),
+                        message: format!("paths[{i}] is not a string"),
+                        hint: Some("each entry in paths must be a glob string".into()),
+                        auto_fixable: false,
+                        fix_command: None,
+                    });
                 }
-            } else if val.is_string() {
-                let segs: Vec<Finding> = path_globs::globs(val)
-                    .iter()
-                    .filter_map(|seg| invalid_glob(seg, format!("segment '{seg}'")))
-                    .collect();
-                findings.extend(segs);
-            } else {
+            } else if !val.is_string() {
                 findings.push(Finding {
                     slug: "skill-paths-invalid".into(),
                     severity: Severity::Major,

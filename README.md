@@ -288,14 +288,24 @@ No targets asks for the foundation only. Internal target symlinks resolve rules
 and memories for both the logical path and its real target. Instruction paths
 are canonical and deduplicated at their first occurrence. Ancestor traversal
 visits canonical parent directories before their descendants.
-Absolute targets, target directories, traversal and instructions outside the
-repository are refused. Broken links and malformed rules fail instead of
-returning a partial instruction set. Rule globs share their parser with
-validation and use case-sensitive globset syntax, including dotfiles. The
-result describes declared scope, not Claude's runtime loading limits or
-brace-expansion budget. This is not Claude's memory runtime: imports, memory
-exclusions, user memory, output styles, native `AGENTS.md`, hooks and lifecycle
-orchestration remain the caller's responsibility.
+Absolute targets, target directories, traversal, targets holding a line
+terminator and instructions outside the repository are refused. Broken links
+and malformed rules fail instead of returning a partial instruction set. Rule
+globs share their grammar with validation and match as Claude Code reads them:
+a glob with no `/` but a trailing one matches at every depth, `src/**` is a
+`src` directory or file at every depth, and case is folded. A rule whose
+`paths:` Claude Code splits, expands or trims otherwise than its syntax says,
+or holds a glob the releases of Claude Code's matcher read differently, one
+that can match nothing it spells, an escape of a letter, a digit, `\`, `/`,
+`?` or whitespace other than a space, or a bracket expression beyond plain
+characters and ascending ranges within one kind, fails resolution, and
+`check` names a rewrite. `paths-reading-differs` names a rule or skill whose
+`paths:` covers other project files once Claude Code drops a trailing `/**`
+than as written. The result describes declared
+scope, not Claude's runtime loading limits. This is not Claude's memory
+runtime: imports, memory exclusions, user memory, output styles, native
+`AGENTS.md`, hooks and lifecycle orchestration remain the caller's
+responsibility.
 
 `baseline save` records what the window was measured under as well as what it
 measured: the build, the paragraph floor, and — where the window was scoped to
@@ -385,6 +395,10 @@ patterns covered out of the box:
   field — refused at every boundary one can be written
 - Claude Code spec compliance (rules / skills / agents / output-styles /
   settings frontmatter)
+- `paths:` scope as Claude Code reads it: a glob the releases of its matcher
+  read differently is refused, and a rule or skill that covers other files of
+  the project once its trailing `/**` is dropped than as written is named with
+  a spelling that reads alike both ways
 - A character budget over the files the repository puts into every session
   — memory files and their imports, rules whose `paths:` scope nothing, the
   selected output style, each skill, command and agent listing entry — read

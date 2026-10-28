@@ -61,6 +61,25 @@ declared truth, not to the rule declaring it, so a diff-windowed rule filter
 reads a deleted truth as nothing-to-check — and it counts nothing into
 `files_scanned`.
 
+The `paths-reading` arm shares the rule and skill validators' gates and globs
+and reports `paths-reading-differs` (Minor) where dropping a trailing `/**`,
+as Claude Code does, makes a `paths:` value cover different project files than
+as written — `docs/**` once a nested `docs` directory exists. Both sides fold
+case as Claude Code does, so a difference folding alone makes shows on
+neither, and one the drop makes on a file spelled in another case still shows.
+The hint names a rewrite for each glob whose dropped `/**` the value cannot
+keep and still cover what it does as written, so applying them all clears the
+finding; the every-depth spelling it offers beside one changes what the value
+covers as written, so the value is judged again. It asks only the question that needs the tree, so a value outside the
+grammar stays the validators' to report, and lists the project only once a
+value drops a `/**`: without one the readings cannot part. The project's files
+are what `git::owned_files` lists that is not a directory — a submodule and a
+nested repository are listed as one — less a file whose path holds a line
+terminator, which neither reading answers for (`path_globs::is_answerable`);
+when git cannot list them, the arm is declared unmeasured in `skipped`. Like governs it ignores `--since` — a
+directory added anywhere parts the readings of an unchanged rule — and counts
+nothing into `files_scanned`.
+
 The `evidence` arm reads every surface this gate validates for shape — the
 rule, skill, agent, output-style and routine globs the validators discover
 with — plus the project's memory files, because a file checked for

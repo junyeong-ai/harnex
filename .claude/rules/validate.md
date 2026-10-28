@@ -13,7 +13,21 @@ Seven sub-validators. Each reads frontmatter or JSON, returns
 [`Finding`] list, never mutates input.
 
 `validate::path_globs` owns the `paths:` grammar shared by rule and skill
-validation and `context resolve`; compile these patterns through that owner.
+validation, `context resolve` and check's `paths-reading` arm; its module doc
+states what `DeclaredPaths::read` refuses and where the two `Reading`s part. A
+refusal is a `Defect` naming a spelling every reader takes alike, never a match
+as one release of the matcher would make it. Each `DefectKind` stands on one of
+four grounds, and a new one takes the same: Claude Code splitting, expanding or
+trimming an entry otherwise than its syntax says, as its pipeline decides it; a
+measured disagreement between `ignore` 7.0.5, 7.0.14 and git; a spelling that
+matches nothing it says; or an escape or bracket expression the module doc
+names. Draw those two by the grammar that reads them, never by measured
+contexts, because the next context breaks a line drawn by cases: escapes by
+class, since the regex grammar gives meaning only to an escaped letter or digit
+and the bundled release rewrites a few characters before it; brackets as a
+closed set, since a member's reading turns on its neighbours. A glob judged
+only as written misses what the matcher is given once the trailing `/**` is
+dropped, and one judged alone misses the `!` globs around it.
 
 Rule validator — discovery is recursive (`.claude/rules/**/*.md`, per the
 memory spec), and every check keys on load scope, which is whether `paths:`
@@ -24,7 +38,8 @@ so the rule loads unconditionally and is judged as always-loaded — reading key
 presence alone would exempt it from both checks below while it costs every
 turn:
 - `paths:` required unless slug in `always_loaded_slugs`.
-- `paths:` must be a glob string or a list of glob strings (Major).
+- `paths:` must be a glob string or a list of glob strings, each inside the
+  grammar (Major, one finding per `Defect`).
 - Always-loaded rules: `max_lines` cap (default 200 per Claude Code memory
   spec, which targets unconditionally-loaded context) as Major.
 - Path-scoped rules: `max_scoped_lines` cap as Minor, unset by default. The
@@ -63,7 +78,7 @@ Skill validator (per <https://code.claude.com/docs/en/skills>):
 - `disallowed-tools` is a string OR an array of strings — same shape
   rules as `allowed-tools` (Major).
 - `paths` is a string (comma-separated) OR an array of glob patterns — spec
-  accepts both; each glob must compile (Major).
+  accepts both; each glob inside the grammar, as for a rule (Major).
 - `hooks` keys validated against `KNOWN_HOOK_EVENTS` (Major).
 - `effort` must be in `KNOWN_EFFORT_LEVELS` (Major).
 - `agent` / `model` are valid free-form fields — accepted, never flagged
