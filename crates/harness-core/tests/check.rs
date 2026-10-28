@@ -19,7 +19,7 @@ fn write(p: &Path, contents: &str) {
 fn minimal_config_toml() -> String {
     r#"
 [meta]
-harnex_version = ">=0.36, <0.37"
+harnex_version = ">=0.37, <0.38"
 
 [evidence]
 default_provenance = "memory-only"
@@ -120,7 +120,7 @@ fn check_skips_validators_with_no_config_section() {
     let tmp = project();
     let minimal = r#"
 [meta]
-harnex_version = ">=0.36, <0.37"
+harnex_version = ">=0.37, <0.38"
 "#;
     let cfg = load_cfg(&tmp, minimal);
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
@@ -159,7 +159,7 @@ fn check_emits_codegen_drift_as_blocker() {
 
     let toml_body = r##"
 [meta]
-harnex_version = ">=0.36, <0.37"
+harnex_version = ">=0.37, <0.38"
 
 [[codegen.groups]]
 name = "g"
@@ -297,7 +297,7 @@ fn a_set_past_its_budget_is_one_finding_at_its_largest_member() {
     let tmp = project();
     let cfg = load_cfg(
         &tmp,
-        "[meta]\nharnex_version = \">=0.36, <0.37\"\n[validate.always_loaded]\nmax_chars = 10\n",
+        "[meta]\nharnex_version = \">=0.37, <0.38\"\n[validate.always_loaded]\nmax_chars = 10\n",
     );
     write(&tmp.path().join("CLAUDE.md"), "twelve chars\n");
     write(&tmp.path().join(".claude/CLAUDE.md"), "short\n");
@@ -385,7 +385,7 @@ fn fix_resolves_codegen_drift_and_re_check_clean() {
     .unwrap();
     let toml_body = r##"
 [meta]
-harnex_version = ">=0.36, <0.37"
+harnex_version = ">=0.37, <0.38"
 
 [[codegen.groups]]
 name = "g"
@@ -747,7 +747,7 @@ fn check_gates_advisory_staleness_by_context() {
 fn evidence_config() -> &'static str {
     r#"
 [meta]
-harnex_version = ">=0.36, <0.37"
+harnex_version = ">=0.37, <0.38"
 
 [evidence]
 default_provenance = "internal"
@@ -818,7 +818,7 @@ fn a_changed_config_revalidates_unchanged_surfaces_from_its_own_root() {
         let config = root.join("harness.toml");
         let policy = |reject| {
             format!(
-                "[meta]\nharnex_version = \">=0.36, <0.37\"\n\
+                "[meta]\nharnex_version = \">=0.37, <0.38\"\n\
              [validate.skills]\nreject_unknown_keys = {reject}\n"
             )
         };
@@ -896,7 +896,7 @@ fn an_untracked_config_revalidates_existing_surfaces_even_when_ignored() {
         }
         let cfg = load_cfg(
             &tmp,
-            "[meta]\nharnex_version=\">=0.36, <0.37\"\n[validate.skills]\nreject_unknown_keys=true\n",
+            "[meta]\nharnex_version=\">=0.37, <0.38\"\n[validate.skills]\nreject_unknown_keys=true\n",
         );
         let outcome = ProjectChecker::new(&cfg, tmp.path())
             .with_since("HEAD")
@@ -1386,7 +1386,7 @@ fn an_unreadable_file_is_reported_where_its_own_validator_is_disabled() {
         &tmp,
         r#"
 [meta]
-harnex_version = ">=0.36, <0.37"
+harnex_version = ">=0.37, <0.38"
 
 [evidence]
 default_provenance = "memory-only"
@@ -1491,7 +1491,7 @@ fn a_preloaded_skill_changed_alone_is_caught_under_since() {
     let tmp = project();
     let cfg = load_cfg(
         &tmp,
-        "[meta]\nharnex_version = \">=0.36, <0.37\"\n\n[validate.agents]\n",
+        "[meta]\nharnex_version = \">=0.37, <0.38\"\n\n[validate.agents]\n",
     );
     write(
         &tmp.path().join(".claude/agents/reviewer.md"),
