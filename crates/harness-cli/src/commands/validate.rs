@@ -6,14 +6,16 @@ use clap::Subcommand;
 use serde::Serialize;
 
 use harness_core::always_loaded::{self, AlwaysLoaded};
-use harness_core::envelope::{Finding, ListResponse};
+use harness_core::envelope::{Finding, ListResponse, Warning};
 use harness_core::error::{Error, Result};
 use harness_core::validate::{
     AgentValidator, CommitMsgValidator, OutputStyleValidator, RuleValidator, SettingsScope,
     SettingsValidator, SkillScope, SkillValidator,
 };
 
-use super::{load_config, write_envelope_success};
+use super::{load_config, write_envelope_success, write_envelope_success_warned};
+
+const COMMIT_MSG_VALIDATION_OFF_CODE: &str = "commit-msg-validation-off";
 
 /// Closed-set value parser for clap, sourced from the enum's `ALL` (single
 /// source of truth — drift impossible).
@@ -70,7 +72,8 @@ pub enum ValidateCommand {
         scope: String,
     },
     /// Validate a git commit message against `[validate.commit_msg]` trailers
-    /// (e.g., `.git/COMMIT_EDITMSG` from a commit-msg hook)
+    /// (e.g., `.git/COMMIT_EDITMSG` from a commit-msg hook). Without the
+    /// section, validation is off: nothing is checked and a warning says so.
     CommitMsg { path: PathBuf },
     /// Measure what this repository puts into every session, member by
     /// member. Held to `[validate.always_loaded] max_chars` when the section
@@ -192,14 +195,22 @@ pub fn run<W: Write>(cmd: ValidateCommand, out: &mut W) -> Result<ExitCode> {
             findings.extend(v.validate_file(&path, scope));
         }
         ValidateCommand::CommitMsg { path } => {
-            let policy = config
-                .validate
-                .as_ref()
-                .and_then(|v| v.commit_msg.as_ref())
-                .ok_or_else(|| Error::ConfigInvalid {
-                    message: "no [validate.commit_msg] section in harness.toml".into(),
-                    location: None,
-                })?;
+            // The generated commit-msg arm runs this on every commit, and the
+            // scaffold declares no section: off is an answer, not a failure,
+            // so the arm's report of a harnex that could not run stays true.
+            let Some(policy) = config.validate.as_ref().and_then(|v| v.commit_msg.as_ref()) else {
+                write_envelope_success_warned(
+                    out,
+                    ListResponse::new(Vec::<Finding>::new()),
+                    vec![Warning {
+                        code: COMMIT_MSG_VALIDATION_OFF_CODE.into(),
+                        message: "commit-message validation is off: harness.toml declares no \
+                                  [validate.commit_msg] section, so no trailer is checked"
+                            .into(),
+                    }],
+                )?;
+                return Ok(ExitCode::SUCCESS);
+            };
             let v = CommitMsgValidator::new(policy);
             findings.extend(v.validate_file(&path)?);
         }
