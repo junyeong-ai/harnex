@@ -1344,7 +1344,7 @@ fn telemetry_cfg(dir: PathBuf) -> TelemetryConfig {
 fn build_sweep_config(tmp_path: &std::path::Path, extra_kinds: Vec<KindDecl>) -> Config {
     let cfg = harness_core::config::Config {
         meta: harness_core::config::MetaConfig {
-            harnex_version: ">=0.37, <0.38".into(),
+            harnex_version: common::FIXTURE_PIN.into(),
         },
         kinds: extra_kinds,
         evidence: None,
@@ -1787,15 +1787,15 @@ fn config_rejects_a_measured_kind_whose_glob_collapses_every_slug() {
 fn config_rejects_an_unknown_key_on_a_kind() {
     // A misspelled `invocation_kind` would otherwise load clean and drop the
     // kind's whole silence measurement with no error (Article V).
-    let toml = r#"
-        [meta]
-        harnex_version = ">=0.37, <0.38"
+    let toml = common::pinned(
+        r#"
         [[kinds]]
         name = "skill"
         glob = ".claude/skills/*"
         invokation_kind = "harness_invocation"
-    "#;
-    let err = toml::from_str::<Config>(toml).unwrap_err();
+    "#,
+    );
+    let err = toml::from_str::<Config>(&toml).unwrap_err();
     assert!(
         err.to_string().contains("invokation_kind"),
         "the unknown key must be named: {err}"

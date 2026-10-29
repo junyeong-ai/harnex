@@ -159,8 +159,6 @@ mod tests {
     use super::*;
 
     const SCAFFOLD_TELEMETRY: &str = r#"
-        [meta]
-        harnex_version = ">=0.37, <0.38"
         [telemetry]
         storage_dir = ".harness/telemetry"
         [[telemetry.kinds]]
@@ -170,7 +168,11 @@ mod tests {
 
     fn scaffold_dir() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("harness.toml"), SCAFFOLD_TELEMETRY).unwrap();
+        std::fs::write(
+            dir.path().join("harness.toml"),
+            crate::config::pinned(SCAFFOLD_TELEMETRY),
+        )
+        .unwrap();
         dir
     }
 

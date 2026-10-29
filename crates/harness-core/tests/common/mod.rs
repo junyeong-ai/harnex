@@ -29,6 +29,20 @@ pub fn tracked(root: &Path, pathspec: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The pin every release of this minor satisfies. A fixture states it instead
+/// of a literal version, so a release rewrites no fixture.
+pub const FIXTURE_PIN: &str = concat!(
+    ">=",
+    env!("CARGO_PKG_VERSION_MAJOR"),
+    ".",
+    env!("CARGO_PKG_VERSION_MINOR")
+);
+
+/// `sections` under a `[meta]` that pins [`FIXTURE_PIN`].
+pub fn pinned(sections: &str) -> String {
+    format!("[meta]\nharnex_version = \"{FIXTURE_PIN}\"\n{sections}")
+}
+
 /// A project a harness lives in: a git repository by construction, since the
 /// gates ask git which files are the project's own.
 pub fn project() -> TempDir {
