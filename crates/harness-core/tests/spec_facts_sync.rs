@@ -100,7 +100,8 @@ fn spec_facts_session_start_sources_match_known_sources() {
 /// The scaffolded `SessionStart` hook must match every documented source.
 ///
 /// Three of the five are context-loss boundaries, and a hook that injects
-/// branch, dirty-file count and recent commits is worth most precisely there.
+/// where the branch stands and whether the clone's git hooks run is worth most
+/// precisely there.
 /// A matcher of `startup|resume` is well-formed, so no validator flags it —
 /// only this test holds the template to the reason it exists.
 #[test]

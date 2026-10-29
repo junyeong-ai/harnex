@@ -56,7 +56,9 @@ already contradicted both a page and the binary's own schema.
   `fork` the model holds none of what the hook injected the first time. A
   matcher of `startup|resume` is well-formed and silent at exactly the moments
   its context is worth most, so a hook that injects session state matches all
-  five. SSoT is
+  five. In a git repository the runtime gives each new context, a compacted one
+  included, its own snapshot of the branch, the main branch, the status and the
+  recent commits (2.1.312); a hook that prints them again pays twice. SSoT is
   `crates/harness-core/src/validate/settings.rs::KNOWN_SESSION_START_SOURCES`.
   <!-- harnex-managed:start spec-facts-session-start-sources -->
   startup, resume, clear, compact, fork.

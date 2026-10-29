@@ -146,12 +146,8 @@ fn an_armed_clone_hears_nothing() {
     config(dir.path(), &["core.hooksPath", "hooks"]);
     let said = probe(dir.path());
     assert!(
-        !said.contains("are not armed") && !said.contains("executable bit"),
+        said.is_empty(),
         "nothing is wrong, so nothing is said: {said}"
-    );
-    assert!(
-        said.starts_with("Branch:"),
-        "the ordinary facts still print: {said}"
     );
 }
 
