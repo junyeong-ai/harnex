@@ -65,10 +65,12 @@ pub fn parse(content: &str, source: &Path) -> Result<Option<Frontmatter>> {
     }
 }
 
-/// The frontmatter of a document whose grammar harnex owns: the lines between
-/// a first line `---` and the next line `---`, so a `---` inside a block
-/// scalar stays the scalar's text. `Ok(None)` and `Err` as for [`parse`].
+/// The frontmatter of a document whose grammar harnex owns: past a leading
+/// byte-order mark, which YAML allows, the lines between a first line `---`
+/// and the next line `---`, so a `---` inside a block scalar stays the
+/// scalar's text. `Ok(None)` and `Err` as for [`parse`].
 pub fn parse_owned(content: &str, source: &Path) -> Result<Option<Frontmatter>> {
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let mut lines = content.lines();
     if lines.next() != Some("---") {
         return Ok(None);
