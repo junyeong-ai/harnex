@@ -65,7 +65,8 @@ never whether it is used. The load question has an owner: `retire.md` answers it
 from `facts.harness.rule_loads`, and states the window that evidence needs.
 
 Age, which Stale and the grace period read, is the caller's `LastChange` from
-`last_changes`: the last commit that touched the file, or now while the
+`last_changes`: the last commit that changed the file on this branch, a merge
+dated by what it changed against the branch it landed on, or now while the
 working tree holds a change no commit records. A directory artifact, a skill,
 is dated by the files under it, since git lists only files; the user's git
 configuration may not reshape the log the age is parsed from. Never a

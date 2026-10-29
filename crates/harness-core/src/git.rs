@@ -67,9 +67,10 @@ pub(crate) fn listed_paths(dir: &Path, args: &[&str]) -> Result<Vec<PathBuf>, Fa
         .collect())
 }
 
-/// The committer time of the last commit that touched each of `paths`, in the
-/// order given, or `None` for a path whose working-tree content no commit
-/// records: an edit not yet committed, or a file never committed. A directory
+/// The committer time of the last commit that changed each of `paths` on this
+/// branch, in the order given, or `None` for a path whose working-tree
+/// content no commit records: an edit not yet committed, or a file never
+/// committed. A directory
 /// is dated by the files under it, and holds an uncommitted change when any
 /// of them does or is untracked.
 ///
@@ -161,6 +162,12 @@ pub(crate) fn last_committed(
         .filter(|listed| !listed.is_empty())
         .flat_map(holders)
         .collect();
+    // A change is dated when it reached this branch: `--first-parent` credits
+    // a merge with what it changed against the branch it landed on, so a side
+    // commit written long before keeps no old date, and a conflict resolution
+    // is a change. Walking every parent instead hides a merge that took one
+    // side whole, and its side commit's date stands.
+    //
     // The user's configuration may not reshape what is parsed below:
     // `log.showSignature` prints verification lines into it, and
     // `log.showRoot=false` drops the names the first commit added.
@@ -173,6 +180,7 @@ pub(crate) fn last_committed(
             "--format=%x00%ct",
             "--name-only",
             "--relative",
+            "--first-parent",
             "--root",
             "--no-show-signature",
             "HEAD",
