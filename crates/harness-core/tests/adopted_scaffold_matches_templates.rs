@@ -214,7 +214,10 @@ fn every_adopted_pattern_file_matches_its_template() {
     }
     landed.sort();
 
-    let mut expected: Vec<String> = ADOPTED_PATTERN_FILES.iter().map(|s| s.to_string()).collect();
+    let mut expected: Vec<String> = ADOPTED_PATTERN_FILES
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     expected.sort();
     assert_eq!(
         landed, expected,
