@@ -58,11 +58,10 @@ blank-page problem in disguise.
   failure loses the proposals.
 - `telemetry-kinds` — the closed-schema ledger the harness measures its own
   use with: a hook recording each Skill, Task and Agent invocation, and the
-  rule on what may cross into it. Verify the scaffold's `harness.toml` declares the
-  `harness_invocation` Kind exactly as `common/harness.toml` ships it, and add
-  it if a brownfield `harness.toml` lacks it — the emit no-ops silently on an
-  undeclared Kind, so the pattern would install looking enabled and record
-  nothing. Do not invent a second Kind. In the same edit, set
+  rule on what may cross into it. Add the `harness_invocation` Kind to
+  `harness.toml` exactly as the pattern's rule spells it — the emit no-ops
+  silently on an undeclared Kind, so the pattern would install looking enabled
+  and record nothing. Do not invent a second Kind. In the same edit, set
   `invocation_kind = "harness_invocation"` on each `[[kinds]]` whose slugs this
   record can name — the skill and sub-agent kinds, never a rule kind, whose
   artifacts are loaded rather than invoked and so appear in no invocation

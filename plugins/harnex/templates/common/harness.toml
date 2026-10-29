@@ -165,21 +165,7 @@ roots = ["~/.claude/projects"]
 # needs the section even before the project records anything. A project's own
 # event schema is its own vocabulary — declare a `[[telemetry.kinds]]` when
 # there is something domain-specific to count; inventing one here would be the
-# guessing harnex refuses.
+# guessing harnex refuses. The telemetry-kinds pattern adds the Kind that
+# records harness-element invocations, together with the hook that feeds it.
 [telemetry]
 storage_dir = ".harness/telemetry"
-
-# The auto-emit Kind the telemetry-kinds pattern feeds: one row per harness
-# element (Skill / Task / Agent) invocation, carrying the element's slug and
-# whether the call succeeded. The closed schema bounds the SHAPE — an
-# undeclared field is rejected at append; `harnex guard telemetry-emit` bounds
-# the VALUE, emitting only the element's own slug (its name, not operator
-# content) resolved through the one tool→element authority. `outcome` comes
-# from which hook event fired, so a failure cannot be recorded as a success.
-# A skill or sub-agent kind sets `invocation_kind = "harness_invocation"` to
-# read its silence from here: within a window this Kind recorded, a slug it
-# never names is a Silent candidate. Only those kinds — `surface` is an
-# element's name, so this record can never name a rule.
-[[telemetry.kinds]]
-name = "harness_invocation"
-payload_schema = { type = "object", required = ["surface", "outcome"], properties = { surface = { type = "string" }, outcome = { type = "string", enum = ["ok", "failed"] } } }

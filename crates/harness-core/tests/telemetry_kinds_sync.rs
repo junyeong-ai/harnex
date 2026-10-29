@@ -3,12 +3,12 @@
 //! Constitution IX: a fact with more than one representation has one owner and
 //! the rest are verified from it. The auto-emit Kind name and payload fields
 //! live in the oracle (`HARNESS_INVOCATION_KIND`, `SURFACE_FIELD`,
-//! `OUTCOME_FIELD`); the scaffold's `harness.toml` and the pattern's prose
-//! restate them. The tool set the emit reads is the session module's measured
+//! `OUTCOME_FIELD`); the pattern's rule declares the Kind for `harness.toml`
+//! and its prose restates them. The tool set the emit reads is the session module's measured
 //! authority (`ASSET_TOOL_KEYS`), reused through `asset_of`; the matcher prose
 //! must name exactly those tools. This test fails if a restatement drifts —
 //! and, unlike a substring check, it validates the emit's own payloads against
-//! the scaffold schema and matches the matcher exactly.
+//! the pattern's schema and matches the matcher exactly.
 
 use std::path::PathBuf;
 
@@ -40,18 +40,32 @@ fn element_tools() -> Vec<&'static str> {
     tools
 }
 
-/// The scaffold's `harness_invocation` payload schema, as the oracle would use
+/// The scaffold's `harness.toml` with the Kind block the pattern's rule tells
+/// the installer to add — the config an installed pattern leaves behind.
+fn installed_config() -> Config {
+    let rule = read("plugins/harnex/templates/patterns/telemetry-kinds/telemetry-kinds.md");
+    let (_, after) = rule
+        .split_once("```toml\n")
+        .expect("the rule carries the Kind block");
+    let (block, _) = after.split_once("```").expect("the Kind block closes");
+    let block: String = block.lines().map(|l| format!("{}\n", l.trim())).collect();
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("harness.toml");
+    let scaffold = read("plugins/harnex/templates/common/harness.toml");
+    std::fs::write(&path, format!("{scaffold}\n{block}")).unwrap();
+    Config::load_from(&path).expect("the scaffold with the pattern's Kind block loads")
+}
+
+/// The pattern's `harness_invocation` payload schema, as the oracle would use
 /// it to validate an append.
-fn scaffold_kind_schema() -> KindSchema {
-    let config = Config::load_from(&repo_path("plugins/harnex/templates/common/harness.toml"))
-        .expect("scaffold harness.toml loads");
-    let decl = config
+fn installed_kind_schema() -> KindSchema {
+    let decl = installed_config()
         .telemetry
         .expect("scaffold declares [telemetry]")
         .kinds
         .into_iter()
         .find(|k| k.name == HARNESS_INVOCATION_KIND)
-        .unwrap_or_else(|| panic!("scaffold declares no `{HARNESS_INVOCATION_KIND}` Kind"));
+        .unwrap_or_else(|| panic!("the pattern declares no `{HARNESS_INVOCATION_KIND}` Kind"));
     KindSchema::from_value(&decl.payload_schema).expect("payload_schema is a valid closed schema")
 }
 
@@ -60,13 +74,12 @@ fn the_instruction_the_pattern_ships_actually_measures_a_surface() {
     // Executes the wiring the docs instruct, against the real scaffold rather
     // than a fixture — so what is pinned is that the instruction WORKS, not
     // that a file mentions it. Four owners meet here: the config key exists
-    // under this path (a rename stops this compiling), the scaffold's Kind
+    // under this path (a rename stops this compiling), the pattern's Kind
     // name matches the emit's constant (validate fails on a template rename),
-    // the scaffold schema accepts the emit's payload shape (the append fails
+    // the pattern's schema accepts the emit's payload shape (the append fails
     // on a renamed field or a tightened schema), and the sweep still reads a
     // record per kind (the verdicts fail if it stops).
-    let mut config = Config::load_from(&repo_path("plugins/harnex/templates/common/harness.toml"))
-        .expect("scaffold harness.toml loads");
+    let mut config = installed_config();
     config.kinds.push(KindDecl {
         name: "skill".into(),
         glob: ".claude/skills/*".into(),
@@ -110,7 +123,7 @@ fn the_instruction_the_pattern_ships_actually_measures_a_surface() {
         payload.insert(OUTCOME_FIELD.into(), "ok".into());
         appender
             .append(HARNESS_INVOCATION_KIND, serde_json::Value::Object(payload))
-            .expect("the scaffold schema must accept the payload the emit writes");
+            .expect("the pattern's schema must accept the payload the emit writes");
     }
 
     let query = TelemetryQuery::new(JsonlStorage::new(ledger, 10));
@@ -155,13 +168,13 @@ fn the_shipped_prose_spells_the_key_and_the_kind_it_instructs() {
 }
 
 #[test]
-fn the_emits_own_payloads_validate_against_the_scaffold_schema() {
-    // The append the emit makes for each outcome must pass the scaffold's
+fn the_emits_own_payloads_validate_against_the_patterns_schema() {
+    // The append the emit makes for each outcome must pass the pattern's
     // closed schema. A renamed field, a changed type, or a narrowed `outcome`
     // enum would make production emission a silent no-op while the emit's own
     // unit fixture kept passing — so validate the real shape here, against the
     // real schema, not a substring of the TOML.
-    let schema = scaffold_kind_schema();
+    let schema = installed_kind_schema();
     for outcome in ["ok", "failed"] {
         let mut payload = serde_json::Map::new();
         payload.insert(SURFACE_FIELD.into(), "review-lenses".into());
@@ -169,7 +182,7 @@ fn the_emits_own_payloads_validate_against_the_scaffold_schema() {
         let payload = serde_json::Value::Object(payload);
         schema.validate(&payload).unwrap_or_else(|e| {
             panic!(
-                "the emit's `{outcome}` payload no longer validates against the scaffold \
+                "the emit's `{outcome}` payload no longer validates against the pattern's \
                  harness_invocation schema ({e}) — production emission would silently skip"
             )
         });
