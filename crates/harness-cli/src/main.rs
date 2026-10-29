@@ -120,7 +120,16 @@ fn main() -> ExitCode {
             // which renders multi-line usage text unfit for a one-line envelope
             // field — kind alone names neither the argument nor the value.
             use clap::error::{ContextKind, ContextValue};
-            let mut message = format!("invalid arguments: {}", e.kind());
+            let kind = match e.kind() {
+                ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                    "a subcommand is required".to_string()
+                }
+                kind => kind.to_string(),
+            };
+            let mut message = format!("invalid arguments: {kind}");
+            if let Some(ContextValue::String(subcommand)) = e.get(ContextKind::InvalidSubcommand) {
+                message.push_str(&format!(" '{subcommand}'"));
+            }
             match e.get(ContextKind::InvalidArg) {
                 Some(ContextValue::String(arg)) => {
                     message.push_str(&format!(" — {arg}"));
