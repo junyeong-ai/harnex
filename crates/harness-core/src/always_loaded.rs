@@ -461,8 +461,6 @@ pub fn over_budget(loaded: &AlwaysLoaded, max_chars: usize, root: &Path) -> Opti
              always-loaded` lists each member."
                 .into(),
         ),
-        auto_fixable: false,
-        fix_command: None,
     })
 }
 

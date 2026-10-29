@@ -33,7 +33,7 @@ The gate threshold is the single source of truth `Severity::fails_gate()`
 decides exit 1 via
 `findings.iter().any(|f| f.severity.fails_gate())` — keep it identical across
 sites. To change the threshold, edit `fails_gate`, never the call sites. A
-result that carries no severity — a `PermissionFinding`, a codegen drift, a
+result that carries no severity — a `PermissionFinding` or a
 version verdict — exits 1 on any failure it reports.
 
 ## Shell completions

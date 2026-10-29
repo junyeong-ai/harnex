@@ -151,63 +151,10 @@ mod severity_tests {
     }
 }
 
-wire_enum! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    /// Closed set of auto-fix commands the safe-fix registry recognises.
-    ///
-    /// Lives in the envelope because it is the value of a [`Finding`] field:
-    /// making the field `Option<FixCommand>` is what keeps an emit site from
-    /// inventing a command, which prose asking for `FixCommand::X.as_str()`
-    /// did not — one finding shipped `harnex policy permissions generate
-    /// --profile baseline`, a string no dispatcher recognises and no CLI
-    /// accepts. [`crate::check::ProjectChecker`]'s `try_fix` dispatches via
-    /// exhaustive `match`, so adding a variant still forces the dispatcher to
-    /// handle it.
-    pub enum FixCommand {
-        CodegenSync => "harnex codegen sync",
-    }
-}
-
-impl std::fmt::Display for FixCommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for FixCommand {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let raw = String::deserialize(d)?;
-        Self::from_str(&raw).ok_or_else(|| {
-            serde::de::Error::custom(format!("'{raw}' is not in the safe-fix registry"))
-        })
-    }
-}
-
-impl serde::Serialize for FixCommand {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-
-impl schemars::JsonSchema for FixCommand {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "FixCommand".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "type": "string",
-            "description": "Command from the safe-fix registry; the only values `--fix` dispatches.",
-            "enum": Self::ALL.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
-        })
-    }
-}
-
 /// Single finding produced by a validator / verifier / classifier.
 ///
-/// Designed for AI consumption: `slug` is grep-able to the rule, `hint`
-/// is one-line remediation, `fix_command` (if `auto_fixable`) is the
-/// exact shell invocation a downstream agent can run.
+/// Designed for AI consumption: `slug` is grep-able to the rule, and `hint`
+/// is one-line remediation.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Finding {
     pub slug: String,
@@ -216,10 +163,6 @@ pub struct Finding {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
-    #[serde(default)]
-    pub auto_fixable: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fix_command: Option<FixCommand>,
 }
 
 /// A rule that could have run on this input and did not, with the reason.

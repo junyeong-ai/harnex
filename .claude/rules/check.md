@@ -55,8 +55,8 @@ is what breaks an unchanged agent.
 
 The `governs` arm shares the rule validator's gate (`[validate.rules]`) and
 glob: shape findings are the validator's, and this arm asks only the
-existence question that needs the tree (`governs-truth-missing`). Like
-codegen it ignores `--since` — the defect is created by a change to a
+existence question that needs the tree (`governs-truth-missing`). It
+ignores `--since` — the defect is created by a change to a
 declared truth, not to the rule declaring it, so a diff-windowed rule filter
 reads a deleted truth as nothing-to-check — and it counts nothing into
 `files_scanned`.
@@ -124,9 +124,7 @@ does not declare `unattended_remeasure`.
 Each validator that has no config section is added to `skipped` with the
 reason "no [section] section" — never silently absent.
 
-The `codegen` validator ignores `--since` by design: a sentinel source
-edit can drift any target, so it always checks every configured group in
-full. `validate.settings` filters `settings.json` and `settings.local.json`
+`validate.settings` filters `settings.json` and `settings.local.json`
 independently — a change to one is never masked by the other.
 
 `--since <ref>` filtering uses `git diff --name-only <ref>`. When `git`
@@ -134,29 +132,3 @@ fails to resolve the ref, the entire check surfaces `CheckGitFailure`
 — never silently degrades to scanning everything.
 A changed or untracked `harness.toml` revalidates every surface from the
 config's own root, because the validators' inputs include their policy.
-
-Codegen drift is reported with `auto_fixable: true` and
-`fix_command: Some(FixCommand::CodegenSync)` — downstream
-agents (CI, pre-commit) can execute the fix without operator intervention.
-
-`harnex check --fix` (and `ProjectChecker::fix`) close the loop: groups
-findings by `fix_command`, dispatches each through the [`FixCommand`]
-enum's exhaustive match in `try_fix`, then re-runs the check. Returns
-`FixReport { before, fixes_attempted, after }` — the consumer compares
-`before.findings.len()` vs `after.findings.len()` to confirm convergence.
-
-Adding a new auto-fixable finding:
-1. Add one `Variant => "harnex …"` line to the `FixCommand` `wire_enum!`
-   block — the command a downstream agent runs — and its fixture in
-   `every_fix_command_clears_the_finding_it_is_attached_to`, whose
-   exhaustive match asks for one.
-2. Emit the finding with
-   `fix_command: Some(FixCommand::X)`. The field is typed, so this
-   step is the compiler's, not a review's.
-3. Add a match arm in `ProjectChecker::try_fix` — the compiler enforces
-   this is exhaustive across `FixCommand` variants.
-4. Add a test that asserts convergence (drift before → 0 findings after).
-
-The registry is intentionally an enum, not config-driven, because
-spawning arbitrary commands would defeat the safety invariant. Every
-fix branch is reviewed code.

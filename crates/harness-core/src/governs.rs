@@ -430,8 +430,6 @@ impl<'a> GovernsAuditor<'a> {
                              or retire the rule that described it"
                                 .into(),
                         ),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }

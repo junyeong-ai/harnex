@@ -101,8 +101,6 @@ fn check_runs_every_enabled_validator() {
     ] {
         assert!(outcome.run.contains(&v.to_string()), "missing {v}");
     }
-    // codegen skipped (no [codegen] section)
-    assert!(outcome.skipped.iter().any(|s| s.slug == "codegen"));
 
     // The rule with no `paths:` frontmatter must surface — proof that the
     // rule validator actually ran against the fixture. The presence of
@@ -122,7 +120,6 @@ fn check_skips_validators_with_no_config_section() {
     for expected in [
         "advisory",
         "agent-preload",
-        "codegen",
         "evidence",
         "governs",
         "guard.floor",
@@ -141,44 +138,6 @@ fn check_skips_validators_with_no_config_section() {
             "expected {expected} in skipped list"
         );
     }
-}
-
-#[test]
-fn check_emits_codegen_drift_as_blocker() {
-    let tmp = project();
-    let src = tmp.path().join("enums.toml");
-    fs::write(&src, "[k]\nallowed = [\"a\", \"b\"]\n").unwrap();
-    let target = tmp.path().join("nodex.toml");
-    fs::write(&target, "# BEGIN x\nallowed = [\"stale\"]\n# END x\n").unwrap();
-
-    let toml_body = common::pinned(
-        r##"
-[[codegen.groups]]
-name = "g"
-source = "enums.toml"
-source_key = "k.allowed"
-[[codegen.groups.targets]]
-path = "nodex.toml"
-begin = "# BEGIN x"
-end = "# END x"
-format = "toml-array-assignment"
-name = "allowed"
-"##,
-    );
-    let cfg = load_cfg(&tmp, &toml_body);
-    let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
-    let drift: Vec<_> = outcome
-        .findings
-        .iter()
-        .filter(|f| f.slug == "codegen-drift")
-        .collect();
-    assert_eq!(drift.len(), 1);
-    assert_eq!(drift[0].severity, harness_core::envelope::Severity::Blocker);
-    assert!(drift[0].auto_fixable);
-    assert_eq!(
-        drift[0].fix_command,
-        Some(harness_core::envelope::FixCommand::CodegenSync)
-    );
 }
 
 #[test]
@@ -364,81 +323,6 @@ fn since_filter_excludes_unchanged_files_when_git_unavailable() {
 }
 
 #[test]
-fn fix_resolves_codegen_drift_and_re_check_clean() {
-    let tmp = project();
-    fs::write(
-        tmp.path().join("enums.toml"),
-        "[k]\nallowed = [\"a\", \"b\"]\n",
-    )
-    .unwrap();
-    fs::write(
-        tmp.path().join("nodex.toml"),
-        "# BEGIN x\nallowed = [\"stale\"]\n# END x\n",
-    )
-    .unwrap();
-    let toml_body = common::pinned(
-        r##"
-[[codegen.groups]]
-name = "g"
-source = "enums.toml"
-source_key = "k.allowed"
-[[codegen.groups.targets]]
-path = "nodex.toml"
-begin = "# BEGIN x"
-end = "# END x"
-format = "toml-array-assignment"
-name = "allowed"
-"##,
-    );
-    let cfg = load_cfg(&tmp, &toml_body);
-
-    let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
-    assert!(
-        !outcome.before.findings.is_empty(),
-        "expected drift before fix"
-    );
-    assert_eq!(outcome.fixes_attempted.len(), 1);
-    assert_eq!(
-        outcome.fixes_attempted[0].fix_command,
-        harness_core::envelope::FixCommand::CodegenSync
-    );
-    assert!(matches!(
-        outcome.fixes_attempted[0].outcome,
-        harness_core::check::FixOutcome::Applied
-    ));
-    assert!(
-        outcome.after.findings.is_empty(),
-        "expected clean re-check, got: {:?}",
-        outcome.after.findings
-    );
-    // Verify the target file was actually rewritten
-    let target = fs::read_to_string(tmp.path().join("nodex.toml")).unwrap();
-    assert!(target.contains("allowed = [\"a\", \"b\"]"));
-}
-
-#[test]
-fn fix_is_noop_when_no_auto_fixable_findings() {
-    let tmp = project();
-    let cfg = load_cfg(&tmp, &minimal_config_toml());
-    // No drift; rule/skill validators have no candidates to find issues with
-    let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
-    assert!(outcome.fixes_attempted.is_empty());
-    assert_eq!(outcome.before.findings.len(), outcome.after.findings.len());
-}
-
-#[test]
-fn fix_with_nothing_to_do_attempts_nothing() {
-    // `fix()` filters on `auto_fixable`, so a config that produces no fixable
-    // finding must attempt no fix rather than dispatching an empty batch.
-    // There is no unrecognized-command branch to test: `try_fix` takes a typed
-    // `FixCommand` and matches it exhaustively, so no string reaches it.
-    let tmp = project();
-    let cfg = load_cfg(&tmp, &minimal_config_toml());
-    let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
-    assert!(outcome.fixes_attempted.is_empty());
-}
-
-#[test]
 fn files_scanned_counts_only_passing_filter() {
     let tmp = project();
     let cfg = load_cfg(&tmp, &minimal_config_toml());
@@ -462,51 +346,6 @@ fn files_scanned_counts_only_passing_filter() {
         outcome.files_scanned >= 5,
         "files_scanned = {}",
         outcome.files_scanned
-    );
-}
-
-/// The three surfaces that answer "which fix commands exist" agree.
-///
-/// `Serialize`, `Deserialize` and the emitted schema are hand-written for
-/// [`FixCommand`] — a derive would have kept them in step, so nothing but this
-/// holds them together. All three read `ALL` + `as_str`, and this asserts they
-/// actually do rather than that they were written to.
-#[test]
-fn fix_command_serialises_round_trips_and_matches_its_schema() {
-    use harness_core::envelope::FixCommand;
-
-    let schema = serde_json::to_value(schemars::schema_for!(FixCommand)).unwrap();
-    let declared: Vec<String> = schema["enum"]
-        .as_array()
-        .expect("FixCommand schema declares an enum of wire strings")
-        .iter()
-        .map(|v| v.as_str().unwrap().to_string())
-        .collect();
-
-    let mut emitted = Vec::new();
-    for c in FixCommand::ALL {
-        let json = serde_json::to_value(c).unwrap();
-        let wire = json
-            .as_str()
-            .expect("a FixCommand serialises as a bare string")
-            .to_string();
-        assert_eq!(wire, c.as_str(), "Serialize disagrees with as_str");
-        assert_eq!(
-            serde_json::from_value::<FixCommand>(json).unwrap(),
-            *c,
-            "Deserialize is not the inverse of Serialize"
-        );
-        emitted.push(wire);
-    }
-    assert_eq!(
-        declared, emitted,
-        "the schema does not describe what Serialize emits"
-    );
-
-    let outside = serde_json::json!("harnex policy permissions generate --profile baseline");
-    assert!(
-        serde_json::from_value::<FixCommand>(outside).is_err(),
-        "a command outside the registry must not deserialize — that is the class this type exists to reject"
     );
 }
 

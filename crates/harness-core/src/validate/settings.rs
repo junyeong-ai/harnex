@@ -305,8 +305,6 @@ impl SettingsValidator {
                          would leave the file invalid a second time"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -323,8 +321,6 @@ impl SettingsValidator {
                             "hook event '{event_name}' is not in the Claude Code spec /en/hooks"
                         ),
                         hint: Some(format!("known events: {}", KNOWN_HOOK_EVENTS.join(", "))),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
                 if event_name == "SessionStart" {
@@ -358,8 +354,6 @@ impl SettingsValidator {
                 location: Location::file(path.to_path_buf()),
                 message: "permissions.deny is missing or empty".into(),
                 hint: Some("seed it via `harnex policy permissions generate`".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -387,8 +381,6 @@ impl SettingsValidator {
                                 inert.reason_text()
                             ),
                             hint: Some(inert.hint()),
-                            auto_fixable: false,
-                            fix_command: None,
                         });
                         continue;
                     }
@@ -406,8 +398,6 @@ impl SettingsValidator {
                                 misleading.reason_text()
                             ),
                             hint: Some(misleading.hint()),
-                            auto_fixable: false,
-                            fix_command: None,
                         });
                     }
                 }
@@ -434,8 +424,6 @@ impl SettingsValidator {
                             "'{allow}' in permissions.allow without a corresponding deny"
                         ),
                         hint: Some("move this pattern to deny or scope it more tightly".into()),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -456,8 +444,6 @@ impl SettingsValidator {
                             hint: Some(
                                 "remove the key or move it to ~/.claude/settings.json".into(),
                             ),
-                            auto_fixable: false,
-                            fix_command: None,
                         });
                     }
                 }
@@ -473,8 +459,6 @@ impl SettingsValidator {
                         hint: Some(
                             "set defaultMode to default, acceptEdits, plan, auto, dontAsk, or bypassPermissions".into(),
                         ),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
                 None => {
@@ -486,8 +470,6 @@ impl SettingsValidator {
                         hint: Some(
                             "set defaultMode to default, acceptEdits, plan, auto, dontAsk, or bypassPermissions".into(),
                         ),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -510,8 +492,6 @@ impl SettingsValidator {
                         hint: Some(format!(
                             "remove '{key}' or move it to ~/.claude/settings.json"
                         )),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -532,8 +512,6 @@ impl SettingsValidator {
                                 KNOWN_SKILL_OVERRIDE_VALUES.join(", ")
                             ),
                             hint: Some("set to on, name-only, user-invocable-only, or off".into()),
-                            auto_fixable: false,
-                            fix_command: None,
                         });
                     }
                 } else {
@@ -543,8 +521,6 @@ impl SettingsValidator {
                         location: Location::file(path.to_path_buf()),
                         message: format!("skillOverrides['{skill_name}'] must be a string"),
                         hint: Some("set to on, name-only, user-invocable-only, or off".into()),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -567,8 +543,6 @@ impl SettingsValidator {
                          counted"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -619,8 +593,6 @@ impl SettingsValidator {
                         "known sources: {}",
                         KNOWN_SESSION_START_SOURCES.join(", ")
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

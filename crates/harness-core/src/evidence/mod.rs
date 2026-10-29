@@ -146,8 +146,6 @@ impl EvidenceVerifier {
                     hint: Some(format!(
                         "register a verifier for '{provenance}' under [[evidence.verifiers]]"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 continue;
             };
@@ -166,8 +164,6 @@ impl EvidenceVerifier {
                         location: Location::line(source.to_path_buf(), claim.line),
                         message,
                         hint,
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }

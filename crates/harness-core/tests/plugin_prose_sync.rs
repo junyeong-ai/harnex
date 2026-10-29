@@ -35,7 +35,7 @@ use harness_core::export::{SchemaTarget, schema_for};
 const CONTRACTS: &[(&str, usize, &[&str])] = &[
     (
         "reference/retire.md",
-        11,
+        10,
         &[
             "SessionFacts.harness",
             "HarnessFacts.hooks",
@@ -69,7 +69,7 @@ const CONTRACTS: &[(&str, usize, &[&str])] = &[
     ),
     (
         "commands/measure.md",
-        75,
+        74,
         &[
             "BaselineDiff.from",
             "BaselineDiff.to",

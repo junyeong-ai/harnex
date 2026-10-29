@@ -1,7 +1,7 @@
 //! # check — unified validation gate
 //!
 //! Runs every enabled validator (rules, skills, settings, evidence,
-//! codegen, permission audit, the floor's sandbox projection) over the
+//! permission audit, the floor's sandbox projection) over the
 //! configured surfaces and emits a single aggregated `CheckOutcome`
 //! envelope. Each finding's `slug` attributes it to the producing validator.
 //!
@@ -28,9 +28,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::always_loaded::MemberKind;
-use crate::codegen::SentinelSyncer;
 use crate::config::{CONFIG_FILE_NAME, Config};
-use crate::envelope::{Finding, FixCommand, Location, Severity, SkippedRule};
+use crate::envelope::{Finding, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
 use crate::evidence::EvidenceVerifier;
 use crate::git;
@@ -53,33 +52,6 @@ pub struct CheckOutcome {
     /// Count of surface and evidence scans — a file more than one
     /// validator reads counts once per reader.
     pub files_scanned: usize,
-}
-
-/// Result of `ProjectChecker::fix` — before-check snapshot, fix attempts,
-/// after-check snapshot. Consumers compare `before.findings.len()` vs
-/// `after.findings.len()` to confirm convergence.
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-pub struct FixReport {
-    pub before: CheckOutcome,
-    pub fixes_attempted: Vec<FixAttempt>,
-    pub after: CheckOutcome,
-}
-
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-pub struct FixAttempt {
-    pub fix_command: FixCommand,
-    /// Slugs of findings this fix targeted.
-    pub finding_slugs: Vec<String>,
-    pub outcome: FixOutcome,
-}
-
-#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
-#[serde(tag = "outcome", rename_all = "kebab-case")]
-pub enum FixOutcome {
-    /// Fix function ran successfully.
-    Applied,
-    /// Fix function ran but returned an error.
-    Failed { reason: String },
 }
 
 pub struct ProjectChecker<'a> {
@@ -110,80 +82,6 @@ impl<'a> ProjectChecker<'a> {
     pub fn with_unattended(mut self) -> Self {
         self.unattended = true;
         self
-    }
-
-    /// Run check, execute every auto_fixable finding via the safe-fix
-    /// registry, then re-run check. When no auto_fixable findings exist
-    /// the second run is skipped (`before == after`).
-    pub fn fix(&self) -> Result<FixReport> {
-        use std::collections::BTreeMap;
-
-        let before = self.run()?;
-        let mut grouped: BTreeMap<&'static str, (FixCommand, Vec<String>)> = BTreeMap::new();
-        for f in &before.findings {
-            if f.auto_fixable
-                && let Some(cmd) = f.fix_command
-            {
-                grouped
-                    .entry(cmd.as_str())
-                    .or_insert_with(|| (cmd, Vec::new()))
-                    .1
-                    .push(f.slug.clone());
-            }
-        }
-        if grouped.is_empty() {
-            let after = before.clone();
-            return Ok(FixReport {
-                before,
-                fixes_attempted: Vec::new(),
-                after,
-            });
-        }
-        let mut attempts: Vec<FixAttempt> = grouped
-            .into_iter()
-            .map(|(_, (cmd, slugs))| {
-                let outcome = self.try_fix(cmd);
-                FixAttempt {
-                    fix_command: cmd,
-                    finding_slugs: slugs,
-                    outcome,
-                }
-            })
-            .collect();
-        attempts.sort_by_key(|a| a.fix_command.as_str());
-        let after = self.run()?;
-        Ok(FixReport {
-            before,
-            fixes_attempted: attempts,
-            after,
-        })
-    }
-
-    /// Safe-fix registry. Dispatches on the [`FixCommand`] enum — the
-    /// single source of truth for both validator emit sites and the
-    /// match below. Adding a new auto-fixable finding requires:
-    /// 1. Add a [`FixCommand`] variant + its `as_str()` mapping.
-    /// 2. Emit findings with `fix_command: Some(FixCommand::X)` — the field is
-    ///    typed, so this step is the compiler's rather than a review's.
-    /// 3. Add a match arm here (the compiler enforces exhaustiveness on
-    ///    `FixCommand`, so missing this step is a build error).
-    /// 4. Add a test asserting drift → fix → 0 findings.
-    fn try_fix(&self, cmd: FixCommand) -> FixOutcome {
-        match cmd {
-            FixCommand::CodegenSync => {
-                let Some(cfg) = self.config.codegen.as_ref() else {
-                    return FixOutcome::Failed {
-                        reason: "no [codegen] section in harness.toml".into(),
-                    };
-                };
-                match SentinelSyncer::new(cfg, self.working_dir).sync() {
-                    Ok(_) => FixOutcome::Applied,
-                    Err(e) => FixOutcome::Failed {
-                        reason: e.to_string(),
-                    },
-                }
-            }
-        }
     }
 
     pub fn run(&self) -> Result<CheckOutcome> {
@@ -240,7 +138,6 @@ impl<'a> ProjectChecker<'a> {
         self.run_paths_reading(&mut findings, &mut run, &mut skipped)?;
         self.run_agent_preload(&mut findings, &mut run, &mut skipped)?;
         self.run_advisories(&mut findings, &mut run, &mut skipped)?;
-        self.run_codegen(&mut findings, &mut run, &mut skipped)?;
         self.run_permissions_audit(&changed, &mut findings, &mut run, &mut skipped)?;
         self.run_floor_sandbox(&mut findings, &mut run, &mut skipped);
         self.run_always_loaded(&mut findings, &mut run, &mut skipped)?;
@@ -512,7 +409,7 @@ impl<'a> ProjectChecker<'a> {
     /// findings stay with the rule validator (one defect, one reporter);
     /// this arm asks only the question that needs the tree.
     ///
-    /// Deliberately ignores `--since`, for the codegen arm's reason: the
+    /// Deliberately ignores `--since`: the
     /// defect is created by a change to a declared TRUTH, not to the rule
     /// that declares it, so filtering rules by the diff window lets a
     /// deleted truth slip through as a false negative. The full sweep reads
@@ -674,46 +571,6 @@ impl<'a> ProjectChecker<'a> {
         Ok(())
     }
 
-    /// Codegen drift is checked **globally**, deliberately ignoring `--since`.
-    /// A sentinel-block source edit can drift any number of targets, and the
-    /// source→target mapping is not 1:1 with the changed-file set, so filtering
-    /// by the diff window would let an upstream source change slip through as
-    /// a false-negative (drift present, not reported). The full check is cheap
-    /// (it reads only the configured groups), so it always runs in full.
-    fn run_codegen(
-        &self,
-        findings: &mut Vec<Finding>,
-        run: &mut Vec<String>,
-        skipped: &mut Vec<SkippedRule>,
-    ) -> Result<()> {
-        let Some(cfg) = self.config.codegen.as_ref() else {
-            skipped.push(SkippedRule {
-                slug: "codegen".into(),
-                reason: "no [codegen] section".into(),
-            });
-            return Ok(());
-        };
-        let outcomes = SentinelSyncer::new(cfg, self.working_dir).check()?;
-        for o in &outcomes {
-            if o.changed {
-                findings.push(Finding {
-                    slug: "codegen-drift".into(),
-                    severity: Severity::Blocker,
-                    location: Location::file(o.target.clone()),
-                    message: format!("group '{}': target drifts from source", o.group),
-                    hint: Some(format!(
-                        "run `{}` to regenerate",
-                        FixCommand::CodegenSync.as_str()
-                    )),
-                    auto_fixable: true,
-                    fix_command: Some(FixCommand::CodegenSync),
-                });
-            }
-        }
-        run.push("codegen".into());
-        Ok(())
-    }
-
     fn run_permissions_audit(
         &self,
         changed: &Option<HashSet<PathBuf>>,
@@ -809,11 +666,6 @@ impl<'a> ProjectChecker<'a> {
                      the subcommand takes no arguments."
                         .into(),
                 ),
-                auto_fixable: false,
-                // No fix command: nothing in the safe-fix registry writes a
-                // permission rule, and a rule to paste is what the hint above
-                // already carries.
-                fix_command: None,
             });
         }
         run.push("policy.permissions".into());
@@ -883,10 +735,6 @@ impl<'a> ProjectChecker<'a> {
                      harness.toml instead.",
                     crate::guard::floor::sandbox::deny_write_entry(entry)
                 )),
-                auto_fixable: false,
-                // No fix command: `.claude/settings.json` is itself frozen, so
-                // the entry is the operator's to add.
-                fix_command: None,
             });
         }
         run.push("guard.floor".into());
@@ -921,22 +769,5 @@ impl<'a> ProjectChecker<'a> {
         ));
         run.push("validate.always_loaded".into());
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod fix_command_tests {
-    use super::FixCommand;
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for c in FixCommand::ALL {
-            assert_eq!(FixCommand::from_str(c.as_str()), Some(*c));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert_eq!(FixCommand::from_str("rm -rf /"), None);
     }
 }

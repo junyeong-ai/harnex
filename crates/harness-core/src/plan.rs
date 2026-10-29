@@ -1001,8 +1001,6 @@ impl<'a> PlanAuditor<'a> {
                     .join(", "),
                 GateDecision::Approved.as_str(),
             )),
-            auto_fixable: false,
-            fix_command: None,
         });
     }
 
@@ -1126,8 +1124,6 @@ impl<'a> PlanAuditor<'a> {
                  them is no finding; a round that lands rows it did not count is",
                 round.gate
             )),
-            auto_fixable: false,
-            fix_command: None,
         });
     }
 
@@ -1166,8 +1162,6 @@ impl<'a> PlanAuditor<'a> {
                      contract over it has a baseline to hold"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
     }
@@ -1209,8 +1203,6 @@ impl<'a> PlanAuditor<'a> {
                  after them"
                     .into(),
             ),
-            auto_fixable: false,
-            fix_command: None,
         });
     }
 
@@ -1238,8 +1230,6 @@ impl<'a> PlanAuditor<'a> {
                          spec plan template — the gates write findings there and every reader \
                          of this plan starts from it"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 None
             }
@@ -1269,8 +1259,6 @@ impl<'a> PlanAuditor<'a> {
                                          passes on zero open Critical/Blocker rows"
                                             .into(),
                                     ),
-                                    auto_fixable: false,
-                                    fix_command: None,
                                 });
                             }
                             // A severity token buried past the row's own —
@@ -1327,8 +1315,6 @@ impl<'a> PlanAuditor<'a> {
                         "restore the `## {DECISION_LOG_HEADING}` section from this project's \
                          spec template — an unrecorded gate is a gate that did not fire"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return;
             }
@@ -1367,8 +1353,6 @@ impl<'a> PlanAuditor<'a> {
                      margin"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -1394,8 +1378,6 @@ impl<'a> PlanAuditor<'a> {
                              `acceptance`"
                                 .into(),
                         ),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
                 _ => {}
@@ -1434,8 +1416,6 @@ impl<'a> PlanAuditor<'a> {
                             counts.class().as_str()
                         ),
                         hint: Some(format!("write {token}, which is what this gate counts")),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
                 // `rejected` ends the work rather than measuring it, so it
@@ -1456,8 +1436,6 @@ impl<'a> PlanAuditor<'a> {
                              counted is read from the log, never from memory",
                             class.as_str()
                         )),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -1483,8 +1461,6 @@ impl<'a> PlanAuditor<'a> {
                             .collect::<Vec<_>>()
                             .join(", ")
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
             if decision.decision == GateDecision::Approved
@@ -1511,8 +1487,6 @@ impl<'a> PlanAuditor<'a> {
                                 .into()
                         }
                     }),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -1549,8 +1523,6 @@ impl<'a> PlanAuditor<'a> {
                          gate never looked at"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 }),
                 None => findings.push(Finding {
                     slug: "plan-log-criteria-unreadable".into(),
@@ -1565,8 +1537,6 @@ impl<'a> PlanAuditor<'a> {
                         "restore the `## {CRITERIA_HEADING}` section — the gate's counts are held \
                          to the list it carries, and an absent list cannot be counted against"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 }),
                 _ => {}
             }
@@ -1598,8 +1568,6 @@ impl<'a> PlanAuditor<'a> {
                          the rows or record `needs_revision`"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -1663,8 +1631,6 @@ impl<'a> PlanAuditor<'a> {
                          its rank and, where it is settled, end it with {}",
                         Disposition::spelling()
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -1683,8 +1649,6 @@ fn unparseable_row(path: &Path, line: u32, text: &str) -> Finding {
              gates that read this section"
                 .into(),
         ),
-        auto_fixable: false,
-        fix_command: None,
     }
 }
 
@@ -1699,8 +1663,6 @@ fn unreadable(path: &Path, line: u32, reason: &str) -> Finding {
              so the gates can tell them apart"
                 .into(),
         ),
-        auto_fixable: false,
-        fix_command: None,
     }
 }
 

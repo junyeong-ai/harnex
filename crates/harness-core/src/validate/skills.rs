@@ -185,8 +185,6 @@ impl<'a> SkillValidator<'a> {
                     hint: Some(
                         "use an absolute path or restore the current working directory".into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 }];
             }
         };
@@ -210,8 +208,6 @@ impl<'a> SkillValidator<'a> {
                 hint: Some(
                     "move reference material to separate files under the skill directory".into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -224,8 +220,6 @@ impl<'a> SkillValidator<'a> {
                     location: Location::file(path.to_path_buf()),
                     message: "SKILL.md has no YAML frontmatter".into(),
                     hint: Some("add `---\\nname: …\\ndescription: …\\n---` at the top".into()),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -237,8 +231,6 @@ impl<'a> SkillValidator<'a> {
                     location: Location::line(path.to_path_buf(), 1),
                     message: e.to_string(),
                     hint,
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -257,8 +249,6 @@ impl<'a> SkillValidator<'a> {
                          (see code.claude.com/docs/en/skills)"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -286,8 +276,6 @@ impl<'a> SkillValidator<'a> {
                             "remove it or fix the typo — known keys: {}",
                             KNOWN_SKILL_KEYS.join(", ")
                         )),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -309,8 +297,6 @@ impl<'a> SkillValidator<'a> {
                     "{field} {name:?} is empty, exceeds 256 UTF-16 code units, or contains forbidden characters"
                 ),
                 hint: Some("use visible characters without angle brackets, control characters, or leading, trailing, repeated, or nonstandard spaces".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -331,8 +317,6 @@ impl<'a> SkillValidator<'a> {
                      and tighten when_to_use; details belong in the skill body"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -358,8 +342,6 @@ impl<'a> SkillValidator<'a> {
                     hint: Some(
                         "per Claude Code docs: set disable-model-invocation: true for skills with side effects".into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -376,8 +358,6 @@ impl<'a> SkillValidator<'a> {
                      any other value as unset, so Claude may invoke this skill on its own"
                 ),
                 hint: Some("set `disable-model-invocation: true` or remove the field".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -390,8 +370,6 @@ impl<'a> SkillValidator<'a> {
                 location: Location::line(path.to_path_buf(), fm.begin_line),
                 message: format!("user-invocable must be a flag ({FLAG_SPELLINGS})"),
                 hint: Some("set `user-invocable: true` or `user-invocable: false`".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -405,8 +383,6 @@ impl<'a> SkillValidator<'a> {
                 location: Location::line(path.to_path_buf(), fm.begin_line),
                 message: format!("context '{ctx}' is not valid; only 'fork' is allowed"),
                 hint: Some("set `context: fork` or remove the field".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -422,8 +398,6 @@ impl<'a> SkillValidator<'a> {
                     "set `background: false` to consume a forked skill's result in the invoking turn"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -442,8 +416,6 @@ impl<'a> SkillValidator<'a> {
                             hint: Some(
                                 "each entry in allowed-tools must be a tool name string".into(),
                             ),
-                            auto_fixable: false,
-                            fix_command: None,
                         });
                     }
                 }
@@ -457,8 +429,6 @@ impl<'a> SkillValidator<'a> {
                         "use `allowed-tools: Bash(gh *) Read` (string) or `[Bash, Read]` (list)"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -476,8 +446,6 @@ impl<'a> SkillValidator<'a> {
                             hint: Some(
                                 "each entry in disallowed-tools must be a tool name string".into(),
                             ),
-                            auto_fixable: false,
-                            fix_command: None,
                         });
                     }
                 }
@@ -491,8 +459,6 @@ impl<'a> SkillValidator<'a> {
                         "use `disallowed-tools: Agent` (string) or `[Agent, WebSearch]` (list)"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -511,8 +477,6 @@ impl<'a> SkillValidator<'a> {
                     location: Location::line(path.to_path_buf(), fm.begin_line),
                     message: format!("paths glob {defect}"),
                     hint: Some(defect.hint().into()),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
             if let Some(seq) = val.as_sequence() {
@@ -523,8 +487,6 @@ impl<'a> SkillValidator<'a> {
                         location: Location::line(path.to_path_buf(), fm.begin_line),
                         message: format!("paths[{i}] is not a string"),
                         hint: Some("each entry in paths must be a glob string".into()),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             } else if !val.is_string() {
@@ -534,8 +496,6 @@ impl<'a> SkillValidator<'a> {
                     location: Location::line(path.to_path_buf(), fm.begin_line),
                     message: "paths must be a string or an array of glob strings".into(),
                     hint: Some("use `paths: \"src/**/*.rs\"` or `paths: [\"src/**/*.rs\"]`".into()),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -555,8 +515,6 @@ impl<'a> SkillValidator<'a> {
                                 "hook event '{event_name}' is not in the Claude Code spec /en/hooks"
                             ),
                             hint: Some(format!("known events: {}", KNOWN_HOOK_EVENTS.join(", "))),
-                            auto_fixable: false,
-                            fix_command: None,
                         });
                     }
                 }
@@ -567,8 +525,6 @@ impl<'a> SkillValidator<'a> {
                     location: Location::line(path.to_path_buf(), fm.begin_line),
                     message: "hooks must be a mapping of event names to hook definitions".into(),
                     hint: Some("use `hooks: { PreToolUse: ... }` syntax".into()),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -586,8 +542,6 @@ impl<'a> SkillValidator<'a> {
                     KNOWN_EFFORT_LEVELS.join(", ")
                 ),
                 hint: Some("set effort to low, medium, high, xhigh, or max".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -602,8 +556,6 @@ impl<'a> SkillValidator<'a> {
                 location: Location::line(path.to_path_buf(), fm.begin_line),
                 message: "metadata must be a mapping; Claude Code drops any other value".into(),
                 hint: Some("nest the fields under `metadata:` as key-value pairs".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 

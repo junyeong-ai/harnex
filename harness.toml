@@ -9,8 +9,8 @@
 # can classify a corpus, and one manually-invoked artifact is not one. Declare
 # it when there is a second.
 #
-# policy and codegen stay absent: this repo runs neither loop on itself, and
-# `harnex check` reporting them skipped with a reason is the honest answer.
+# policy stays absent: this repo runs no permission audit on itself, and
+# `harnex check` reporting it skipped with a reason is the honest answer.
 #
 # validate.routines is ON: the one routine here holds the measurements the
 # hook-bypass floor is built on, which the suite cannot hold — a test asserts

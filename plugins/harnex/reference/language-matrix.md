@@ -232,8 +232,6 @@ repo is never penalised for the tool it does not install.
   the hook timeout and an unpinned version besides. Check the same property
   before wiring any new language's formatter.
 - Hook config `timeout` in SECONDS (10–30 typical), `type: "command"`.
-- Sentinel-block codegen source may be toml/json/yaml (`source_format`) — point
-  at the project's existing SSoT, never hand-maintain a duplicate.
 
 ## Monorepo exploration (divide-and-conquer)
 

@@ -46,8 +46,6 @@ impl RoutineValidator {
                      unscheduled"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             }],
             Ok(_) => Vec::new(),
             Err(e) => vec![Finding {
@@ -61,8 +59,6 @@ impl RoutineValidator {
                      place"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             }],
         }
     }

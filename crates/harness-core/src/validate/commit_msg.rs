@@ -59,8 +59,6 @@ impl<'a> CommitMsgValidator<'a> {
                     hint: Some(format!(
                         "provide a non-empty value for the '{key}:' trailer"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 continue;
             }
@@ -73,8 +71,6 @@ impl<'a> CommitMsgValidator<'a> {
                     location: Location::line(path.to_path_buf(), *line_no),
                     message: format!("trailer '{key}: {value}' value not in allowed set"),
                     hint: Some(format!("allowed: {}", allowed.join(", "))),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -102,8 +98,6 @@ impl<'a> CommitMsgValidator<'a> {
                             .map(|v| format!(" (allowed: {})", v.join(", ")))
                             .unwrap_or_default()
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

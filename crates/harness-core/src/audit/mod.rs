@@ -33,7 +33,7 @@
 //! ## When to use vs `check`
 //!
 //! - `check` runs validators that the project configures
-//!   (rules / skills / settings shape, codegen drift, permission auditor).
+//!   (rules / skills / settings shape, permission auditor).
 //! - `audit` holds the generated harness to the composition it was generated
 //!   from, and to the live Claude Code spec. Operators add `audit` to CI when
 //!   they want enforcement beyond structural validation.
