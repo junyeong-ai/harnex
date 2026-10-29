@@ -183,7 +183,10 @@ pub(crate) fn last_committed(
     // a merge with what it changed against the branch it landed on, so a side
     // commit written long before keeps no old date, and a conflict resolution
     // is a change. Walking every parent instead hides a merge that took one
-    // side whole, and its side commit's date stands.
+    // side whole, and its side commit's date stands. Where the first parents
+    // run through a feature branch — a trunk fast-forwarded past a merge of
+    // itself — the trunk's own changes date from that merge, younger than
+    // they are: the sweep errs toward keeping.
     //
     // The user's configuration may not reshape what is parsed below:
     // `log.showSignature` prints verification lines into it, and
