@@ -27,6 +27,19 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/hooks/_runner.sh",
+            "args": [
+              "session-routines.sh"
+            ],
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
