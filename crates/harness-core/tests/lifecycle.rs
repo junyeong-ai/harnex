@@ -1867,6 +1867,36 @@ fn a_path_is_dated_however_it_is_spelled() {
     }
 }
 
+#[test]
+fn a_name_whose_case_alone_changed_keeps_its_history_where_git_ignores_case() {
+    // Finder renames `Old.md` to `old.md` without git: `git status` stays
+    // clean, since `core.ignorecase` reads the file as the one it tracks.
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("Old.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    std::fs::rename(rules.join("Old.md"), rules.join("renaming.md")).unwrap();
+    std::fs::rename(rules.join("renaming.md"), rules.join("old.md")).unwrap();
+    let ignorecase = common::git(tmp.path())
+        .args(["config", "--type=bool", "core.ignorecase"])
+        .output()
+        .unwrap();
+    if String::from_utf8_lossy(&ignorecase.stdout).trim() != "true" {
+        return;
+    }
+
+    let spellings = ["old.md", "Old.md", "OLD.md"].map(|name| rules.join(name));
+    let changes = last_changes(tmp.path(), &spellings).unwrap();
+    for (spelling, change) in spellings.iter().zip(&changes) {
+        assert!(
+            matches!(days_since(change), Some(199..=200)),
+            "{}: {change:?}",
+            spelling.display()
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn a_linked_artifact_changes_when_its_link_or_what_it_reads_does() {
@@ -1914,6 +1944,16 @@ fn a_linked_artifact_changes_when_its_link_or_what_it_reads_does() {
             ),
         "{changes:?}"
     );
+
+    // A file system that folds case finds the link under any case of its name.
+    let folded = skills.join("RELINKED");
+    if folded.exists() {
+        let changes = last_changes(tmp.path(), &[folded]).unwrap();
+        assert!(
+            matches!(days_since(&changes[0]), Some(0..=1)),
+            "{changes:?}"
+        );
+    }
 }
 
 #[test]
