@@ -164,6 +164,8 @@ repo is never penalised for the tool it does not install.
   escape hatch `HARNEX_SKIP_GITLEAKS=1`), then dispatches
   every executable in `hooks/pre-commit.d/` in name order — the seam patterns
   add commit gates through, since the hook's own copy is held byte-identical.
+  Every arm runs and any failure blocks, so one attempt reports every gate it
+  failed; a signal stops the commit at once.
   `hooks/commit-msg` validates the trailers `[validate.commit_msg]` declares,
   fail-open until configured.
 - Two permission floors, both foundation-tier and neither language-dependent:

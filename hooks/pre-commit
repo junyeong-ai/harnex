@@ -6,7 +6,10 @@
 # `git commit` from staging one. Then every executable in hooks/pre-commit.d/
 # in name order — the seam through which patterns and the project itself add
 # commit gates, because this file's copy is held byte-identical to its
-# template and editing it would read as drift.
+# template and editing it would read as drift. Every arm runs even after one
+# fails, so a blocked commit reports every gate it failed at once instead of
+# one per attempt; a status past 128 is a signal — an interrupt, a killed
+# arm — and stops the commit there.
 #
 # Fail-open on a missing tool — never block a commit because gitleaks is not
 # installed. Escape hatch via HARNEX_SKIP_GITLEAKS=1 for a confirmed false
@@ -65,6 +68,7 @@ else
 fi
 
 ARMS="$(cd "$(dirname "$0")" && pwd)/pre-commit.d"
+failed=()
 if [[ -d "$ARMS" ]]; then
   for arm in "$ARMS"/*; do
     [[ -e "$arm" ]] || continue
@@ -72,7 +76,14 @@ if [[ -d "$ARMS" ]]; then
       echo "[harnex] $arm is not executable — arm skipped (chmod +x to arm it)." >&2
       continue
     fi
-    "$arm" || exit $?
+    "$arm"
+    status=$?
+    (( status > 128 )) && exit "$status"
+    (( status == 0 )) || failed+=("$(basename "$arm") (exit $status)")
   done
+fi
+if (( ${#failed[@]} > 0 )); then
+  echo "[harnex] commit blocked by: ${failed[*]}" >&2
+  exit 1
 fi
 exit 0
