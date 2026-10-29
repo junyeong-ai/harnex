@@ -1734,14 +1734,17 @@ fn a_name_spelled_alike_is_another_file_where_git_reads_names_byte_for_byte() {
     std::fs::create_dir_all(&rules).unwrap();
     let decomposed = rules.join("cafe\u{301}.md");
     std::fs::write(&decomposed, "an old rule").unwrap();
+    std::fs::write(rules.join("other.md"), "another old rule").unwrap();
     commit_days_ago(tmp.path(), 200);
     std::fs::write(rules.join("caf\u{e9}.md"), "a new rule").unwrap();
-    if std::fs::read_dir(&rules).unwrap().count() < 2 {
+    if std::fs::read_dir(&rules).unwrap().count() < 3 {
         return;
     }
     commit_days_ago(tmp.path(), 1);
 
-    let changes = last_changes(tmp.path(), &[decomposed]).unwrap();
+    // Asked with another rule beside it, the directory is asked, and git lists
+    // the composed name too.
+    let changes = last_changes(tmp.path(), &[decomposed, rules.join("other.md")]).unwrap();
     assert!(
         matches!(days_since(&changes[0]), Some(199..=200)),
         "{changes:?}"
@@ -1975,21 +1978,22 @@ fn a_link_anywhere_on_the_way_changes_what_is_read() {
 fn a_link_outside_the_repository_leaves_what_is_read_through_it_without_an_age() {
     // A skill read through a link in the developer's home that points back
     // into the repository reads whatever that link is repointed to, and no
-    // history records when it was. A link to the project, a workspace opened
-    // through one, locates the project rather than any artifact.
+    // history records when it was. A link to the project, a monorepo package
+    // opened through one, locates the project rather than any artifact.
     let tmp = repo();
     let root = tmp.path();
     std::fs::create_dir_all(root.join("tools/a")).unwrap();
     std::fs::write(root.join("tools/a/SKILL.md"), "a skill").unwrap();
+    let package = root.join("apps/web");
+    let skills = package.join(".claude/skills");
+    std::fs::create_dir_all(&skills).unwrap();
     let home = TempDir::new().unwrap();
     let reentering = home.path().join("reentering");
     std::os::unix::fs::symlink(root.join("tools/a"), &reentering).unwrap();
-    let workspace = home.path().join("workspace");
-    std::os::unix::fs::symlink(root, &workspace).unwrap();
-    let skills = root.join(".claude/skills");
-    std::fs::create_dir_all(&skills).unwrap();
+    let workspace = home.path().join("web");
+    std::os::unix::fs::symlink(&package, &workspace).unwrap();
     std::os::unix::fs::symlink(&reentering, skills.join("reentering")).unwrap();
-    std::os::unix::fs::symlink(workspace.join("tools/a"), skills.join("pinned")).unwrap();
+    std::os::unix::fs::symlink("../../../../tools/a", skills.join("pinned")).unwrap();
     commit_days_ago(root, 200);
 
     let changes = last_changes(
