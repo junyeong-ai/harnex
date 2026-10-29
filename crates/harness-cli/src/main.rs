@@ -142,7 +142,9 @@ fn main() -> ExitCode {
             if let Some(ContextValue::String(value)) = e.get(ContextKind::InvalidValue) {
                 message.push_str(&format!(", got '{value}'"));
             }
-            if let Some(ContextValue::Strings(valid)) = e.get(ContextKind::ValidValue) {
+            if let Some(ContextValue::Strings(valid)) = e.get(ContextKind::ValidValue)
+                && !valid.is_empty()
+            {
                 message.push_str(&format!(" (expected one of: {})", valid.join(", ")));
             }
             // A `guard` invocation is a hook, and the runtime reads its exit 2

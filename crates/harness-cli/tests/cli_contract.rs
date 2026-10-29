@@ -80,6 +80,18 @@ fn invalid_value_envelope_names_the_value_and_the_valid_set() {
         message.contains("session-trend"),
         "names the valid set: {message}"
     );
+
+    // An option with no closed set names none, rather than an empty one.
+    let out = harness()
+        .args(["lifecycle", "classify", "--kind"])
+        .output()
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("one JSON envelope");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("--kind") && !message.contains("expected one of"),
+        "{message}"
+    );
 }
 
 #[test]
