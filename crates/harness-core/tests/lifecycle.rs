@@ -1867,6 +1867,72 @@ fn a_path_is_dated_however_it_is_spelled() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn a_link_anywhere_on_the_way_changes_what_is_read() {
+    // Repointed yesterday, each of these changes what an artifact reads: the
+    // middle of a chain of links, a link inside the path a link points at,
+    // and the directory an artifact sits in.
+    let tmp = repo();
+    let root = tmp.path();
+    for dir in [
+        "tools/a",
+        "tools/b",
+        "vendor/v1/pinned",
+        "vendor/v2/pinned",
+        "shared/x",
+        "shared/y",
+    ] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+        std::fs::write(root.join(dir).join("SKILL.md"), dir).unwrap();
+    }
+    std::fs::create_dir_all(root.join(".claude/skills")).unwrap();
+    let link = |target: &str, at: &str| {
+        let at = root.join(at);
+        let _ = std::fs::remove_file(&at);
+        std::os::unix::fs::symlink(target, at).unwrap();
+    };
+    link("../../hop", ".claude/skills/chained");
+    link("tools/a", "hop");
+    link("../../vendor/current/pinned", ".claude/skills/pinned");
+    link("v1", "vendor/current");
+    link("../shared/x", ".claude/rules");
+    commit_days_ago(root, 200);
+    link("tools/b", "hop");
+    link("v2", "vendor/current");
+    link("../shared/y", ".claude/rules");
+    commit_days_ago(root, 1);
+
+    let changes = last_changes(
+        root,
+        &[
+            ".claude/skills/chained",
+            ".claude/skills/pinned",
+            ".claude/rules/SKILL.md",
+        ]
+        .map(|path| root.join(path)),
+    )
+    .unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
+    assert!(
+        matches!(ages[..], [Some(0..=1), Some(0..=1), Some(0..=1)]),
+        "{changes:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_loop_of_links_fails_the_measurement() {
+    let tmp = repo();
+    std::os::unix::fs::symlink("b", tmp.path().join("a")).unwrap();
+    std::os::unix::fs::symlink("a", tmp.path().join("b")).unwrap();
+    let err = last_changes(tmp.path(), &[tmp.path().join("a")]).unwrap_err();
+    assert_eq!(
+        err.code(),
+        harness_core::error::ErrorCode::LifecycleGitFailure
+    );
+}
+
 #[test]
 fn a_name_whose_case_alone_changed_keeps_its_history_where_git_ignores_case() {
     // Finder renames `Old.md` to `old.md` without git: `git status` stays
@@ -1945,10 +2011,23 @@ fn a_linked_artifact_changes_when_its_link_or_what_it_reads_does() {
         "{changes:?}"
     );
 
-    // A file system that folds case finds the link under any case of its name.
+    // A file system that folds case finds the link under any case of its name,
+    // and the directories it sits in are read as they are stored, even where
+    // git would not fold case for them.
     let folded = skills.join("RELINKED");
     if folded.exists() {
         let changes = last_changes(tmp.path(), &[folded]).unwrap();
+        assert!(
+            matches!(days_since(&changes[0]), Some(0..=1)),
+            "{changes:?}"
+        );
+        let set = common::git(tmp.path())
+            .args(["config", "core.ignorecase", "false"])
+            .status()
+            .unwrap();
+        assert!(set.success());
+        let spelled = tmp.path().join(".CLAUDE/SKILLS/relinked");
+        let changes = last_changes(tmp.path(), &[spelled]).unwrap();
         assert!(
             matches!(days_since(&changes[0]), Some(0..=1)),
             "{changes:?}"
