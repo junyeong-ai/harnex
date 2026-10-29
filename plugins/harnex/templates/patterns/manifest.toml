@@ -50,43 +50,6 @@ files = [
 ]
 
 [[pattern]]
-slug = "deprecation"
-analyze = ["native deprecation markers in the language", "source roots for governs.live_truth"]
-files = [
-  { template = "deprecation.md", destination = ".claude/rules/deprecation.md" },
-]
-
-[[pattern]]
-slug = "pr-conventions"
-analyze = ["existing .github/pull_request_template.md to merge with"]
-files = [
-  { template = "pr-conventions.md", destination = ".claude/rules/pr-conventions.md" },
-  { template = "pull_request_template.md", destination = ".github/pull_request_template.md" },
-]
-
-[[pattern]]
-slug = "naming-decisions"
-analyze = ["file-name casing", "import/factory verbs", "type suffixes", "tool-script suffixes", "source roots for governs.live_truth"]
-files = [
-  { template = "naming-decisions.md", destination = ".claude/rules/naming-decisions.md" },
-]
-
-[[pattern]]
-slug = "copy-conventions"
-analyze = ["locale from string literals", "error message format", "i18n framework in deps", "source roots for governs.live_truth"]
-files = [
-  { template = "copy-conventions.md", destination = ".claude/rules/copy-conventions.md" },
-]
-
-[[pattern]]
-slug = "write-guard"
-analyze = ["files with lifecycle status frontmatter (docs/, specs/)", "immutable/frozen file patterns", "existing lint/check tools invocable at write time"]
-files = [
-  { template = "write-guard.md", destination = ".claude/rules/write-guard.md" },
-  { template = "check-pre-write.sh", destination = "hooks/check-pre-write.sh" },
-]
-
-[[pattern]]
 slug = "routines"
 analyze = ["first when/produces for each shipped routine", "the records directory produces paths land in", "SessionStart hook entry wiring session-routines.sh"]
 files = [

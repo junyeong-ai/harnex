@@ -211,7 +211,9 @@ operator to re-phrase using a verb from this list.
   (propagates exit code). The verifier script's BODY is
   project-specific check logic the operator authors — that is not free-
   generated safety-critical control flow, which lives entirely in the two
-  runner templates. Add the event entry to `.claude/settings.json` `hooks` —
+  runner templates. A PreToolUse check on `Edit|Write|MultiEdit` starts from
+  `common/hook-template.sh`, which reads stdin once and states the exit
+  contract. Add the event entry to `.claude/settings.json` `hooks` —
   project-owned, per invariant 6 — with the correct runner per the rule above;
   for a PreToolUse/PermissionRequest matcher targeting MCP, use
   `mcp__server__tool` / `mcp__server__.*`, never bare `mcp__server`.

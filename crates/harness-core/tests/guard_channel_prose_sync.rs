@@ -63,8 +63,8 @@ const NOT_RESTATEMENTS: [(&str, &str); 5] = [
         "the template the line above is adopted from",
     ),
     (
-        "plugins/harnex/templates/patterns/write-guard/write-guard.md",
-        "a pattern telling a generated hook which channel to write on",
+        "plugins/harnex/templates/common/hook-template.sh",
+        "the body a generated hook starts from, telling it which channel to write on",
     ),
     (
         ".harness/harvest/2026-08-31-webloom.md",
