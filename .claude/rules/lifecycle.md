@@ -74,16 +74,18 @@ What no history here records — a file outside the repository, inside one of it
 own, or ignored — has `age_days` null, so it is neither Stale nor in its grace
 period. An artifact's path is resolved as the system resolves it, and every link
 the resolution passes through, its own, a directory's or one in a chain, is part
-of it, so repointing one changes it. Where the path resolves is dated as git
-records it, a link among a directory artifact's files as that link. A name
-matches as `git status` matches it, composed under `core.precomposeUnicode` on
-macOS, the one system git reads it on, and case-folded under `core.ignorecase`;
-the rest of the user's git configuration
-may not reshape the log the age is parsed from. Never a modification time — a
-checkout writes every file's, so a fresh clone or a CI runner reads every
-artifact as new and inside its grace period. A shallow clone fails with
-`LIFECYCLE_GIT_FAILURE`, because its boundary commit dates every file it holds
-to the day the clone was cut. One history walk answers the whole sweep.
+of it, so repointing one changes it. One outside the repository is recorded by
+no history and leaves the artifact's `age_days` null, unless it leads to the
+project or above it, `/var` on macOS, and so locates the project rather than the
+artifact. Where the path resolves is dated as git records it, a link among a
+directory artifact's files as that link. A name matches as `git status` matches
+it, composed under `core.precomposeUnicode` on macOS, the one system git reads
+it on, and case-folded under `core.ignorecase`; the rest of the user's git
+configuration may not reshape the log the age is parsed from. Never a
+modification time — a checkout writes every file's, so a fresh clone or a CI
+runner reads every artifact as new and inside its grace period. A shallow clone
+fails with `LIFECYCLE_GIT_FAILURE`, because its boundary commit dates every file
+it holds to the day the clone was cut. One history walk answers the whole sweep.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.
