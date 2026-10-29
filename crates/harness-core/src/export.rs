@@ -168,7 +168,7 @@ mod tests {
             .and_then(|e| e.as_array())
             .expect("enum array");
         assert!(enums.contains(&Value::String("CONFIG_INVALID".into())));
-        assert!(enums.contains(&Value::String("GUARD_SPAWN_FAILURE".into())));
+        assert!(enums.contains(&Value::String("CHECK_GIT_FAILURE".into())));
         // No accidental empties.
         assert!(!enums.is_empty());
     }

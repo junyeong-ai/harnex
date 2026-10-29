@@ -28,7 +28,7 @@ a blocking gate.
 
 - Non-bypassable runtime guards: hooks, `permissions.deny` of destructive ops
   (`rm -rf` roots, force-push, `reset --hard`, cloud and infrastructure destroy verbs), atomic /
-  traversal-safe write paths, bounded Stop-audit retry counter.
+  traversal-safe write paths.
 - Closed-set / exact-match membership (zero false-positive — a value is in
   the set or not): hook event names (as a typo-catcher), permission-profile
   names, commit-msg closed-enum trailers (opt-in, project-configured via

@@ -531,8 +531,6 @@ pub struct RetirementExemptDecl {
 #[serde(deny_unknown_fields)]
 pub struct GuardConfig {
     #[serde(default)]
-    pub stop_audit: Option<StopAuditConfig>,
-    #[serde(default)]
     pub floor: Option<FloorConfig>,
 }
 
@@ -545,72 +543,6 @@ pub struct FloorConfig {
     /// Repo-relative literal paths; a trailing `/` freezes a directory.
     #[serde(default)]
     pub protected_paths: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct StopAuditConfig {
-    /// Runtime name. `claude-code` is the only one implemented.
-    #[serde(default = "default_runtime")]
-    pub runtime: String,
-    /// Slash command of the critique skill to spawn (e.g. "/aix-critique").
-    pub critique_skill: String,
-    #[serde(default = "default_max_retries")]
-    pub max_retries: u32,
-    /// The predicate that says whether this session left work behind: exit 0
-    /// for no changes, exit 1 for changes, and anything else a probe that
-    /// failed rather than answered. Required, because declaring this section
-    /// commits to spawning a critique and this is what decides when.
-    ///
-    /// It has to see everything the project counts as work. `git diff --quiet`
-    /// alone answers 0 for a session whose changes are only staged or only
-    /// untracked, and the Stop hook beside it counts both, so a whole class of
-    /// session would be critiqued by one and called clean by the other —
-    /// e.g. ["sh", "-c", "test -z \"$(git status --porcelain)\""].
-    pub has_changes_check: Vec<String>,
-    /// Directory for the per-session retry counter ledger.
-    #[serde(default = "default_audit_retry_dir")]
-    pub retry_ledger_dir: PathBuf,
-}
-
-impl StopAuditConfig {
-    /// The command that answers whether this session left work behind, and so
-    /// whether stopping costs a model call.
-    ///
-    /// Required, because the alternative is answering it without looking:
-    /// declaring the section already commits to spawning a critique, and an
-    /// unstated gate would spawn one at every Stop of every session. What that
-    /// probe should be is a project fact — which trees, which staging state,
-    /// which submodules — so it is asked for rather than guessed.
-    pub fn changes_probe(&self) -> Result<(&str, &[String])> {
-        let invalid = |message: &str| Error::ConfigInvalid {
-            message: format!("[guard.stop_audit] has_changes_check {message}"),
-            location: None,
-        };
-        let (program, args) = self.has_changes_check.split_first().ok_or_else(|| {
-            invalid(
-                "is empty — the section spawns a critique per Stop, so the command \
-                 that decides when must be stated (e.g. \
-                 [\"sh\", \"-c\", \"test -z \\\"$(git status --porcelain)\\\"\"])",
-            )
-        })?;
-        // Whether a named program is installed is the runner's answer, not
-        // this machine's; a blank name is no program anywhere.
-        if program.trim().is_empty() {
-            return Err(invalid("names no program"));
-        }
-        Ok((program.as_str(), args))
-    }
-}
-
-fn default_runtime() -> String {
-    "claude-code".to_string()
-}
-fn default_max_retries() -> u32 {
-    3
-}
-fn default_audit_retry_dir() -> PathBuf {
-    PathBuf::from(".harness/_audit_retry")
 }
 
 impl Config {
@@ -1148,37 +1080,6 @@ impl Config {
         let Some(g) = &self.guard else {
             return Ok(());
         };
-        if let Some(sa) = &g.stop_audit {
-            if sa.runtime != "claude-code" {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "[guard.stop_audit] runtime '{}' unsupported — `claude-code` is the only one implemented",
-                        sa.runtime
-                    ),
-                    location: None,
-                });
-            }
-            if sa.critique_skill.trim().is_empty() {
-                return Err(Error::ConfigInvalid {
-                    message: "[guard.stop_audit] critique_skill is empty".into(),
-                    location: None,
-                });
-            }
-            sa.changes_probe()?;
-            // Bound the retry ceiling: 0 would escalate before the critique
-            // ever runs, and a value at the integer ceiling would make the
-            // `attempt > max_retries` escalation (and the corrupt-ledger
-            // fail-safe) unreachable.
-            if sa.max_retries == 0 || sa.max_retries > 100 {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "[guard.stop_audit] max_retries must be in 1..=100 (got {})",
-                        sa.max_retries
-                    ),
-                    location: None,
-                });
-            }
-        }
         if let Some(floor) = &g.floor {
             let mut seen: Vec<String> = Vec::new();
             for entry in &floor.protected_paths {
@@ -1372,69 +1273,6 @@ mod tests {
             parse_document(src).unwrap_err().code(),
             ErrorCode::ConfigInvalid
         );
-    }
-
-    #[test]
-    fn rejects_out_of_range_stop_audit_max_retries() {
-        for bad in ["0", "101"] {
-            let src = format!(
-                r#"
-                [guard.stop_audit]
-                critique_skill = "/critique"
-                max_retries = {bad}
-                "#
-            );
-            assert_eq!(
-                parse(&src).unwrap_err().code(),
-                ErrorCode::ConfigInvalid,
-                "max_retries={bad} must be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn accepts_in_range_stop_audit_max_retries() {
-        let src = r#"
-            [guard.stop_audit]
-            critique_skill = "/critique"
-            max_retries = 3
-            has_changes_check = ["sh", "-c", "test -z \"$(git status --porcelain)\""]
-        "#;
-        assert!(parse(src).is_ok());
-    }
-
-    #[test]
-    fn rejects_a_stop_audit_that_never_says_when_it_fires() {
-        // Declaring the section commits to spawning a critique. Without the
-        // probe the auditor answers "there is work" without looking, and every
-        // Stop of every session costs a model call — the one field the section
-        // needs and the only one that had no floor. A blank program name is
-        // the same absence spelled differently; whether a named one is
-        // installed is the runner's answer and not checked here.
-        for probe in [
-            "",
-            r#"has_changes_check = []"#,
-            r#"has_changes_check = [""]"#,
-        ] {
-            let src = format!(
-                r#"
-                [guard.stop_audit]
-                critique_skill = "/critique"
-                {probe}
-                "#
-            );
-            assert_eq!(
-                parse(&src).unwrap_err().code(),
-                ErrorCode::ConfigInvalid,
-                "probe {probe:?} must be refused"
-            );
-        }
-        let named = r#"
-            [guard.stop_audit]
-            critique_skill = "/critique"
-            has_changes_check = ["a-program-this-machine-may-not-have"]
-        "#;
-        assert!(parse(named).is_ok());
     }
 
     #[test]

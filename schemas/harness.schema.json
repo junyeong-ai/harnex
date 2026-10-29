@@ -727,17 +727,6 @@
     "GuardConfig": {
       "type": "object",
       "properties": {
-        "stop_audit": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/StopAuditConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
         "floor": {
           "anyOf": [
             {
@@ -751,43 +740,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "StopAuditConfig": {
-      "type": "object",
-      "properties": {
-        "runtime": {
-          "description": "Runtime name. `claude-code` is the only one implemented.",
-          "type": "string",
-          "default": "claude-code"
-        },
-        "critique_skill": {
-          "description": "Slash command of the critique skill to spawn (e.g. \"/aix-critique\").",
-          "type": "string"
-        },
-        "max_retries": {
-          "type": "integer",
-          "format": "uint32",
-          "minimum": 0,
-          "default": 3
-        },
-        "has_changes_check": {
-          "description": "The predicate that says whether this session left work behind: exit 0\nfor no changes, exit 1 for changes, and anything else a probe that\nfailed rather than answered. Required, because declaring this section\ncommits to spawning a critique and this is what decides when.\n\nIt has to see everything the project counts as work. `git diff --quiet`\nalone answers 0 for a session whose changes are only staged or only\nuntracked, and the Stop hook beside it counts both, so a whole class of\nsession would be critiqued by one and called clean by the other —\ne.g. [\"sh\", \"-c\", \"test -z \\\"$(git status --porcelain)\\\"\"].",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "retry_ledger_dir": {
-          "description": "Directory for the per-session retry counter ledger.",
-          "type": "string",
-          "default": ".harness/_audit_retry"
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "critique_skill",
-        "has_changes_check"
-      ]
     },
     "FloorConfig": {
       "description": "The enforcement-surface freeze (`guard::floor`). Declaring the section is\nwhat turns the floor on; `protected_paths` adds the project's own\ngate-defining files to the built-in set the module documents.",

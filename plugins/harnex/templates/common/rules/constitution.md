@@ -32,10 +32,7 @@ linter's job, never a rule the model must remember.
 ## V. The session never traps
 
 Reporting Stop-class hooks exit 0: exit 2 prevents Stop/SubagentStop and forces
-continuation. `[guard.stop_audit]` is an explicit opt-in exception: a recognised
-gating finding requests continuation, but the retry budget ends automatic
-critiques on exhaustion and asks the operator to review. An unavailable audit
-allows the stop and reports why.
+continuation.
 
 ## VI. Constraints earn their place
 

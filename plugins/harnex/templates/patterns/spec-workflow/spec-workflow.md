@@ -117,12 +117,8 @@ or read for each criterion. The decision log is what the next phase reads
 before it moves — wrapup starts only once it records `approved` for both — so
 record a decision before the work moves past it.
 
-For a gate before the session ends, `harnex guard stop-audit`
-(`[guard.stop_audit]` in `harness.toml`) adds a bounded fresh-context critique
-at Stop. It spawns a model call, so
-`has_changes_check` is required — the section is declared with the command
-that says whether this session left work behind, and fires only then. Reach
-for it where the commit-time gates do not already compute what a critique
-would say; the scaffold's Stop hook already reports uncommitted work, and a
-critique that repeats a gate is paid every session for a verdict the commit
-was going to give anyway.
+A critique before the session ends is a Stop hook the project adds itself. Add
+one only where the commit-time gates do not already compute what it would say:
+the scaffold's Stop hook already reports uncommitted work, and a critique that
+repeats a gate is paid every session for a verdict the commit was going to give
+anyway.

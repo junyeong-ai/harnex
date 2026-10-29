@@ -223,7 +223,6 @@ harnex lifecycle classify --kind K --path P --silence silent|active|unmeasured
 harnex lifecycle retire [--window N]
 harnex lifecycle decisions [--tag T] [--decision D]
 
-harnex guard stop-audit [--session ID]                # fresh-context Stop audit
 harnex guard floor                                    # PreToolUse floor-integrity:
                                                       # blocks hook-skipping git commands
                                                       # and protected-path writes
@@ -252,13 +251,6 @@ and `--session`, in any combination. Each emits one JSON envelope carrying the
 window's span, coverage, runtime versions and model mix, so a saved envelope is
 self-describing — that is the export, and two of them are readable side by side
 without the binary having to claim they measured the same work.
-
-`guard stop-audit` allows a clean stop only after a successful critique whose
-finding severities are all recognised. A recognised gating finding still
-blocks when another item is unreadable; an otherwise unreadable or failed
-critique is reported as skipped. Every critique attempt consumes budget,
-including failures; a clean verdict resets it. Exhaustion ends automatic
-critiques for the session and asks the operator to review the work.
 
 `context resolve` returns normalized `targets` and `required_instructions` to
 read: root `CLAUDE.md` and `.claude/CLAUDE.md`, unconditional or matching rules,

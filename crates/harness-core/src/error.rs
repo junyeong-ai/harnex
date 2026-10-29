@@ -44,7 +44,6 @@ wire_enum! {
         LifecycleDecisionTextEmpty => "LIFECYCLE_DECISION_TEXT_EMPTY",
         LifecycleTagEmpty => "LIFECYCLE_TAG_EMPTY",
         GuardHookInputInvalid => "GUARD_HOOK_INPUT_INVALID",
-        GuardSpawnFailure => "GUARD_SPAWN_FAILURE",
         AuditGitFailure => "AUDIT_GIT_FAILURE",
         CheckGitFailure => "CHECK_GIT_FAILURE",
         LifecycleGitFailure => "LIFECYCLE_GIT_FAILURE",
@@ -140,9 +139,6 @@ pub enum Error {
     #[error("guard hook input invalid: {message}")]
     GuardHookInputInvalid { message: String },
 
-    #[error("guard spawn failure: {message}")]
-    GuardSpawnFailure { message: String },
-
     #[error("git command failed: {message}")]
     AuditGitFailure { message: String },
 
@@ -218,7 +214,6 @@ impl Error {
             Self::LifecycleDecisionTextEmpty => ErrorCode::LifecycleDecisionTextEmpty,
             Self::LifecycleTagEmpty => ErrorCode::LifecycleTagEmpty,
             Self::GuardHookInputInvalid { .. } => ErrorCode::GuardHookInputInvalid,
-            Self::GuardSpawnFailure { .. } => ErrorCode::GuardSpawnFailure,
             Self::AuditGitFailure { .. } => ErrorCode::AuditGitFailure,
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
             Self::LifecycleGitFailure { .. } => ErrorCode::LifecycleGitFailure,
@@ -359,7 +354,7 @@ mod error_code_tests {
         let count = ErrorCode::ALL.len();
         let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(count, unique.len(), "ALL has a duplicate variant");
-        assert!(count >= 33, "ALL shrank unexpectedly — variant dropped?");
+        assert!(count >= 32, "ALL shrank unexpectedly — variant dropped?");
     }
 
     #[test]
