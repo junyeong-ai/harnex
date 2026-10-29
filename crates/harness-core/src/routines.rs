@@ -135,7 +135,7 @@ impl std::fmt::Display for ShapeError {
 impl RoutineDecl {
     /// The declaration in a routine file's text.
     pub fn from_file(content: &str, source: &Path) -> std::result::Result<Self, ShapeError> {
-        let fm = frontmatter::parse(content, source)
+        let fm = frontmatter::parse_owned(content, source)
             .map_err(|e| ShapeError::Malformed(e.to_string()))?
             .ok_or_else(|| {
                 ShapeError::Malformed("a routine is its frontmatter; none is present".into())
@@ -372,6 +372,14 @@ mod tests {
             RoutineDecl::from_file("no frontmatter\n", Path::new("r.md")).is_err(),
             "a routine is its frontmatter"
         );
+    }
+
+    #[test]
+    fn a_fence_inside_the_prompt_is_the_prompts_text() {
+        let text = "---\ncadence: quarterly\nowner: harness\nprompt: |\n  Compare snapshots.\n  --- separator ---\n  Keep dispositions.\nstatus: superseded\n---\n";
+        let decl = RoutineDecl::from_file(text, Path::new("r.md")).unwrap();
+        assert!(decl.prompt.ends_with("Keep dispositions."), "{decl:?}");
+        assert_eq!(decl.status, RoutineStatus::Superseded);
     }
 
     #[test]

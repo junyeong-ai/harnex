@@ -1,6 +1,7 @@
 //! YAML frontmatter extraction, and how the runtime reads a value from it.
-//! Frontmatter is the optional block a markdown file opens with, read the way
-//! Claude Code reads it.
+//! Frontmatter is the optional block a markdown file opens with. A file Claude
+//! Code loads is read the way it reads it ([`parse`]); a document whose
+//! grammar harnex owns is read by YAML's own fences ([`parse_owned`]).
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -62,6 +63,30 @@ pub fn parse(content: &str, source: &Path) -> Result<Option<Frontmatter>> {
         }),
         (None, _) => Ok(None),
     }
+}
+
+/// The frontmatter of a document whose grammar harnex owns: the lines between
+/// a first line `---` and the next line `---`, so a `---` inside a block
+/// scalar stays the scalar's text. `Ok(None)` and `Err` as for [`parse`].
+pub fn parse_owned(content: &str, source: &Path) -> Result<Option<Frontmatter>> {
+    let mut lines = content.lines();
+    if lines.next() != Some("---") {
+        return Ok(None);
+    }
+    let mut yaml = Vec::new();
+    for line in lines {
+        if line == "---" {
+            return Ok(Some(Frontmatter {
+                begin_line: 1,
+                yaml_text: yaml.join("\n"),
+            }));
+        }
+        yaml.push(line);
+    }
+    Err(Error::ValidateFrontmatterMalformed {
+        path: source.to_path_buf(),
+        message: "frontmatter `---` is not terminated".into(),
+    })
 }
 
 /// `String(n)` for a JavaScript number (ECMA-262 `Number::toString`). The
