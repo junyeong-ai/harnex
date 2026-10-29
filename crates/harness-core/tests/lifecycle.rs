@@ -1593,6 +1593,33 @@ fn what_no_history_here_records_has_no_age() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_project_in_a_subdirectory_reads_the_history_of_its_whole_repository() {
+    // A monorepo package links in skills its repository keeps beside it.
+    let tmp = repo();
+    let shared = tmp.path().join("shared/skills");
+    for name in ["settled", "edited"] {
+        std::fs::create_dir_all(shared.join(name)).unwrap();
+        std::fs::write(shared.join(name).join("SKILL.md"), "a skill").unwrap();
+    }
+    let app = tmp.path().join("app");
+    std::fs::create_dir_all(app.join(".claude")).unwrap();
+    std::os::unix::fs::symlink("../../shared/skills", app.join(".claude/skills")).unwrap();
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(shared.join("edited/SKILL.md"), "a skill, mid-edit").unwrap();
+
+    let changes = last_changes(
+        &app,
+        &["settled", "edited"].map(|name| app.join(".claude/skills").join(name)),
+    )
+    .unwrap();
+    assert!(
+        matches!(days_since(&changes[0]), Some(199..=200)) && changes[1] == LastChange::Uncommitted,
+        "{changes:?}"
+    );
+}
+
 #[test]
 fn a_repository_with_no_commits_holds_pending_changes_and_unrecorded_files() {
     let tmp = repo();
