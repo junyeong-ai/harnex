@@ -1789,9 +1789,10 @@ fn a_merge_dates_what_it_brought_to_the_branch() {
 }
 
 #[test]
-fn the_history_reads_the_same_under_any_log_configuration() {
+fn the_history_reads_the_same_under_any_git_configuration() {
     // A developer's configuration signs every commit, prints each signature's
-    // verification into `git log`, and hides what the first commit added.
+    // verification into `git log`, hides what the first commit added, and
+    // leaves `git diff` reading a file whose time alone moved as changed.
     let tmp = repo();
     let keys = TempDir::new().unwrap();
     let key = keys.path().join("key");
@@ -1811,6 +1812,7 @@ fn the_history_reads_the_same_under_any_log_configuration() {
         ("commit.gpgSign", "true"),
         ("log.showSignature", "true"),
         ("log.showRoot", "false"),
+        ("diff.autoRefreshIndex", "false"),
     ] {
         let set = common::git(tmp.path())
             .args(["config", name, value])
@@ -1822,6 +1824,12 @@ fn the_history_reads_the_same_under_any_log_configuration() {
     commit_days_ago(tmp.path(), 200);
     std::fs::write(tmp.path().join("recent.md"), "a rule").unwrap();
     commit_days_ago(tmp.path(), 3);
+    std::fs::File::options()
+        .write(true)
+        .open(tmp.path().join("old.md"))
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+        .unwrap();
 
     let changes = last_changes(
         tmp.path(),
