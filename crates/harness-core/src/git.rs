@@ -126,7 +126,9 @@ pub(crate) fn last_committed(
         args
     };
     // git lists files; a change to one is a change to every path asked about
-    // that is it or holds it.
+    // that is it or holds it. `--no-renames` lists a move as the path it left
+    // and the one it reached, since rename detection names only the second
+    // and the directory the file left changed too.
     let asked: HashSet<&str> = specs.iter().map(String::as_str).collect();
     let holders = |listed: &'_ str| -> Vec<&str> {
         Path::new(listed)
@@ -143,6 +145,7 @@ pub(crate) fn last_committed(
             "--name-only",
             "-z",
             "--relative",
+            "--no-renames",
             "HEAD",
         ]),
     )?;
@@ -181,6 +184,7 @@ pub(crate) fn last_committed(
             "--name-only",
             "--relative",
             "--first-parent",
+            "--no-renames",
             "--root",
             "--no-show-signature",
             "HEAD",

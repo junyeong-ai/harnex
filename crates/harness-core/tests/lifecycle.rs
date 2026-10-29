@@ -1512,6 +1512,46 @@ fn a_directory_is_dated_by_the_files_it_holds() {
 }
 
 #[test]
+fn a_move_changes_the_directory_it_left() {
+    let tmp = repo();
+    let skills = tmp.path().join(".claude/skills");
+    for name in ["left", "reached", "leaving", "reaching"] {
+        std::fs::create_dir_all(skills.join(name)).unwrap();
+        std::fs::write(skills.join(name).join("SKILL.md"), name).unwrap();
+    }
+    std::fs::write(skills.join("left/reference.md"), "moved").unwrap();
+    std::fs::write(skills.join("leaving/reference.md"), "moving").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    let mv = |from: &str, to: &str| {
+        let moved = common::git(tmp.path())
+            .args(["mv", from, to])
+            .status()
+            .unwrap();
+        assert!(moved.success(), "git mv {from} {to}");
+    };
+    mv(
+        ".claude/skills/left/reference.md",
+        ".claude/skills/reached/reference.md",
+    );
+    commit_days_ago(tmp.path(), 1);
+    mv(
+        ".claude/skills/leaving/reference.md",
+        ".claude/skills/reaching/reference.md",
+    );
+
+    let changes = last_changes(
+        tmp.path(),
+        &["left", "reached", "leaving", "reaching"].map(|name| skills.join(name)),
+    )
+    .unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
+    assert!(
+        matches!(ages[..], [Some(0..=1), Some(0..=1), None, None]),
+        "{ages:?}"
+    );
+}
+
+#[test]
 fn a_merge_dates_what_it_brought_to_the_branch() {
     // A side branch wrote a rule long ago and changed another the trunk had
     // also changed; the merge landed both yesterday, resolving the conflict.
