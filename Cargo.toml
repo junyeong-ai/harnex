@@ -37,6 +37,9 @@ httparse = "1"
 percent-encoding = "2"
 getrandom = "0.4"
 schemars = { version = "1.2.3", features = ["preserve_order", "jiff02", "semver1"] }
+# git on macOS lists names composed and the file system may not; this is
+# what compares the two.
+unicode-normalization = "0.1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
