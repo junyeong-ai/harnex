@@ -120,10 +120,14 @@ Agent validator (per <https://code.claude.com/docs/en/sub-agents>):
   `KNOWN_AGENT_KEYS` as Major.
 
 Output-style validator (per <https://code.claude.com/docs/en/output-styles>):
-- `keep-coding-instructions` and `force-for-plugin` must be booleans (Major).
-  The first defaults to `false`, so a quoted `"true"` silently drops Claude's
-  engineering instructions for the whole session with no error anywhere.
-- `name` is never required — the spec falls back to the file name.
+- `keep-coding-instructions` and `force-for-plugin` are flags as
+  `frontmatter::flag` reads them — the runtime's spellings (Major). Any other
+  value leaves the flag at its `false` default with no error anywhere; for
+  `keep-coding-instructions` on the full system prompt, that drops Claude
+  Code's built-in engineering instructions for the session. The shorter
+  prompt carries no such section, so the field does nothing there.
+- Neither frontmatter nor `name` is required — a style without them loads
+  under its file name with every field at its default.
 - No body budget; the body is prompt text.
 - `reject_unknown_keys` (opt-in, default off): flag any key outside
   `KNOWN_OUTPUT_STYLE_KEYS`.

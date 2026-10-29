@@ -1,22 +1,23 @@
 //! Validator for `.claude/output-styles/*.md`.
 //!
 //! An output style rewrites the system prompt for every turn of a session
-//! (<https://code.claude.com/docs/en/output-styles>), which makes its two
-//! booleans unusually expensive to get wrong: `keep-coding-instructions`
-//! defaults to `false`, so a style that meant to keep Claude's software
-//! engineering instructions and wrote the flag in a shape YAML reads as a
-//! string silently drops them for the whole session, with no error anywhere.
+//! (<https://code.claude.com/docs/en/output-styles>). The runtime reads its two
+//! flags as [`frontmatter::flag`] does, and a value it reads as neither true
+//! nor false leaves the flag at its `false` default with no error anywhere.
+//! For `keep-coding-instructions` on the full system prompt, that drops Claude
+//! Code's built-in engineering instructions for the whole session.
 //!
 //! Checks:
-//! - Frontmatter present and parses as YAML.
-//! - `keep-coding-instructions` and `force-for-plugin` are booleans.
+//! - Frontmatter, where present, parses as YAML.
+//! - `keep-coding-instructions` and `force-for-plugin` read as a flag.
 //! - Opt-in via `OutputStylesPolicy.reject_unknown_keys`: a key outside
 //!   `KNOWN_OUTPUT_STYLE_KEYS`.
 //!
 //! ## What this module refuses to do
 //!
-//! - Never require `name`. The spec falls back to the file name, so demanding
-//!   the field would flag a style that loads exactly as its author intended.
+//! - Never require frontmatter or `name`. A style without them loads under
+//!   its file name with every flag at its default, which is what a style that
+//!   only changes how Claude talks asks for.
 //! - Never judge the body. It is prompt text, and no documented budget bounds
 //!   it.
 
@@ -26,7 +27,7 @@ use serde::Deserialize;
 
 use crate::config::OutputStylesPolicy;
 use crate::envelope::{Finding, Location, Severity};
-use crate::validate::frontmatter;
+use crate::validate::frontmatter::{self, FLAG_SPELLINGS};
 
 /// Complete output-style frontmatter key surface (wire names).
 pub const KNOWN_OUTPUT_STYLE_KEYS: &[&str] = &[
@@ -69,20 +70,7 @@ impl<'a> OutputStyleValidator<'a> {
 
         let fm = match frontmatter::parse(content, path) {
             Ok(Some(fm)) => fm,
-            Ok(None) => {
-                findings.push(Finding {
-                    slug: "output-style-missing-frontmatter".into(),
-                    severity: Severity::Blocker,
-                    location: Location::line(path.to_path_buf(), 1),
-                    message: "output style has no YAML frontmatter".into(),
-                    hint: Some(
-                        "open the file with a `---` fence; without one the style carries no \
-                         `keep-coding-instructions` and drops Claude's engineering instructions"
-                            .into(),
-                    ),
-                });
-                return findings;
-            }
+            Ok(None) => return findings,
             Err(e) => {
                 let hint = e.hint().map(String::from);
                 findings.push(Finding {
@@ -143,24 +131,27 @@ impl<'a> OutputStyleValidator<'a> {
             (
                 &parsed.keep_coding_instructions,
                 "keep-coding-instructions",
-                "the default is false, so a non-boolean drops Claude's engineering instructions \
-                 for the whole session",
+                "on the full system prompt the style drops Claude Code's built-in engineering \
+                 instructions (the shorter prompt carries none to keep)",
             ),
             (
                 &parsed.force_for_plugin,
                 "force-for-plugin",
-                "a non-boolean leaves the style opt-in when it was meant to apply automatically",
+                "a plugin's style stays opt-in (outside a plugin the key does nothing)",
             ),
         ] {
             if let Some(v) = value
-                && !v.is_bool()
+                && frontmatter::flag(v).is_none()
             {
                 findings.push(Finding {
                     slug: format!("output-style-{field}-invalid"),
                     severity: Severity::Major,
                     location: Location::line(path.to_path_buf(), line),
-                    message: format!("{field} must be a boolean — {consequence}"),
-                    hint: Some(format!("write `{field}: true` unquoted")),
+                    message: format!(
+                        "{field} must be a flag ({FLAG_SPELLINGS}); the runtime reads any other \
+                         value as unset, so {consequence}"
+                    ),
+                    hint: Some(format!("set `{field}: true` or `{field}: false`")),
                 });
             }
         }

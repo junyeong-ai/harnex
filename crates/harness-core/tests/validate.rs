@@ -1680,22 +1680,52 @@ fn output_style_validator_accepts_a_correct_style() {
 }
 
 #[test]
-fn output_style_validator_flags_a_quoted_boolean() {
-    // YAML reads `"true"` as a string, Claude Code reads a non-boolean as the
-    // `false` default, and the engineering instructions vanish for the whole
-    // session with no error anywhere.
+fn output_style_validator_accepts_every_spelling_the_runtime_reads_as_a_flag() {
+    let policy = OutputStylesPolicy {
+        reject_unknown_keys: true,
+    };
+    let v = OutputStyleValidator::new(&policy);
+    for spelled in ["true", "\"true\"", "yes", "On", "1", "false", "off", "0"] {
+        let md = format!(
+            "---\nkeep-coding-instructions: {spelled}\nforce-for-plugin: {spelled}\n---\nBody\n"
+        );
+        let findings = v.validate_text(&md, Path::new(".claude/output-styles/coach.md"));
+        assert!(findings.is_empty(), "`{spelled}`: {findings:?}");
+    }
+}
+
+#[test]
+fn output_style_validator_flags_a_value_the_runtime_reads_as_unset() {
+    // The runtime leaves such a flag at its `false` default and says nothing.
     let policy = OutputStylesPolicy {
         reject_unknown_keys: false,
     };
     let v = OutputStyleValidator::new(&policy);
-    let md = "---\nname: Coach\nkeep-coding-instructions: \"true\"\n---\nBody\n";
+    let md = "---\nkeep-coding-instructions: always\nforce-for-plugin: [true]\n---\nBody\n";
     let findings = v.validate_text(md, Path::new(".claude/output-styles/coach.md"));
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.slug == "output-style-keep-coding-instructions-invalid"),
+    let slugs: Vec<&str> = findings.iter().map(|f| f.slug.as_str()).collect();
+    assert_eq!(
+        slugs,
+        [
+            "output-style-keep-coding-instructions-invalid",
+            "output-style-force-for-plugin-invalid"
+        ],
         "{findings:?}"
     );
+}
+
+#[test]
+fn output_style_validator_accepts_a_style_without_frontmatter() {
+    // It loads under its file name with every flag at its default.
+    let policy = OutputStylesPolicy {
+        reject_unknown_keys: true,
+    };
+    let v = OutputStyleValidator::new(&policy);
+    let findings = v.validate_text(
+        "Answer in one paragraph.\n",
+        Path::new(".claude/output-styles/terse.md"),
+    );
+    assert!(findings.is_empty(), "unexpected: {findings:?}");
 }
 
 #[test]
