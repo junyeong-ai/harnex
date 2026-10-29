@@ -70,10 +70,10 @@ pub(crate) fn listed_paths(dir: &Path, args: &[&str]) -> Result<Vec<PathBuf>, Fa
 
 /// The committer time of the last commit that changed each of `paths` on this
 /// branch, in the order given, or `None` for a path whose working-tree
-/// content no commit records: an edit not yet committed, or a file never
-/// committed. A directory
-/// is dated by the files under it, and holds an uncommitted change when any
-/// of them does or is untracked.
+/// content no commit here records: an edit not yet committed, a file never
+/// committed, a path that is not there, or one a linked directory places
+/// outside `dir`. A directory is dated by the files under it, and holds an
+/// uncommitted change when any of them does or is untracked.
 ///
 /// One walk of the history answers every path, each read as a literal, so a
 /// `[` in a name names that file. A shallow clone is a failure rather than an
@@ -83,10 +83,8 @@ pub(crate) fn last_committed(
     dir: &Path,
     paths: &[PathBuf],
 ) -> Result<Vec<Option<Timestamp>>, Failure> {
-    let resolve = |path: &Path| {
-        std::fs::canonicalize(path).map_err(|e| Failure(format!("{}: {e}", path.display())))
-    };
-    let root = resolve(dir)?;
+    let root =
+        std::fs::canonicalize(dir).map_err(|e| Failure(format!("{}: {e}", dir.display())))?;
     // Each path is matched against what git lists, so it is spelled the way
     // git spells it: `..` and a linked directory resolved, the last component
     // kept, because an artifact that is itself a link is tracked as the link.
@@ -94,24 +92,31 @@ pub(crate) fn last_committed(
         .iter()
         .map(|path| {
             let resolved = match (path.parent(), path.file_name()) {
-                (Some(parent), Some(name)) => resolve(parent)?.join(name),
-                _ => resolve(path)?,
+                (Some(parent), Some(name)) => std::fs::canonicalize(parent).map(|p| p.join(name)),
+                _ => std::fs::canonicalize(path),
             };
-            let relative = resolved.strip_prefix(&root).map_err(|_| {
-                Failure(format!("{} is not under {}", path.display(), dir.display()))
-            })?;
+            let Some(relative) = resolved
+                .ok()
+                .and_then(|resolved| resolved.strip_prefix(&root).ok().map(Path::to_path_buf))
+            else {
+                return Ok(None);
+            };
             relative
                 .to_str()
-                .map(str::to_owned)
+                .map(|spec| Some(spec.to_owned()))
                 .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display())))
         })
-        .collect::<Result<Vec<String>, Failure>>()?;
+        .collect::<Result<Vec<Option<String>>, Failure>>()?;
     // git on macOS lists every name composed (`core.precomposeUnicode`), while
     // the file system may hand back a decomposed one, so names are compared
     // composed. The pathspecs keep their spelling: git composes them itself.
-    let keys: Vec<String> = specs.iter().map(|spec| spec.nfc().collect()).collect();
-    if specs.is_empty() {
-        return Ok(Vec::new());
+    let keys: Vec<Option<String>> = specs
+        .iter()
+        .map(|spec| spec.as_deref().map(|spec| spec.nfc().collect()))
+        .collect();
+    let pathspecs: Vec<&str> = specs.iter().flatten().map(String::as_str).collect();
+    if pathspecs.is_empty() {
+        return Ok(vec![None; specs.len()]);
     }
     if stdout(dir, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
         return Err(Failure(
@@ -127,14 +132,14 @@ pub(crate) fn last_committed(
     let with_specs = |args: &[&'static str]| {
         let mut args: Vec<&str> = args.to_vec();
         args.push("--");
-        args.extend(specs.iter().map(String::as_str));
+        args.extend(&pathspecs);
         args
     };
     // git lists files; a change to one is a change to every path asked about
     // that is it or holds it. `--no-renames` lists a move as the path it left
     // and the one it reached, since rename detection names only the second
     // and the directory the file left changed too.
-    let asked: HashSet<&str> = keys.iter().map(String::as_str).collect();
+    let asked: HashSet<&str> = keys.iter().flatten().map(String::as_str).collect();
     let holders = |listed: &str| -> Vec<&str> {
         let listed: String = listed.nfc().collect();
         Path::new(&listed)
@@ -235,12 +240,16 @@ pub(crate) fn last_committed(
     }
 
     keys.iter()
-        .map(String::as_str)
-        .map(|key| match (edited.contains(key), latest.get(key)) {
-            (false, Some(&seconds)) => Timestamp::from_second(seconds)
-                .map(Some)
-                .map_err(|e| Failure(format!("commit time {seconds} for '{key}': {e}"))),
-            _ => Ok(None),
+        .map(|key| {
+            let Some(key) = key.as_deref() else {
+                return Ok(None);
+            };
+            match (edited.contains(key), latest.get(key)) {
+                (false, Some(&seconds)) => Timestamp::from_second(seconds)
+                    .map(Some)
+                    .map_err(|e| Failure(format!("commit time {seconds} for '{key}': {e}"))),
+                _ => Ok(None),
+            }
         })
         .collect()
 }

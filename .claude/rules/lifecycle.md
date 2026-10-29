@@ -68,9 +68,10 @@ Age, which Stale and the grace period read, is the caller's `LastChange` from
 `last_changes`: the last commit that changed the file on this branch, a merge
 dated by what it changed against the branch it landed on, or now while the
 working tree holds a change no commit records. A directory artifact, a skill,
-is dated by the files under it, since git lists only files; the user's git
-configuration may not reshape the log the age is parsed from. Never a
-modification time — a checkout writes every file's, so a fresh clone or a CI
+is dated by the files under it, since git lists only files, and one linked in
+from outside the project has no history here and reads as uncommitted; the
+user's git configuration may not reshape the log the age is parsed from. Never
+a modification time — a checkout writes every file's, so a fresh clone or a CI
 runner reads every artifact as new and inside its grace period. A shallow
 clone fails with `LIFECYCLE_GIT_FAILURE`, because its boundary commit dates
 every file it holds to the day the clone was cut. One history walk answers the
