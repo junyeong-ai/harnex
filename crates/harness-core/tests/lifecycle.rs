@@ -1752,6 +1752,36 @@ fn a_name_spelled_alike_is_another_file_where_git_reads_names_byte_for_byte() {
 }
 
 #[test]
+fn a_directory_left_out_of_a_set_of_skills_changes_none_of_them() {
+    // git is asked about the skills' directory less the one no kind reads, so
+    // a change there, committed or pending, dates none of the skills, and
+    // leaving it out drops none of their own history; nor is one left out
+    // that an artifact lies deeper in.
+    let tmp = repo();
+    let skills = tmp.path().join(".claude/skills");
+    for name in ["a", "b", "c", "d", "core", "docs"] {
+        std::fs::create_dir_all(skills.join(name)).unwrap();
+        std::fs::write(skills.join(name).join("SKILL.md"), name).unwrap();
+    }
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(skills.join("core/SKILL.md"), "core, revised").unwrap();
+    commit_days_ago(tmp.path(), 1);
+    std::fs::write(skills.join("core/notes.md"), "pending").unwrap();
+
+    let set = ["a", "b", "c", "d"].map(|name| skills.join(name));
+    let deeper = [&set[..], &[skills.join("docs/SKILL.md")]].concat();
+    for paths in [&set[..], &deeper] {
+        let changes = last_changes(tmp.path(), paths).unwrap();
+        assert!(
+            changes
+                .iter()
+                .all(|change| matches!(days_since(change), Some(199..=200))),
+            "{changes:?}"
+        );
+    }
+}
+
+#[test]
 fn a_move_changes_the_directory_it_left() {
     let tmp = repo();
     let skills = tmp.path().join(".claude/skills");

@@ -278,9 +278,19 @@ impl<'a> Record<'a> {
             true => ":(literal,icase)",
             false => ":(literal)",
         };
-        let specs: Vec<String> = scopes(top, paths)
+        // A directory is left out by the bytes it is stored under alone: with
+        // `icase` it would also leave out a path asked in another case.
+        let scopes = scopes(top, paths);
+        let specs: Vec<String> = scopes
+            .asked
             .iter()
             .map(|scope| format!("{magic}{scope}"))
+            .chain(
+                scopes
+                    .left_out
+                    .iter()
+                    .map(|dir| format!(":(exclude,literal){dir}")),
+            )
             .collect();
         let with_specs = |args: &[&'static str]| {
             let mut args: Vec<&str> = args.to_vec();
@@ -410,15 +420,24 @@ impl<'a> Record<'a> {
     }
 }
 
+/// What git is asked about for a set of paths, spelled from the repository's
+/// root.
+struct Scopes<'a> {
+    /// Each path, or the directory holding several of them; the root as `.`.
+    asked: Vec<&'a str>,
+    /// The directories inside one asked that no path lies in.
+    left_out: Vec<String>,
+}
+
 /// What git is asked about for `paths`, spelled from `top`, the repository's
-/// root. git compares every spec with every name it walks, so paths sharing a
-/// directory, a set of skills, are asked as that directory. It also lists every
-/// file under what it is asked, and a directory no path names can hold a
-/// package's whole history, so a directory is asked only where every directory
-/// it holds is one of the paths, and adds no more than the history of its own
-/// files. Any other path is asked as itself, the root as `.`, and none under
-/// another is asked at all.
-fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Vec<&'a str> {
+/// root. git compares every spec with every name it walks, so several paths in
+/// one directory, a set of skills, are asked as that directory wherever that
+/// takes fewer specs: the directory, less each directory in it no path lies in,
+/// since one can hold a package's whole history. git lists all it is asked, so
+/// a directory is never asked whole where a path lies deeper in one it holds,
+/// and asked so, it adds only the files beside the paths and what it held
+/// before. Any other path is asked as itself, and none under another at all.
+fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Scopes<'a> {
     let place = |path: &'a str| -> Option<(&'a str, &'a OsStr)> {
         let path = Path::new(path);
         Some((path.parent()?.to_str()?, path.file_name()?))
@@ -429,11 +448,24 @@ fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Vec<&'a str> {
             holding.entry(dir).or_default().insert(name);
         }
     }
-    let merged: HashSet<&'a str> = holding
+    let asked: HashSet<&'a str> = paths.iter().copied().collect();
+    let above: HashSet<&'a str> = paths
         .iter()
-        .filter(|(dir, names)| names.len() > 1 && holds_no_other_directory(&top.join(dir), names))
-        .map(|(&dir, _)| dir)
+        .flat_map(|&path| Path::new(path).ancestors().skip(1))
+        .filter_map(Path::to_str)
         .collect();
+    let mut merged: HashSet<&'a str> = HashSet::new();
+    let mut left_out = Vec::new();
+    for (&dir, names) in &holding {
+        match unnamed_directories(top, dir, &asked, &above) {
+            Some(unnamed) if 1 + unnamed.len() < names.len() => {
+                merged.insert(dir);
+                left_out.extend(unnamed);
+            }
+            _ => {}
+        }
+    }
+    left_out.sort_unstable();
     let mut scopes: Vec<&'a str> = paths
         .iter()
         .map(|&path| match place(path) {
@@ -444,36 +476,54 @@ fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Vec<&'a str> {
     scopes.sort_unstable();
     scopes.dedup();
     // One under another adds nothing git does not list for that one.
-    let asked: HashSet<&'a str> = scopes.iter().copied().collect();
+    let scoped: HashSet<&'a str> = scopes.iter().copied().collect();
     scopes.retain(|scope| {
         !Path::new(scope)
             .ancestors()
             .skip(1)
             .filter_map(Path::to_str)
-            .any(|above| asked.contains(above))
+            .any(|above| scoped.contains(above))
     });
-    scopes
-        .into_iter()
-        .map(|scope| match scope {
-            "" => ".",
-            scope => scope,
-        })
-        .collect()
+    Scopes {
+        asked: scopes
+            .into_iter()
+            .map(|scope| match scope {
+                "" => ".",
+                scope => scope,
+            })
+            .collect(),
+        left_out,
+    }
 }
 
-/// Whether every directory `dir` holds is named in `names`; a link is not one,
-/// since git records a link and not what it points at. A directory that cannot
-/// be listed is not merged: its paths asked one by one answer the same.
-fn holds_no_other_directory(dir: &Path, names: &HashSet<&OsStr>) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    entries.into_iter().all(|entry| {
-        entry.is_ok_and(|entry| {
-            entry.file_type().is_ok_and(|kind| !kind.is_dir())
-                || names.contains(entry.file_name().as_os_str())
-        })
-    })
+/// The directories `dir` holds that neither are a path `asked` nor lie `above`
+/// one, spelled from the repository's root `top`; a link is not one, since git
+/// records a link and not what it points at. `None` where `dir` is not to be
+/// asked whole: it holds a directory a path lies deeper in, or it or one of its
+/// names cannot be read. Its paths asked one by one answer the same.
+fn unnamed_directories(
+    top: &Path,
+    dir: &str,
+    asked: &HashSet<&str>,
+    above: &HashSet<&str>,
+) -> Option<Vec<String>> {
+    let mut unnamed = Vec::new();
+    for entry in std::fs::read_dir(top.join(dir)).ok()? {
+        let entry = entry.ok()?;
+        if !entry.file_type().ok()?.is_dir() {
+            continue;
+        }
+        let path = Path::new(dir).join(entry.file_name());
+        let path = path.to_str()?;
+        if asked.contains(path) {
+            continue;
+        }
+        if above.contains(path) {
+            return None;
+        }
+        unnamed.push(path.to_owned());
+    }
+    Some(unnamed)
 }
 
 /// How git matches the names a file system gives to the ones it lists, as
@@ -605,12 +655,16 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn git_is_asked_about_a_directory_only_where_every_directory_in_it_is_asked() {
+    fn git_is_asked_about_a_directory_only_where_that_takes_fewer_specs() {
         let tmp = tempfile::TempDir::new().unwrap();
         let top = tmp.path();
         for dir in [
             ".claude/skills/a",
             ".claude/skills/b",
+            ".claude/skills/c",
+            ".claude/skills/d",
+            ".claude/skills/core",
+            ".claude/rules/frontend",
             "apps/web/src",
             "packages/x",
             "packages/y",
@@ -633,11 +687,20 @@ mod tests {
         std::os::unix::fs::symlink("AGENTS.md", top.join("apps/web/CLAUDE.md")).unwrap();
         std::os::unix::fs::symlink("../../packages/z", top.join(".claude/skills/linked")).unwrap();
 
-        let asked = scopes(
+        let scopes = scopes(
             top,
             &[
+                // A set of skills beside one a foundation kind carves out.
                 ".claude/skills/a",
                 ".claude/skills/b",
+                ".claude/skills/c",
+                ".claude/skills/d",
+                // Rules beside a folder of them, which would be listed whole.
+                ".claude/rules/one.md",
+                ".claude/rules/two.md",
+                ".claude/rules/three.md",
+                ".claude/rules/four.md",
+                ".claude/rules/frontend/five.md",
                 // A `CLAUDE.md` read through its link, beside a package's sources.
                 "apps/web/CLAUDE.md",
                 "apps/web/AGENTS.md",
@@ -653,8 +716,13 @@ mod tests {
             ],
         );
         assert_eq!(
-            asked,
+            scopes.asked,
             [
+                ".claude/rules/four.md",
+                ".claude/rules/frontend/five.md",
+                ".claude/rules/one.md",
+                ".claude/rules/three.md",
+                ".claude/rules/two.md",
                 ".claude/skills",
                 "apps/web/AGENTS.md",
                 "apps/web/CLAUDE.md",
@@ -664,8 +732,14 @@ mod tests {
                 "vendor",
             ]
         );
-        // A link that resolves to the root makes git list everything.
-        assert_eq!(scopes(top, &["", "shared/rules/r.md"]), ["."]);
+        assert_eq!(scopes.left_out, [".claude/skills/core"]);
+    }
+
+    #[test]
+    fn a_path_that_resolves_to_the_root_asks_git_about_everything() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let scopes = scopes(tmp.path(), &["", "rules/r.md"]);
+        assert_eq!((scopes.asked, scopes.left_out), (vec!["."], vec![]));
     }
 
     const BYTES: Spelling = Spelling {
