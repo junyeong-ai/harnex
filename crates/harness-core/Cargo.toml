@@ -13,7 +13,6 @@ serde_json.workspace = true
 toml.workspace = true
 thiserror.workspace = true
 jiff.workspace = true
-url.workspace = true
 glob.workspace = true
 pulldown-cmark.workspace = true
 regex.workspace = true

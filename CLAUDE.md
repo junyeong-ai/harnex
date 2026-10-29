@@ -39,7 +39,7 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::git` | the files a project owns, as git answers it — what `check`'s memory set and the grep consumer detector read |
 | `harness-core::sentinel` | the two reserved marker grammars harnex writes — managed regions + fill markers |
 | `harness-core::markdown` | the one reader for what a rendered document shows — a CommonMark parse giving visible lines and headings |
-| `harness-core::evidence` | provenance verifier (strategy enum per claim shape) |
+| `harness-core::evidence` | the claims a document makes about the project, resolved against the tree — and the recorded basis of each advisory |
 | `harness-core::telemetry` | append-only JSONL ledger with closed payload schema |
 | `harness-core::policy` | permission rule grammar + profiles + version pins |
 | `harness-core::routines` | scheduled harness tasks — closed frontmatter grammar + schedule states |

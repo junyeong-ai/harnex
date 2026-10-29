@@ -16,9 +16,8 @@ use std::path::{Path, PathBuf};
 
 mod common;
 
-use harness_core::config::{EvidenceConfig, VerifierDecl};
 use harness_core::envelope::Finding;
-use harness_core::evidence::EvidenceVerifier;
+use harness_core::evidence::{self, Anchor};
 
 fn plugin_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex")
@@ -39,20 +38,6 @@ fn own_documents(root: &Path) -> Vec<PathBuf> {
 #[test]
 fn every_claim_the_plugin_makes_about_itself_resolves() {
     let root = plugin_root();
-    let verifier = EvidenceVerifier::new(&EvidenceConfig {
-        default_provenance: "internal".into(),
-        block_on_memory_only: false,
-        verifiers: vec![VerifierDecl {
-            provenance: "internal".into(),
-            strategy: "file-path-line".into(),
-            library_allowlist: Vec::new(),
-            max_age_days: None,
-        }],
-        advisory_dir: "evidence".into(),
-        advisories: Vec::new(),
-    })
-    .expect("the internal verifier is a declared strategy");
-
     let documents = own_documents(&root);
     assert!(
         documents.len() > 5,
@@ -62,8 +47,7 @@ fn every_claim_the_plugin_makes_about_itself_resolves() {
     let findings: Vec<Finding> = documents
         .iter()
         .flat_map(|path| {
-            verifier
-                .verify_file(path, &root)
+            evidence::verify_file(path, &root)
                 .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()))
         })
         .collect();
@@ -91,13 +75,10 @@ fn a_pointer_into_a_renamed_section_is_what_this_guard_catches() {
         .iter()
         .flat_map(|path| {
             let text = std::fs::read_to_string(path).expect("readable");
-            harness_core::evidence::parse_claims(&text)
+            evidence::parse_claims(&text)
                 .into_iter()
-                .filter_map(|claim| match claim.kind {
-                    harness_core::evidence::ClaimKind::File {
-                        path,
-                        anchor: harness_core::evidence::Anchor::Section(heading),
-                    } => Some(format!("{path} § {heading}")),
+                .filter_map(|claim| match claim.anchor {
+                    Anchor::Section(heading) => Some(format!("{} § {heading}", claim.path)),
                     _ => None,
                 })
         })

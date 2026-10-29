@@ -15,7 +15,7 @@
 //! carriage returns is the same document to a renderer and was one line to
 //! the reader that preceded this one.
 
-use harness_core::evidence::{ClaimKind, parse_claims};
+use harness_core::evidence::parse_claims;
 
 const MARKER: &str = "[file: no/such/target.rs:1]";
 const FRONTMATTER: &str = "---\npaths: [\"src/**\"]\n---\n\n# Rule\n\n";
@@ -117,10 +117,7 @@ fn marker_is_live(body: &str, ending: &str) -> bool {
         (FRONTMATTER.to_string() + &body.replace("{M}", MARKER) + "\n").replace('\n', ending);
     parse_claims(&document)
         .iter()
-        .any(|claim| match &claim.kind {
-            ClaimKind::File { path, .. } => path == "no/such/target.rs",
-            _ => false,
-        })
+        .any(|claim| claim.path == "no/such/target.rs")
 }
 
 #[test]

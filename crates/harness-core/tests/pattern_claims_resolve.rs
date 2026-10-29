@@ -16,8 +16,6 @@
 
 use std::path::PathBuf;
 
-use harness_core::config::{EvidenceConfig, VerifierDecl};
-use harness_core::evidence::EvidenceVerifier;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -42,27 +40,10 @@ fn patterns_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/harnex/templates/patterns")
 }
 
-fn internal_verifier() -> EvidenceVerifier {
-    EvidenceVerifier::new(&EvidenceConfig {
-        default_provenance: "internal".into(),
-        block_on_memory_only: false,
-        verifiers: vec![VerifierDecl {
-            provenance: "internal".into(),
-            strategy: "file-path-line".into(),
-            library_allowlist: Vec::new(),
-            max_age_days: None,
-        }],
-        advisory_dir: "evidence".into(),
-        advisories: Vec::new(),
-    })
-    .unwrap()
-}
-
 #[test]
 fn every_pattern_claim_resolves_in_the_layout_it_installs_to_alone() {
     let raw = std::fs::read_to_string(patterns_dir().join("manifest.toml")).unwrap();
     let manifest: Manifest = toml::from_str(&raw).unwrap();
-    let verifier = internal_verifier();
     let mut claims = 0;
     let mut patterns = 0;
 
@@ -106,7 +87,8 @@ fn every_pattern_claim_resolves_in_the_layout_it_installs_to_alone() {
         {
             let text = std::fs::read_to_string(path).unwrap();
             claims += harness_core::evidence::parse_claims(&text).len();
-            let verdict = |text: &str| verifier.verify_text(text, path, project.path());
+            let verdict =
+                |text: &str| harness_core::evidence::verify_text(text, path, project.path());
             let findings = verdict(&text);
             assert!(
                 findings.is_empty(),
@@ -116,7 +98,7 @@ fn every_pattern_claim_resolves_in_the_layout_it_installs_to_alone() {
             );
             // The control, through the same closure: one claim the layout
             // cannot carry yields exactly that finding, so an empty verdict
-            // above is a verdict and not a verifier that ran over nothing.
+            // above is a verdict and not a check that ran over nothing.
             let control = verdict(&format!("{text}\n\nProbe: [file: no/such/probe.rs:1].\n"));
             assert_eq!(control.len(), 1, "{}: {control:#?}", path.display());
         }

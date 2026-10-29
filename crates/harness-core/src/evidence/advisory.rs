@@ -181,8 +181,7 @@ pub fn record(
 ) -> Result<AdvisoryEvidence> {
     // Config::validate also holds these, but a library caller may hand a
     // config it built itself, and an id or dir that shapes a path outside
-    // the advisory directory must not reach the write — the same call
-    // EvidenceVerifier::new makes on its strategies.
+    // the advisory directory must not reach the write.
     if !id
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
@@ -469,9 +468,6 @@ mod tests {
 
     fn cfg(advisories: Vec<AdvisoryDecl>) -> EvidenceConfig {
         EvidenceConfig {
-            default_provenance: "internal".into(),
-            block_on_memory_only: false,
-            verifiers: Vec::new(),
             advisory_dir: "evidence".into(),
             advisories,
         }

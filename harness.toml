@@ -60,11 +60,6 @@ foundation = true
 # backtick path is documentation, and a host and port share the shape of a file
 # and a line.
 [evidence]
-default_provenance = "internal"
-
-[[evidence.verifiers]]
-provenance = "internal"
-strategy = "file-path-line"
 
 [validate.rules]
 # The Claude Code memory budget applies to what loads every turn. Every other

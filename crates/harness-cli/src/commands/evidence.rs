@@ -6,13 +6,12 @@ use clap::Subcommand;
 
 use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
-use harness_core::evidence::EvidenceVerifier;
 
 use super::write_envelope_success;
 
 #[derive(Subcommand)]
 pub enum EvidenceCommand {
-    /// Verify provenance markers in one or more markdown files
+    /// Resolve the `[file: …]` claims in one or more markdown files
     Verify {
         /// Paths to markdown files
         #[arg(required = true)]
@@ -79,21 +78,12 @@ fn record<W: Write>(id: &str, payload: Option<PathBuf>, out: &mut W) -> Result<E
 }
 
 fn verify<W: Write>(paths: Vec<PathBuf>, out: &mut W) -> Result<ExitCode> {
-    let (config, config_path, working_dir) = super::load_config()?;
+    let (_, config_path, working_dir) = super::load_config()?;
     let root = super::config_dir(&config_path, &working_dir);
-    let evidence_cfg = config
-        .evidence
-        .as_ref()
-        .ok_or_else(|| Error::ConfigInvalid {
-            message: "no [evidence] section in harness.toml".into(),
-            location: None,
-        })?;
-    let verifier = EvidenceVerifier::new(evidence_cfg)?;
 
     let mut findings = Vec::new();
     for p in paths {
-        let mut fs = verifier.verify_file(&p, &root)?;
-        findings.append(&mut fs);
+        findings.append(&mut harness_core::evidence::verify_file(&p, &root)?);
     }
 
     let has_gating_finding = findings.iter().any(|f| f.severity.fails_gate());

@@ -2,8 +2,7 @@
 //!
 //! Single source of truth for every project-specific shape. The toolkit
 //! source contains zero hardcoded vocabularies — kind names, telemetry
-//! payload schemas, provenance strategies, version pins, all derive from
-//! `harness.toml`.
+//! payload schemas, version pins, all derive from `harness.toml`.
 //!
 //! [`Config::load`] walks upward from the working directory to find the
 //! file, parses it, and runs [`Config::validate`]. A configuration that
@@ -174,15 +173,12 @@ pub struct KindDecl {
     pub invocation_kind: Option<String>,
 }
 
+/// Declaring the section turns on two arms of `check`: every file claim a
+/// document makes resolved against the tree, and every declared advisory's
+/// recorded basis held fresh.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceConfig {
-    #[serde(default = "default_provenance")]
-    pub default_provenance: String,
-    #[serde(default)]
-    pub block_on_memory_only: bool,
-    #[serde(default)]
-    pub verifiers: Vec<VerifierDecl>,
     /// Directory the recorded advisory baselines live in, project-relative.
     /// Changing it strands baselines at the old path — move them with it, or
     /// they sit unscanned where not even the orphan finding looks.
@@ -220,21 +216,6 @@ pub struct AdvisoryDecl {
     /// gating there.
     #[serde(default)]
     pub unattended_remeasure: bool,
-}
-
-fn default_provenance() -> String {
-    "memory-only".to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct VerifierDecl {
-    pub provenance: String,
-    pub strategy: String,
-    #[serde(default)]
-    pub library_allowlist: Vec<String>,
-    #[serde(default)]
-    pub max_age_days: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -686,46 +667,6 @@ impl Config {
         let Some(ev) = &self.evidence else {
             return Ok(());
         };
-        let mut seen = HashSet::new();
-        for v in &ev.verifiers {
-            if !seen.insert(&v.provenance) {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "duplicate [[evidence.verifiers]] provenance: {}",
-                        v.provenance
-                    ),
-                    location: None,
-                });
-            }
-            if crate::evidence::VerifierStrategy::from_str(&v.strategy).is_none() {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "[[evidence.verifiers]] '{}' has unknown strategy '{}' (known: {})",
-                        v.provenance,
-                        v.strategy,
-                        crate::evidence::VerifierStrategy::ALL
-                            .iter()
-                            .map(|s| s.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                    location: None,
-                });
-            }
-        }
-        if !ev
-            .verifiers
-            .iter()
-            .any(|v| v.provenance == ev.default_provenance)
-        {
-            return Err(Error::ConfigInvalid {
-                message: format!(
-                    "[evidence] default_provenance '{}' has no matching [[evidence.verifiers]] entry",
-                    ev.default_provenance
-                ),
-                location: None,
-            });
-        }
         if !crate::path_guard::literal_relative(&ev.advisory_dir) {
             return Err(Error::ConfigInvalid {
                 message: format!(
@@ -1426,34 +1367,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_verifier_strategy() {
-        let src = r#"
-            [evidence]
-            default_provenance = "memory-only"
-            [[evidence.verifiers]]
-            provenance = "memory-only"
-            strategy = "made-up-strategy"
-        "#;
-        let err = parse(src).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("unknown strategy"));
-    }
-
-    #[test]
-    fn rejects_default_provenance_unregistered() {
-        let src = r#"
-            [evidence]
-            default_provenance = "nope"
-            [[evidence.verifiers]]
-            provenance = "internal"
-            strategy = "file-path-line"
-        "#;
-        let err = parse(src).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("default_provenance"));
-    }
-
-    #[test]
     fn rejects_telemetry_kind_with_non_object_schema() {
         let src = r#"
             [telemetry]
@@ -1476,16 +1389,6 @@ mod tests {
             glob = ".claude/rules/*.md"
 
             [evidence]
-            default_provenance = "memory-only"
-            block_on_memory_only = true
-
-            [[evidence.verifiers]]
-            provenance = "internal"
-            strategy = "file-path-line"
-
-            [[evidence.verifiers]]
-            provenance = "memory-only"
-            strategy = "memory-only"
 
             [telemetry]
             storage = "jsonl"
@@ -1507,7 +1410,7 @@ mod tests {
         "#;
         let cfg = parse(src).unwrap();
         assert_eq!(cfg.kinds.len(), 1);
-        assert_eq!(cfg.evidence.unwrap().verifiers.len(), 2);
+        assert!(cfg.evidence.is_some());
         assert_eq!(cfg.telemetry.unwrap().kinds.len(), 1);
     }
 
@@ -1566,10 +1469,6 @@ mod tests {
         let base = r#"
 
             [evidence]
-            default_provenance = "internal"
-            [[evidence.verifiers]]
-            provenance = "internal"
-            strategy = "file-path-line"
         "#;
         for (fragment, expect) in [
             (
@@ -1601,11 +1500,7 @@ mod tests {
             r#"
 
             [evidence]
-            default_provenance = "internal"
             advisory_dir = "/abs"
-            [[evidence.verifiers]]
-            provenance = "internal"
-            strategy = "file-path-line"
         "#,
         )
         .unwrap_err();
@@ -1618,10 +1513,6 @@ mod tests {
             r#"
 
             [evidence]
-            default_provenance = "internal"
-            [[evidence.verifiers]]
-            provenance = "internal"
-            strategy = "file-path-line"
             [[evidence.advisories]]
             id = "a"
             inputs = ["src"]
@@ -1647,11 +1538,7 @@ mod tests {
                 r#"
 
                 [evidence]
-                default_provenance = "internal"
                 advisory_dir = "{dir}"
-                [[evidence.verifiers]]
-                provenance = "internal"
-                strategy = "file-path-line"
                 [[evidence.advisories]]
                 id = "a"
                 inputs = ["{input}"]
