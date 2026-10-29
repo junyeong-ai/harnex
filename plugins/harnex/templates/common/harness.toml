@@ -127,12 +127,12 @@ reject_unknown_keys = true
 # [guard.floor]
 # protected_paths = ["hooks/", ".gitleaks.toml"]
 
-# The promotion-and-retirement loop `governance.md` and `artifact-lifecycle.md`
-# describe. Every threshold has a default, so the section is declared empty on
-# purpose: the loop is runnable from the first commit, and the numbers are
-# tuned once the corpus is large enough to have an opinion. Without the
-# section, `harnex lifecycle observe|observations|candidates|retire` — the
-# commands those rules send you to — answer CONFIG_INVALID.
+# The promotion-and-retirement loop `governance.md` describes. Every threshold
+# has a default, so the section is declared empty on purpose: the loop is
+# runnable from the first commit, and the numbers are tuned once the corpus is
+# large enough to have an opinion. Without the section, `harnex lifecycle
+# observe|observations|candidates|retire` — the commands that rule sends you
+# to — answer CONFIG_INVALID.
 #
 # The sweep's subjects are `[[kinds]]`, which this scaffold declares none of:
 # what a project retires is its own vocabulary. Give a kind
@@ -146,7 +146,8 @@ reject_unknown_keys = true
 # ships no default for this — a machine-global path compiled into a binary is
 # the author's layout running on someone else's machine — but a harness written
 # by a Claude Code plugin knows the layout, and without the section `measure`
-# and the retirement sweep both answer that `[session]` is not configured.
+# and the skill's retire mode, which read `harnex session facts`, both answer
+# that `[session]` is not configured.
 # Set it to `$CLAUDE_CONFIG_DIR/projects` instead if that variable relocates
 # `~/.claude` here; `~` is the only expansion this field performs.
 [session]

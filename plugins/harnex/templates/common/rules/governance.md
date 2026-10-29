@@ -2,6 +2,7 @@
 paths:
   - ".claude/rules/**"
   - ".claude/skills/**"
+  - ".claude/lenses/**"
 governs:
   concept: when a harness artifact is added, promoted, or retired
   live_truth:
@@ -54,6 +55,14 @@ pass would ever reach.
 
 Do not record observations in always-loaded memory — that pays context cost
 every session for a candidate that has not earned a rule yet.
+
+Name in `CLAUDE.md` which language the record is written in — it is a project
+convention, not a field on an observation. Where it differs from the language
+the rules are in, an observation is a translation deferred to whoever promotes
+it. An observation carrying the operator's own words is the exception — the
+wording is the evidence there, so keep it verbatim, which is why
+`harnex:session-judge` writes its own fields in the language the person wrote
+in. No gate separates the two cases; the text does not say which it is.
 
 ## Promotion gate
 
@@ -150,5 +159,21 @@ record is indistinguishable from a defect.
 
 ## Retirement
 
-See `artifact-lifecycle.md` for retirement criteria, procedure, and the
-foundation artifacts that are exempt.
+An artifact — rule, skill, lens, hook verifier — is a retirement candidate when
+all of these hold. `harnex lifecycle retire` computes them where the oracle is
+adopted; verify them by hand otherwise.
+
+- Nothing attributed to it — no finding, decision or reference — and no change
+  to it in 90+ days (Silent / Stale).
+- No consumer (NoConsumers — the slug is cited nowhere). For a rule the runtime
+  loads through `paths:`, this counts citations and not loads: a rule read on
+  every file it governs still shows none. Read `harnex session facts`
+  `harness.rule_loads` before retiring one.
+- Not a foundation artifact: the always-loaded rules (constitution,
+  agent-conduct) and this one, which defines the loop. Removing one is the
+  operator's explicit decision.
+
+To retire one, move it to a `demoted/` archive, or delete it when it holds no
+history worth keeping; remove the references to it from `CLAUDE.md`, the
+settings and other artifacts; and record the retirement and its reason in the
+commit body.

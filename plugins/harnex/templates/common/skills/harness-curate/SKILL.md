@@ -45,8 +45,7 @@ started inventing.
 ## 2. Judge
 
 Read `.claude/rules/governance.md` and apply its promotion gate to each
-candidate, and `.claude/rules/artifact-lifecycle.md` to each retirement
-verdict. Two failure modes to name out loud rather than resolve silently:
+candidate, and its retirement section to each retirement verdict. Two failure modes to name out loud rather than resolve silently:
 
 - **A candidate that only the model wants.** The rubric's bar is evidence
   across independent contexts, and `sources` is where a candidate says how many

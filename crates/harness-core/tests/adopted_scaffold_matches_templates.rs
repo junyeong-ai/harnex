@@ -32,7 +32,7 @@ use harness_core::scaffold::{Artifact, Content, ScaffoldManifest};
 ///
 /// Adoption cannot be read off a file's existence: a destination the manifest
 /// names is a place a project's own file may legitimately live. This repo
-/// deliberately ships no `governance.md` or `artifact-lifecycle.md` today, and
+/// deliberately ships no `governance.md` today, and
 /// on the day it writes its own, that is a note here — not a `managed` flag in
 /// the shipped manifest, which would edit the product to describe a local
 /// choice.
