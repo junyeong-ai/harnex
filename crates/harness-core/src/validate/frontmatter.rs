@@ -67,18 +67,19 @@ pub fn parse(content: &str, source: &Path) -> Result<Option<Frontmatter>> {
 
 /// The frontmatter of a document whose grammar harnex owns, fenced as YAML
 /// marks a document: past a leading byte-order mark, the lines between a first
-/// line `---` and the next, trailing whitespace allowed on either, so a `---`
-/// inside a block scalar stays the scalar's text. `Ok(None)` and `Err` as for
-/// [`parse`].
+/// line `---` and the next, either trailed by YAML's blanks (space, tab) only,
+/// so a `---` inside a block scalar stays the scalar's text. `Ok(None)` and
+/// `Err` as for [`parse`].
 pub fn parse_owned(content: &str, source: &Path) -> Result<Option<Frontmatter>> {
     let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let mut lines = content.lines();
-    if lines.next().map(str::trim_end) != Some("---") {
+    let fence = |line: &str| line.trim_end_matches([' ', '\t']) == "---";
+    if !lines.next().is_some_and(fence) {
         return Ok(None);
     }
     let mut yaml = Vec::new();
     for line in lines {
-        if line.trim_end() == "---" {
+        if fence(line) {
             return Ok(Some(Frontmatter {
                 begin_line: 1,
                 yaml_text: yaml.join("\n"),
