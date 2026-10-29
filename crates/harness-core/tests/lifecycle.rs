@@ -1537,6 +1537,30 @@ fn a_path_with_no_history_here_is_uncommitted_rather_than_a_failure() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_path_that_cannot_be_resolved_fails_the_measurement() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = repo();
+    let locked = tmp.path().join("locked");
+    std::fs::create_dir_all(locked.join("inner")).unwrap();
+    std::fs::write(locked.join("inner/rule.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    let mode = |bits| std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(bits));
+    mode(0o000).unwrap();
+    // A superuser reads through any mode, and then nothing here is refused.
+    let refused = std::fs::read_dir(&locked).is_err();
+    let result = last_changes(tmp.path(), &[locked.join("inner/rule.md")]);
+    mode(0o755).unwrap();
+    if refused {
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.code(),
+            harness_core::error::ErrorCode::LifecycleGitFailure
+        );
+    }
+}
+
 #[test]
 fn a_name_is_dated_however_its_characters_are_composed() {
     // macOS hands back a Korean name decomposed. git lists it composed where

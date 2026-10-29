@@ -24,6 +24,7 @@
 //!   changed today; the history is the same in every clone of a commit.
 
 use std::collections::{HashMap, HashSet};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -95,10 +96,16 @@ pub(crate) fn last_committed(
                 (Some(parent), Some(name)) => std::fs::canonicalize(parent).map(|p| p.join(name)),
                 _ => std::fs::canonicalize(path),
             };
-            let Some(relative) = resolved
-                .ok()
-                .and_then(|resolved| resolved.strip_prefix(&root).ok().map(Path::to_path_buf))
-            else {
+            // A path that is not there has no history; any other reason it
+            // cannot be resolved is a measurement that failed.
+            let resolved = match resolved {
+                Ok(resolved) => resolved,
+                Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
+                    return Ok(None);
+                }
+                Err(e) => return Err(Failure(format!("{}: {e}", path.display()))),
+            };
+            let Ok(relative) = resolved.strip_prefix(&root) else {
                 return Ok(None);
             };
             relative
