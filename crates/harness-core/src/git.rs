@@ -69,7 +69,9 @@ pub(crate) fn listed_paths(dir: &Path, args: &[&str]) -> Result<Vec<PathBuf>, Fa
 
 /// The committer time of the last commit that touched each of `paths`, in the
 /// order given, or `None` for a path whose working-tree content no commit
-/// records: an edit not yet committed, or a file never committed.
+/// records: an edit not yet committed, or a file never committed. A directory
+/// is dated by the files under it, and holds an uncommitted change when any
+/// of them does or is untracked.
 ///
 /// One walk of the history answers every path, each read as a literal, so a
 /// `[` in a name names that file. A shallow clone is a failure rather than an
@@ -79,21 +81,29 @@ pub(crate) fn last_committed(
     dir: &Path,
     paths: &[PathBuf],
 ) -> Result<Vec<Option<Timestamp>>, Failure> {
+    let resolve = |path: &Path| {
+        std::fs::canonicalize(path).map_err(|e| Failure(format!("{}: {e}", path.display())))
+    };
+    let root = resolve(dir)?;
+    // Each path is matched against what git lists, so it is spelled the way
+    // git spells it: `..` and a linked directory resolved, the last component
+    // kept, because an artifact that is itself a link is tracked as the link.
     let specs = paths
         .iter()
         .map(|path| {
-            path.strip_prefix(dir)
-                .ok()
-                .and_then(Path::to_str)
-                .ok_or_else(|| {
-                    Failure(format!(
-                        "{} is not a UTF-8 path under {}",
-                        path.display(),
-                        dir.display()
-                    ))
-                })
+            let resolved = match (path.parent(), path.file_name()) {
+                (Some(parent), Some(name)) => resolve(parent)?.join(name),
+                _ => resolve(path)?,
+            };
+            let relative = resolved.strip_prefix(&root).map_err(|_| {
+                Failure(format!("{} is not under {}", path.display(), dir.display()))
+            })?;
+            relative
+                .to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display())))
         })
-        .collect::<Result<Vec<&str>, Failure>>()?;
+        .collect::<Result<Vec<String>, Failure>>()?;
     if specs.is_empty() {
         return Ok(Vec::new());
     }
@@ -109,10 +119,20 @@ pub(crate) fn last_committed(
     }
 
     let with_specs = |args: &[&'static str]| {
-        let mut args = args.to_vec();
+        let mut args: Vec<&str> = args.to_vec();
         args.push("--");
-        args.extend(&specs);
+        args.extend(specs.iter().map(String::as_str));
         args
+    };
+    // git lists files; a change to one is a change to every path asked about
+    // that is it or holds it.
+    let asked: HashSet<&str> = specs.iter().map(String::as_str).collect();
+    let holders = |listed: &'_ str| -> Vec<&str> {
+        Path::new(listed)
+            .ancestors()
+            .filter_map(Path::to_str)
+            .filter_map(|ancestor| asked.get(ancestor).copied())
+            .collect()
     };
     let edited = stdout(
         dir,
@@ -125,7 +145,25 @@ pub(crate) fn last_committed(
             "HEAD",
         ]),
     )?;
-    let edited: HashSet<&str> = edited.split('\0').collect();
+    let untracked = stdout(
+        dir,
+        &with_specs(&[
+            "--literal-pathspecs",
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-per-directory=.gitignore",
+        ]),
+    )?;
+    let edited: HashSet<&str> = edited
+        .split('\0')
+        .chain(untracked.split('\0'))
+        .filter(|listed| !listed.is_empty())
+        .flat_map(holders)
+        .collect();
+    // The user's configuration may not reshape what is parsed below:
+    // `log.showSignature` prints verification lines into it, and
+    // `log.showRoot=false` drops the names the first commit added.
     let log = stdout(
         dir,
         &with_specs(&[
@@ -135,6 +173,8 @@ pub(crate) fn last_committed(
             "--format=%x00%ct",
             "--name-only",
             "--relative",
+            "--root",
+            "--no-show-signature",
             "HEAD",
         ]),
     )?;
@@ -168,14 +208,17 @@ pub(crate) fn last_committed(
             false => field,
         };
         first = false;
-        latest
-            .entry(path)
-            .and_modify(|seen| *seen = (*seen).max(time))
-            .or_insert(time);
+        for holder in holders(path) {
+            latest
+                .entry(holder)
+                .and_modify(|seen| *seen = (*seen).max(time))
+                .or_insert(time);
+        }
     }
 
     specs
         .iter()
+        .map(String::as_str)
         .map(|spec| match (edited.contains(spec), latest.get(spec)) {
             (false, Some(&seconds)) => Timestamp::from_second(seconds)
                 .map(Some)
