@@ -1782,6 +1782,40 @@ fn a_directory_left_out_of_a_set_of_skills_changes_none_of_them() {
 }
 
 #[test]
+fn a_directory_artifact_is_dated_by_all_it_holds_whatever_else_is_asked_inside_it() {
+    // Two kinds overlap: a skill, and the documents inside it. Its scripts,
+    // which no kind reads, still change the skill.
+    let tmp = repo();
+    let skill = tmp.path().join(".claude/skills/x");
+    std::fs::create_dir_all(skill.join("scripts")).unwrap();
+    for doc in ["SKILL.md", "reference.md", "examples.md"] {
+        std::fs::write(skill.join(doc), doc).unwrap();
+    }
+    std::fs::write(skill.join("scripts/run.sh"), "v1").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(skill.join("scripts/run.sh"), "v2").unwrap();
+    commit_days_ago(tmp.path(), 10);
+
+    let paths = [
+        skill.clone(),
+        skill.join("SKILL.md"),
+        skill.join("reference.md"),
+        skill.join("examples.md"),
+    ];
+    let changes = last_changes(tmp.path(), &paths).unwrap();
+    assert!(
+        matches!(days_since(&changes[0]), Some(9..=10))
+            && changes[1..]
+                .iter()
+                .all(|change| matches!(days_since(change), Some(199..=200))),
+        "{changes:?}"
+    );
+    std::fs::write(skill.join("scripts/run.sh"), "v3").unwrap();
+    let changes = last_changes(tmp.path(), &paths).unwrap();
+    assert_eq!(changes[0], LastChange::Uncommitted, "{changes:?}");
+}
+
+#[test]
 fn a_move_changes_the_directory_it_left() {
     let tmp = repo();
     let skills = tmp.path().join(".claude/skills");

@@ -499,14 +499,23 @@ fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Scopes<'a> {
 /// The directories `dir` holds that neither are a path `asked` nor lie `above`
 /// one, spelled from the repository's root `top`; a link is not one, since git
 /// records a link and not what it points at. `None` where `dir` is not to be
-/// asked whole: it holds a directory a path lies deeper in, or it or one of its
-/// names cannot be read. Its paths asked one by one answer the same.
+/// asked whole: a path asked is it or holds it, and needs all it holds, since
+/// git leaves out what is left out for every path; it holds a directory a path
+/// lies deeper in; or it or one of its names cannot be read. Its paths asked
+/// one by one answer the same.
 fn unnamed_directories(
     top: &Path,
     dir: &str,
     asked: &HashSet<&str>,
     above: &HashSet<&str>,
 ) -> Option<Vec<String>> {
+    if Path::new(dir)
+        .ancestors()
+        .filter_map(Path::to_str)
+        .any(|holder| asked.contains(holder))
+    {
+        return None;
+    }
     let mut unnamed = Vec::new();
     for entry in std::fs::read_dir(top.join(dir)).ok()? {
         let entry = entry.ok()?;
@@ -672,6 +681,8 @@ mod tests {
             "shared/rules",
             "vendor/a",
             "vendor/b",
+            "docs/x/scripts",
+            "pkgs/web/src",
         ] {
             std::fs::create_dir_all(top.join(dir)).unwrap();
         }
@@ -681,6 +692,12 @@ mod tests {
             "shared/rules/r.md",
             "shared/rules/s.md",
             "vendor/a/CLAUDE.md",
+            "docs/x/a.md",
+            "docs/x/b.md",
+            "docs/x/c.md",
+            "pkgs/web/a.md",
+            "pkgs/web/b.md",
+            "pkgs/web/c.md",
         ] {
             std::fs::write(top.join(file), "").unwrap();
         }
@@ -713,6 +730,17 @@ mod tests {
                 "vendor/a",
                 "vendor/b",
                 "vendor/a/CLAUDE.md",
+                // A directory artifact, and the documents inside it; and a
+                // whole tree, and documents deeper in it. Each needs all it
+                // holds, so nothing in it is left out.
+                "docs/x",
+                "docs/x/a.md",
+                "docs/x/b.md",
+                "docs/x/c.md",
+                "pkgs",
+                "pkgs/web/a.md",
+                "pkgs/web/b.md",
+                "pkgs/web/c.md",
             ],
         );
         assert_eq!(
@@ -726,8 +754,10 @@ mod tests {
                 ".claude/skills",
                 "apps/web/AGENTS.md",
                 "apps/web/CLAUDE.md",
+                "docs/x",
                 "packages/x",
                 "packages/y",
+                "pkgs",
                 "shared/rules/r.md",
                 "vendor",
             ]
