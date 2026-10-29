@@ -12,9 +12,12 @@
 # The file on disk is the one before the edit. What the write would put there
 # is in `tool_input`: `content` for Write, `old_string` and `new_string` for
 # Edit. Stdin is read once, into INPUT, and every later read pipes from it.
+# `file_path` is absolute, so FILE is that path relative to the project root,
+# which the runner made the working directory.
 #
-# Fail open: a missing jq, an empty path, or a path with `..` allows the write.
-# A broken check must never leave the session unable to write — fix the check.
+# Fail open: a missing jq, an empty path, a path outside the project, or a path
+# with `..` allows the write. A broken check must never leave the session
+# unable to write — fix the check.
 set -uo pipefail
 
 command -v jq >/dev/null 2>&1 || exit 0
@@ -22,7 +25,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 INPUT=$(cat)
 FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || exit 0
 
-[[ -z "$FILE" || "$FILE" == *..* ]] && exit 0
+[[ -z "$FILE" || "$FILE" == *..* || "$FILE" != "$PWD"/* ]] && exit 0
+FILE=${FILE#"$PWD"/}
 
 # --- project checks: each prints its reason to stderr and exits 2 ---
 
