@@ -10,24 +10,6 @@ owns the flow). Every instruction here is about reading the target project — a
 fill resolved from the model's priors instead of an observation is the
 blank-page problem in disguise.
 
-- `naming-decisions` — the team's naming vocabulary: file-name casing, tool
-  and script suffixes, construction verbs, parameter-bag suffixes, domain
-  terms. Every section is read out of the repository, never chosen for it:
-  count file-name casing per kind, read the construction verbs
-  off the functions that build things, read the suffixes off the option/config
-  types, and take the domain vocabulary from type and table names rather than
-  from prose — with the alternatives the code refuses, and the user-facing term
-  from locale keys where the copy speaks another language. Name the file that settles each answer. Where the code is
-  inconsistent, say which concept has two names — that is the decision the
-  team still owes, and it is the most valuable line in the file. A convention
-  imported from another project contradicts the code a reader is looking at,
-  and the code wins.
-- `copy-conventions` — the register, error-message format, number format,
-  terminology and localization of user-facing copy. Detect locale from string
-  literals. Detect error
-  message format from existing error handling code. Detect i18n framework
-  from dependencies (next-intl, react-i18n, gettext, fluent). Pre-fill
-  register and terminology with observations.
 - `review-lenses` — the convergent review loop and two forked read-only
   bookends (critique, design-review) as skills, the fresh-context reviewer
   agent they run through, the lens files, and the `review-lenses` skill under
@@ -101,24 +83,6 @@ blank-page problem in disguise.
   It is install-to-enable and silent without the oracle. State whether the
   retirement sweep should read this ledger; only the element's slug and the
   outcome ever cross.
-- `deprecation` — an allow-marker grammar with sunset dates, and the policy
-  for when a deprecated surface goes. Detect existing deprecation markers
-  (`@deprecated` decorators, JSDoc tags, `#[deprecated]` attributes). Adapt the
-  allow-marker format to complement, not conflict with, the language's
-  native deprecation mechanism.
-- `pr-conventions` — a PR template, its required sections, how an agent
-  fills one, and the review depth its risk sets. Check for an existing
-  `.github/pull_request_template.md`.
-  If found, merge harnex defaults into the existing template's structure
-  rather than replacing it.
-- `write-guard` — a PreToolUse verifier that checks a write against the
-  project's conventions before it lands, and its rule. Detect files with
-  lifecycle governance (docs/, specs/
-  with status frontmatter). Detect existing convention checking tools
-  (linter config, type checker). Pre-fill the verifier's case arms with
-  observed protection patterns. Add a PreToolUse hook entry with matcher
-  `Edit|Write|MultiEdit` to `.claude/settings.json` dispatching through
-  `_runner.sh`.
 - `routines` — recurring harness work with a cadence and a record: hygiene
   routines, the rule they follow, and a SessionStart hook that reports a
   routine overdue or never scheduled. Schedule the first tick of each shipped routine (`when:` +

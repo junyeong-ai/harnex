@@ -57,12 +57,20 @@ placeholders. Read the source, not the whole tree.
 | Test framework | `vitest.config`, `pytest.ini`, Cargo test layout | `<lang>-conventions.md` testing section |
 | Security tooling | gitleaks, semgrep, CodeQL, `npm/pip/cargo audit`, IaC scanners in deps/CI | secret-scan recommendation |
 | Cloud and infrastructure CLIs | `gcloud`/`gsutil`, `aws`, `terraform`, `kubectl` in CI config or task scripts | each strict profile whose denies name a CLI found, composed into `permissions`: `gcp-strict` names `gcloud` and `gsutil`, `aws-strict` names `aws`, `infra-strict` names `terraform` and `kubectl` (`policy/profiles.rs` owns the lists) |
+| Naming vocabulary | file names per kind, the functions that construct things, option and config type names, type and table names, locale keys | CLAUDE.md `## Conventions` where the code is consistent; an observation where it spells one concept two ways |
 | **Enforced invariants** | the enforcer sweep below — run it, do not sample it | `extend rule` bodies; the scaffold report's rule candidates |
 
 A concern with no signal keeps its template default and is noted "none
 observed yet" — never a guessed value. `extend` runs only the rows its verb
-touches (e.g., `extend pattern naming-decisions` reads file-name casing +
-import verbs).
+touches (e.g., `extend rule` reads the enforced-invariants row for its glob).
+
+Naming is read out of the repository, never chosen for it: count file-name
+casing per kind, read the construction verbs off the functions that build
+things and the suffixes off option and config types, and take domain terms
+from type and table names rather than from prose. Name the file that settles
+each answer. A concept the code spells two ways is the decision the team still
+owes, and a convention imported from another project loses to the code a
+reader is looking at.
 
 **The enforced-invariants row is the only one that produces domain content, and
 it is bounded by what it can point at.** A project's real invariants are its

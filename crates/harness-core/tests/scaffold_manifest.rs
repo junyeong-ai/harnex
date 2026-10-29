@@ -68,6 +68,7 @@ fn every_manifest_template_exists_for_every_language() {
 const NON_SCAFFOLD_TEMPLATES: &[(&str, &str)] = &[
     ("common/rule-template.md", "extend rule"),
     ("common/skill-template.md", "extend skill"),
+    ("common/hook-template.sh", "extend hook"),
 ];
 
 #[test]
