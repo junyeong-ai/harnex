@@ -77,7 +77,7 @@ pub enum LastChange {
     /// A change `git status` shows — an edit, or a file not yet committed —
     /// so it is changing now.
     Uncommitted,
-    /// Nothing this history records: a path outside the project, inside a
+    /// Nothing this history records: a path outside the repository, inside a
     /// repository of its own, ignored, or not there at all.
     Unrecorded,
 }
@@ -89,9 +89,11 @@ enum Query {
     Answered(LastChange),
 }
 
-/// When the history at `dir` last changed each of `paths` on this branch, in
-/// the order given. A directory is dated by the files under it, and holds an
-/// uncommitted change when any of them does or is untracked.
+/// When the repository holding `dir` last changed each of `paths` on this
+/// branch, in the order given — the whole repository, so a project in a
+/// subdirectory reads what it links in from beside it. A directory is dated by
+/// the files under it, and holds an uncommitted change when any of them does
+/// or is untracked.
 ///
 /// Each path is answered as `git status` and the history see it, so what
 /// neither records is [`LastChange::Unrecorded`] rather than a change.
@@ -100,8 +102,14 @@ enum Query {
 /// lists every file it holds, which reads as each one changing the day the
 /// clone was cut.
 pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChange>, Failure> {
-    let root =
-        std::fs::canonicalize(dir).map_err(|e| Failure(format!("{}: {e}", dir.display())))?;
+    // Nothing asked needs no repository: a sweep whose every kind was skipped
+    // still answers.
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let top = stdout(dir, &["rev-parse", "--show-toplevel"])?;
+    let top = Path::new(top.trim_end_matches('\n'));
+    let top = std::fs::canonicalize(top).map_err(|e| Failure(format!("{}: {e}", top.display())))?;
     let queries = paths
         .iter()
         .map(|path| {
@@ -114,7 +122,7 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
                 }
                 Err(e) => return Err(Failure(format!("{}: {e}", path.display()))),
             };
-            let Ok(relative) = resolved.strip_prefix(&root) else {
+            let Ok(relative) = resolved.strip_prefix(&top) else {
                 return Ok(Query::Answered(LastChange::Unrecorded));
             };
             relative
@@ -132,7 +140,7 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
         .collect();
     let record = match pathspecs.is_empty() {
         true => Record::default(),
-        false => Record::read(dir, &pathspecs)?,
+        false => Record::read(&top, &pathspecs)?,
     };
     queries
         .iter()
@@ -155,8 +163,9 @@ struct Record<'a> {
 impl<'a> Record<'a> {
     /// One listing of what is pending and one walk of the history answer
     /// every path, each read as a literal, so a `[` in a name names that file.
-    fn read(dir: &Path, pathspecs: &[&'a str]) -> Result<Self, Failure> {
-        if stdout(dir, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
+    /// Run at `top`, every path is spelled from the repository's root.
+    fn read(top: &Path, pathspecs: &[&'a str]) -> Result<Self, Failure> {
+        if stdout(top, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
             return Err(Failure(
                 "this clone is shallow, so every file its oldest commit holds reads as changed \
                  the day the clone was cut — fetch the full history (`git fetch --unshallow`)"
@@ -171,7 +180,7 @@ impl<'a> Record<'a> {
         };
         let asked = Asked::new(pathspecs);
         let mut record = Self::default();
-        let committed = has_commits(dir)?;
+        let committed = has_commits(top)?;
 
         // Pending as `git status` reads it: an edit against `HEAD`, and a file
         // untracked under the developer's own excludes too, since whether this
@@ -182,24 +191,23 @@ impl<'a> Record<'a> {
         // the second and the directory the file left changed too.
         let tracked_changes = match committed {
             true => stdout(
-                dir,
+                top,
                 &with_specs(&[
                     "--literal-pathspecs",
                     "diff",
                     "--name-only",
                     "-z",
-                    "--relative",
                     "--no-renames",
                     "HEAD",
                 ]),
             )?,
             false => stdout(
-                dir,
+                top,
                 &with_specs(&["--literal-pathspecs", "ls-files", "-z", "--cached"]),
             )?,
         };
         let untracked = stdout(
-            dir,
+            top,
             &with_specs(&[
                 "--literal-pathspecs",
                 "ls-files",
@@ -232,14 +240,13 @@ impl<'a> Record<'a> {
         // `log.showSignature` prints verification lines into it, and
         // `log.showRoot=false` drops the names the first commit added.
         let log = stdout(
-            dir,
+            top,
             &with_specs(&[
                 "--literal-pathspecs",
                 "log",
                 "-z",
                 "--format=%x00%ct",
                 "--name-only",
-                "--relative",
                 "--first-parent",
                 "--no-renames",
                 "--root",

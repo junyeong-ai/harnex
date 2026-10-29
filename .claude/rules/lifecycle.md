@@ -65,18 +65,19 @@ never whether it is used. The load question has an owner: `retire.md` answers it
 from `facts.harness.rule_loads`, and states the window that evidence needs.
 
 Age, which Stale and the grace period read, is the caller's `LastChange` from
-`last_changes`: the last commit that changed the file on this branch, a merge
-dated by what it changed against the branch it landed on, or now while the
-working tree holds a change `git status` shows. A directory artifact, a skill,
-is dated by the files under it, since git lists only files. What no history
-here records — a file outside the project, inside a repository of its own, or
-ignored — has `age_days` null, so it is neither Stale nor in its grace period;
-an artifact that is itself a link is dated as the link, which git tracks. The user's git configuration may not
+`last_changes`, read from the whole repository holding the project: the last
+commit that changed the file on this branch, a merge dated by what it changed
+against the branch it landed on, or now while the working tree holds a change
+`git status` shows. A directory artifact, a skill, is dated by the files under
+it, since git lists only files. What no history here records — a file outside
+the repository, inside one of its own, or ignored — has `age_days` null, so it
+is neither Stale nor in its grace period; an artifact that is itself a link is
+dated as the link, which git tracks. The user's git configuration may not
 reshape the log the age is parsed from. Never a modification time — a checkout
-writes every file's, so a fresh clone or a CI runner reads every artifact as
-new and inside its grace period. A shallow clone fails with
-`LIFECYCLE_GIT_FAILURE`, because its boundary commit dates every file it holds
-to the day the clone was cut. One history walk answers the whole sweep.
+writes every file's, so a fresh clone or a CI runner reads every artifact as new
+and inside its grace period. A shallow clone fails with `LIFECYCLE_GIT_FAILURE`,
+because its boundary commit dates every file it holds to the day the clone was
+cut. One history walk answers the whole sweep.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.
