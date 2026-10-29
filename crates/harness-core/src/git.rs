@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use jiff::Timestamp;
+use unicode_normalization::UnicodeNormalization;
 
 /// Why a listing could not be taken. Each caller wraps it in the typed error
 /// of its own surface, so the wire code says which gate could not read.
@@ -105,6 +106,10 @@ pub(crate) fn last_committed(
                 .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display())))
         })
         .collect::<Result<Vec<String>, Failure>>()?;
+    // git on macOS lists every name composed (`core.precomposeUnicode`), while
+    // the file system may hand back a decomposed one, so names are compared
+    // composed. The pathspecs keep their spelling: git composes them itself.
+    let keys: Vec<String> = specs.iter().map(|spec| spec.nfc().collect()).collect();
     if specs.is_empty() {
         return Ok(Vec::new());
     }
@@ -129,9 +134,10 @@ pub(crate) fn last_committed(
     // that is it or holds it. `--no-renames` lists a move as the path it left
     // and the one it reached, since rename detection names only the second
     // and the directory the file left changed too.
-    let asked: HashSet<&str> = specs.iter().map(String::as_str).collect();
-    let holders = |listed: &'_ str| -> Vec<&str> {
-        Path::new(listed)
+    let asked: HashSet<&str> = keys.iter().map(String::as_str).collect();
+    let holders = |listed: &str| -> Vec<&str> {
+        let listed: String = listed.nfc().collect();
+        Path::new(&listed)
             .ancestors()
             .filter_map(Path::to_str)
             .filter_map(|ancestor| asked.get(ancestor).copied())
@@ -228,13 +234,12 @@ pub(crate) fn last_committed(
         }
     }
 
-    specs
-        .iter()
+    keys.iter()
         .map(String::as_str)
-        .map(|spec| match (edited.contains(spec), latest.get(spec)) {
+        .map(|key| match (edited.contains(key), latest.get(key)) {
             (false, Some(&seconds)) => Timestamp::from_second(seconds)
                 .map(Some)
-                .map_err(|e| Failure(format!("commit time {seconds} for '{spec}': {e}"))),
+                .map_err(|e| Failure(format!("commit time {seconds} for '{key}': {e}"))),
             _ => Ok(None),
         })
         .collect()

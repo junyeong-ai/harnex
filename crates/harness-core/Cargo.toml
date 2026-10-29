@@ -24,6 +24,7 @@ httparse.workspace = true
 percent-encoding.workspace = true
 getrandom.workspace = true
 schemars.workspace = true
+unicode-normalization.workspace = true
 
 [lints]
 workspace = true

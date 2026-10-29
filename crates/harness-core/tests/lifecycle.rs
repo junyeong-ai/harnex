@@ -1512,6 +1512,30 @@ fn a_directory_is_dated_by_the_files_it_holds() {
 }
 
 #[test]
+fn a_name_is_dated_however_its_characters_are_composed() {
+    // macOS hands back a Korean name decomposed. git lists it composed where
+    // `core.precomposeUnicode` is on, its macOS default, and as stored where
+    // it is off, as on every other system.
+    let decomposed = "\u{1112}\u{1161}\u{11AB}\u{1100}\u{1173}\u{11AF}.md";
+    for precompose in ["true", "false"] {
+        let tmp = repo();
+        let set = common::git(tmp.path())
+            .args(["config", "core.precomposeUnicode", precompose])
+            .status()
+            .unwrap();
+        assert!(set.success());
+        std::fs::write(tmp.path().join(decomposed), "a rule").unwrap();
+        commit_days_ago(tmp.path(), 200);
+
+        let changes = last_changes(tmp.path(), &[tmp.path().join(decomposed)]).unwrap();
+        assert!(
+            matches!(days_since(&changes[0]), Some(199..=200)),
+            "precomposeUnicode={precompose}: {changes:?}"
+        );
+    }
+}
+
+#[test]
 fn a_move_changes_the_directory_it_left() {
     let tmp = repo();
     let skills = tmp.path().join(".claude/skills");
