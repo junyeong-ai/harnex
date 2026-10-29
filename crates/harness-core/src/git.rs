@@ -238,13 +238,34 @@ impl<'a> Record<'a> {
                     .into(),
             ));
         }
+        // Where git ignores case, a pathspec matches as `git status` matches
+        // the file system's names to the ones it tracks.
+        let ignore_case = stdout(
+            top,
+            &[
+                "config",
+                "--type=bool",
+                "--default=false",
+                "core.ignorecase",
+            ],
+        )?
+        .trim()
+            == "true";
+        let magic = match ignore_case {
+            true => ":(literal,icase)",
+            false => ":(literal)",
+        };
+        let specs: Vec<String> = pathspecs
+            .iter()
+            .map(|spec| format!("{magic}{spec}"))
+            .collect();
         let with_specs = |args: &[&'static str]| {
             let mut args: Vec<&str> = args.to_vec();
             args.push("--");
-            args.extend(pathspecs);
+            args.extend(specs.iter().map(String::as_str));
             args
         };
-        let asked = Asked::new(pathspecs);
+        let asked = Asked::new(pathspecs, ignore_case);
         let mut record = Self::default();
         let committed = has_commits(top)?;
 
@@ -258,29 +279,13 @@ impl<'a> Record<'a> {
         let tracked_changes = match committed {
             true => stdout(
                 top,
-                &with_specs(&[
-                    "--literal-pathspecs",
-                    "diff",
-                    "--name-only",
-                    "-z",
-                    "--no-renames",
-                    "HEAD",
-                ]),
+                &with_specs(&["diff", "--name-only", "-z", "--no-renames", "HEAD"]),
             )?,
-            false => stdout(
-                top,
-                &with_specs(&["--literal-pathspecs", "ls-files", "-z", "--cached"]),
-            )?,
+            false => stdout(top, &with_specs(&["ls-files", "-z", "--cached"]))?,
         };
         let untracked = stdout(
             top,
-            &with_specs(&[
-                "--literal-pathspecs",
-                "ls-files",
-                "-z",
-                "--others",
-                "--exclude-standard",
-            ]),
+            &with_specs(&["ls-files", "-z", "--others", "--exclude-standard"]),
         )?;
         record.pending = tracked_changes
             .split('\0')
@@ -308,7 +313,6 @@ impl<'a> Record<'a> {
         let log = stdout(
             top,
             &with_specs(&[
-                "--literal-pathspecs",
                 "log",
                 "-z",
                 "--format=%x00%ct",
@@ -377,17 +381,25 @@ impl<'a> Record<'a> {
 struct Asked<'a> {
     spelled: HashSet<&'a str>,
     composed: HashMap<String, Vec<&'a str>>,
+    /// Kept where git ignores case: it lists a file under the case it was
+    /// added with, which the file system may have changed since without git
+    /// reading it as a change.
+    folded: Option<HashMap<String, Vec<&'a str>>>,
 }
 
 impl<'a> Asked<'a> {
-    fn new(paths: &[&'a str]) -> Self {
+    fn new(paths: &[&'a str], ignore_case: bool) -> Self {
         let mut composed: HashMap<String, Vec<&'a str>> = HashMap::new();
+        let mut folded: HashMap<String, Vec<&'a str>> = HashMap::new();
         for &path in paths {
-            composed.entry(path.nfc().collect()).or_default().push(path);
+            let key: String = path.nfc().collect();
+            folded.entry(fold(&key)).or_default().push(path);
+            composed.entry(key).or_default().push(path);
         }
         Self {
             spelled: paths.iter().copied().collect(),
             composed,
+            folded: ignore_case.then_some(folded),
         }
     }
 
@@ -396,21 +408,32 @@ impl<'a> Asked<'a> {
     ///
     /// git on macOS lists every name composed (`core.precomposeUnicode`),
     /// while the file system may hand back a decomposed one. So a name
-    /// matches as it is spelled, and only failing that as it composes: two
-    /// names a file system keeps apart stay apart.
+    /// matches as it is spelled, failing that as it composes, and failing
+    /// both, where git ignores case, as it folds: two names a file system
+    /// keeps apart stay apart.
     fn holding(&self, listed: &str) -> Vec<&'a str> {
         let mut holding = Vec::new();
         for ancestor in Path::new(listed).ancestors().filter_map(Path::to_str) {
-            match self.spelled.get(ancestor) {
-                Some(&path) => holding.push(path),
-                None => {
-                    let composed: String = ancestor.nfc().collect();
-                    holding.extend(self.composed.get(&composed).into_iter().flatten());
+            if let Some(&path) = self.spelled.get(ancestor) {
+                holding.push(path);
+                continue;
+            }
+            let composed: String = ancestor.nfc().collect();
+            match (self.composed.get(&composed), &self.folded) {
+                (Some(paths), _) => holding.extend(paths),
+                (None, Some(folded)) => {
+                    holding.extend(folded.get(&fold(&composed)).into_iter().flatten());
                 }
+                (None, None) => {}
             }
         }
         holding
     }
+}
+
+/// A name as git's `icase` matches it, which folds ASCII letters only.
+fn fold(name: &str) -> String {
+    name.to_ascii_lowercase()
 }
 
 /// Whether `HEAD` names a commit. A repository on an unborn branch has none,
@@ -461,9 +484,18 @@ mod tests {
         let composed = "\u{e9}.md";
         let decomposed = "e\u{301}.md";
         let skill = "\u{1112}\u{1161}\u{11ab}";
-        let asked = Asked::new(&[composed, decomposed, skill]);
+        let asked = Asked::new(&[composed, decomposed, skill], false);
         assert_eq!(asked.holding(composed), [composed]);
         assert_eq!(asked.holding(decomposed), [decomposed]);
         assert_eq!(asked.holding("\u{d55c}/SKILL.md"), [skill]);
+    }
+
+    #[test]
+    fn a_listed_name_matches_in_another_case_only_where_git_ignores_case() {
+        let asked = |ignore_case| Asked::new(&["rules/old.md", "\u{e9}.md"], ignore_case);
+        assert_eq!(asked(true).holding("Rules/Old.md"), ["rules/old.md"]);
+        assert!(asked(false).holding("Rules/Old.md").is_empty());
+        // git folds ASCII letters only.
+        assert!(asked(true).holding("\u{c9}.md").is_empty());
     }
 }
