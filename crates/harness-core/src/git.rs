@@ -97,9 +97,10 @@ impl LastChange {
 }
 
 /// What one path reads, spelled from the repository's root: where the path
-/// resolves, and every link the resolution passes through, since repointing
-/// one changes what it reads. Where it resolves is dated as git records it, so
-/// a link among a directory's files is dated as that link.
+/// resolves, and every link the resolution passes through but one that
+/// locates the project, since repointing one changes what it reads. Where it
+/// resolves is dated as git records it, so a link among a directory's files is
+/// dated as that link.
 struct Reading {
     /// `None` where the path resolves outside the repository, or to nothing.
     content: Option<String>,
@@ -415,7 +416,8 @@ impl<'a> Record<'a> {
 /// file under what it is asked, and a directory no path names can hold a
 /// package's whole history, so a directory is asked only where every directory
 /// it holds is one of the paths, and adds no more than the history of its own
-/// files. Any other path is asked as itself, the root as `.`.
+/// files. Any other path is asked as itself, the root as `.`, and none under
+/// another is asked at all.
 fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Vec<&'a str> {
     let place = |path: &'a str| -> Option<(&'a str, &'a OsStr)> {
         let path = Path::new(path);
@@ -438,14 +440,25 @@ fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Vec<&'a str> {
             Some((dir, _)) if merged.contains(dir) => dir,
             _ => path,
         })
+        .collect();
+    scopes.sort_unstable();
+    scopes.dedup();
+    // One under another adds nothing git does not list for that one.
+    let asked: HashSet<&'a str> = scopes.iter().copied().collect();
+    scopes.retain(|scope| {
+        !Path::new(scope)
+            .ancestors()
+            .skip(1)
+            .filter_map(Path::to_str)
+            .any(|above| asked.contains(above))
+    });
+    scopes
+        .into_iter()
         .map(|scope| match scope {
             "" => ".",
             scope => scope,
         })
-        .collect();
-    scopes.sort_unstable();
-    scopes.dedup();
-    scopes
+        .collect()
 }
 
 /// Whether every directory `dir` holds is named in `names`; a link is not one,
@@ -603,6 +616,8 @@ mod tests {
             "packages/y",
             "packages/z",
             "shared/rules",
+            "vendor/a",
+            "vendor/b",
         ] {
             std::fs::create_dir_all(top.join(dir)).unwrap();
         }
@@ -611,6 +626,7 @@ mod tests {
             "apps/web/AGENTS.md",
             "shared/rules/r.md",
             "shared/rules/s.md",
+            "vendor/a/CLAUDE.md",
         ] {
             std::fs::write(top.join(file), "").unwrap();
         }
@@ -630,21 +646,26 @@ mod tests {
                 // Two artifacts reading one rule.
                 "shared/rules/r.md",
                 "shared/rules/r.md",
-                "",
+                // Every package linked in, and one read on its own besides.
+                "vendor/a",
+                "vendor/b",
+                "vendor/a/CLAUDE.md",
             ],
         );
         assert_eq!(
             asked,
             [
-                ".",
                 ".claude/skills",
                 "apps/web/AGENTS.md",
                 "apps/web/CLAUDE.md",
                 "packages/x",
                 "packages/y",
                 "shared/rules/r.md",
+                "vendor",
             ]
         );
+        // A link that resolves to the root makes git list everything.
+        assert_eq!(scopes(top, &["", "shared/rules/r.md"]), ["."]);
     }
 
     const BYTES: Spelling = Spelling {
