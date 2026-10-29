@@ -387,6 +387,11 @@ mod tests {
         let text = "--- \ncadence: quarterly\nowner: harness\nprompt: run the pass\n---  \n";
         let decl = RoutineDecl::from_file(text, Path::new("r.md")).unwrap();
         assert_eq!(decl.prompt, "run the pass");
+
+        // Only YAML's blanks may: a line other whitespace follows is text.
+        let text = "---\ncadence: quarterly\nowner: harness\nprompt: \"first\n---\u{3000}\n third\"\n---\n";
+        let decl = RoutineDecl::from_file(text, Path::new("r.md")).unwrap();
+        assert_eq!(decl.prompt, "first ---\u{3000} third");
     }
 
     #[test]
