@@ -1,29 +1,10 @@
-# Solo-developer baseline. Memory-only claims warn (not block); telemetry
-# stays small (1MB rotation).
+# Solo-developer baseline: file claims are resolved, and telemetry stays small
+# (1MB rotation).
 
 [meta]
 harnex_version = ">=0.37.1, <0.38"
 
 [evidence]
-default_provenance = "memory-only"
-block_on_memory_only = false
-
-[[evidence.verifiers]]
-provenance = "internal"
-strategy = "file-path-line"
-
-[[evidence.verifiers]]
-provenance = "memory-only"
-strategy = "memory-only"
-
-[[evidence.verifiers]]
-provenance = "context7"
-strategy = "context7"
-
-[[evidence.verifiers]]
-provenance = "fetched-url"
-strategy = "fetched-url"
-max_age_days = 180
 
 [telemetry]
 storage = "jsonl"

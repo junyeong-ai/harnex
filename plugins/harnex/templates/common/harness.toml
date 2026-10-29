@@ -98,11 +98,6 @@ reject_unknown_keys = true
 # line. Write the marker whenever a rule states something the code is the truth
 # for.
 [evidence]
-default_provenance = "internal"
-
-[[evidence.verifiers]]
-provenance = "internal"
-strategy = "file-path-line"
 
 # An expensive or stochastic measurement (a contrast audit, a behaviour
 # eval) never gates on its findings — the freshness of its basis does.

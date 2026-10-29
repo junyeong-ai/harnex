@@ -40,7 +40,7 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::context::ContextCommand,
     },
-    /// Verify provenance markers in markdown
+    /// Resolve the claims markdown makes about the project
     Evidence {
         #[command(subcommand)]
         cmd: commands::evidence::EvidenceCommand,

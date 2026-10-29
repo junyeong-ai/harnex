@@ -20,10 +20,6 @@ fn minimal_config_toml() -> String {
     common::pinned(
         r#"
 [evidence]
-default_provenance = "memory-only"
-[[evidence.verifiers]]
-provenance = "memory-only"
-strategy = "memory-only"
 
 [validate.routines]
 
@@ -579,10 +575,6 @@ fn evidence_config() -> String {
     common::pinned(
         r#"
 [evidence]
-default_provenance = "internal"
-[[evidence.verifiers]]
-provenance = "internal"
-strategy = "file-path-line"
 
 [validate.rules]
 max_lines = 200
@@ -633,7 +625,7 @@ fn evidence_rechecks_unchanged_claims_when_their_target_changes() {
         broken
             .findings
             .iter()
-            .any(|f| f.slug == "evidence-internal")
+            .any(|f| f.slug == "evidence-claim-unresolved")
     );
 
     write(&source, "pub fn load() {}\npub fn added() {}\n");
@@ -740,12 +732,12 @@ fn an_untracked_config_revalidates_existing_surfaces_even_when_ignored() {
     }
 }
 
-/// The path each `evidence-internal` finding names, after `no/such/`.
+/// The path each `evidence-claim-unresolved` finding names, after `no/such/`.
 fn cited(outcome: &harness_core::check::CheckOutcome) -> Vec<String> {
     let mut cited: Vec<String> = outcome
         .findings
         .iter()
-        .filter(|f| f.slug == "evidence-internal")
+        .filter(|f| f.slug == "evidence-claim-unresolved")
         .filter_map(|f| {
             f.message
                 .split('\'')
@@ -1216,10 +1208,6 @@ fn an_unreadable_file_is_reported_where_its_own_validator_is_disabled() {
         &common::pinned(
             r#"
 [evidence]
-default_provenance = "memory-only"
-[[evidence.verifiers]]
-provenance = "memory-only"
-strategy = "memory-only"
 "#,
         ),
     );

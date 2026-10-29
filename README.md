@@ -9,10 +9,10 @@ Harness engineering for Claude Code projects. harnex has two surfaces:
   knowledge of getting the Claude Code spec right, distributed as a skill —
   not a runtime you depend on.
 - **The `harnex` binary** (oracle) — a Pure-Rust, JSON-first CLI that
-  deterministically verifies a harness — provenance, closed-schema telemetry,
-  lifecycle, runtime guards, a unified validation gate — and puts decisions
-  to the person on a local page. It is the spec-correct reference the
-  plugin's templates are checked against.
+  deterministically verifies a harness — document claims, closed-schema
+  telemetry, lifecycle, runtime guards, a unified validation gate — and puts
+  decisions to the person on a local page. It is the spec-correct reference
+  the plugin's templates are checked against.
 
 ## Why
 
@@ -160,8 +160,9 @@ cp <harnex>/examples/harness.toml.minimal harness.toml
 harnex check
 ```
 
-`examples/harness.toml.minimal` enables just evidence (provenance verifier)
-and telemetry (event ledger) — the smallest useful surface.
+`examples/harness.toml.minimal` enables just evidence (document claims
+resolved against the tree) and telemetry (event ledger) — the smallest
+useful surface.
 `examples/harness.toml.team` is a broad config (adds
 validate.rules/skills, policy.permissions, lifecycle, …). Start
 from one and extend with `[[kinds]]`, `[[lifecycle.consumer_detectors]]`,
@@ -340,7 +341,7 @@ The `harnex` binary covers the universal Claude Code harness patterns;
 the plugin generates the project-native wiring that uses them. Universal
 patterns covered out of the box:
 
-- Provenance verification on docs — a rule citing an owner marks it, and the
+- Claims in docs held to the tree — a rule citing an owner marks it, and the
   gate resolves every marker against the tree, so a rename fails CI instead of
   leaving a rule that points nowhere:
 

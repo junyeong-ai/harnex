@@ -20,10 +20,10 @@ wire_enum! {
 }
 ```
 
-Both `Config::validate_*` (string → enum) and the factory function
-(enum → trait object) consume the enum. Adding a variant forces every
-consuming site to update via the compiler's exhaustive-match check. No
-parallel `KNOWN_*` const — that pattern is forbidden because it drifts.
+Config validation parses the string into the enum, and every consumer
+matches on it. Adding a variant forces every consuming site to update via
+the compiler's exhaustive-match check. No parallel `KNOWN_*` const — that
+pattern is forbidden because it drifts.
 
 `ALL` is the one part the compiler does not force, which is why it is
 generated rather than written: a variant left out of it still serialises,
@@ -32,13 +32,12 @@ call site's; where one derives `Serialize`, `#[serde(rename_all)]` spells the
 wire string a second time and a test beside that type holds the two equal.
 
 **Suffix is chosen for what the type names**, not for the pattern:
-`Strategy` for swappable algorithms (`VerifierStrategy`); `Kind` for
-storage / shape (`StorageKind`, `PermissionFindingKind`); `Profile` for
-composable policy (`PermissionProfile`); `Decision` for ledger verdicts
-(`PromotionDecision`); `Target` for output destination (`SchemaTarget`);
-`Outcome` for terminal state (`VerifyOutcome`, `EmitOutcome`);
-`Severity` for finding rank. The pattern is the SSoT + exhaustive
-match, not the suffix.
+`Kind` for storage / shape (`StorageKind`, `PermissionFindingKind`);
+`Profile` for composable policy (`PermissionProfile`); `Decision` for
+ledger verdicts (`PromotionDecision`); `Target` for output destination
+(`SchemaTarget`); `Outcome` for terminal state (`EmitOutcome`); `Severity`
+for finding rank. The pattern is the SSoT + exhaustive match, not the
+suffix.
 
 ### Finding-producer naming convention
 
@@ -49,7 +48,6 @@ domain-suffix convention:
 |---|---|---|
 | `Validator` | frontmatter / structural shape check on a single file | `RuleValidator`, `SkillValidator`, `SettingsValidator`, `CommitMsgValidator` |
 | `Auditor` | cross-input semantic / policy compliance check | `PermissionAuditor`, `ProjectAuditor`, `FloorAuditor` |
-| `Verifier` | provenance / claim verification | `EvidenceVerifier` |
 | `Classifier` | enrichment that assigns a category | `RetirementClassifier` |
 | `Sweeper` | top-level driver that fans out classifiers over kinds | `RetirementSweeper` |
 | `Recorder` | append-only ledger writer | `LifecycleDecisionRecorder` |
@@ -92,7 +90,6 @@ visible at code review time.
 
 | Trait | Reason it exists (not speculation) |
 |---|---|
-| `Verifier` | runtime dispatch per claim shape |
 | `Browser` | external-process boundary + test mock seam (see `ask::serve`) |
 | `SurfaceValidator` | one driver, `ProjectChecker::run_surface_validator`, over every glob-driven validator |
 

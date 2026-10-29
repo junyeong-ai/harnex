@@ -65,7 +65,7 @@ wire_enum! {
     /// `Blocker` and `Major` are the GATING tiers: any finding at or above
     /// `Major` fails the validation gate (non-zero exit, blocks commits / CI).
     /// `Minor` and `Info` are advisory — surfaced in the envelope but never
-    /// change the exit code (e.g. an opted-out memory-only claim is `Minor`).
+    /// change the exit code.
     /// New tiers may be added at the top when a class of findings needs to
     /// outrank Blocker; doing so requires updating `Severity::rank` (the
     /// compiler enforces the exhaustive `match`). The gate threshold lives in

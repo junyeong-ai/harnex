@@ -1,48 +1,29 @@
 //! # Claim parser
 //!
-//! Extracts provenance-marked claims from markdown, whitespace-tolerant. What
-//! it recognises is enumerated in this file rather than listed here:
-//! [`ClaimKind`] is the claim shapes, [`AnchorKind`] the anchors a file claim
-//! may name, and [`RESERVED`] the two of those a separator spells — the other
-//! two are where a body carrying no separator falls through to. The
-//! documents that teach an author are held to `AnchorKind::ALL` by
-//! `evidence_grammar_sync`, and a list here would be one more place to teach a
-//! form the parser does not read.
+//! Extracts `[file: …]` claims from markdown, whitespace-tolerant. What it
+//! recognises is enumerated in this file rather than listed here:
+//! [`AnchorKind`] the anchors a claim may name, and [`RESERVED`] the two of
+//! those a separator spells — the other two are where a body carrying no
+//! separator falls through to. The documents that teach an author are held to
+//! `AnchorKind::ALL` by `evidence_grammar_sync`, and a list here would be one
+//! more place to teach a form the parser does not read.
 //!
 //! Lines are 1-indexed (matches editor convention).
-
-use std::sync::LazyLock;
-
-use regex::Regex;
 
 use crate::markdown::Document;
 use crate::wire_enum::wire_enum;
 
+/// One `[file: …]` claim: a project-relative path, what inside it the claim
+/// points at, and where the claim was written.
 #[derive(Debug, Clone)]
 pub struct Claim {
     pub raw: String,
-    pub provenance: Option<String>,
-    pub kind: ClaimKind,
+    pub path: String,
+    pub anchor: Anchor,
     pub line: u32,
 }
 
-#[derive(Debug, Clone)]
-pub enum ClaimKind {
-    File {
-        path: String,
-        anchor: Anchor,
-    },
-    Url {
-        url: String,
-        fetched_date: Option<String>,
-    },
-    Context7Library {
-        library: String,
-    },
-    Memory,
-}
-
-/// What inside a file an internal claim points at.
+/// What inside a file a claim points at.
 ///
 /// The anchor decides whether the check still means anything a year later. A
 /// section and a symbol are matched against what the file spells, so each
@@ -90,16 +71,7 @@ impl Anchor {
     }
 }
 
-static FETCHED_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[fetched:\s*(\d{4}-\d{2}-\d{2})\]\s*(https?://\S+)").expect("FETCHED_URL regex")
-});
-
-static CONTEXT7: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[context7:\s*([A-Za-z0-9_@./\-]+)\]").expect("CONTEXT7 regex"));
-
-static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expect("MEMORY regex"));
-
-// `[file: path/to/thing.rs:42]` — an internal claim, marked like every other.
+// `[file: path/to/thing.rs:42]` — a claim about this project's tree.
 //
 // Marked rather than inferred, because inference here has no floor. The shape
 // of a file and a line is also the shape of a host and a port, and no test
@@ -107,13 +79,10 @@ static MEMORY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[memory\]").expe
 // top-level domains both. Requiring a directory separator excluded
 // `api.example.com:8080` and left `imagePullSecrets/registry.io:5000`; the next
 // tightening would leave the one after that. Each is ordinary prose in a
-// deployment rule, and each failed Blocker in a gate that is on by default.
-//
-// The other three provenances were always marked (`[fetched: …]`,
-// `[context7: …]`, `[memory]`). This one being the exception is what put a
-// pattern-match over prose in a blocking tier, which `keep-soften-cut` refuses.
-// A marker also tells a reader which references the gate checks, where a bare
-// backtick path says nothing.
+// deployment rule, and each failed Blocker in a gate that is on by default. A
+// pattern-match over prose in a blocking tier is what `keep-soften-cut`
+// refuses. A marker also tells a reader which references the gate checks,
+// where a bare backtick path says nothing.
 const FILE_MARKER: &str = "[file:";
 
 const SECTION_SEPARATOR: &str = " § ";
@@ -228,49 +197,14 @@ pub fn parse_claims(markdown: &str) -> Vec<Claim> {
     for source in Document::of(markdown).prose() {
         let (line_no, line) = (source.no, source.text.as_str());
 
-        for cap in FETCHED_URL.captures_iter(line) {
-            claims.push(Claim {
-                raw: cap[0].to_string(),
-                provenance: Some("fetched-url".to_string()),
-                kind: ClaimKind::Url {
-                    url: cap[2].to_string(),
-                    fetched_date: Some(cap[1].to_string()),
-                },
-                line: line_no,
-            });
-        }
-
-        for cap in CONTEXT7.captures_iter(line) {
-            claims.push(Claim {
-                raw: cap[0].to_string(),
-                provenance: Some("context7".to_string()),
-                kind: ClaimKind::Context7Library {
-                    library: cap[1].to_string(),
-                },
-                line: line_no,
-            });
-        }
-
-        for _ in MEMORY.captures_iter(line) {
-            claims.push(Claim {
-                raw: "[memory]".to_string(),
-                provenance: Some("memory-only".to_string()),
-                kind: ClaimKind::Memory,
-                line: line_no,
-            });
-        }
-
         for body in file_claim_bodies(line) {
             let Some((path, anchor)) = split_file_claim(body) else {
                 continue;
             };
             claims.push(Claim {
                 raw: format!("{FILE_MARKER} {body}]"),
-                provenance: Some("internal".to_string()),
-                kind: ClaimKind::File {
-                    path: path.to_string(),
-                    anchor,
-                },
+                path: path.to_string(),
+                anchor,
                 line: line_no,
             });
         }
@@ -311,10 +245,7 @@ mod tests {
     fn file_claims(md: &str) -> Vec<(String, Anchor)> {
         parse_claims(md)
             .into_iter()
-            .filter_map(|c| match c.kind {
-                ClaimKind::File { path, anchor } => Some((path, anchor)),
-                _ => None,
-            })
+            .map(|c| (c.path, c.anchor))
             .collect()
     }
 
@@ -456,30 +387,6 @@ Text
 [file: src/after.rs:1]
 ";
         assert_eq!(paths(md), vec!["src/after.rs"]);
-    }
-
-    #[test]
-    fn extracts_fetched_url() {
-        let md = "Per [fetched: 2026-05-20] https://example.com/x the rule is …";
-        let claims = parse_claims(md);
-        assert_eq!(claims.len(), 1);
-        assert_eq!(claims[0].provenance.as_deref(), Some("fetched-url"));
-    }
-
-    #[test]
-    fn extracts_context7() {
-        let md = "Per [context7: vercel/next.js] middleware fires before …";
-        let claims = parse_claims(md);
-        assert_eq!(claims.len(), 1);
-        assert_eq!(claims[0].provenance.as_deref(), Some("context7"));
-    }
-
-    #[test]
-    fn extracts_memory_marker() {
-        let md = "The runtime [memory] does not re-read skills mid-turn.";
-        let claims = parse_claims(md);
-        assert_eq!(claims.len(), 1);
-        assert_eq!(claims[0].provenance.as_deref(), Some("memory-only"));
     }
 
     #[test]

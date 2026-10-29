@@ -31,7 +31,6 @@ use crate::always_loaded::MemberKind;
 use crate::config::{CONFIG_FILE_NAME, Config};
 use crate::envelope::{Finding, Location, Severity, SkippedRule};
 use crate::error::{Error, Result};
-use crate::evidence::EvidenceVerifier;
 use crate::git;
 use crate::policy::{PermissionAuditor, PermissionFindingKind};
 use crate::validate::path_globs::{DroppingPaths, PathsReadingAuditor};
@@ -331,14 +330,13 @@ impl<'a> ProjectChecker<'a> {
         skipped: &mut Vec<SkippedRule>,
         files_scanned: &mut usize,
     ) -> Result<()> {
-        let Some(cfg) = self.config.evidence.as_ref() else {
+        if self.config.evidence.is_none() {
             skipped.push(SkippedRule {
                 slug: "evidence".into(),
                 reason: "no [evidence] section".into(),
             });
             return Ok(());
-        };
-        let verifier = EvidenceVerifier::new(cfg)?;
+        }
         // Every surface this gate validates for shape: a file checked for
         // frontmatter and budget while its claims went unchecked reads as
         // verified. The globs are the validators' own, so the set a file is
@@ -399,7 +397,7 @@ impl<'a> ProjectChecker<'a> {
                     continue;
                 }
             };
-            findings.extend(verifier.verify_text(&text, path, self.working_dir));
+            findings.extend(crate::evidence::verify_text(&text, path, self.working_dir));
         }
         run.push("evidence".into());
         Ok(())

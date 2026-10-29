@@ -1,85 +1,55 @@
-//! Verifier strategy: an internal claim, checked against the anchor it names.
+//! Resolving a `[file: …]` claim against the anchor it names.
 
 use std::path::Path;
 
-use super::{Anchor, Claim, ClaimKind, Verifier, VerifyOutcome};
+use super::{Anchor, Claim, VerifyOutcome};
 use crate::markdown::Document;
 
-pub(crate) struct InternalFileVerifier {
-    provenance: String,
-}
+/// Whether `claim` still holds against the project at `working_dir`.
+pub(crate) fn resolve(claim: &Claim, working_dir: &Path) -> VerifyOutcome {
+    let (path, anchor) = (&claim.path, &claim.anchor);
 
-impl InternalFileVerifier {
-    pub(crate) fn new(provenance: String) -> Self {
-        Self { provenance }
-    }
-}
-
-impl Verifier for InternalFileVerifier {
-    fn provenance(&self) -> &str {
-        &self.provenance
-    }
-
-    fn verify(&self, claim: &Claim, working_dir: &Path) -> VerifyOutcome {
-        let (path, anchor) = match &claim.kind {
-            ClaimKind::File { path, anchor } => (path, anchor),
-            _ => {
-                return VerifyOutcome::Violation {
-                    message: format!("provenance '{}' expects a file claim", self.provenance),
-                    hint: Some(
-                        "mark it as an internal claim — a project-relative path in a file marker: \
-                         [file: path/to/file.ext] for the whole file, \
-                         [file: path/to/file.ext :: fn name] for what it spells, \
-                         [file: path/to/doc.md § Heading] for a section, \
-                         [file: path/to/file.ext:42] for a line"
-                            .into(),
-                    ),
-                };
-            }
+    // A claim path must stay inside the project — reject `..` traversal
+    // and absolute paths so a claim cannot verify (or read) a file
+    // outside `working_dir`.
+    if crate::path_guard::reject_traversal(Path::new(path)).is_err()
+        || Path::new(path).is_absolute()
+    {
+        return VerifyOutcome::Violation {
+            message: format!("claim path '{path}' escapes the project root"),
+            hint: "use a project-relative path without `..` or a leading `/`".into(),
         };
+    }
 
-        // A claim path must stay inside the project — reject `..` traversal
-        // and absolute paths so a claim cannot verify (or read) a file
-        // outside `working_dir`.
-        if crate::path_guard::reject_traversal(Path::new(path)).is_err()
-            || Path::new(path).is_absolute()
-        {
-            return VerifyOutcome::Violation {
-                message: format!("claim path '{path}' escapes the project root"),
-                hint: Some("use a project-relative path without `..` or a leading `/`".into()),
-            };
-        }
+    let full = working_dir.join(path);
+    if !full.is_file() {
+        return VerifyOutcome::Violation {
+            message: format!("file '{path}' does not exist"),
+            hint: "update the path or remove the claim".into(),
+        };
+    }
 
-        let full = working_dir.join(path);
-        if !full.is_file() {
-            return VerifyOutcome::Violation {
-                message: format!("file '{path}' does not exist"),
-                hint: Some("update the path or remove the claim".into()),
-            };
-        }
-
-        match anchor {
-            Anchor::Whole => VerifyOutcome::Ok,
-            Anchor::Line(line) => match std::fs::read_to_string(&full) {
-                Ok(content) => verify_line(path, &content, *line),
-                Err(_) => unreadable(path),
-            },
-            Anchor::Section(heading) => match std::fs::read_to_string(&full) {
-                Ok(content) => verify_section(path, &content, heading),
-                Err(_) => unreadable(path),
-            },
-            Anchor::Symbol(symbol) => match std::fs::read_to_string(&full) {
-                Ok(content) => verify_symbol(path, &content, symbol),
-                Err(_) => unreadable(path),
-            },
-        }
+    match anchor {
+        Anchor::Whole => VerifyOutcome::Ok,
+        Anchor::Line(line) => match std::fs::read_to_string(&full) {
+            Ok(content) => verify_line(path, &content, *line),
+            Err(_) => unreadable(path),
+        },
+        Anchor::Section(heading) => match std::fs::read_to_string(&full) {
+            Ok(content) => verify_section(path, &content, heading),
+            Err(_) => unreadable(path),
+        },
+        Anchor::Symbol(symbol) => match std::fs::read_to_string(&full) {
+            Ok(content) => verify_symbol(path, &content, symbol),
+            Err(_) => unreadable(path),
+        },
     }
 }
 
 fn unreadable(path: &str) -> VerifyOutcome {
     VerifyOutcome::Violation {
         message: format!("could not read '{path}'"),
-        hint: Some("verify the path exists and is readable from the working directory".into()),
+        hint: "verify the path exists and is readable from the working directory".into(),
     }
 }
 
@@ -95,19 +65,17 @@ fn verify_line(path: &str, content: &str, line: u32) -> VerifyOutcome {
         Some(text) if !text.trim().is_empty() => VerifyOutcome::Ok,
         Some(_) => VerifyOutcome::Violation {
             message: format!("line {line} of '{path}' is blank"),
-            hint: Some(
-                "a line anchor is verified for the file being that long and the line \
+            hint: "a line anchor is verified for the file being that long and the line \
                  carrying text, so it survives the edit that moved its subject — \
                  anchor the claim on what the file spells instead"
-                    .into(),
-            ),
+                .into(),
         },
         None => {
             let lines = crate::markdown::line_count(content);
             let plural = if lines == 1 { "line" } else { "lines" };
             VerifyOutcome::Violation {
                 message: format!("line {line} out of range ('{path}' has {lines} {plural})"),
-                hint: Some("update the line number".into()),
+                hint: "update the line number".into(),
             }
         }
     }
@@ -131,7 +99,7 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
         1 => VerifyOutcome::Ok,
         0 => VerifyOutcome::Violation {
             message: format!("no symbol '{symbol}' in '{path}'"),
-            hint: Some(match content.contains(symbol) {
+            hint: match content.contains(symbol) {
                 true => format!(
                     "'{symbol}' occurs in the file only inside a longer name — cite \
                      the declaration as the file spells it"
@@ -139,15 +107,13 @@ fn verify_symbol(path: &str, content: &str, symbol: &str) -> VerifyOutcome {
                 false => "cite the declaration exactly as the file spells it, or point \
                           at the file alone"
                     .into(),
-            }),
+            },
         },
         found => VerifyOutcome::Violation {
             message: format!("'{symbol}' occurs {found} times in '{path}'"),
-            hint: Some(
-                "an anchor names one place — extend the spelling until it does, or \
+            hint: "an anchor names one place — extend the spelling until it does, or \
                  point at the file alone"
-                    .into(),
-            ),
+                .into(),
         },
     }
 }
@@ -237,7 +203,7 @@ fn verify_section(path: &str, content: &str, heading: &str) -> VerifyOutcome {
         [_] => VerifyOutcome::Ok,
         [] => VerifyOutcome::Violation {
             message: format!("no heading '{heading}' in '{path}'"),
-            hint: Some(match content.contains(heading) {
+            hint: match content.contains(heading) {
                 true => format!(
                     "'{heading}' occurs in the file but not as a heading of its own — cite the \
                      heading exactly as it is written, including any words after it"
@@ -245,7 +211,7 @@ fn verify_section(path: &str, content: &str, heading: &str) -> VerifyOutcome {
                 false => "cite the heading exactly as the file spells it, or point at the file \
                           alone"
                     .into(),
-            }),
+            },
         },
         lines => VerifyOutcome::Violation {
             message: format!(
@@ -257,11 +223,9 @@ fn verify_section(path: &str, content: &str, heading: &str) -> VerifyOutcome {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            hint: Some(
-                "a pointer that resolves to more than one section names none of them — give one \
+            hint: "a pointer that resolves to more than one section names none of them — give one \
                  of them a distinct heading"
-                    .into(),
-            ),
+                .into(),
         },
     }
 }
@@ -304,7 +268,7 @@ mod tests {
             unreachable!()
         };
         assert!(
-            hint.is_some_and(|h| h.contains("not as a heading of its own")),
+            hint.contains("not as a heading of its own"),
             "the hint must separate a renamed heading from a wrong file"
         );
     }

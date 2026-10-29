@@ -21,30 +21,6 @@ foundation = true
 # ---------- evidence ----------
 
 [evidence]
-default_provenance = "memory-only"
-block_on_memory_only = true
-
-[[evidence.verifiers]]
-provenance = "internal"
-strategy = "file-path-line"
-
-[[evidence.verifiers]]
-provenance = "memory-only"
-strategy = "memory-only"
-
-[[evidence.verifiers]]
-provenance = "context7"
-strategy = "context7"
-library_allowlist = [
-  "@anthropic-ai/sdk",
-  "@anthropic-ai/claude-code",
-  "vercel/next.js",
-]
-
-[[evidence.verifiers]]
-provenance = "fetched-url"
-strategy = "fetched-url"
-max_age_days = 90
 
 # ---------- telemetry ----------
 

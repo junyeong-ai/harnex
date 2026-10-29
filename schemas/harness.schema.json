@@ -151,23 +151,9 @@
       ]
     },
     "EvidenceConfig": {
+      "description": "Declaring the section turns on two arms of `check`: every file claim a\ndocument makes resolved against the tree, and every declared advisory's\nrecorded basis held fresh.",
       "type": "object",
       "properties": {
-        "default_provenance": {
-          "type": "string",
-          "default": "memory-only"
-        },
-        "block_on_memory_only": {
-          "type": "boolean",
-          "default": false
-        },
-        "verifiers": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/VerifierDecl"
-          },
-          "default": []
-        },
         "advisory_dir": {
           "description": "Directory the recorded advisory baselines live in, project-relative.\nChanging it strands baselines at the old path — move them with it, or\nthey sit unscanned where not even the orphan finding looks.",
           "type": "string",
@@ -182,38 +168,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "VerifierDecl": {
-      "type": "object",
-      "properties": {
-        "provenance": {
-          "type": "string"
-        },
-        "strategy": {
-          "type": "string"
-        },
-        "library_allowlist": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": []
-        },
-        "max_age_days": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0,
-          "default": null
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "provenance",
-        "strategy"
-      ]
     },
     "AdvisoryDecl": {
       "description": "One declared advisory: a measurement this toolkit never runs, whose\nrecorded evidence it holds fresh. The advisory's own findings never gate;\nthe freshness of its basis does.",

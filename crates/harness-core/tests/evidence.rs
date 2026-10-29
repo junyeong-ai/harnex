@@ -2,45 +2,9 @@
 
 use std::path::Path;
 
-use harness_core::config::{EvidenceConfig, VerifierDecl};
 use harness_core::envelope::Severity;
-use harness_core::evidence::EvidenceVerifier;
+use harness_core::evidence;
 use tempfile::TempDir;
-
-fn block_strict_config() -> EvidenceConfig {
-    EvidenceConfig {
-        advisory_dir: "evidence".into(),
-        advisories: Vec::new(),
-        default_provenance: "memory-only".to_string(),
-        block_on_memory_only: true,
-        verifiers: vec![
-            VerifierDecl {
-                provenance: "internal".to_string(),
-                strategy: "file-path-line".to_string(),
-                library_allowlist: vec![],
-                max_age_days: None,
-            },
-            VerifierDecl {
-                provenance: "memory-only".to_string(),
-                strategy: "memory-only".to_string(),
-                library_allowlist: vec![],
-                max_age_days: None,
-            },
-            VerifierDecl {
-                provenance: "fetched-url".to_string(),
-                strategy: "fetched-url".to_string(),
-                library_allowlist: vec![],
-                max_age_days: Some(90),
-            },
-            VerifierDecl {
-                provenance: "context7".to_string(),
-                strategy: "context7".to_string(),
-                library_allowlist: vec!["vercel/next.js".to_string()],
-                max_age_days: None,
-            },
-        ],
-    }
-}
 
 #[test]
 fn passes_when_file_path_line_resolves() {
@@ -50,8 +14,7 @@ fn passes_when_file_path_line_resolves() {
     std::fs::write(&target, "line1\nline2\nline3\n").unwrap();
 
     let markdown = "See [file: src/lib.rs:2].";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
+    let findings = evidence::verify_text(markdown, Path::new("test.md"), tmp.path());
     assert!(findings.is_empty(), "unexpected findings: {findings:?}");
 }
 
@@ -66,10 +29,9 @@ fn rejects_path_traversal_outside_project() {
     std::fs::write(tmp.path().join("secret.txt"), "x\n").unwrap();
 
     let markdown = "See [file: ../secret.txt:1].";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), &project);
+    let findings = evidence::verify_text(markdown, Path::new("test.md"), &project);
     assert_eq!(findings.len(), 1, "traversal claim must be a finding");
-    assert_eq!(findings[0].slug, "evidence-internal");
+    assert_eq!(findings[0].slug, "evidence-claim-unresolved");
     assert!(
         findings[0].message.contains("escapes the project root"),
         "expected traversal rejection, got: {}",
@@ -81,11 +43,10 @@ fn rejects_path_traversal_outside_project() {
 fn rejects_nonexistent_path() {
     let tmp = TempDir::new().unwrap();
     let markdown = "See [file: src/missing.rs:5].";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
+    let findings = evidence::verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].severity, Severity::Blocker);
-    assert_eq!(findings[0].slug, "evidence-internal");
+    assert_eq!(findings[0].slug, "evidence-claim-unresolved");
 }
 
 #[test]
@@ -96,8 +57,7 @@ fn rejects_line_out_of_range() {
     std::fs::write(&target, "only one line\n").unwrap();
 
     let markdown = "See [file: src/lib.rs:99].";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
+    let findings = evidence::verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1);
     assert_eq!(
         findings[0].message, "line 99 out of range ('src/lib.rs' has 1 line)",
@@ -116,91 +76,18 @@ fn rejects_overflowing_line_number() {
     std::fs::write(&target, "only one line\n").unwrap();
 
     let markdown = "See [file: src/lib.rs:999999999999999999999].";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
+    let findings = evidence::verify_text(markdown, Path::new("test.md"), tmp.path());
     assert_eq!(findings.len(), 1, "overflowing line must be a finding");
     assert!(findings[0].message.contains("out of range"));
-}
-
-#[test]
-fn memory_only_blocks_when_configured() {
-    let tmp = TempDir::new().unwrap();
-    let markdown = "Unverified [memory] claim.";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].severity, Severity::Blocker);
-    assert_eq!(findings[0].slug, "evidence-memory-only");
-}
-
-#[test]
-fn memory_only_warns_when_not_blocking() {
-    let tmp = TempDir::new().unwrap();
-    let mut cfg = block_strict_config();
-    cfg.block_on_memory_only = false;
-    let markdown = "Unverified [memory] claim.";
-    let verifier = EvidenceVerifier::new(&cfg).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
-    assert_eq!(
-        findings.len(),
-        1,
-        "expected one advisory finding: {findings:?}"
-    );
-    assert_eq!(findings[0].severity, Severity::Minor);
-    assert_eq!(findings[0].slug, "evidence-memory-only");
-}
-
-#[test]
-fn fetched_url_rejects_stale_date() {
-    let tmp = TempDir::new().unwrap();
-    let markdown = "See [fetched: 2020-01-01] https://example.com/old";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
-    assert_eq!(findings.len(), 1);
-    assert!(findings[0].message.contains("old"));
-}
-
-#[test]
-fn fetched_url_rejects_future_date() {
-    let tmp = TempDir::new().unwrap();
-    let markdown = "See [fetched: 2099-01-01] https://example.com/x";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
-    assert_eq!(findings.len(), 1);
-    assert!(findings[0].message.contains("future"));
-}
-
-#[test]
-fn context7_allowlist_rejects_unknown_library() {
-    let tmp = TempDir::new().unwrap();
-    let markdown = "Per [context7: bogus/library] docs the API is …";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
-    assert_eq!(findings.len(), 1);
-    assert!(
-        findings[0]
-            .message
-            .contains("not in the context7 allowlist")
-    );
-}
-
-#[test]
-fn context7_allowlist_accepts_listed_library() {
-    let tmp = TempDir::new().unwrap();
-    let markdown = "Per [context7: vercel/next.js] middleware fires …";
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
-    assert!(findings.is_empty(), "unexpected findings: {findings:?}");
 }
 
 #[test]
 fn verify_file_reads_and_reports() {
     let tmp = TempDir::new().unwrap();
     let md_path = tmp.path().join("plan.md");
-    std::fs::write(&md_path, "Unverified [memory] claim.\n").unwrap();
+    std::fs::write(&md_path, "Stated in [file: src/gone.rs].\n").unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_file(&md_path, tmp.path()).unwrap();
+    let findings = evidence::verify_file(&md_path, tmp.path()).unwrap();
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].location.path, md_path);
     assert_eq!(findings[0].location.line, Some(1));
@@ -213,22 +100,21 @@ fn a_section_anchor_resolves_against_the_heading_the_file_spells() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "# Plan\n\n## Escape hatch\n\nbody\n").unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(
+    let findings = evidence::verify_text(
         "Stated in [file: .claude/rules/plan.md § Escape hatch].",
         Path::new("test.md"),
         tmp.path(),
     );
     assert!(findings.is_empty(), "unexpected findings: {findings:?}");
 
-    let findings = verifier.verify_text(
+    let findings = evidence::verify_text(
         "Stated in [file: .claude/rules/plan.md § Escape hatches].",
         Path::new("test.md"),
         tmp.path(),
     );
     assert_eq!(findings.len(), 1, "a renamed heading must fail the gate");
     assert_eq!(findings[0].severity, Severity::Blocker);
-    assert_eq!(findings[0].slug, "evidence-internal");
+    assert_eq!(findings[0].slug, "evidence-claim-unresolved");
 }
 
 #[test]
@@ -242,12 +128,8 @@ fn a_symbol_anchor_resolves_against_what_the_file_spells_and_not_against_a_longe
     )
     .unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let resolves = |claim: &str| {
-        verifier
-            .verify_text(claim, Path::new("test.md"), tmp.path())
-            .is_empty()
-    };
+    let resolves =
+        |claim: &str| evidence::verify_text(claim, Path::new("test.md"), tmp.path()).is_empty();
 
     assert!(
         resolves("Stated in [file: src/lib.rs :: pub fn write_atomic]."),
@@ -274,8 +156,7 @@ fn a_symbol_naming_two_places_names_neither() {
     )
     .unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(
+    let findings = evidence::verify_text(
         "Stated in [file: src/lib.rs :: pub fn load].",
         Path::new("test.md"),
         tmp.path(),
@@ -293,16 +174,14 @@ fn resolves(dir: &TempDir, file: &str, body: &str, symbol: &str) -> Vec<String> 
     let target = dir.path().join(file);
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, body).unwrap();
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    verifier
-        .verify_text(
-            &format!("Stated in [file: {file} :: {symbol}]."),
-            Path::new("test.md"),
-            dir.path(),
-        )
-        .into_iter()
-        .map(|f| f.message)
-        .collect()
+    evidence::verify_text(
+        &format!("Stated in [file: {file} :: {symbol}]."),
+        Path::new("test.md"),
+        dir.path(),
+    )
+    .into_iter()
+    .map(|f| f.message)
+    .collect()
 }
 
 #[test]
@@ -459,8 +338,7 @@ fn two_places_that_share_a_character_are_still_two_places() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "use crate::a::b::b::c;\n").unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(
+    let findings = evidence::verify_text(
         "Stated in [file: src/lib.rs :: ::b::].",
         Path::new("test.md"),
         tmp.path(),
@@ -484,8 +362,7 @@ fn the_scan_steps_by_characters_and_not_by_bytes() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "\u{ac00}::b::b::\u{b098}\n").unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let findings = verifier.verify_text(
+    let findings = evidence::verify_text(
         "Stated in [file: src/lib.rs :: ::b::].",
         Path::new("test.md"),
         tmp.path(),
@@ -509,15 +386,12 @@ fn a_line_anchor_pointing_at_a_blank_line_points_at_nothing() {
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "pub fn a() {}\n\npub fn b() {}\n").unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     assert!(
-        verifier
-            .verify_text("[file: src/lib.rs:1].", Path::new("test.md"), tmp.path())
-            .is_empty(),
+        evidence::verify_text("[file: src/lib.rs:1].", Path::new("test.md"), tmp.path()).is_empty(),
         "a line carrying text resolves"
     );
 
-    let findings = verifier.verify_text("[file: src/lib.rs:2].", Path::new("test.md"), tmp.path());
+    let findings = evidence::verify_text("[file: src/lib.rs:2].", Path::new("test.md"), tmp.path());
     assert_eq!(
         findings.len(),
         1,
@@ -532,12 +406,8 @@ fn the_leftmost_reserved_separator_decides_which_anchor_a_body_names() {
     std::fs::write(tmp.path().join("doc.md"), "# D\n\n## A :: B\n\nbody\n").unwrap();
     std::fs::write(tmp.path().join("lib.rs"), "pub fn a() {} // § b\n").unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
-    let resolves = |claim: &str| {
-        verifier
-            .verify_text(claim, Path::new("test.md"), tmp.path())
-            .is_empty()
-    };
+    let resolves =
+        |claim: &str| evidence::verify_text(claim, Path::new("test.md"), tmp.path()).is_empty();
 
     assert!(
         resolves("[file: doc.md § A :: B]."),
@@ -558,7 +428,6 @@ fn a_body_with_nothing_after_its_separator_never_named_an_anchor() {
     let tmp = TempDir::new().unwrap();
     std::fs::write(tmp.path().join("t.rs"), "pub fn a() {}\n").unwrap();
 
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
     for (body, path) in [
         ("t.rs :: ", "t.rs ::"),
         ("t.rs ::   ", "t.rs ::"),
@@ -567,7 +436,7 @@ fn a_body_with_nothing_after_its_separator_never_named_an_anchor() {
         (" § Head", "§ Head"),
     ] {
         let findings =
-            verifier.verify_text(&format!("[file: {body}]"), Path::new("test.md"), tmp.path());
+            evidence::verify_text(&format!("[file: {body}]"), Path::new("test.md"), tmp.path());
         assert_eq!(findings.len(), 1, "`{body}` must raise one finding");
         assert_eq!(
             findings[0].message,
@@ -577,9 +446,7 @@ fn a_body_with_nothing_after_its_separator_never_named_an_anchor() {
     }
 
     assert!(
-        verifier
-            .verify_text("[file: ]", Path::new("test.md"), tmp.path())
-            .is_empty(),
+        evidence::verify_text("[file: ]", Path::new("test.md"), tmp.path()).is_empty(),
         "an empty body says nothing to check and is not a claim"
     );
 }
@@ -594,7 +461,6 @@ fn a_sample_is_a_sample_wherever_its_container_indents_it() {
     let target = tmp.path().join("src/lib.rs");
     std::fs::create_dir_all(target.parent().unwrap()).unwrap();
     std::fs::write(&target, "a\nb\nc\n").unwrap();
-    let verifier = EvidenceVerifier::new(&block_strict_config()).unwrap();
 
     for (label, markdown) in [
         (
@@ -615,7 +481,7 @@ fn a_sample_is_a_sample_wherever_its_container_indents_it() {
             "Real: [file: src/lib.rs:2].\n\n```\n[file: no/such.rs:1]\n",
         ),
     ] {
-        let findings = verifier.verify_text(markdown, Path::new("test.md"), tmp.path());
+        let findings = evidence::verify_text(markdown, Path::new("test.md"), tmp.path());
         assert!(findings.is_empty(), "with {label}: {findings:#?}");
     }
 }

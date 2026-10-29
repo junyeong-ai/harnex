@@ -17,30 +17,17 @@ use std::path::{Path, PathBuf};
 
 mod common;
 
-use harness_core::config::{EvidenceConfig, VerifierDecl};
-use harness_core::evidence::{AnchorKind, ClaimKind, EvidenceVerifier, parse_claims};
+use harness_core::evidence::{self, AnchorKind, parse_claims};
 
 /// Every anchor an author can write, and the documents that teach it.
 ///
-/// Four sites spell the grammar and each spells it whole. Three are read
-/// before writing a claim: `harness.toml` beside the section that turns the
-/// check on, `rule-template.md` in the skeleton every generated rule starts
-/// from, and README as the oracle's public surface. The fourth is handed to an
-/// author who got it wrong — the hint on the violation a malformed claim
-/// raises, which is a teaching site whether or not it was built as one, and so
-/// is held here rather than left to drift. Nothing else respells it: `SKILL.md`
+/// Three sites spell the grammar, each whole, and each is read before writing a
+/// claim: `harness.toml` beside the section that turns the check on,
+/// `rule-template.md` in the skeleton every generated rule starts from, and
+/// README as the oracle's public surface. Nothing else respells it: `SKILL.md`
 /// names the concept and points at the template, and the parser's own module
 /// points at the enumerations beside it.
 const GRAMMAR: &[(&str, &[AnchorKind])] = &[
-    (
-        "crates/harness-core/src/evidence/internal.rs",
-        &[
-            AnchorKind::Whole,
-            AnchorKind::Line,
-            AnchorKind::Section,
-            AnchorKind::Symbol,
-        ],
-    ),
     (
         "README.md",
         &[
@@ -70,22 +57,6 @@ const GRAMMAR: &[(&str, &[AnchorKind])] = &[
     ),
 ];
 
-fn internal_verifier() -> EvidenceVerifier {
-    EvidenceVerifier::new(&EvidenceConfig {
-        default_provenance: "internal".into(),
-        block_on_memory_only: false,
-        verifiers: vec![VerifierDecl {
-            provenance: "internal".into(),
-            strategy: "file-path-line".into(),
-            library_allowlist: Vec::new(),
-            max_age_days: None,
-        }],
-        advisory_dir: "evidence".into(),
-        advisories: Vec::new(),
-    })
-    .expect("the internal verifier is a declared strategy")
-}
-
 fn repo_file(relative: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -106,10 +77,7 @@ fn anchors_taught(text: &str) -> Vec<(String, AnchorKind)> {
     text.lines()
         .filter(|line| line.contains("[file:"))
         .flat_map(|line| parse_claims(line.trim_start()))
-        .filter_map(|claim| match claim.kind {
-            ClaimKind::File { path, anchor } => Some((path, anchor.kind())),
-            _ => None,
-        })
+        .map(|claim| (claim.path, claim.anchor.kind()))
         .collect()
 }
 
@@ -169,13 +137,12 @@ fn every_anchor_the_parser_reads_is_taught_somewhere() {
 fn readmes_examples_resolve_through_the_gate_they_describe() {
     // README's examples name paths in this repository, so the grammar is not
     // only parsed but demonstrated — and the demonstration is run through
-    // `EvidenceVerifier` rather than re-decided here. A second resolver in
+    // `evidence::verify_text` rather than re-decided here. A second resolver in
     // the guard is how a documented anchor stops resolving in the gate while
     // the guard stays green (constitution IX).
     //
     // The other two documents ship to projects that do not exist yet, so
     // their examples are illustrative and only their parse is checked above.
-    let verifier = internal_verifier();
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let readme = repo_file("README.md");
     let shown: Vec<&str> = readme
@@ -194,7 +161,7 @@ fn readmes_examples_resolve_through_the_gate_they_describe() {
         shown.len()
     );
     for line in shown {
-        let findings = verifier.verify_text(line.trim_start(), Path::new("README.md"), &root);
+        let findings = evidence::verify_text(line.trim_start(), Path::new("README.md"), &root);
         assert!(
             findings.is_empty(),
             "README teaches an example the gate rejects: {line}\n{findings:#?}"
