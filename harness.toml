@@ -106,7 +106,6 @@ roots = ["~/.claude/projects"]
 # of a rule.
 [[lifecycle.consumer_detectors]]
 kind = "rule"
-strategy = "grep"
 pattern = "{slug}.md"
 exclude_globs = [".claude/rules/{slug}.md", ".harness/**"]
 

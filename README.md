@@ -244,8 +244,6 @@ harnex ask serve <page> <asks.json> [--within <min>]  # a decision page on 127.0
 harnex ask current <answered.json> <asks.json>        # which earlier answers still hold now
 harnex ask words <locale>                             # every sentence serve may put on a page
 
-harnex graph version | backlinks <id> | orphans | stale | nodes --kind K | diff <a> <b>
-
 harnex export schema {config|envelope|finding|event|permissions|error-codes|
                        session|session-submissions|session-baseline|
                        session-trend|asks|ask-outcome|ask-current|ask-words|

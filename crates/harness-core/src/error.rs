@@ -40,14 +40,11 @@ wire_enum! {
         ValidateFrontmatterMalformed => "VALIDATE_FRONTMATTER_MALFORMED",
         ValidateFrontmatterInvalid => "VALIDATE_FRONTMATTER_INVALID",
         LifecycleObservationCorrupt => "LIFECYCLE_OBSERVATION_CORRUPT",
-        LifecycleConsumerStrategyUnknown => "LIFECYCLE_CONSUMER_STRATEGY_UNKNOWN",
         LifecycleDemoteWithoutApproval => "LIFECYCLE_DEMOTE_WITHOUT_APPROVAL",
         LifecycleDecisionTextEmpty => "LIFECYCLE_DECISION_TEXT_EMPTY",
         LifecycleTagEmpty => "LIFECYCLE_TAG_EMPTY",
         GuardHookInputInvalid => "GUARD_HOOK_INPUT_INVALID",
         GuardSpawnFailure => "GUARD_SPAWN_FAILURE",
-        GraphResponseInvalid => "GRAPH_RESPONSE_INVALID",
-        GraphSpawnFailure => "GRAPH_SPAWN_FAILURE",
         AuditGitFailure => "AUDIT_GIT_FAILURE",
         CheckGitFailure => "CHECK_GIT_FAILURE",
         LifecycleGitFailure => "LIFECYCLE_GIT_FAILURE",
@@ -128,9 +125,6 @@ pub enum Error {
     #[error("observation ledger corrupt at {path:?}: {message}")]
     LifecycleObservationCorrupt { path: PathBuf, message: String },
 
-    #[error("consumer detector strategy unknown: '{strategy}'")]
-    LifecycleConsumerStrategyUnknown { strategy: String },
-
     #[error("demote refused: no prior Approved decision for ({tag}, {normalized_text})")]
     LifecycleDemoteWithoutApproval {
         tag: String,
@@ -148,12 +142,6 @@ pub enum Error {
 
     #[error("guard spawn failure: {message}")]
     GuardSpawnFailure { message: String },
-
-    #[error("graph response invalid: {message}")]
-    GraphResponseInvalid { message: String },
-
-    #[error("nodex spawn failure: {message}")]
-    GraphSpawnFailure { message: String },
 
     #[error("git command failed: {message}")]
     AuditGitFailure { message: String },
@@ -224,9 +212,6 @@ impl Error {
             Self::ValidateFrontmatterMalformed { .. } => ErrorCode::ValidateFrontmatterMalformed,
             Self::ValidateFrontmatterInvalid { .. } => ErrorCode::ValidateFrontmatterInvalid,
             Self::LifecycleObservationCorrupt { .. } => ErrorCode::LifecycleObservationCorrupt,
-            Self::LifecycleConsumerStrategyUnknown { .. } => {
-                ErrorCode::LifecycleConsumerStrategyUnknown
-            }
             Self::LifecycleDemoteWithoutApproval { .. } => {
                 ErrorCode::LifecycleDemoteWithoutApproval
             }
@@ -234,8 +219,6 @@ impl Error {
             Self::LifecycleTagEmpty => ErrorCode::LifecycleTagEmpty,
             Self::GuardHookInputInvalid { .. } => ErrorCode::GuardHookInputInvalid,
             Self::GuardSpawnFailure { .. } => ErrorCode::GuardSpawnFailure,
-            Self::GraphResponseInvalid { .. } => ErrorCode::GraphResponseInvalid,
-            Self::GraphSpawnFailure { .. } => ErrorCode::GraphSpawnFailure,
             Self::AuditGitFailure { .. } => ErrorCode::AuditGitFailure,
             Self::CheckGitFailure { .. } => ErrorCode::CheckGitFailure,
             Self::LifecycleGitFailure { .. } => ErrorCode::LifecycleGitFailure,
@@ -287,10 +270,6 @@ impl Error {
             Self::GuardHookInputInvalid { .. } => {
                 Some("hook stdin must be JSON matching the Claude Code event schema")
             }
-            Self::GraphResponseInvalid { .. } => {
-                Some("check nodex output format — expected a JSON envelope")
-            }
-            Self::GraphSpawnFailure { .. } => Some("ensure nodex is installed and on PATH"),
             Self::AuditGitFailure { .. } => Some(
                 "the fill-marker scan reads the files git says the project owns; ensure git is installed and the working directory is a repository",
             ),
@@ -380,7 +359,7 @@ mod error_code_tests {
         let count = ErrorCode::ALL.len();
         let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(count, unique.len(), "ALL has a duplicate variant");
-        assert!(count >= 36, "ALL shrank unexpectedly — variant dropped?");
+        assert!(count >= 33, "ALL shrank unexpectedly — variant dropped?");
     }
 
     #[test]

@@ -56,7 +56,6 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::context` | explicit file targets to Claude-owned instructions; no prompt injection or workflow orchestration |
 | `harness-core::ask` | a decision put to the person on a page — the asks file, the sentences harnex puts on the page, the answers that come back, and whether each still holds when it is recorded |
 | `harness-core::export` | JSON Schema emission |
-| `harness-core::graph` | read-only `nodex` CLI bridge |
 | `harness-core::check` | unified validation gate |
 | `harness-cli` | thin clap wrapper; each command emits one envelope |
 

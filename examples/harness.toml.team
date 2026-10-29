@@ -125,13 +125,11 @@ observation_dir = ".harness/observations"
 
 [[lifecycle.consumer_detectors]]
 kind = "rule"
-strategy = "grep"
 pattern = "{slug}"
 exclude_globs = [".claude/rules/{slug}.md", "docs/feedback/**"]
 
 [[lifecycle.consumer_detectors]]
 kind = "skill"
-strategy = "grep"
 pattern = "/{slug}"
 
 [retirement.exempt]

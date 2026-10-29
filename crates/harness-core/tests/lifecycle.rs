@@ -6,9 +6,8 @@ use harness_core::config::{
 };
 use harness_core::error::Error;
 use harness_core::lifecycle::{
-    ConsumerDetector, DecisionLedger, GrepConsumerDetector, LedgerReader,
-    LifecycleDecisionRecorder, ObservationLedger, PromotionDecision, RetirementClassifier,
-    RetirementSignal, RetirementSweeper, SilenceState, consumer_detector_for,
+    ConsumerDetector, DecisionLedger, LedgerReader, LifecycleDecisionRecorder, ObservationLedger,
+    PromotionDecision, RetirementClassifier, RetirementSignal, RetirementSweeper, SilenceState,
 };
 use harness_core::telemetry::{Event, JsonlStorage, TelemetryAppender, TelemetryQuery};
 use jiff::{SignedDuration, Timestamp};
@@ -44,7 +43,6 @@ fn default_lifecycle(observation_dir: PathBuf) -> LifecycleConfig {
         decision_dir: parent.join("decisions"),
         consumer_detectors: vec![ConsumerDetectorDecl {
             kind: "rule".into(),
-            strategy: "grep".into(),
             pattern: "{slug}".into(),
             exclude_globs: vec![],
         }],
@@ -762,14 +760,13 @@ fn consumer_detector_finds_references() {
     let unrelated = tmp.path().join("docs/other.md");
     std::fs::write(&unrelated, "irrelevant content").unwrap();
 
-    let detector = GrepConsumerDetector::new(
+    let detector = ConsumerDetector::new(
         ConsumerDetectorDecl {
             kind: "rule".into(),
-            strategy: "grep".into(),
             pattern: "{slug}".into(),
             exclude_globs: vec![".claude/rules/{slug}.md".into()],
         },
-        tmp.path().to_path_buf(),
+        tmp.path(),
     )
     .unwrap();
     let consumers = detector.find_consumers("my-rule").unwrap();
@@ -800,14 +797,13 @@ fn consumer_detector_reads_what_the_project_owns_and_nothing_else_on_the_machine
     std::fs::write(target.join("build.log"), "references my-rule here").unwrap();
     std::fs::write(tmp.path().join("notes.md"), "my-rule, untracked as yet").unwrap();
 
-    let detector = GrepConsumerDetector::new(
+    let detector = ConsumerDetector::new(
         ConsumerDetectorDecl {
             kind: "rule".into(),
-            strategy: "grep".into(),
             pattern: "{slug}".into(),
             exclude_globs: vec![],
         },
-        tmp.path().to_path_buf(),
+        tmp.path(),
     )
     .unwrap();
     let mut consumers = detector.find_consumers("my-rule").unwrap();
@@ -838,14 +834,13 @@ fn a_symlink_is_its_link_text_and_neither_its_target_nor_a_second_count() {
     .unwrap();
     std::os::unix::fs::symlink("docs/spec.md", tmp.path().join("again.md")).unwrap();
 
-    let detector = GrepConsumerDetector::new(
+    let detector = ConsumerDetector::new(
         ConsumerDetectorDecl {
             kind: "rule".into(),
-            strategy: "grep".into(),
             pattern: "{slug}".into(),
             exclude_globs: vec![],
         },
-        tmp.path().to_path_buf(),
+        tmp.path(),
     )
     .unwrap();
     assert_eq!(
@@ -896,14 +891,13 @@ fn an_unmerged_file_is_one_consumer_not_one_per_index_stage() {
          listing has nothing to repeat"
     );
 
-    let detector = GrepConsumerDetector::new(
+    let detector = ConsumerDetector::new(
         ConsumerDetectorDecl {
             kind: "rule".into(),
-            strategy: "grep".into(),
             pattern: "{slug}".into(),
             exclude_globs: vec![],
         },
-        tmp.path().to_path_buf(),
+        tmp.path(),
     )
     .unwrap();
     assert_eq!(
@@ -920,13 +914,12 @@ fn a_directory_that_is_not_a_repository_is_refused_rather_than_walked() {
     std::fs::write(&real, "see my-rule").unwrap();
     let decl = ConsumerDetectorDecl {
         kind: "rule".into(),
-        strategy: "grep".into(),
         pattern: "{slug}".into(),
         exclude_globs: vec![],
     };
     assert!(
         matches!(
-            GrepConsumerDetector::new(decl.clone(), tmp.path().to_path_buf()),
+            ConsumerDetector::new(decl.clone(), tmp.path()),
             Err(Error::LifecycleGitFailure { .. })
         ),
         "without git the set the detector reads does not exist, and a walk in its place \
@@ -976,10 +969,10 @@ fn retirement_classifier_marks_no_consumers_silent() {
     let rule_path = rule_dir.join("orphan-rule.md");
     std::fs::write(&rule_path, "body").unwrap();
     let cfg = default_lifecycle(tmp.path().join(".harness/observations"));
-    let detector = consumer_detector_for(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
+    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, None);
     let verdict = classifier
-        .classify("rule", &rule_path, detector.as_ref(), SilenceState::Silent)
+        .classify("rule", &rule_path, &detector, SilenceState::Silent)
         .unwrap();
     assert!(verdict.signals.contains(&RetirementSignal::NoConsumers));
     assert!(verdict.signals.contains(&RetirementSignal::Silent));
@@ -999,52 +992,12 @@ fn retirement_classifier_honors_exempt_list() {
             slugs: vec!["constitution".into()],
         },
     };
-    let detector = consumer_detector_for(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
+    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, Some(&retire_cfg));
     let verdict = classifier
-        .classify("rule", &rule_path, detector.as_ref(), SilenceState::Silent)
+        .classify("rule", &rule_path, &detector, SilenceState::Silent)
         .unwrap();
     assert!(verdict.exempt);
-}
-
-#[test]
-fn consumer_factory_rejects_unknown_strategy() {
-    let tmp = TempDir::new().unwrap();
-    let result = consumer_detector_for(
-        ConsumerDetectorDecl {
-            kind: "rule".into(),
-            strategy: "made-up".into(),
-            pattern: "{slug}".into(),
-            exclude_globs: vec![],
-        },
-        tmp.path(),
-    );
-    let err = match result {
-        Err(e) => e,
-        Ok(_) => panic!("expected unknown-strategy error"),
-    };
-    assert_eq!(
-        err.code(),
-        harness_core::error::ErrorCode::LifecycleConsumerStrategyUnknown
-    );
-}
-
-#[test]
-fn consumer_factory_builds_graph_backlinks_when_nodex_present() {
-    let tmp = TempDir::new().unwrap();
-    let result = consumer_detector_for(
-        ConsumerDetectorDecl {
-            kind: "rule".into(),
-            strategy: "graph-backlinks".into(),
-            pattern: "rule-{slug}".into(),
-            exclude_globs: vec![],
-        },
-        tmp.path(),
-    );
-    match result {
-        Ok(detector) => assert_eq!(detector.strategy(), "graph-backlinks"),
-        Err(e) => assert_eq!(e.code(), harness_core::error::ErrorCode::GraphSpawnFailure),
-    }
 }
 
 #[test]
@@ -1671,7 +1624,6 @@ fn a_live_record_convicts_only_the_kinds_that_declared_it() {
         .consumer_detectors
         .push(ConsumerDetectorDecl {
             kind: "skill".into(),
-            strategy: "grep".into(),
             pattern: "{slug}".into(),
             exclude_globs: vec![],
         });

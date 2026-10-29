@@ -32,10 +32,9 @@ call site's; where one derives `Serialize`, `#[serde(rename_all)]` spells the
 wire string a second time and a test beside that type holds the two equal.
 
 **Suffix is chosen for what the type names**, not for the pattern:
-`Strategy` for swappable algorithms (`VerifierStrategy`,
-`ConsumerStrategy`); `Kind` for storage / shape (`StorageKind`,
-`PermissionFindingKind`); `Profile` for composable policy
-(`PermissionProfile`); `Decision` for ledger verdicts
+`Strategy` for swappable algorithms (`VerifierStrategy`); `Kind` for
+storage / shape (`StorageKind`, `PermissionFindingKind`); `Profile` for
+composable policy (`PermissionProfile`); `Decision` for ledger verdicts
 (`PromotionDecision`); `Target` for output destination (`SchemaTarget`);
 `Outcome` for terminal state (`VerifyOutcome`, `EmitOutcome`);
 `Severity` for finding rank. The pattern is the SSoT + exhaustive
@@ -94,8 +93,6 @@ visible at code review time.
 | Trait | Reason it exists (not speculation) |
 |---|---|
 | `Verifier` | runtime dispatch per claim shape |
-| `ConsumerDetector` | grep + graph-backlinks, each anchored at construction |
-| `NodexRunner` | external-process boundary + test mock seam (see `graph::client`) |
 | `CommandRunner` | external-process boundary + test mock seam (see `guard::stop_audit`) |
 | `Browser` | external-process boundary + test mock seam (see `ask::serve`) |
 | `SurfaceValidator` | one driver, `ProjectChecker::run_surface_validator`, over every glob-driven validator |

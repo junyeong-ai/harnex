@@ -19,7 +19,7 @@ use serde_json::Value;
 use crate::config::{Config, KindDecl};
 use crate::envelope::SkippedRule;
 use crate::error::{Error, Result};
-use crate::lifecycle::consumer::{ConsumerDetector, consumer_detector_for};
+use crate::lifecycle::consumer::ConsumerDetector;
 use crate::lifecycle::retirement::{RetirementClassifier, RetirementOutcome, SilenceState};
 use crate::telemetry::TelemetryQuery;
 
@@ -87,7 +87,7 @@ impl<'a> RetirementSweeper<'a> {
             kind: &'u str,
             /// The telemetry Kind recording this kind's invocations, if any.
             record: Option<&'u str>,
-            detector: Box<dyn ConsumerDetector>,
+            detector: ConsumerDetector,
             entries: Vec<(PathBuf, String)>,
         }
         // A path a foundation kind names is foundation for every kind: the
@@ -133,10 +133,9 @@ impl<'a> RetirementSweeper<'a> {
             // A detector that cannot read its corpus measures nothing for
             // this kind, and says so; the other kinds are still swept. The
             // explicit ask, `classify`, still fails on the same error.
-            let detector = match consumer_detector_for(detector_decl.clone(), self.working_dir) {
+            let detector = match ConsumerDetector::new(detector_decl.clone(), self.working_dir) {
                 Ok(detector) => detector,
-                Err(Error::LifecycleGitFailure { message })
-                | Err(Error::GraphSpawnFailure { message }) => {
+                Err(Error::LifecycleGitFailure { message }) => {
                     skipped.push(SkippedRule {
                         slug: kind_decl.name.clone(),
                         reason: format!("consumers unmeasured: {message}"),
@@ -186,8 +185,7 @@ impl<'a> RetirementSweeper<'a> {
                     }
                     _ => SilenceState::Unmeasured,
                 };
-                let verdict =
-                    classifier.classify(unit.kind, path, unit.detector.as_ref(), silence)?;
+                let verdict = classifier.classify(unit.kind, path, &unit.detector, silence)?;
                 verdicts.push(verdict);
                 files_classified += 1;
             }

@@ -79,7 +79,6 @@ fn the_instruction_the_pattern_ships_actually_measures_a_surface() {
         .expect("scaffold declares [lifecycle]");
     lifecycle.consumer_detectors.push(ConsumerDetectorDecl {
         kind: "skill".into(),
-        strategy: "grep".into(),
         pattern: "{slug}".into(),
         exclude_globs: vec![],
     });

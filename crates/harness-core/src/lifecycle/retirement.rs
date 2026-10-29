@@ -72,7 +72,7 @@ impl<'a> RetirementClassifier<'a> {
         &self,
         kind: &str,
         path: &Path,
-        consumer: &dyn ConsumerDetector,
+        consumer: &ConsumerDetector,
         silence: SilenceState,
     ) -> Result<RetirementOutcome> {
         let slug = path

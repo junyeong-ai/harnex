@@ -95,11 +95,6 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::governs::GovernsCommand,
     },
-    /// Read-only queries over a nodex document graph
-    Graph {
-        #[command(subcommand)]
-        cmd: commands::graph::GraphCommand,
-    },
     /// Emit shell completions (bash | zsh | fish | powershell | elvish)
     Completions(commands::completions::CompletionsArgs),
     /// Unified validation gate — runs every enabled validator
@@ -168,7 +163,6 @@ fn main() -> ExitCode {
         Command::Export { cmd } => commands::export::run(cmd, &mut out),
         Command::Session { cmd } => commands::session::run(cmd, &mut out),
         Command::Governs { cmd } => commands::governs::run(cmd, &mut out),
-        Command::Graph { cmd } => commands::graph::run(cmd, &mut out),
         Command::Completions(args) => commands::completions::run(args, &mut out),
         Command::Check(args) => commands::check::run(args, &mut out),
         Command::Audit(args) => commands::audit::run(args, &mut out),

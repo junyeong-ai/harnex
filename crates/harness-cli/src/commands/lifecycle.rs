@@ -7,8 +7,8 @@ use clap::Subcommand;
 use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::lifecycle::{
-    DecisionLedger, LedgerReader, LifecycleDecisionRecorder, ObservationLedger, PromotionDecision,
-    RetirementClassifier, RetirementSweeper, SilenceState, consumer_detector_for,
+    ConsumerDetector, DecisionLedger, LedgerReader, LifecycleDecisionRecorder, ObservationLedger,
+    PromotionDecision, RetirementClassifier, RetirementSweeper, SilenceState,
 };
 use harness_core::telemetry::{JsonlStorage, TelemetryQuery};
 
@@ -226,7 +226,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                     location: None,
                 })?
                 .clone();
-            let detector = consumer_detector_for(detector_decl, &root)?;
+            let detector = ConsumerDetector::new(detector_decl, &root)?;
             let classifier = RetirementClassifier::new(lc, config.retirement.as_ref());
             let target_path = if path.is_absolute() {
                 path
@@ -237,7 +237,7 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                 message: format!("unknown silence state '{silence}'"),
                 location: None,
             })?;
-            let verdict = classifier.classify(&kind, &target_path, detector.as_ref(), silence)?;
+            let verdict = classifier.classify(&kind, &target_path, &detector, silence)?;
             write_envelope_success(out, verdict)?;
             Ok(ExitCode::SUCCESS)
         }
