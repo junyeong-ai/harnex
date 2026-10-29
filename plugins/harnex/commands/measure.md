@@ -43,6 +43,13 @@ overrides.
 it, which is the only scope where the repository can be consulted about what
 survived. Without it the window spans every project on the machine.
 
+The corpus reaches back only as far as Claude Code keeps transcripts: it
+deletes those older than `cleanupPeriodDays`, 30 days by default. The corpus
+whole is at most that period, and a gap between baselines longer than it has
+lost the records in between, so name the oldest session the window holds in
+the report. A longer `cleanupPeriodDays` in the user's settings keeps more for
+the next run.
+
 ## 2 — Take the facts
 
 ```
