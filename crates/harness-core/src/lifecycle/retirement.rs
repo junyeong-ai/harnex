@@ -27,8 +27,9 @@ pub struct RetirementOutcome {
     pub slug: String,
     pub path: PathBuf,
     /// Days since the last commit that touched the file; 0 while the working
-    /// tree holds a change no commit records.
-    pub age_days: i64,
+    /// tree holds a change no commit records; null for a file a linked
+    /// directory places outside the project, which no history here dates.
+    pub age_days: Option<i64>,
     pub consumer_count: usize,
     pub silence: SilenceState,
     pub signals: Vec<RetirementSignal>,
@@ -61,25 +62,14 @@ wire_enum! {
     }
 }
 
-/// When an artifact last changed, which `Stale` and the grace period read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LastChange {
-    /// The last commit that touched it; the working tree still matches it.
-    Committed(Timestamp),
-    /// A change no commit records yet — an edit in progress, or a file never
-    /// committed — so the artifact is changing now.
-    Uncommitted,
-}
+pub use crate::git::LastChange;
 
 /// The [`LastChange`] of each of `paths`, in order, as the repository at
-/// `working_dir` records it. One history walk answers them all.
+/// `working_dir` records it — the age `Stale` and the grace period read. One
+/// history walk answers them all.
 pub fn last_changes(working_dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChange>> {
-    let committed = crate::git::last_committed(working_dir, paths)
-        .map_err(|crate::git::Failure(message)| Error::LifecycleGitFailure { message })?;
-    Ok(committed
-        .into_iter()
-        .map(|at| at.map_or(LastChange::Uncommitted, LastChange::Committed))
-        .collect())
+    crate::git::last_changes(working_dir, paths)
+        .map_err(|crate::git::Failure(message)| Error::LifecycleGitFailure { message })
 }
 
 pub struct RetirementClassifier<'a> {
@@ -110,19 +100,22 @@ impl<'a> RetirementClassifier<'a> {
             path: path.to_path_buf(),
             source: e,
         })?;
+        // An artifact outside the project has no age here, so it is neither
+        // stale nor new: no measurement is read as a zero.
         let age_days = match changed {
             LastChange::Committed(at) => {
-                (Timestamp::now().duration_since(at).as_secs() / 86_400).max(0)
+                Some((Timestamp::now().duration_since(at).as_secs() / 86_400).max(0))
             }
-            LastChange::Uncommitted => 0,
+            LastChange::Uncommitted => Some(0),
+            LastChange::Outside => None,
         };
-        let in_grace = age_days < (self.config.grace_period_days as i64);
+        let in_grace = age_days.is_some_and(|age| age < self.config.grace_period_days as i64);
 
         let consumers = consumer.find_consumers(&slug)?;
         let consumer_count = consumers.len();
 
         let mut signals = Vec::new();
-        if age_days > (self.config.stale_days as i64) {
+        if age_days.is_some_and(|age| age > self.config.stale_days as i64) {
             signals.push(RetirementSignal::Stale);
         }
         if consumer_count == 0 {
