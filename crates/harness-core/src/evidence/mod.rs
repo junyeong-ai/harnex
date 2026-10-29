@@ -19,9 +19,8 @@
 //!   forgot to close at the end of the file, so the claims below it are code
 //!   and go unchecked, and nothing here says so — the accident is real and
 //!   the alternative was worse: the finding that reported it fired on every
-//!   document a renderer reads correctly. `plan audit` keeps its own signal
-//!   because its subject is rows an author believes recorded; this module's
-//!   is what a document asserts, and a reader asserts nothing it cannot see.
+//!   document a renderer reads correctly. This module's subject is what a
+//!   document asserts, and a reader asserts nothing it cannot see.
 
 pub mod advisory;
 mod claim;

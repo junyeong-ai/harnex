@@ -2,17 +2,17 @@
 //! refusals.
 //!
 //! `reference/enforced-vs-advisory.md` tells the skill what a generated gate
-//! owes when it cannot measure, and it teaches by naming the five surfaces
-//! that already answer it. The skill generates from that passage, so a surface
+//! owes when it cannot measure, and it teaches by naming the surfaces that
+//! already answer it. The skill generates from that passage, so a surface
 //! that quietly loses its third answer does not merely leave the passage
 //! wrong — it leaves the next harness designed against an enforcement nothing
 //! performs.
 //!
 //! Each expectation is bound to the table ROW that makes the claim, not to the
-//! document. Two rows answer `unmeasured` and a third contains `skipped`, so a
-//! document-wide search is satisfied by a neighbour: the outcomes could be
-//! swapped between rows, or a row reversed outright, with every predicate
-//! still true.
+//! document. The passage's heading and prose use the same words, so a
+//! document-wide search is satisfied by a sentence that claims nothing about
+//! the surface: the outcomes could be swapped between rows, or a row reversed
+//! outright, with every predicate still true.
 
 use std::path::{Path, PathBuf};
 
@@ -24,13 +24,11 @@ use harness_core::lifecycle::{
     ConsumerDetector, DecisionLedger, LedgerReader, ObservationLedger, RetirementClassifier,
     RetirementSignal, SilenceState,
 };
-use harness_core::plan::AcceptanceCounts;
 
 /// Each row of the passage's table: the surface it names, and the word that
 /// row must answer with.
 const REFUSALS: &[(&str, &str)] = &[
     ("lifecycle retire", "unmeasured"),
-    ("plan audit", "unmeasured"),
     ("hooks/pre-commit", "unjudged"),
     ("lifecycle candidates", "observations_read"),
     ("guard stop-audit", "skip"),
@@ -165,26 +163,6 @@ fn retirement_fires_no_silence_signal_for_a_slug_it_could_not_measure() {
     assert!(
         silent.signals.contains(&RetirementSignal::Silent),
         "and a measured silence must still fire one, or this guard proves nothing"
-    );
-}
-
-#[test]
-fn an_acceptance_criterion_nothing_answered_blocks_as_a_blocker_does() {
-    let unanswered = AcceptanceCounts {
-        passed: 0,
-        failed: 0,
-        unmeasured: 1,
-    };
-    assert_eq!(unanswered.blocking(), 1);
-    assert_eq!(
-        AcceptanceCounts {
-            passed: 1,
-            failed: 0,
-            unmeasured: 0,
-        }
-        .blocking(),
-        0,
-        "and a criterion that passed does not, or the count says nothing"
     );
 }
 

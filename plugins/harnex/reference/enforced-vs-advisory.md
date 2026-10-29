@@ -45,15 +45,12 @@ thing that survives a confused, careless, or adversarial agent turn.
    computes it — a hook, a test, a validator, or a recorded count the next
    step must read before proceeding. State the computer beside the control;
    one with no computer is an observation for the lifecycle ledger, not a
-   rule. The spec-workflow's controls name theirs: `harnex plan audit`
-   computes the disposition floor, the append-only row contract, and whether
-   the commit that lands a round's findings records that round at all, and the
-   shipped pre-commit arm holds them at the commit. A record a loop writes is
-   held to what that loop cannot rewrite — rows that never vanish, a log that
-   only appends, counts held rank by rank to the rows rather than to a record's
-   own summary. And the computer decides what a control can be: a count of
-   passes bounds nothing a reviewer finds, so a review loop returns to the
-   operator on where its findings land, never on how many passes ran.
+   rule. The spec-workflow's gates name theirs: `review` passes on the verdict
+   a fresh-context reviewer delivered, `acceptance` on what was run or read for
+   each criterion, and wrapup reads the decision log before it starts. And the
+   computer decides what a control can be: a count of passes bounds nothing a
+   reviewer finds, so a review loop returns to the operator on where its
+   findings land, never on how many passes ran.
 
 ## Unmeasured is not passed
 
@@ -74,7 +71,6 @@ it. Every enforced surface harnex ships names its own:
 | Surface | The answer it refuses to invent | What it says instead |
 |---|---|---|
 | `lifecycle retire` | silence inferred from a record that could never have named the artifact | `unmeasured`, which fires no signal |
-| `plan audit` acceptance | a criterion nothing answered, counted as passed | `unmeasured`, blocking an approval exactly as a Blocker does |
 | `hooks/pre-commit` | a secret scan that failed, exiting like one that found a secret | a code of its own for findings, so a failure is `unjudged` rather than a finding |
 | `lifecycle candidates` | an unwritten or unreadable ledger, read as a corpus that produced nothing | `observations_read` beside the candidates, and an error where the read failed |
 | `guard stop-audit` | a failed probe or critique read as a clean verdict | a skip naming the failure; an exhausted retry budget ends continuation and requests operator review |

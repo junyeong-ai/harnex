@@ -67,7 +67,7 @@ because under `0.y` the minor is the compatibility boundary, as Cargo reads it.
 refuses every command that loads `harness.toml` — a `guard` hook skips instead,
 because it must never block a session — so a project crosses a break there by
 one decision and never because the binary on its machine moved. A command that
-loads none — `plan audit`, `audit`, the floor tripwire — is out of the pin's
+loads none — `audit`, the floor tripwire — is out of the pin's
 reach, so an arm generated to call one is the consumer above. An addition that
 leaves every gate's verdict on unmodified input standing ships in a patch, and
 so does a correction: a newly detected pre-existing defect.

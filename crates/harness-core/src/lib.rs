@@ -30,7 +30,6 @@ pub mod guard;
 pub mod lifecycle;
 mod markdown;
 pub mod path_guard;
-pub mod plan;
 pub mod policy;
 pub mod routines;
 pub mod scaffold;
