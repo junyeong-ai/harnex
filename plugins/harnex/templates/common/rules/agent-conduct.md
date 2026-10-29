@@ -3,10 +3,6 @@
 Always loaded. How to work in this repository, as distinct from what this
 repository is (`CLAUDE.md`) and what it forbids (`constitution.md`).
 
-Derived from Anthropic's published prompting guidance for the current Claude
-models. Every line below is a behaviour the model does not reliably default
-to, which is the only reason it costs context every turn.
-
 ## Ground answers in what you read
 
 Never speak about code you have not opened. A file the user names is a file to

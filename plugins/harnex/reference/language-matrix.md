@@ -156,8 +156,9 @@ repo is never penalised for the tool it does not install.
   shells out to. A wrapper that gated on the language's build tool skipped
   working hooks whenever an unrelated tool was missing.
 - Two git hooks, activated by `git config core.hooksPath hooks`:
-  `hooks/pre-commit` runs gitleaks on staged changes (the enforced half of
-  "secrets never reach git"; permission deny covers only Claude — fail-open if
+  `hooks/pre-commit` runs gitleaks on staged changes (the half of the secret
+  boundary that stops a developer's own commit; permission deny covers only
+  Claude — fail-open if
   gitleaks is absent, and a scan that fails rather than finds blocks as
   unscanned, since the two exit alike unless findings are given a code of
   their own; wants gitleaks 8.19+, whose `git` subcommand it scans with;

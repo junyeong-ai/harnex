@@ -10,43 +10,26 @@ What must always happen is a hook or a `permissions.deny` rule, never a
 sentence in a memory file. CLAUDE.md and rules shape behavior; only hooks and
 deny rules are guaranteed.
 
-## II. Secrets never reach git
+## II. The floor is read where it runs
 
-Two enforced boundaries: the permission layer denies reads/writes/edits of
-secret files (stops Claude), and the `hooks/pre-commit` git hook runs
-gitleaks on staged changes (stops a developer's own commit). The permission
-layer alone cannot cover commits made outside Claude — the git hook closes
-that gap. A leaked secret is irreversible once pushed.
+Secrets, destructive operations, formatting and the end of a session are held
+by `permissions.deny` and the hooks in `.claude/settings.json`, and by
+`hooks/pre-commit`. Read those files for what is blocked. A Stop-class hook
+that reports exits 0: exit 2 keeps the session from stopping.
 
-## III. Destructive operations are denied, not discouraged
-
-Force-push, hard reset, blanket `git add`, `rm -rf` of roots, and arbitrary
-code execution are denied at the permission layer.
-
-## IV. Formatting lives at the boundary
-
-Where the language profile ships a formatter hook and the project configures
-that formatter, it runs on every Edit/Write via PostToolUse — style is the
-linter's job, never a rule the model must remember.
-
-## V. The session never traps
-
-Reporting Stop-class hooks exit 0: exit 2 prevents Stop/SubagentStop and forces
-continuation.
-
-## VI. Constraints earn their place
+## III. Constraints earn their place
 
 A rule exists only if it enforces an invariant the model cannot self-verify, at
 a boundary where a violation is irreversible or invisible. No rule restates a
 habit a capable model already follows. No heuristic ships whose false-positive
 cost exceeds its catch rate.
 
-## VII. Defaults bend; the floor does not
+## IV. Defaults bend; the floor does not
 
 Two layers, and they are never written alike. **Defaults** are process knobs
 the operator owns — review depth, check-in cadence, fan-out, worktree
 isolation. An explicit instruction changes them. **The floor** is Articles
-I–VI plus whatever guardrail this project made enforced: it bends for nobody
+I–III plus whatever guardrail this project made enforced: it bends for nobody
 and moves only through break-glass, audited.
 
 Never phrase a default as a floor. An absolute "never" on a cadence or depth

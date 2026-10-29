@@ -133,7 +133,7 @@ consumes it and retires the agent. "Idle and addressable" is a re-summon
 surface, not a resting state. A fixer's round report is a checkpoint.
 
 Per round: one investigator or fixer per independent track, one reviewer per
-repository. A session that exceeds that says why. All of it is Article VII
+repository. A session that exceeds that says why. All of it is Article IV
 default, not floor.
 
 ## Break glass

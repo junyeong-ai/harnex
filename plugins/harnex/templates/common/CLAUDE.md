@@ -17,16 +17,7 @@
 <!-- harnex-managed:start enforcement-summary -->
 ## Enforcement
 
-Guardrails that must always hold live in `.claude/settings.json` (hooks +
-`permissions.deny`), not here:
-- Secrets and destructive operations are denied.
-- Edits are auto-formatted (PostToolUse) where the language profile's
-  formatter is configured.
-- Sessions surface uncommitted work on Stop without trapping.
-
-See `.claude/rules/constitution.md` for the foundation laws,
-`.claude/rules/agent-conduct.md` for how to work in this repo, and
-`.claude/rules/*.md` (path-scoped) for topic guidance.
-
-`/harness-curate` runs the promotion-and-retirement pass those rules describe.
+What must always hold is enforced by `.claude/settings.json` (hooks and
+`permissions.deny`) and `hooks/pre-commit`, not written here.
+`/harness-curate` runs the promotion-and-retirement pass the rules describe.
 <!-- harnex-managed:end enforcement-summary -->
