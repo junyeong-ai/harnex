@@ -34,10 +34,9 @@ const CHANNEL_RESTATEMENTS: [&str; 2] = [".claude/rules/envelope.md", ".claude/r
 /// the writers: each reports where the binary could not — because it never
 /// ran, or because it was never reached — and an arm on another channel
 /// reports to no one.
-const OWNER: [&str; 10] = [
+const OWNER: [&str; 9] = [
     "crates/harness-core/src/guard/mod.rs",
     "crates/harness-cli/src/commands/guard.rs",
-    "crates/harness-cli/tests/guard_stop_audit.rs",
     "crates/harness-cli/tests/guard_floor.rs",
     "crates/harness-core/tests/floor_arm.rs",
     "hooks/check-floor.sh",

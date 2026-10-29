@@ -2,17 +2,12 @@
 paths:
   - "crates/harness-core/src/guard/**"
 governs:
-  concept: the Claude Code hook adapter and Stop auditor
+  concept: the Claude Code hook adapter
   live_truth:
     - crates/harness-core/src/guard
 ---
 
 # guard — Claude Code runtime adapter
-
-HookEvent parses stdin JSON for Claude Code hook events. The toolkit
-does not model event-specific fields as typed Rust structs — the
-hook-event surface evolves upstream. Common fields are extracted; the
-rest is accessible via `HookEvent::field(key)`.
 
 `project_dir` owns the `${CLAUDE_PROJECT_DIR}` grammar — the one token form in
 a hook that denotes a repository path by construction. Both anchor spellings
@@ -31,42 +26,6 @@ anchor sits inside the string reads
 
 One home because two would drift: the hook-wiring auditor and the
 scaffold-manifest test ask the same question of the same grammar.
-
-StopAuditor handles the Stop event in three phases:
-1. `has_changes_check` — a predicate: exit 0 allows the stop, exit 1 means
-   there is work, and any other exit, a signal, or a spawn failure is the
-   probe failing rather than answering, which is a `Skip` and never a
-   `Present` that would buy a critique on a command that never ran.
-   `StopAuditConfig::changes_probe` owns what a usable probe is and refuses
-   the rest at load, because phase 3 spends a model call.
-2. Bump per-session retry counter via `path_guard::write_atomic`.
-   Exceeding `max_retries` returns `Escalate`: allow the stop and tell the
-   operator the work needs review, without another critique.
-3. Spawn the configured critique skill via `claude --print`. Parse the
-   returned JSON envelope; any finding that fails the gate
-   (`Severity::fails_gate` — blocker or major) blocks the stop. A failed
-   process or unsuccessful envelope is a `Skip`. A recognised gating finding
-   still blocks when another item is unreadable; unreadable items otherwise
-   yield `Skip`, never a clean verdict. Every critique attempt consumes budget,
-   including failures. Only a valid clean verdict clears the retry counter;
-   exhaustion ends automatic critiques for the session.
-
-`harnex guard stop-audit` maps a `StopDecision::Block` to exit 2 — the
-sole sanctioned exception to Article II (where exit 2 = runtime failure).
-Per the Claude Code Stop-hook contract, exit 2 prevents the stop and
-forces continuation; exit 1 would be non-blocking. This is intentional;
-do not "normalize" it to exit 1. The reason rides stderr, which is where
-the runtime reads a blocked stop's reason from; stdout is ignored there,
-so an envelope written beside it is a reason discarded.
-
-Because exit 2 is that verdict, nothing else may reach it. Every reason the
-audit cannot produce one — an unloadable config, an undeclared section, hook
-input it cannot read, a probe that did not answer — is a `Skip`: exit 0 with
-the reason on `systemMessage`, the same direction the floor auditor takes,
-because what it names is a configuration the operator repairs. An allowed stop
-emits nothing. Propagating a failure as an error exits 2 through the generic
-path, which the runtime reads as a Block that no retry counter bounds, holding
-the session open at every Stop.
 
 FloorAuditor (`guard::floor`) handles PreToolUse for Bash and
 Edit|Write|MultiEdit: the hook-bypass tripwire plus the enforcement-surface

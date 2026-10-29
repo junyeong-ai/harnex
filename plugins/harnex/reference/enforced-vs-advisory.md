@@ -73,7 +73,6 @@ it. Every enforced surface harnex ships names its own:
 | `lifecycle retire` | silence inferred from a record that could never have named the artifact | `unmeasured`, which fires no signal |
 | `hooks/pre-commit` | a secret scan that failed, exiting like one that found a secret | a code of its own for findings, so a failure is `unjudged` rather than a finding |
 | `lifecycle candidates` | an unwritten or unreadable ledger, read as a corpus that produced nothing | `observations_read` beside the candidates, and an error where the read failed |
-| `guard stop-audit` | a failed probe or critique read as a clean verdict | a skip naming the failure; an exhausted retry budget ends continuation and requests operator review |
 
 Two shapes produce it, and a generated gate is worth checking against both. A
 **default standing in for a measurement** — an empty configuration read as

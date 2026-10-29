@@ -14,12 +14,11 @@
 //! the surface: the outcomes could be swapped between rows, or a row reversed
 //! outright, with every predicate still true.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 mod common;
 
 use harness_core::config::{ConsumerDetectorDecl, LifecycleConfig};
-use harness_core::guard::{StopAuditor, StopDecision};
 use harness_core::lifecycle::{
     ConsumerDetector, DecisionLedger, LedgerReader, ObservationLedger, RetirementClassifier,
     RetirementSignal, SilenceState,
@@ -31,7 +30,6 @@ const REFUSALS: &[(&str, &str)] = &[
     ("lifecycle retire", "unmeasured"),
     ("hooks/pre-commit", "unjudged"),
     ("lifecycle candidates", "observations_read"),
-    ("guard stop-audit", "skip"),
 ];
 
 /// A leak code has to survive the shell that carries it and stay clear of
@@ -199,30 +197,6 @@ fn the_candidate_survey_reports_the_corpus_beside_the_candidates() {
             .survey()
             .is_err(),
         "a ledger that could not be read must fail, not report a corpus of zero"
-    );
-}
-
-#[test]
-fn the_stop_audit_skips_rather_than_deciding_when_its_probe_gave_no_answer() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = harness_core::config::StopAuditConfig {
-        runtime: "claude-code".into(),
-        critique_skill: "/critique".into(),
-        max_retries: 3,
-        // The probe the loader refuses, which a hand-built config still holds.
-        has_changes_check: Vec::new(),
-        retry_ledger_dir: dir.path().join("_audit_retry"),
-    };
-    let decision = StopAuditor::new(&config, dir.path(), "sess".into())
-        .run()
-        .unwrap();
-    assert!(
-        matches!(decision, StopDecision::Skip { .. }),
-        "an audit that cannot reach a verdict must skip, never decide: {decision:?}"
-    );
-    assert!(
-        !Path::new(&config.retry_ledger_dir).exists(),
-        "and it must spend nothing — not even the retry ledger"
     );
 }
 

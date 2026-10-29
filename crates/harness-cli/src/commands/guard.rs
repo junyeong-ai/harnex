@@ -4,24 +4,12 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 use harness_core::error::{Error, Result};
-use harness_core::guard::{
-    FloorAuditor, FloorDecision, HookEvent, OPERATOR_CHANNEL_KEY, SUPPRESS_OUTPUT_KEY, StopAuditor,
-    StopDecision,
-};
+use harness_core::guard::{FloorAuditor, FloorDecision, OPERATOR_CHANNEL_KEY, SUPPRESS_OUTPUT_KEY};
 
 use super::{config_dir, load_config};
 
 #[derive(Subcommand)]
 pub enum GuardCommand {
-    /// Run the fresh-context Stop audit. Reads session_id from --session
-    /// or from hook stdin JSON's `session_id` field if not given. Wire as a
-    /// Stop hook directly (NOT through `_stop_runner.sh`): Block exits 2 to
-    /// force continuation. A spent retry budget exits 0 with an operator
-    /// notice; an allowed stop exits 0 silently.
-    StopAudit {
-        #[arg(long)]
-        session: Option<String>,
-    },
     /// PreToolUse floor-integrity check. Wire for Bash to refuse a
     /// hook-skipping git command, which needs no declaration, and for
     /// Edit|Write|MultiEdit to freeze what [guard.floor] declares. Blocks
@@ -39,7 +27,6 @@ pub enum GuardCommand {
 
 pub fn run<W: Write>(cmd: GuardCommand, out: &mut W) -> Result<ExitCode> {
     match cmd {
-        GuardCommand::StopAudit { session } => stop_audit(session, out),
         GuardCommand::Floor => floor(out),
         GuardCommand::TelemetryEmit => telemetry_emit(),
     }
@@ -131,72 +118,4 @@ fn notice<W: Write>(out: &mut W, message: &str) -> Result<ExitCode> {
         source: e,
     })?;
     Ok(ExitCode::SUCCESS)
-}
-
-/// The Stop event's hook contract, not the envelope: exit 2 is reserved for a
-/// Blocker the audit reached, whose reason feeds back on stderr; every other
-/// outcome exits 0, and an allowed stop says nothing at all.
-///
-/// A skip names a configuration the operator has to fix, so it takes their
-/// channel — `systemMessage`, the same one the floor auditor skips on. The
-/// Stop event delivers `hookSpecificOutput.additionalContext` too, and it is
-/// the model's; a section this binary cannot load is not something the model
-/// can act on.
-fn stop_audit<W: Write>(session: Option<String>, out: &mut W) -> Result<ExitCode> {
-    // Exit 2 is spelled only for a verdict. Every reason the audit cannot
-    // reach one — an unloadable config, an undeclared section, hook input it
-    // cannot read — allows the stop and says why. Propagating those as errors
-    // would exit 2 through the generic path, which the runtime reads as "keep
-    // going": the same failure at every Stop, past the retry counter.
-    fn skip<W: Write>(out: &mut W, reason: &str) -> Result<ExitCode> {
-        notice(out, &format!("[stop-audit skipped: {reason}]"))
-    }
-
-    let (config, config_path, working_dir) = match load_config() {
-        Ok(loaded) => loaded,
-        Err(e) => return skip(out, &e.to_string()),
-    };
-    let Some(sa_cfg) = config.guard.as_ref().and_then(|g| g.stop_audit.as_ref()) else {
-        return skip(
-            out,
-            &format!(
-                "no [guard.stop_audit] section in {} — declare it or remove the Stop wiring",
-                config_path.display()
-            ),
-        );
-    };
-    let root = config_dir(&config_path, &working_dir);
-
-    let session_id = match session {
-        Some(s) => s,
-        None => {
-            let mut buf = String::new();
-            if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
-                return skip(out, &format!("stdin unreadable: {e}"));
-            }
-            match HookEvent::from_stdin_json(&buf) {
-                Ok(event) => event.session_id,
-                Err(e) => return skip(out, &format!("hook stdin json: {e}")),
-            }
-        }
-    };
-
-    let decision = match StopAuditor::new(sa_cfg, &root, session_id).run() {
-        Ok(decision) => decision,
-        Err(e) => return skip(out, &e.to_string()),
-    };
-    match decision {
-        StopDecision::Skip { reason } => skip(out, &reason),
-        StopDecision::Escalate { reason } => {
-            notice(out, &format!("[stop-audit escalated: {reason}]"))
-        }
-        StopDecision::Allow => Ok(ExitCode::SUCCESS),
-        // Exit 2 prevents the stop and forces continuation; exit 1 would be
-        // non-blocking, and the Block would have no effect. The bounded retry
-        // counter inside StopAuditor keeps this from looping.
-        StopDecision::Block { reason } => {
-            eprintln!("✗ stop-audit: {reason}");
-            Ok(ExitCode::from(2))
-        }
-    }
 }

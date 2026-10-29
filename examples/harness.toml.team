@@ -135,12 +135,3 @@ pattern = "/{slug}"
 [retirement.exempt]
 kinds = ["constitution"]
 slugs = ["harness", "learned-patterns"]
-
-# ---------- guard ----------
-
-[guard.stop_audit]
-runtime = "claude-code"
-critique_skill = "/my-critique"
-max_retries = 3
-has_changes_check = ["git", "diff", "--quiet", "HEAD"]
-retry_ledger_dir = ".harness/_audit_retry"

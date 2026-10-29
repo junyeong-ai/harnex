@@ -48,7 +48,7 @@ domain-suffix convention:
 | Suffix | Means | Examples |
 |---|---|---|
 | `Validator` | frontmatter / structural shape check on a single file | `RuleValidator`, `SkillValidator`, `SettingsValidator`, `CommitMsgValidator` |
-| `Auditor` | cross-input semantic / policy compliance check | `PermissionAuditor`, `ProjectAuditor`, `StopAuditor` |
+| `Auditor` | cross-input semantic / policy compliance check | `PermissionAuditor`, `ProjectAuditor`, `FloorAuditor` |
 | `Verifier` | provenance / claim verification | `EvidenceVerifier` |
 | `Classifier` | enrichment that assigns a category | `RetirementClassifier` |
 | `Sweeper` | top-level driver that fans out classifiers over kinds | `RetirementSweeper` |
@@ -93,7 +93,6 @@ visible at code review time.
 | Trait | Reason it exists (not speculation) |
 |---|---|
 | `Verifier` | runtime dispatch per claim shape |
-| `CommandRunner` | external-process boundary + test mock seam (see `guard::stop_audit`) |
 | `Browser` | external-process boundary + test mock seam (see `ask::serve`) |
 | `SurfaceValidator` | one driver, `ProjectChecker::run_surface_validator`, over every glob-driven validator |
 

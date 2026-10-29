@@ -65,7 +65,7 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::lifecycle::LifecycleCommand,
     },
-    /// Claude Code runtime guards (hooks, Stop audit)
+    /// Claude Code runtime guards, run as hook arms
     Guard {
         #[command(subcommand)]
         cmd: commands::guard::GuardCommand,
