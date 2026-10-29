@@ -25,11 +25,15 @@ fn invalid_argument_emits_error_envelope_and_exit_2() {
 /// A `guard` invocation is a hook, and the runtime reads its exit 2 as a
 /// Block: an arm this binary cannot parse skips on the operator's channel
 /// instead of refusing every tool call or keeping a session from stopping.
+///
+/// The notice is all the operator learns of an arm a newer binary dropped, so
+/// it names what did not parse.
 #[test]
 fn a_guard_invocation_that_does_not_parse_skips_instead_of_blocking() {
-    for args in [
-        &["guard", "no-such-verb"][..],
-        &["guard", "floor", "--no-such-flag"],
+    for (args, named) in [
+        (&["guard", "no-such-verb"][..], "'no-such-verb'"),
+        (&["guard", "floor", "--no-such-flag"], "--no-such-flag"),
+        (&["guard"], "a subcommand is required"),
     ] {
         let out = harness().args(args).output().unwrap();
         assert_eq!(out.status.code(), Some(0), "{args:?}");
@@ -38,7 +42,7 @@ fn a_guard_invocation_that_does_not_parse_skips_instead_of_blocking() {
         assert!(
             json[OPERATOR_CHANNEL_KEY]
                 .as_str()
-                .is_some_and(|m| m.contains("skipped")),
+                .is_some_and(|m| m.contains("skipped") && m.contains(named)),
             "{args:?}: {json}"
         );
         assert_eq!(json[SUPPRESS_OUTPUT_KEY], true, "{args:?}");
