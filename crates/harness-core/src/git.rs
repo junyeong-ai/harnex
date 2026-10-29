@@ -160,6 +160,9 @@ pub(crate) fn last_committed(
             "HEAD",
         ]),
     )?;
+    // Untracked as `git status` reads it, the developer's own excludes too:
+    // whether this checkout holds a pending change is its own question, and a
+    // `.DS_Store` every Finder window writes is not one.
     let untracked = stdout(
         dir,
         &with_specs(&[
@@ -167,7 +170,7 @@ pub(crate) fn last_committed(
             "ls-files",
             "-z",
             "--others",
-            "--exclude-per-directory=.gitignore",
+            "--exclude-standard",
         ]),
     )?;
     let edited: HashSet<&str> = edited
