@@ -140,6 +140,14 @@ reject_unknown_keys = true
 # name the kind's slugs — the Silent signal then means something for it, and
 # every other kind stays honestly `unmeasured` rather than convicted by a
 # record that could never have named it.
+#
+# Track the ledgers this loop reads, `.harness/observations/` and
+# `.harness/decisions/`: they are the repository's memory, and a clone without
+# them starts every count over. Keep `.harness/telemetry/` and
+# `.harness/session-baselines.jsonl` out of git, since they measure this
+# machine. A `.gitignore` of `.harness/*` followed by
+# `!.harness/observations/`, `!.harness/decisions/` and `!.harness/records/`
+# does both.
 [lifecycle]
 
 # Where Claude Code writes the transcripts `/harnex:measure` reads. The oracle
