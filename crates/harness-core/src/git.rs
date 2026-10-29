@@ -25,7 +25,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use jiff::Timestamp;
@@ -95,72 +95,92 @@ impl LastChange {
     }
 }
 
-/// One part asked about: the pathspec git answers it by, or an answer that
-/// needs no history.
-enum Query {
-    Pathspec(String),
-    Answered(LastChange),
-}
-
-/// What one path reads, as the repository spells it: its content once every
-/// link is followed, and each link inside the repository the path passes
-/// through, since repointing one changes what it reads.
+/// What one path reads, spelled from the repository's root: where the path
+/// resolves, and every link inside the repository the resolution passes
+/// through, since repointing one changes what it reads. Where it resolves is
+/// dated as git records it, so a link among a directory's files is dated as
+/// that link.
 struct Reading {
-    content: Query,
-    links: Vec<Query>,
+    /// `None` where the path resolves outside the repository, or to nothing.
+    content: Option<String>,
+    links: Vec<String>,
 }
 
 impl Reading {
-    /// Each part spelled as git spells it, from the repository's root `top`:
-    /// `..` and links resolved, and each component as its directory stores
-    /// it, since a file system that folds case or composition finds a file
-    /// under other spellings too.
     fn of(top: &Path, path: &Path) -> Result<Self, Failure> {
-        let failed = |e: std::io::Error| Failure(format!("{}: {e}", path.display()));
         let spec = |resolved: &Path| match resolved.strip_prefix(top) {
             Ok(relative) => relative
                 .to_str()
-                .map(|spec| Query::Pathspec(spec.to_owned()))
+                .map(|spec| Some(spec.to_owned()))
                 .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display()))),
-            Err(_) => Ok(Query::Answered(LastChange::Unrecorded)),
+            Err(_) => Ok(None),
         };
         // A path that is not there has no history; any other reason it
         // cannot be resolved is a measurement that failed.
-        let content = match std::fs::canonicalize(path) {
-            Ok(content) => spec(&content)?,
+        let (content, links) = match resolve(path) {
+            Ok(resolved) => resolved,
             Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
                 return Ok(Self {
-                    content: Query::Answered(LastChange::Unrecorded),
+                    content: None,
                     links: Vec::new(),
                 });
             }
-            Err(e) => return Err(failed(e)),
+            Err(e) => return Err(Failure(format!("{}: {e}", path.display()))),
         };
-        let mut links = Vec::new();
-        // `components` drops a trailing `/`, through which a link reads as
-        // what it points at. A link outside the repository is not its to date.
-        let path: PathBuf = path.components().collect();
-        for link in path.ancestors().filter(|a| !a.as_os_str().is_empty()) {
-            let (Some(parent), Some(name)) = (link.parent(), link.file_name()) else {
-                continue;
-            };
-            if std::fs::symlink_metadata(link)
-                .map_err(failed)?
-                .file_type()
-                .is_symlink()
-            {
-                let link = std::fs::canonicalize(parent).map_err(failed)?.join(name);
-                if link.starts_with(top) {
-                    links.push(spec(&link)?);
-                }
-            }
+        // A link outside the repository, `/var` on macOS, is not its to date.
+        let mut in_repository = Vec::new();
+        for link in &links {
+            in_repository.extend(spec(link)?);
         }
-        Ok(Self { content, links })
+        Ok(Self {
+            content: spec(&content)?,
+            links: in_repository,
+        })
     }
 
-    fn parts(&self) -> impl Iterator<Item = &Query> {
-        std::iter::once(&self.content).chain(&self.links)
+    fn parts(&self) -> impl Iterator<Item = &str> {
+        self.content.iter().chain(&self.links).map(String::as_str)
     }
+}
+
+/// `path` resolved as the system resolves it, a component at a time, each
+/// link's target taking the link's place: where it ends, as its directories
+/// store it, and every link it passed through, each in its directory's
+/// stored spelling under the name the path gave it.
+fn resolve(path: &Path) -> std::io::Result<(PathBuf, Vec<PathBuf>)> {
+    // Linux stops following links at 40, macOS at 32.
+    const MAX_LINKS: usize = 40;
+    let steps = |path: &Path| -> Vec<PathBuf> {
+        path.components()
+            .rev()
+            .map(|step| PathBuf::from(step.as_os_str()))
+            .collect()
+    };
+    let mut rest = steps(&std::path::absolute(path)?);
+    let mut at = PathBuf::new();
+    let mut links = Vec::new();
+    while let Some(step) = rest.pop() {
+        match step.components().next() {
+            Some(Component::Normal(name)) => {
+                let next = at.join(name);
+                if !std::fs::symlink_metadata(&next)?.file_type().is_symlink() {
+                    at = next;
+                    continue;
+                }
+                if links.len() == MAX_LINKS {
+                    return Err(std::io::Error::other("too many levels of links"));
+                }
+                links.push(std::fs::canonicalize(&at)?.join(name));
+                rest.extend(steps(&std::fs::read_link(&next)?));
+            }
+            Some(Component::ParentDir) => {
+                at.pop();
+            }
+            Some(Component::RootDir | Component::Prefix(_)) => at.push(&step),
+            Some(Component::CurDir) | None => {}
+        }
+    }
+    Ok((std::fs::canonicalize(&at)?, links))
 }
 
 /// When the repository holding `dir` last changed each of `paths` on this
@@ -188,31 +208,22 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
         .iter()
         .map(|path| Reading::of(&top, path))
         .collect::<Result<Vec<Reading>, Failure>>()?;
-    let pathspecs: Vec<&str> = readings
-        .iter()
-        .flat_map(Reading::parts)
-        .filter_map(|query| match query {
-            Query::Pathspec(spec) => Some(spec.as_str()),
-            Query::Answered(_) => None,
-        })
-        .collect();
+    let pathspecs: Vec<&str> = readings.iter().flat_map(Reading::parts).collect();
     let record = match pathspecs.is_empty() {
         true => Record::default(),
         false => Record::read(&top, &pathspecs)?,
     };
-    let answer = |query: &Query| match query {
-        Query::Pathspec(spec) => record.of(spec),
-        Query::Answered(answer) => Ok(*answer),
-    };
     readings
         .iter()
         .map(|reading| {
+            let content = match &reading.content {
+                Some(spec) => record.of(spec)?,
+                None => LastChange::Unrecorded,
+            };
             reading
                 .links
                 .iter()
-                .try_fold(answer(&reading.content)?, |read, link| {
-                    Ok(read.with(answer(link)?))
-                })
+                .try_fold(content, |read, link| Ok(read.with(record.of(link)?)))
         })
         .collect()
 }
