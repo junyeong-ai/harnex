@@ -64,13 +64,16 @@ anywhere — so zero consumers on a rule says how often its name is written,
 never whether it is used. The load question has an owner: `retire.md` answers it
 from `facts.harness.rule_loads`, and states the window that evidence needs.
 
-Age, which Stale and the grace period read, is the caller's `LastChange`
-from `last_changes`: the last commit that touched the file, or now while the
-working tree holds a change no commit records. Never a modification time — a
-checkout writes every file's, so a fresh clone or a CI runner reads every
-artifact as new and inside its grace period. A shallow clone fails with
-`LIFECYCLE_GIT_FAILURE`, because its boundary commit dates every file it holds
-to the day the clone was cut. One history walk answers the whole sweep.
+Age, which Stale and the grace period read, is the caller's `LastChange` from
+`last_changes`: the last commit that touched the file, or now while the
+working tree holds a change no commit records. A directory artifact, a skill,
+is dated by the files under it, since git lists only files; the user's git
+configuration may not reshape the log the age is parsed from. Never a
+modification time — a checkout writes every file's, so a fresh clone or a CI
+runner reads every artifact as new and inside its grace period. A shallow
+clone fails with `LIFECYCLE_GIT_FAILURE`, because its boundary commit dates
+every file it holds to the day the clone was cut. One history walk answers the
+whole sweep.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.

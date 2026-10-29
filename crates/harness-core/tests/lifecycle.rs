@@ -1473,6 +1473,118 @@ fn a_shallow_clone_is_refused_rather_than_dated_by_its_boundary() {
     );
 }
 
+fn days_since(change: &LastChange) -> Option<i64> {
+    match change {
+        LastChange::Committed(at) => Some(Timestamp::now().duration_since(*at).as_secs() / 86_400),
+        LastChange::Uncommitted => None,
+    }
+}
+
+#[test]
+fn a_directory_is_dated_by_the_files_it_holds() {
+    // A skill is the directory its files sit in, and git lists only files.
+    let tmp = repo();
+    let skills = tmp.path().join(".claude/skills");
+    for name in ["settled", "edited", "grown"] {
+        std::fs::create_dir_all(skills.join(name)).unwrap();
+        std::fs::write(skills.join(name).join("SKILL.md"), "a skill").unwrap();
+    }
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(skills.join("edited/SKILL.md"), "a skill, mid-edit").unwrap();
+    std::fs::write(skills.join("grown/reference.md"), "not yet committed").unwrap();
+
+    let changes = last_changes(
+        tmp.path(),
+        &["settled", "edited", "grown"].map(|name| skills.join(name)),
+    )
+    .unwrap();
+    assert!(
+        matches!(days_since(&changes[0]), Some(199..=200)),
+        "{changes:?}"
+    );
+    assert!(
+        matches!(
+            changes[1..],
+            [LastChange::Uncommitted, LastChange::Uncommitted]
+        ),
+        "an edited file and an untracked one are changes now: {changes:?}"
+    );
+}
+
+#[test]
+fn the_history_reads_the_same_under_any_log_configuration() {
+    // A developer's configuration signs every commit, prints each signature's
+    // verification into `git log`, and hides what the first commit added.
+    let tmp = repo();
+    let keys = TempDir::new().unwrap();
+    let key = keys.path().join("key");
+    let generated = std::process::Command::new("ssh-keygen")
+        .args(["-q", "-t", "ed25519", "-N", "", "-C", "t@t", "-f"])
+        .arg(&key)
+        .status()
+        .unwrap();
+    assert!(generated.success());
+    let public = std::fs::read_to_string(key.with_extension("pub")).unwrap();
+    let allowed = keys.path().join("allowed");
+    std::fs::write(&allowed, format!("t@t {public}")).unwrap();
+    for (name, value) in [
+        ("gpg.format", "ssh"),
+        ("user.signingKey", key.to_str().unwrap()),
+        ("gpg.ssh.allowedSignersFile", allowed.to_str().unwrap()),
+        ("commit.gpgSign", "true"),
+        ("log.showSignature", "true"),
+        ("log.showRoot", "false"),
+    ] {
+        let set = common::git(tmp.path())
+            .args(["config", name, value])
+            .status()
+            .unwrap();
+        assert!(set.success(), "git config {name}");
+    }
+    std::fs::write(tmp.path().join("old.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(tmp.path().join("recent.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 3);
+
+    let changes = last_changes(
+        tmp.path(),
+        &[tmp.path().join("old.md"), tmp.path().join("recent.md")],
+    )
+    .unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
+    assert!(
+        matches!(ages[..], [Some(199..=200), Some(2..=3)]),
+        "{ages:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_path_is_dated_however_it_is_spelled() {
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("old.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    let links = TempDir::new().unwrap();
+    std::os::unix::fs::symlink(tmp.path(), links.path().join("project")).unwrap();
+
+    let spellings = [
+        rules.join("old.md"),
+        tmp.path().join("./.claude/rules/old.md"),
+        tmp.path().join(".claude/../.claude/rules/old.md"),
+        links.path().join("project/.claude/rules/old.md"),
+    ];
+    let changes = last_changes(tmp.path(), &spellings).unwrap();
+    for (spelling, change) in spellings.iter().zip(&changes) {
+        assert!(
+            matches!(days_since(change), Some(199..=200)),
+            "{}: {change:?}",
+            spelling.display()
+        );
+    }
+}
+
 #[test]
 fn sweep_skips_foundation_kinds_and_every_path_they_name() {
     // The foundation glob is carved out of the rule glob, so the same file
