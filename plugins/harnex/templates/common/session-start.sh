@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
-# SessionStart: surface branch + uncommitted count + recent commits, where the
-# branch stands against its upstream and the default branch, and the clone's
-# other worktrees as context. SessionStart delivers a hook's plain stdout to
-# Claude directly (per the hooks spec), so no JSON envelope — and no
-# language-specific JSON tool — is needed: print the facts as text. Fail-open: a git error in a
-# non-repo or detached state emits nothing rather than failing the session.
+# SessionStart: where the branch stands against its upstream and the default
+# branch, and the clone's other worktrees, as context. Claude Code already gives
+# every new context its own snapshot of the branch, the status and the recent
+# commits, so this prints what that snapshot leaves out. SessionStart delivers
+# a hook's plain stdout to Claude directly (per the hooks spec), so no JSON
+# envelope — and no language-specific JSON tool — is needed: print the facts as
+# text. Fail-open: a git error in a non-repo or detached state emits nothing
+# rather than failing the session.
 set -uo pipefail
-
-branch=$(git branch --show-current 2>/dev/null || echo unknown)
-changes=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-commits=$(git log --oneline -3 2>/dev/null || echo "no commits")
-
-printf 'Branch: %s\nUncommitted files: %s\nRecent commits:\n%s\n' \
-  "$branch" "$changes" "$commits"
 
 # Where this branch stands, as of the last fetch — no network here. A session
 # building on a stale base finds out at the merge, and work another session has
