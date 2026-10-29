@@ -1512,6 +1512,44 @@ fn a_directory_is_dated_by_the_files_it_holds() {
 }
 
 #[test]
+fn a_merge_dates_what_it_brought_to_the_branch() {
+    // A side branch wrote a rule long ago and changed another the trunk had
+    // also changed; the merge landed both yesterday, resolving the conflict.
+    let tmp = repo();
+    let git = |args: &[&str], days: i64| {
+        let at = Timestamp::now() - SignedDuration::from_hours(24 * days);
+        let date = format!("{} +0000", at.as_second());
+        common::git(tmp.path())
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(args)
+            .env("GIT_AUTHOR_DATE", &date)
+            .env("GIT_COMMITTER_DATE", &date)
+            .status()
+            .unwrap()
+    };
+    std::fs::write(tmp.path().join("both.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 300);
+    assert!(git(&["switch", "-q", "-c", "side"], 0).success());
+    std::fs::write(tmp.path().join("both.md"), "the side's rule").unwrap();
+    std::fs::write(tmp.path().join("side.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    assert!(git(&["switch", "-q", "-"], 0).success());
+    std::fs::write(tmp.path().join("both.md"), "the trunk's rule").unwrap();
+    commit_days_ago(tmp.path(), 150);
+    assert!(!git(&["merge", "-q", "--no-ff", "side"], 1).success());
+    std::fs::write(tmp.path().join("both.md"), "the resolved rule").unwrap();
+    commit_days_ago(tmp.path(), 1);
+
+    let changes = last_changes(
+        tmp.path(),
+        &[tmp.path().join("side.md"), tmp.path().join("both.md")],
+    )
+    .unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
+    assert!(matches!(ages[..], [Some(0..=1), Some(0..=1)]), "{ages:?}");
+}
+
+#[test]
 fn the_history_reads_the_same_under_any_log_configuration() {
     // A developer's configuration signs every commit, prints each signature's
     // verification into `git log`, and hides what the first commit added.
