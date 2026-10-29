@@ -97,7 +97,7 @@ impl SpecSurface {
         Self {
             name: "output-styles",
             doc: "/en/output-styles",
-            measured: "2026-08-17",
+            measured: "2026-10-29",
             digest: 0x87fa_1462_4b13_6476,
         },
         Self {
