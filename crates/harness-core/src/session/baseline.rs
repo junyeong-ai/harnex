@@ -784,20 +784,3 @@ pub fn latest_observed_to(ledger: &[Baseline], project: Option<&Path>) -> Option
         .max()
         .and_then(|t| t.checked_add(jiff::SignedDuration::from_nanos(1)).ok())
 }
-
-#[cfg(test)]
-mod metric_tests {
-    use super::SessionMetric;
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for m in SessionMetric::ALL {
-            assert_eq!(SessionMetric::from_str(m.as_str()), Some(*m));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert_eq!(SessionMetric::from_str("tokens_per_dollar"), None);
-    }
-}

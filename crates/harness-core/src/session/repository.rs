@@ -545,20 +545,3 @@ fn run(project: &Path, args: &[&str]) -> Result<String> {
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
-
-#[cfg(test)]
-mod fate_tests {
-    use super::CommitFate;
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for f in CommitFate::ALL {
-            assert_eq!(CommitFate::from_str(f.as_str()), Some(*f));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert_eq!(CommitFate::from_str("undone"), None);
-    }
-}

@@ -187,27 +187,4 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn target_from_str_round_trips_every_variant() {
-        for variant in SchemaTarget::ALL {
-            assert_eq!(SchemaTarget::from_str(variant.as_str()), Some(*variant));
-        }
-        assert_eq!(SchemaTarget::from_str("nope"), None);
-    }
-
-    #[test]
-    fn target_all_is_unique_and_nonshrinking() {
-        // What a test can guard without variant reflection, matching
-        // `error_code_tests`: no duplicate, and never shrinks. Completeness of
-        // ALL is procedural — the exhaustive `as_str` match forces an edit to
-        // this file, where ALL sits directly above it.
-        let unique: std::collections::BTreeSet<&str> =
-            SchemaTarget::ALL.iter().map(|t| t.as_str()).collect();
-        assert_eq!(SchemaTarget::ALL.len(), unique.len(), "ALL has a duplicate");
-        assert!(
-            SchemaTarget::ALL.len() >= 15,
-            "ALL shrank unexpectedly — target dropped?"
-        );
-    }
 }

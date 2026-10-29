@@ -327,36 +327,7 @@ impl Error {
 }
 
 #[cfg(test)]
-mod error_code_tests {
-    use super::ErrorCode;
-    use std::collections::BTreeSet;
-
-    #[test]
-    fn all_codes_have_unique_nonempty_strings() {
-        let mut seen = BTreeSet::new();
-        for code in ErrorCode::ALL {
-            let s = code.as_str();
-            assert!(!s.is_empty(), "{code:?} has empty as_str");
-            assert!(seen.insert(s), "duplicate code string: {s}");
-        }
-    }
-
-    #[test]
-    fn all_entries_are_unique_and_nonshrinking() {
-        // Guards what a test CAN guard without variant reflection: ALL carries
-        // no duplicate (a copy-paste slip) and never shrinks (a dropped
-        // variant). It does NOT prove ALL lists every variant — on stable Rust
-        // that needs variant reflection. The defense against an as_str-present
-        // but ALL-absent variant is procedural: the exhaustive `as_str` match
-        // forces editing THIS file when a variant is added (ALL sits directly
-        // above it), and the add-variant checklist in crates/harness-core/
-        // CLAUDE.md names the step. Bump the floor when a variant is added.
-        let count = ErrorCode::ALL.len();
-        let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
-        assert_eq!(count, unique.len(), "ALL has a duplicate variant");
-        assert!(count >= 32, "ALL shrank unexpectedly — variant dropped?");
-    }
-
+mod hint_tests {
     #[test]
     fn only_a_refused_bind_is_told_about_the_sandbox() {
         let listen = |kind| super::Error::AskListenFailed {

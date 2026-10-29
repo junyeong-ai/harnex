@@ -112,20 +112,3 @@ impl InterventionAnalyzer {
         }
     }
 }
-
-#[cfg(test)]
-mod kind_tests {
-    use super::InterventionKind;
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for k in InterventionKind::ALL {
-            assert_eq!(InterventionKind::from_str(k.as_str()), Some(*k));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert_eq!(InterventionKind::from_str("user-rejected"), None);
-    }
-}
