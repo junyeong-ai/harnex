@@ -96,18 +96,18 @@ impl LastChange {
 }
 
 /// What one path reads, spelled from the repository's root: where the path
-/// resolves, and every link inside the repository the resolution passes
-/// through, since repointing one changes what it reads. Where it resolves is
-/// dated as git records it, so a link among a directory's files is dated as
-/// that link.
+/// resolves, and every link the resolution passes through, since repointing
+/// one changes what it reads. Where it resolves is dated as git records it, so
+/// a link among a directory's files is dated as that link.
 struct Reading {
     /// `None` where the path resolves outside the repository, or to nothing.
     content: Option<String>,
-    links: Vec<String>,
+    /// `None` for a link outside the repository, which no history records.
+    links: Vec<Option<String>>,
 }
 
 impl Reading {
-    fn of(top: &Path, path: &Path) -> Result<Self, Failure> {
+    fn of(top: &Path, project: &Path, path: &Path) -> Result<Self, Failure> {
         let spec = |resolved: &Path| match resolved.strip_prefix(top) {
             Ok(relative) => relative
                 .to_str()
@@ -127,19 +127,33 @@ impl Reading {
             }
             Err(e) => return Err(Failure(format!("{}: {e}", path.display()))),
         };
-        // A link outside the repository, `/var` on macOS, is not its to date.
-        let mut in_repository = Vec::new();
+        // A link outside the repository that leads to the project or above it,
+        // `/var` on macOS or a workspace opened through a link, locates the
+        // project rather than what the path reads.
+        let locates_project = |link: &Path| {
+            std::fs::canonicalize(link)
+                .map(|to| project.starts_with(to))
+                .map_err(|e| Failure(format!("{}: {e}", link.display())))
+        };
+        let mut passed = Vec::new();
         for link in &links {
-            in_repository.extend(spec(link)?);
+            match spec(link)? {
+                None if locates_project(link)? => {}
+                part => passed.push(part),
+            }
         }
         Ok(Self {
             content: spec(&content)?,
-            links: in_repository,
+            links: passed,
         })
     }
 
-    fn parts(&self) -> impl Iterator<Item = &str> {
-        self.content.iter().chain(&self.links).map(String::as_str)
+    /// The parts git is asked about.
+    fn recorded(&self) -> impl Iterator<Item = &str> {
+        self.content
+            .iter()
+            .chain(self.links.iter().flatten())
+            .map(String::as_str)
     }
 }
 
@@ -208,29 +222,31 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
     };
     let top = canonical(top)?;
     let project = canonical(dir)?;
-    let project = project
+    let in_top = project
         .strip_prefix(&top)
         .map_err(|_| Failure(format!("{} is outside {}", dir.display(), top.display())))?;
     let readings = paths
         .iter()
-        .map(|path| Reading::of(&top, path))
+        .map(|path| Reading::of(&top, &project, path))
         .collect::<Result<Vec<Reading>, Failure>>()?;
-    let pathspecs: Vec<&str> = readings.iter().flat_map(Reading::parts).collect();
+    let pathspecs: Vec<&str> = readings.iter().flat_map(Reading::recorded).collect();
     let record = match pathspecs.is_empty() {
         true => Record::default(),
-        false => Record::read(&top, project, &pathspecs)?,
+        false => Record::read(&top, in_top, &pathspecs)?,
+    };
+    let answer = |part: Option<&str>| match part {
+        Some(spec) => record.of(spec),
+        None => Ok(LastChange::Unrecorded),
     };
     readings
         .iter()
         .map(|reading| {
-            let content = match &reading.content {
-                Some(spec) => record.of(spec)?,
-                None => LastChange::Unrecorded,
-            };
             reading
                 .links
                 .iter()
-                .try_fold(content, |read, link| Ok(read.with(record.of(link)?)))
+                .try_fold(answer(reading.content.as_deref())?, |read, link| {
+                    Ok(read.with(answer(link.as_deref())?))
+                })
         })
         .collect()
 }
