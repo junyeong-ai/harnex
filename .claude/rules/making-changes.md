@@ -63,8 +63,9 @@ them.
 Announce changes to an external contract: public API, schema, config, CLI or
 what a gate reports on unmodified input. A break ships in a minor release,
 because under `0.y` the minor is the compatibility boundary, as Cargo reads it.
-`[meta] harnex_version` pins one (`>=0.36.2, <0.37`), and a binary outside it
-refuses every command that loads `harness.toml` — a `guard` hook skips instead,
+`[meta] harnex_version` pins one, from the release a project adopted up to the
+next minor, and a binary outside it refuses every command that loads
+`harness.toml` — a `guard` hook skips instead,
 because it must never block a session — so a project crosses a break there by
 one decision and never because the binary on its machine moved. A command that
 loads none — `audit`, the floor tripwire — is out of the pin's
