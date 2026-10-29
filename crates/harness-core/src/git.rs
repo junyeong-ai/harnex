@@ -82,11 +82,85 @@ pub enum LastChange {
     Unrecorded,
 }
 
-/// One path asked about: the pathspec git answers it by, or an answer that
+impl LastChange {
+    /// One answer for what is read through several parts: a change to any is
+    /// a change to it, a part nothing records leaves it unrecorded, and
+    /// otherwise it changed when the latest of them did.
+    fn with(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Uncommitted, _) | (_, Self::Uncommitted) => Self::Uncommitted,
+            (Self::Unrecorded, _) | (_, Self::Unrecorded) => Self::Unrecorded,
+            (Self::Committed(a), Self::Committed(b)) => Self::Committed(a.max(b)),
+        }
+    }
+}
+
+/// One part asked about: the pathspec git answers it by, or an answer that
 /// needs no history.
 enum Query {
     Pathspec(String),
     Answered(LastChange),
+}
+
+/// What one path reads, as the repository spells it: its content once every
+/// link is followed, and each link inside the repository the path passes
+/// through, since repointing one changes what it reads.
+struct Reading {
+    content: Query,
+    links: Vec<Query>,
+}
+
+impl Reading {
+    /// Each part spelled as git spells it, from the repository's root `top`:
+    /// `..` and links resolved, and each component as its directory stores
+    /// it, since a file system that folds case or composition finds a file
+    /// under other spellings too.
+    fn of(top: &Path, path: &Path) -> Result<Self, Failure> {
+        let failed = |e: std::io::Error| Failure(format!("{}: {e}", path.display()));
+        let spec = |resolved: &Path| match resolved.strip_prefix(top) {
+            Ok(relative) => relative
+                .to_str()
+                .map(|spec| Query::Pathspec(spec.to_owned()))
+                .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display()))),
+            Err(_) => Ok(Query::Answered(LastChange::Unrecorded)),
+        };
+        // A path that is not there has no history; any other reason it
+        // cannot be resolved is a measurement that failed.
+        let content = match std::fs::canonicalize(path) {
+            Ok(content) => spec(&content)?,
+            Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
+                return Ok(Self {
+                    content: Query::Answered(LastChange::Unrecorded),
+                    links: Vec::new(),
+                });
+            }
+            Err(e) => return Err(failed(e)),
+        };
+        let mut links = Vec::new();
+        // `components` drops a trailing `/`, through which a link reads as
+        // what it points at. A link outside the repository is not its to date.
+        let path: PathBuf = path.components().collect();
+        for link in path.ancestors().filter(|a| !a.as_os_str().is_empty()) {
+            let (Some(parent), Some(name)) = (link.parent(), link.file_name()) else {
+                continue;
+            };
+            if std::fs::symlink_metadata(link)
+                .map_err(failed)?
+                .file_type()
+                .is_symlink()
+            {
+                let link = std::fs::canonicalize(parent).map_err(failed)?.join(name);
+                if link.starts_with(top) {
+                    links.push(spec(&link)?);
+                }
+            }
+        }
+        Ok(Self { content, links })
+    }
+
+    fn parts(&self) -> impl Iterator<Item = &Query> {
+        std::iter::once(&self.content).chain(&self.links)
+    }
 }
 
 /// When the repository holding `dir` last changed each of `paths` on this
@@ -110,29 +184,13 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
     let top = stdout(dir, &["rev-parse", "--show-toplevel"])?;
     let top = Path::new(top.trim_end_matches('\n'));
     let top = std::fs::canonicalize(top).map_err(|e| Failure(format!("{}: {e}", top.display())))?;
-    let queries = paths
+    let readings = paths
         .iter()
-        .map(|path| {
-            // A path that is not there has no history; any other reason it
-            // cannot be resolved is a measurement that failed.
-            let resolved = match stored_spelling(path) {
-                Ok(resolved) => resolved,
-                Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
-                    return Ok(Query::Answered(LastChange::Unrecorded));
-                }
-                Err(e) => return Err(Failure(format!("{}: {e}", path.display()))),
-            };
-            let Ok(relative) = resolved.strip_prefix(&top) else {
-                return Ok(Query::Answered(LastChange::Unrecorded));
-            };
-            relative
-                .to_str()
-                .map(|spec| Query::Pathspec(spec.to_owned()))
-                .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display())))
-        })
-        .collect::<Result<Vec<Query>, Failure>>()?;
-    let pathspecs: Vec<&str> = queries
+        .map(|path| Reading::of(&top, path))
+        .collect::<Result<Vec<Reading>, Failure>>()?;
+    let pathspecs: Vec<&str> = readings
         .iter()
+        .flat_map(Reading::parts)
         .filter_map(|query| match query {
             Query::Pathspec(spec) => Some(spec.as_str()),
             Query::Answered(_) => None,
@@ -142,11 +200,19 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
         true => Record::default(),
         false => Record::read(&top, &pathspecs)?,
     };
-    queries
+    let answer = |query: &Query| match query {
+        Query::Pathspec(spec) => record.of(spec),
+        Query::Answered(answer) => Ok(*answer),
+    };
+    readings
         .iter()
-        .map(|query| match query {
-            Query::Pathspec(spec) => record.of(spec),
-            Query::Answered(answer) => Ok(*answer),
+        .map(|reading| {
+            reading
+                .links
+                .iter()
+                .try_fold(answer(&reading.content)?, |read, link| {
+                    Ok(read.with(answer(link)?))
+                })
         })
         .collect()
 }
@@ -305,30 +371,6 @@ impl<'a> Record<'a> {
             (false, None) => Ok(LastChange::Unrecorded),
         }
     }
-}
-
-/// `path` spelled as git spells it: `..` and linked directories resolved, and
-/// each component as its directory stores it, since a file system that folds
-/// case or composition finds a file under other spellings too. A last
-/// component that is itself a link stays the link, which git tracks; no
-/// portable call reads back a link's stored name, so one named otherwise than
-/// its directory lists it is refused.
-fn stored_spelling(path: &Path) -> std::io::Result<PathBuf> {
-    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
-        return std::fs::canonicalize(path);
-    };
-    if !std::fs::symlink_metadata(path)?.file_type().is_symlink() {
-        return std::fs::canonicalize(path);
-    }
-    let parent = std::fs::canonicalize(parent)?;
-    for entry in std::fs::read_dir(&parent)? {
-        if entry?.file_name() == name {
-            return Ok(parent.join(name));
-        }
-    }
-    Err(std::io::Error::other(
-        "a link named otherwise than its directory lists it; give the name as listed",
-    ))
 }
 
 /// The paths asked about, matched against the paths git lists.

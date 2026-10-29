@@ -1869,33 +1869,51 @@ fn a_path_is_dated_however_it_is_spelled() {
 
 #[cfg(unix)]
 #[test]
-fn a_linked_artifact_is_dated_as_the_link_under_the_name_it_is_listed() {
-    // A skill shared from outside is committed here as a link; git tracks the
-    // link, not what it points at.
+fn a_linked_artifact_changes_when_its_link_or_what_it_reads_does() {
+    // Skills a project links in: one from beside it whose files were edited
+    // after the link was made, one newly linked to old files, one from
+    // outside the repository, and one linked a moment ago.
     let tmp = repo();
-    let shared = TempDir::new().unwrap();
-    std::fs::write(shared.path().join("SKILL.md"), "a skill").unwrap();
+    let tools = tmp.path().join("tools/skills");
+    for name in ["edited", "old"] {
+        std::fs::create_dir_all(tools.join(name)).unwrap();
+        std::fs::write(tools.join(name).join("SKILL.md"), "a skill").unwrap();
+    }
+    let outside = TempDir::new().unwrap();
+    std::fs::write(outside.path().join("SKILL.md"), "a skill").unwrap();
     let skills = tmp.path().join(".claude/skills");
     std::fs::create_dir_all(&skills).unwrap();
-    std::os::unix::fs::symlink(shared.path(), skills.join("shared")).unwrap();
+    let link = |target: &std::path::Path, name: &str| {
+        std::os::unix::fs::symlink(target, skills.join(name)).unwrap();
+    };
+    link("../../tools/skills/edited".as_ref(), "edited");
+    link(outside.path(), "shared");
     commit_days_ago(tmp.path(), 200);
+    std::fs::write(tools.join("edited/SKILL.md"), "a skill, revised").unwrap();
+    link("../../tools/skills/old".as_ref(), "relinked");
+    commit_days_ago(tmp.path(), 1);
+    link(outside.path(), "new");
 
-    let changes = last_changes(tmp.path(), &[skills.join("shared")]).unwrap();
+    let changes = last_changes(
+        tmp.path(),
+        &[
+            skills.join("edited"),
+            skills.join("relinked"),
+            tmp.path().join(".claude/skills/relinked/"),
+            skills.join("shared"),
+            skills.join("new"),
+        ],
+    )
+    .unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(days_since(&changes[0]), Some(199..=200)),
+        matches!(ages[..3], [Some(0..=1), Some(0..=1), Some(0..=1)])
+            && matches!(
+                changes[3..],
+                [LastChange::Unrecorded, LastChange::Uncommitted]
+            ),
         "{changes:?}"
     );
-
-    // Named any other way, the link is refused rather than read as a path
-    // no commit records.
-    let folded = skills.join("SHARED");
-    if folded.exists() {
-        let err = last_changes(tmp.path(), &[folded]).unwrap_err();
-        assert_eq!(
-            err.code(),
-            harness_core::error::ErrorCode::LifecycleGitFailure
-        );
-    }
 }
 
 #[test]
