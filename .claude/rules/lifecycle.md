@@ -76,8 +76,9 @@ period. An artifact's path is resolved as the system resolves it, and every link
 the resolution passes through, its own, a directory's or one in a chain, is part
 of it, so repointing one changes it. Where the path resolves is dated as git
 records it, a link among a directory artifact's files as that link. A name
-matches as `git status` matches it, composed under `core.precomposeUnicode` and
-case-folded under `core.ignorecase`; the rest of the user's git configuration
+matches as `git status` matches it, composed under `core.precomposeUnicode` on
+macOS, the one system git reads it on, and case-folded under `core.ignorecase`;
+the rest of the user's git configuration
 may not reshape the log the age is parsed from. Never a modification time — a
 checkout writes every file's, so a fresh clone or a CI runner reads every
 artifact as new and inside its grace period. A shallow clone fails with

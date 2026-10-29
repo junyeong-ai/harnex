@@ -1722,8 +1722,14 @@ fn a_name_is_dated_however_its_characters_are_composed() {
 #[test]
 fn a_name_spelled_alike_is_another_file_where_git_reads_names_byte_for_byte() {
     // Linux keeps a composed and a decomposed name apart, and so does git
-    // there; a file system that composes names cannot hold both.
+    // there, `core.precomposeUnicode` or not: git composes names on macOS only.
+    // A file system that composes names cannot hold both.
     let tmp = repo();
+    let set = common::git(tmp.path())
+        .args(["config", "core.precomposeUnicode", "true"])
+        .status()
+        .unwrap();
+    assert!(set.success());
     let rules = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rules).unwrap();
     let decomposed = rules.join("cafe\u{301}.md");
