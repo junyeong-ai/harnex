@@ -71,13 +71,13 @@ against the branch it landed on, or now while the working tree holds a change
 `git status` shows. A directory artifact, a skill, is dated by the files under
 it, since git lists only files. What no history here records — a file outside
 the repository, inside one of its own, or ignored — has `age_days` null, so it
-is neither Stale nor in its grace period; an artifact that is itself a link is
-dated as the link, which git tracks. The user's git configuration may not
-reshape the log the age is parsed from. Never a modification time — a checkout
-writes every file's, so a fresh clone or a CI runner reads every artifact as new
-and inside its grace period. A shallow clone fails with `LIFECYCLE_GIT_FAILURE`,
-because its boundary commit dates every file it holds to the day the clone was
-cut. One history walk answers the whole sweep.
+is neither Stale nor in its grace period; an artifact read through a link, its
+own or a directory's, changes when the link or what it reads does. The user's
+git configuration may not reshape the log the age is parsed from. Never a
+modification time — a checkout writes every file's, so a fresh clone or a CI
+runner reads every artifact as new and inside its grace period. A shallow clone
+fails with `LIFECYCLE_GIT_FAILURE`, because its boundary commit dates every file
+it holds to the day the clone was cut. One history walk answers the whole sweep.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.
