@@ -14,7 +14,8 @@ enumerates them, and a copy of that list here is the one that goes stale.
   correct and cannot yet be used.
 - Error: harness-core `Error` flows up; main converts via the typed
   ErrorCode to `{"ok":false,"error":{...}}`. Invalid CLI arguments are
-  caught via `Cli::try_parse()` and mapped to an error envelope (exit 2);
+  caught via `Cli::try_parse()` and mapped to an error envelope (exit 2),
+  except under `guard`, which `.claude/rules/envelope.md` records;
   `--help` / `--version` stay clap-native (exit 0).
 - The sanctioned non-envelope stdout exceptions are enumerated in
   `.claude/rules/envelope.md`, each with the contract it speaks instead — do

@@ -3,6 +3,8 @@
 
 use std::process::Command;
 
+use harness_core::guard::{OPERATOR_CHANNEL_KEY, SUPPRESS_OUTPUT_KEY};
+
 fn harness() -> Command {
     Command::new(env!("CARGO_BIN_EXE_harnex"))
 }
@@ -18,6 +20,29 @@ fn invalid_argument_emits_error_envelope_and_exit_2() {
         .unwrap_or_else(|e| panic!("stdout must be one JSON envelope, got {stdout:?}: {e}"));
     assert_eq!(json["ok"], serde_json::Value::Bool(false));
     assert!(json["error"]["code"].is_string());
+}
+
+/// A `guard` invocation is a hook, and the runtime reads its exit 2 as a
+/// Block: an arm this binary cannot parse skips on the operator's channel
+/// instead of refusing every tool call or keeping a session from stopping.
+#[test]
+fn a_guard_invocation_that_does_not_parse_skips_instead_of_blocking() {
+    for args in [
+        &["guard", "no-such-verb"][..],
+        &["guard", "floor", "--no-such-flag"],
+    ] {
+        let out = harness().args(args).output().unwrap();
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        let json: serde_json::Value = serde_json::from_slice(&out.stdout)
+            .unwrap_or_else(|e| panic!("{args:?}: stdout is one JSON object: {e}"));
+        assert!(
+            json[OPERATOR_CHANNEL_KEY]
+                .as_str()
+                .is_some_and(|m| m.contains("skipped")),
+            "{args:?}: {json}"
+        );
+        assert_eq!(json[SUPPRESS_OUTPUT_KEY], true, "{args:?}");
+    }
 }
 
 #[test]

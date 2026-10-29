@@ -54,3 +54,7 @@ without extending this list:
 - `guard telemetry-emit`: emits nothing on stdout and always exits 0 — it
   records a harness-invocation event as a side effect and must never block or
   interrupt the tool call that triggered it. See guard.md.
+- A `guard` invocation that does not parse: one `{systemMessage,
+  suppressOutput}` skip notice and exit 0, never the exit-2 error envelope —
+  the runtime reads a hook's exit 2 as a Block, so an arm and a binary that
+  disagree would refuse every tool call or keep a session from stopping.
