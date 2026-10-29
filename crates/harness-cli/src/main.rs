@@ -7,8 +7,9 @@
 //!
 //! Invalid argument parsing is mapped to an error envelope (exit 2) rather
 //! than clap's native stderr message, so the "one envelope on stdout"
-//! contract holds even for a malformed invocation. `--help` / `--version`
-//! remain clap-native (exit 0) — they are not command executions.
+//! contract holds even for a malformed invocation. A `guard` invocation is a
+//! hook and skips instead, as `.claude/rules/envelope.md` records. `--help` /
+//! `--version` remain clap-native (exit 0) — they are not command executions.
 
 use std::io::{self, Write};
 use std::process::ExitCode;
@@ -17,6 +18,7 @@ use clap::{Parser, Subcommand};
 
 use harness_core::envelope;
 use harness_core::error::Error;
+use harness_core::guard::{OPERATOR_CHANNEL_KEY, SUPPRESS_OUTPUT_KEY};
 
 mod commands;
 
@@ -133,6 +135,20 @@ fn main() -> ExitCode {
             }
             if let Some(ContextValue::Strings(valid)) = e.get(ContextKind::ValidValue) {
                 message.push_str(&format!(" (expected one of: {})", valid.join(", ")));
+            }
+            // A `guard` invocation is a hook, and the runtime reads its exit 2
+            // as a Block: an arm this binary cannot parse — a verb it does not
+            // have, a flag it does not read — would refuse every tool call or
+            // keep a session from stopping. It skips on the operator's channel,
+            // as every other reason a guard cannot run does.
+            if std::env::args_os().nth(1).is_some_and(|arg| arg == "guard") {
+                let body = serde_json::json!({
+                    OPERATOR_CHANNEL_KEY: format!("[harnex guard skipped: {message}]"),
+                    SUPPRESS_OUTPUT_KEY: true,
+                });
+                let _ = writeln!(out, "{body}");
+                let _ = out.flush();
+                return ExitCode::SUCCESS;
             }
             let err = Error::ConfigInvalid {
                 message,
