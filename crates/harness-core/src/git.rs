@@ -114,13 +114,6 @@ pub(crate) fn last_committed(
                 .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display())))
         })
         .collect::<Result<Vec<Option<String>>, Failure>>()?;
-    // git on macOS lists every name composed (`core.precomposeUnicode`), while
-    // the file system may hand back a decomposed one, so names are compared
-    // composed. The pathspecs keep their spelling: git composes them itself.
-    let keys: Vec<Option<String>> = specs
-        .iter()
-        .map(|spec| spec.as_deref().map(|spec| spec.nfc().collect()))
-        .collect();
     let pathspecs: Vec<&str> = specs.iter().flatten().map(String::as_str).collect();
     if pathspecs.is_empty() {
         return Ok(vec![None; specs.len()]);
@@ -142,19 +135,11 @@ pub(crate) fn last_committed(
         args.extend(&pathspecs);
         args
     };
-    // git lists files; a change to one is a change to every path asked about
-    // that is it or holds it. `--no-renames` lists a move as the path it left
-    // and the one it reached, since rename detection names only the second
-    // and the directory the file left changed too.
-    let asked: HashSet<&str> = keys.iter().flatten().map(String::as_str).collect();
-    let holders = |listed: &str| -> Vec<&str> {
-        let listed: String = listed.nfc().collect();
-        Path::new(&listed)
-            .ancestors()
-            .filter_map(Path::to_str)
-            .filter_map(|ancestor| asked.get(ancestor).copied())
-            .collect()
-    };
+    // `--no-renames` lists a move as the path it left and the one it
+    // reached, since rename detection names only the second and the
+    // directory the file left changed too.
+    let asked = Asked::new(&pathspecs);
+    let holders = |listed: &str| asked.holding(listed);
     let edited = stdout(
         dir,
         &with_specs(&[
@@ -252,19 +237,60 @@ pub(crate) fn last_committed(
         }
     }
 
-    keys.iter()
-        .map(|key| {
-            let Some(key) = key.as_deref() else {
+    specs
+        .iter()
+        .map(|spec| {
+            let Some(spec) = spec.as_deref() else {
                 return Ok(None);
             };
-            match (edited.contains(key), latest.get(key)) {
+            match (edited.contains(spec), latest.get(spec)) {
                 (false, Some(&seconds)) => Timestamp::from_second(seconds)
                     .map(Some)
-                    .map_err(|e| Failure(format!("commit time {seconds} for '{key}': {e}"))),
+                    .map_err(|e| Failure(format!("commit time {seconds} for '{spec}': {e}"))),
                 _ => Ok(None),
             }
         })
         .collect()
+}
+
+/// The paths asked about, matched against the paths git lists.
+struct Asked<'a> {
+    spelled: HashSet<&'a str>,
+    composed: HashMap<String, Vec<&'a str>>,
+}
+
+impl<'a> Asked<'a> {
+    fn new(paths: &[&'a str]) -> Self {
+        let mut composed: HashMap<String, Vec<&'a str>> = HashMap::new();
+        for &path in paths {
+            composed.entry(path.nfc().collect()).or_default().push(path);
+        }
+        Self {
+            spelled: paths.iter().copied().collect(),
+            composed,
+        }
+    }
+
+    /// Every path asked about that `listed` is or lies under: git lists files,
+    /// and a change to one is a change to each directory holding it.
+    ///
+    /// git on macOS lists every name composed (`core.precomposeUnicode`),
+    /// while the file system may hand back a decomposed one. So a name
+    /// matches as it is spelled, and only failing that as it composes: two
+    /// names a file system keeps apart stay apart.
+    fn holding(&self, listed: &str) -> Vec<&'a str> {
+        let mut holding = Vec::new();
+        for ancestor in Path::new(listed).ancestors().filter_map(Path::to_str) {
+            match self.spelled.get(ancestor) {
+                Some(&path) => holding.push(path),
+                None => {
+                    let composed: String = ancestor.nfc().collect();
+                    holding.extend(self.composed.get(&composed).into_iter().flatten());
+                }
+            }
+        }
+        holding
+    }
 }
 
 /// Whether `HEAD` names a commit. A repository on an unborn branch has none,
@@ -304,4 +330,20 @@ fn stdout(dir: &Path, args: &[&str]) -> Result<String, Failure> {
     }
     String::from_utf8(output.stdout)
         .map_err(|_| Failure(format!("{command} printed a path that is not UTF-8")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Asked;
+
+    #[test]
+    fn a_listed_name_matches_as_spelled_before_as_composed() {
+        let composed = "\u{e9}.md";
+        let decomposed = "e\u{301}.md";
+        let skill = "\u{1112}\u{1161}\u{11ab}";
+        let asked = Asked::new(&[composed, decomposed, skill]);
+        assert_eq!(asked.holding(composed), [composed]);
+        assert_eq!(asked.holding(decomposed), [decomposed]);
+        assert_eq!(asked.holding("\u{d55c}/SKILL.md"), [skill]);
+    }
 }
