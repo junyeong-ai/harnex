@@ -223,9 +223,6 @@ harnex lifecycle classify --kind K --path P --silence silent|active|unmeasured
 harnex lifecycle retire [--window N]
 harnex lifecycle decisions [--tag T] [--decision D]
 
-harnex guard hook-event                               # parse stdin hook JSON
-harnex guard hook-run <prog> [args...]                # standard hook wrapper
-harnex guard hook-stop <prog> [args...]               # Stop hook (always exit 0)
 harnex guard stop-audit [--session ID]                # fresh-context Stop audit
 harnex guard floor                                    # PreToolUse floor-integrity:
                                                       # blocks hook-skipping git commands
@@ -262,10 +259,6 @@ blocks when another item is unreadable; an otherwise unreadable or failed
 critique is reported as skipped. Every critique attempt consumes budget,
 including failures; a clean verdict resets it. Exhaustion ends automatic
 critiques for the session and asks the operator to review the work.
-
-`guard hook-stop` always exits 0, including a spawn failure. Its envelope
-records the result or typed error; child output goes to stderr so it cannot
-supply a blocking Stop decision.
 
 `context resolve` returns normalized `targets` and `required_instructions` to
 read: root `CLAUDE.md` and `.claude/CLAUDE.md`, unconditional or matching rules,

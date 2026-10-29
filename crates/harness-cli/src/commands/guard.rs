@@ -5,35 +5,14 @@ use std::process::ExitCode;
 use clap::Subcommand;
 use harness_core::error::{Error, Result};
 use harness_core::guard::{
-    FloorAuditor, FloorDecision, HookEvent, HookRunOutcome, HookRunner, OPERATOR_CHANNEL_KEY,
-    SUPPRESS_OUTPUT_KEY, StopAuditor, StopDecision,
+    FloorAuditor, FloorDecision, HookEvent, OPERATOR_CHANNEL_KEY, SUPPRESS_OUTPUT_KEY, StopAuditor,
+    StopDecision,
 };
 
-use super::{config_dir, load_config, write_envelope_success};
+use super::{config_dir, load_config};
 
 #[derive(Subcommand)]
 pub enum GuardCommand {
-    /// Parse a hook stdin JSON, echo the typed view (one-shot validator)
-    HookEvent,
-    /// Run `program` with `args` from the resolved project root, fail-open on env drift
-    HookRun {
-        /// Inner program to spawn
-        program: String,
-        /// Arguments forwarded to the inner program
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-    /// Stop / SubagentStop hook wrapper — spawn `program`, observe its
-    /// exit code, but always return exit 0 to prevent the agent from being
-    /// trapped in a Stop loop (exit 2 requests continuation). The
-    /// observed exit code is captured in the envelope for telemetry.
-    HookStop {
-        /// Inner program to spawn
-        program: String,
-        /// Arguments forwarded to the inner program
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
     /// Run the fresh-context Stop audit. Reads session_id from --session
     /// or from hook stdin JSON's `session_id` field if not given. Wire as a
     /// Stop hook directly (NOT through `_stop_runner.sh`): Block exits 2 to
@@ -60,9 +39,6 @@ pub enum GuardCommand {
 
 pub fn run<W: Write>(cmd: GuardCommand, out: &mut W) -> Result<ExitCode> {
     match cmd {
-        GuardCommand::HookEvent => hook_event(out),
-        GuardCommand::HookRun { program, args } => hook_run(&program, &args, out),
-        GuardCommand::HookStop { program, args } => hook_stop(&program, &args, out),
         GuardCommand::StopAudit { session } => stop_audit(session, out),
         GuardCommand::Floor => floor(out),
         GuardCommand::TelemetryEmit => telemetry_emit(),
@@ -145,19 +121,6 @@ fn floor<W: Write>(out: &mut W) -> Result<ExitCode> {
     }
 }
 
-fn hook_event<W: Write>(out: &mut W) -> Result<ExitCode> {
-    let mut buf = String::new();
-    std::io::stdin()
-        .read_to_string(&mut buf)
-        .map_err(|e| Error::IoFailure {
-            path: PathBuf::from("(stdin)"),
-            source: e,
-        })?;
-    let event = HookEvent::from_stdin_json(&buf)?;
-    write_envelope_success(out, event)?;
-    Ok(ExitCode::SUCCESS)
-}
-
 fn notice<W: Write>(out: &mut W, message: &str) -> Result<ExitCode> {
     let body = serde_json::json!({
         OPERATOR_CHANNEL_KEY: message,
@@ -167,43 +130,6 @@ fn notice<W: Write>(out: &mut W, message: &str) -> Result<ExitCode> {
         path: PathBuf::from("(stdout)"),
         source: e,
     })?;
-    Ok(ExitCode::SUCCESS)
-}
-
-fn hook_run<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<ExitCode> {
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let outcome = HookRunner::run(program, &arg_refs)?;
-    let exit = match outcome {
-        HookRunOutcome::Completed { exit_code } => {
-            let code: u8 = if (0..=255).contains(&exit_code) {
-                exit_code as u8
-            } else {
-                1
-            };
-            ExitCode::from(code)
-        }
-        HookRunOutcome::SkippedFailOpen => ExitCode::SUCCESS,
-        HookRunOutcome::StopForcedSuccess { .. } => ExitCode::SUCCESS,
-    };
-    write_envelope_success(out, outcome)?;
-    Ok(exit)
-}
-
-fn hook_stop<W: Write>(program: &str, args: &[String], out: &mut W) -> Result<ExitCode> {
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let outcome = match HookRunner::run_stop(program, &arg_refs) {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            eprintln!("[hook-stop skipped: {error}]");
-            if let Err(error) = harness_core::envelope::write_error(out, &error) {
-                eprintln!("[hook-stop could not report its result: {error}]");
-            }
-            return Ok(ExitCode::SUCCESS);
-        }
-    };
-    if let Err(error) = write_envelope_success(out, outcome) {
-        eprintln!("[hook-stop could not report its result: {error}]");
-    }
     Ok(ExitCode::SUCCESS)
 }
 

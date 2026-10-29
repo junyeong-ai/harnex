@@ -9,39 +9,10 @@ governs:
 
 # guard — Claude Code runtime adapter
 
-`guard hook-stop` always exits 0, including a spawn or reporting failure.
-Its envelope reports the observed result or typed error; child stdout goes
-to stderr so it cannot request continuation through a Stop control field.
-
 HookEvent parses stdin JSON for Claude Code hook events. The toolkit
 does not model event-specific fields as typed Rust structs — the
 hook-event surface evolves upstream. Common fields are extracted; the
 rest is accessible via `HookEvent::field(key)`.
-
-HookRunner replaces fragile `_runner.sh` / `_stop_runner.sh` patterns.
-Resolves the project root from `PROJECT_DIR_ENV` where a runtime set it,
-falling back to `git rev-parse --show-toplevel` for callers with no runtime to
-ask. The order is load-bearing: hooks fire from wherever the session is, so a
-probe of that directory answers about it — inside a submodule it names the
-inner repository. If neither answers, returns `SkippedFailOpen` and emits
-`[harness-skipped: …]` to stderr — never penalizes the user for env drift.
-
-Variants:
-- [`HookRunner::run`] (`harnex guard hook-run`) — propagates the inner
-  exit code. Exit 2 blocks on PreToolUse and UserPromptSubmit; PostToolUse
-  cannot undo the tool call. Other non-zero codes are non-blocking errors.
-- [`HookRunner::run_stop`] (`harnex guard hook-stop`) — observes the
-  inner exit code but ALWAYS returns 0 to the runtime, capturing the observed
-  code in the envelope. Used for Stop / SubagentStop where exit 2
-  prevents stopping and forces continuation. Non-zero observations emit a
-  `[harness-stop-advisory]` line to stderr for operator visibility.
-
-Each is discovery over a root-taking form — `run_at` / `run_stop_at` — and the
-exit-code contract lives there, as a working directory is a parameter
-everywhere else in this crate and the contract then holds outside a git
-working tree too. The fail-open branch belongs to
-discovery alone: given a root there is nothing to fail open about, so
-`SkippedFailOpen` is unreachable from the root-taking forms by construction.
 
 `project_dir` owns the `${CLAUDE_PROJECT_DIR}` grammar — the one token form in
 a hook that denotes a repository path by construction. Both anchor spellings
