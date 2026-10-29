@@ -305,6 +305,33 @@ fn the_foundation_tier_stands_alone() {
     }
 }
 
+#[test]
+fn a_seed_cites_no_article_by_number() {
+    // A seed is the project's from its first write, while `regenerate`
+    // rewrites the constitution's managed articles, so a seed citing one by
+    // number points at another article once they are renumbered. A title
+    // travels with its article.
+    let root = templates_root();
+    let numbered = regex::Regex::new(r"\bArticles? [IVXLC]+\b").unwrap();
+    let mut seeds = 0;
+    for artifact in manifest().artifacts() {
+        if artifact.content != Content::Seed {
+            continue;
+        }
+        for (template, _) in artifact.resolved_pairs() {
+            seeds += 1;
+            let text = std::fs::read_to_string(root.join(&template)).unwrap();
+            if let Some(cited) = numbered.find(&text) {
+                panic!(
+                    "seed '{template}' cites '{}'; cite the article by its title",
+                    cited.as_str()
+                );
+            }
+        }
+    }
+    assert!(seeds > 0, "the manifest declares no seed to read");
+}
+
 /// Every project path a hook fragment wires: the wrapper its `command` names,
 /// and the verifier that wrapper dispatches.
 ///
