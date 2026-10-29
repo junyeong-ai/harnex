@@ -24,6 +24,7 @@
 //!   changed today; the history is the same in every clone of a commit.
 
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -222,9 +223,6 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
     };
     let top = canonical(top)?;
     let project = canonical(dir)?;
-    let in_top = project
-        .strip_prefix(&top)
-        .map_err(|_| Failure(format!("{} is outside {}", dir.display(), top.display())))?;
     let readings = paths
         .iter()
         .map(|path| Reading::of(&top, &project, path))
@@ -232,7 +230,7 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
     let pathspecs: Vec<&str> = readings.iter().flat_map(Reading::recorded).collect();
     let record = match pathspecs.is_empty() {
         true => Record::default(),
-        false => Record::read(&top, in_top, &pathspecs)?,
+        false => Record::read(&top, &pathspecs)?,
     };
     let answer = |part: Option<&str>| match part {
         Some(spec) => record.of(spec),
@@ -263,9 +261,8 @@ struct Record<'a> {
 impl<'a> Record<'a> {
     /// One listing of what is pending and one walk of the history answer
     /// every path, each read as a literal, so a `[` in a name names that file.
-    /// Run at `top`, every path is spelled from the repository's root, and
-    /// `project` is the project's own directory spelled the same way.
-    fn read(top: &Path, project: &Path, paths: &[&'a str]) -> Result<Self, Failure> {
+    /// Run at `top`, every path is spelled from the repository's root.
+    fn read(top: &Path, paths: &[&'a str]) -> Result<Self, Failure> {
         if stdout(top, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
             return Err(Failure(
                 "this clone is shallow, so every file its oldest commit holds reads as changed \
@@ -280,7 +277,7 @@ impl<'a> Record<'a> {
             true => ":(literal,icase)",
             false => ":(literal)",
         };
-        let specs: Vec<String> = scopes(project, paths)
+        let specs: Vec<String> = scopes(top, paths)
             .iter()
             .map(|scope| format!("{magic}{scope}"))
             .collect();
@@ -412,31 +409,34 @@ impl<'a> Record<'a> {
     }
 }
 
-/// What git is asked about for `paths`, `project` the project's own directory.
-/// git matches every spec against every name it walks, so paths sharing a
-/// directory, a set of skills, are asked as that directory; and it lists every
-/// file under a directory asked, so a path alone in its directory, or in one
-/// holding the project, is asked as itself. The root is asked as `.`.
-fn scopes<'a>(project: &Path, paths: &[&'a str]) -> Vec<&'a str> {
-    let parent = |path: &'a str| -> &'a str {
-        Path::new(path)
-            .parent()
-            .and_then(Path::to_str)
-            .unwrap_or("")
+/// What git is asked about for `paths`, spelled from `top`, the repository's
+/// root. git compares every spec with every name it walks, so paths sharing a
+/// directory, a set of skills, are asked as that directory. It also lists every
+/// file under what it is asked, and a directory no path names can hold a
+/// package's whole history, so a directory is asked only where every directory
+/// it holds is one of the paths, and adds no more than the history of its own
+/// files. Any other path is asked as itself, the root as `.`.
+fn scopes<'a>(top: &Path, paths: &[&'a str]) -> Vec<&'a str> {
+    let place = |path: &'a str| -> Option<(&'a str, &'a OsStr)> {
+        let path = Path::new(path);
+        Some((path.parent()?.to_str()?, path.file_name()?))
     };
-    let distinct: HashSet<&'a str> = paths.iter().copied().collect();
-    let mut sharing: HashMap<&'a str, usize> = HashMap::new();
-    for &path in &distinct {
-        *sharing.entry(parent(path)).or_default() += 1;
+    let mut holding: HashMap<&'a str, HashSet<&'a OsStr>> = HashMap::new();
+    for &path in paths {
+        if let Some((dir, name)) = place(path) {
+            holding.entry(dir).or_default().insert(name);
+        }
     }
-    let mut scopes: Vec<&'a str> = distinct
-        .into_iter()
-        .map(|path| {
-            let dir = parent(path);
-            match sharing[dir] > 1 && !project.starts_with(dir) {
-                true => dir,
-                false => path,
-            }
+    let merged: HashSet<&'a str> = holding
+        .iter()
+        .filter(|(dir, names)| names.len() > 1 && holds_no_other_directory(&top.join(dir), names))
+        .map(|(&dir, _)| dir)
+        .collect();
+    let mut scopes: Vec<&'a str> = paths
+        .iter()
+        .map(|&path| match place(path) {
+            Some((dir, _)) if merged.contains(dir) => dir,
+            _ => path,
         })
         .map(|scope| match scope {
             "" => ".",
@@ -446,6 +446,21 @@ fn scopes<'a>(project: &Path, paths: &[&'a str]) -> Vec<&'a str> {
     scopes.sort_unstable();
     scopes.dedup();
     scopes
+}
+
+/// Whether every directory `dir` holds is named in `names`; a link is not one,
+/// since git records a link and not what it points at. A directory that cannot
+/// be listed is not merged: its paths asked one by one answer the same.
+fn holds_no_other_directory(dir: &Path, names: &HashSet<&OsStr>) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.into_iter().all(|entry| {
+        entry.is_ok_and(|entry| {
+            entry.file_type().is_ok_and(|kind| !kind.is_dir())
+                || names.contains(entry.file_name().as_os_str())
+        })
+    })
 }
 
 /// How git matches the names a file system gives to the ones it lists, as
@@ -573,23 +588,46 @@ fn stdout(dir: &Path, args: &[&str]) -> Result<String, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::{Asked, Spelling, scopes};
 
+    #[cfg(unix)]
     #[test]
-    fn git_is_asked_about_a_directory_only_where_it_merges_paths_outside_the_project() {
+    fn git_is_asked_about_a_directory_only_where_every_directory_in_it_is_asked() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let top = tmp.path();
+        for dir in [
+            ".claude/skills/a",
+            ".claude/skills/b",
+            "apps/web/src",
+            "packages/x",
+            "packages/y",
+            "packages/z",
+            "shared/rules",
+        ] {
+            std::fs::create_dir_all(top.join(dir)).unwrap();
+        }
+        for file in [
+            ".claude/skills/README.md",
+            "apps/web/AGENTS.md",
+            "shared/rules/r.md",
+            "shared/rules/s.md",
+        ] {
+            std::fs::write(top.join(file), "").unwrap();
+        }
+        std::os::unix::fs::symlink("AGENTS.md", top.join("apps/web/CLAUDE.md")).unwrap();
+        std::os::unix::fs::symlink("../../packages/z", top.join(".claude/skills/linked")).unwrap();
+
         let asked = scopes(
-            Path::new("apps/web"),
+            top,
             &[
-                "apps/web/.claude/skills/a",
-                "apps/web/.claude/skills/b",
+                ".claude/skills/a",
+                ".claude/skills/b",
+                // A `CLAUDE.md` read through its link, beside a package's sources.
                 "apps/web/CLAUDE.md",
                 "apps/web/AGENTS.md",
-                "apps/shared.md",
-                "apps/notes.md",
-                "packages/x/CLAUDE.md",
-                // Two artifacts reading one rule through links.
+                "packages/x",
+                "packages/y",
+                // Two artifacts reading one rule.
                 "shared/rules/r.md",
                 "shared/rules/r.md",
                 "",
@@ -599,25 +637,14 @@ mod tests {
             asked,
             [
                 ".",
-                "apps/notes.md",
-                "apps/shared.md",
-                "apps/web/.claude/skills",
+                ".claude/skills",
                 "apps/web/AGENTS.md",
                 "apps/web/CLAUDE.md",
-                "packages/x/CLAUDE.md",
+                "packages/x",
+                "packages/y",
                 "shared/rules/r.md",
             ]
         );
-        let at_the_root = scopes(
-            Path::new(""),
-            &[
-                ".claude/rules/a.md",
-                ".claude/rules/b.md",
-                "CLAUDE.md",
-                "AGENTS.md",
-            ],
-        );
-        assert_eq!(at_the_root, [".claude/rules", "AGENTS.md", "CLAUDE.md"]);
     }
 
     const BYTES: Spelling = Spelling {
