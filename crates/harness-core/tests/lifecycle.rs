@@ -1523,10 +1523,19 @@ fn a_directory_is_dated_by_the_files_it_holds() {
     std::fs::write(skills.join("littered/.DS_Store"), "finder").unwrap();
     std::fs::write(skills.join("edited/SKILL.md"), "a skill, mid-edit").unwrap();
     std::fs::write(skills.join("grown/reference.md"), "not yet committed").unwrap();
+    // A skill cloned in and not yet added: git lists the checkout, not its
+    // files.
+    std::fs::create_dir_all(skills.join("cloned")).unwrap();
+    std::fs::write(skills.join("cloned/SKILL.md"), "a skill").unwrap();
+    let cloned = common::git(&skills.join("cloned"))
+        .args(["init", "-q"])
+        .status()
+        .unwrap();
+    assert!(cloned.success());
 
     let changes = last_changes(
         tmp.path(),
-        &["settled", "littered", "edited", "grown"].map(|name| skills.join(name)),
+        &["settled", "littered", "edited", "grown", "cloned"].map(|name| skills.join(name)),
     )
     .unwrap();
     let ages: Vec<_> = changes.iter().map(days_since).collect();
@@ -1534,7 +1543,11 @@ fn a_directory_is_dated_by_the_files_it_holds() {
         matches!(ages[..2], [Some(199..=200), Some(199..=200)])
             && matches!(
                 changes[2..],
-                [LastChange::Uncommitted, LastChange::Uncommitted]
+                [
+                    LastChange::Uncommitted,
+                    LastChange::Uncommitted,
+                    LastChange::Uncommitted
+                ]
             ),
         "an ignored file is no change; an edited file and an untracked one are: {changes:?}"
     );
@@ -1704,6 +1717,29 @@ fn a_name_is_dated_however_its_characters_are_composed() {
             );
         }
     }
+}
+
+#[test]
+fn a_name_spelled_alike_is_another_file_where_git_reads_names_byte_for_byte() {
+    // Linux keeps a composed and a decomposed name apart, and so does git
+    // there; a file system that composes names cannot hold both.
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    let decomposed = rules.join("cafe\u{301}.md");
+    std::fs::write(&decomposed, "an old rule").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(rules.join("caf\u{e9}.md"), "a new rule").unwrap();
+    if std::fs::read_dir(&rules).unwrap().count() < 2 {
+        return;
+    }
+    commit_days_ago(tmp.path(), 1);
+
+    let changes = last_changes(tmp.path(), &[decomposed]).unwrap();
+    assert!(
+        matches!(days_since(&changes[0]), Some(199..=200)),
+        "{changes:?}"
+    );
 }
 
 #[test]
@@ -1943,15 +1979,20 @@ fn a_loop_of_links_fails_the_measurement() {
 
 #[test]
 fn a_name_whose_case_alone_changed_keeps_its_history_where_git_ignores_case() {
-    // Finder renames `Old.md` to `old.md` without git: `git status` stays
-    // clean, since `core.ignorecase` reads the file as the one it tracks.
+    // Finder renames `Rules/Old.md` to `rules/old.md` without git: `git
+    // status` stays clean, since `core.ignorecase` reads the file as the one
+    // it tracks.
     let tmp = repo();
-    let rules = tmp.path().join(".claude/rules");
-    std::fs::create_dir_all(&rules).unwrap();
-    std::fs::write(rules.join("Old.md"), "a rule").unwrap();
+    let claude = tmp.path().join(".claude");
+    std::fs::create_dir_all(claude.join("Rules")).unwrap();
+    std::fs::write(claude.join("Rules/Old.md"), "a rule").unwrap();
     commit_days_ago(tmp.path(), 200);
-    std::fs::rename(rules.join("Old.md"), rules.join("renaming.md")).unwrap();
-    std::fs::rename(rules.join("renaming.md"), rules.join("old.md")).unwrap();
+    let rename = |from: &str, to: &str| std::fs::rename(claude.join(from), claude.join(to));
+    rename("Rules", "renaming").unwrap();
+    rename("renaming", "rules").unwrap();
+    rename("rules/Old.md", "rules/renaming.md").unwrap();
+    rename("rules/renaming.md", "rules/old.md").unwrap();
+    let rules = claude.join("rules");
     let ignorecase = common::git(tmp.path())
         .args(["config", "--type=bool", "core.ignorecase"])
         .output()
