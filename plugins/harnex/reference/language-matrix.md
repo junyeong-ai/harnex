@@ -163,8 +163,9 @@ repo is never penalised for the tool it does not install.
   unscanned, since the two exit alike unless findings are given a code of
   their own; wants gitleaks 8.19+, whose `git` subcommand it scans with;
   escape hatch `HARNEX_SKIP_GITLEAKS=1`), then dispatches
-  every executable in `hooks/pre-commit.d/` in name order — the seam patterns
-  add commit gates through, since the hook's own copy is held byte-identical.
+  every executable in `hooks/pre-commit.d/` in name order — the seam the
+  project adds its own commit gates through, since the hook's own copy is
+  held byte-identical.
   Every arm runs and any failure blocks, so one attempt reports every gate it
   failed; a signal stops the commit at once.
   `hooks/commit-msg` validates the trailers `[validate.commit_msg]` declares,

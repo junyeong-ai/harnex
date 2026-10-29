@@ -4,9 +4,9 @@
 # First the secret scan: the permission layer stops Claude from reading and
 # writing secret files, but only a git hook stops a developer's own
 # `git commit` from staging one. Then every executable in hooks/pre-commit.d/
-# in name order — the seam through which patterns and the project itself add
-# commit gates, because this file's copy is held byte-identical to its
-# template and editing it would read as drift. Every arm runs even after one
+# in name order — the seam through which the project adds its own commit
+# gates, because this file's copy is held byte-identical to its template and
+# editing it would read as drift. Every arm runs even after one
 # fails, so a blocked commit reports every gate it failed at once instead of
 # one per attempt; a status past 128 is a signal — an interrupt, a killed
 # arm — and stops the commit there.
