@@ -20,7 +20,9 @@ use crate::config::{Config, KindDecl};
 use crate::envelope::SkippedRule;
 use crate::error::{Error, Result};
 use crate::lifecycle::consumer::ConsumerDetector;
-use crate::lifecycle::retirement::{RetirementClassifier, RetirementOutcome, SilenceState};
+use crate::lifecycle::retirement::{
+    RetirementClassifier, RetirementOutcome, SilenceState, last_changes,
+};
 use crate::telemetry::TelemetryQuery;
 
 /// Aggregate output of a sweep.
@@ -163,6 +165,12 @@ impl<'a> RetirementSweeper<'a> {
             .flat_map(|u| u.entries.iter().map(|(_, slug)| slug.as_str()))
             .collect();
         let records = self.invocations_in_window(&all_slugs)?;
+        // And one history walk, for when each of them last changed.
+        let paths: Vec<PathBuf> = units
+            .iter()
+            .flat_map(|u| u.entries.iter().map(|(path, _)| path.clone()))
+            .collect();
+        let mut changes = last_changes(self.working_dir, &paths)?.into_iter();
 
         // Pass 2: classify each artifact against its derived silence state.
         let mut verdicts = Vec::new();
@@ -172,7 +180,7 @@ impl<'a> RetirementSweeper<'a> {
             // that Kind recorded something in the window. Absent, silence is
             // unknowable for every slug of the kind — never presumed.
             let named = unit.record.and_then(|record| records.get(record));
-            for (path, slug) in &unit.entries {
+            for ((path, slug), changed) in unit.entries.iter().zip(changes.by_ref()) {
                 // An empty slug (a file with no stem) names nothing an
                 // invocation could record, so its silence is unknowable too.
                 let silence = match named {
@@ -185,7 +193,8 @@ impl<'a> RetirementSweeper<'a> {
                     }
                     _ => SilenceState::Unmeasured,
                 };
-                let verdict = classifier.classify(unit.kind, path, &unit.detector, silence)?;
+                let verdict =
+                    classifier.classify(unit.kind, path, &unit.detector, silence, changed)?;
                 verdicts.push(verdict);
                 files_classified += 1;
             }

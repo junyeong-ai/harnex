@@ -272,7 +272,7 @@ impl Error {
                 Some("ensure git is installed and the working directory is a repository")
             }
             Self::LifecycleGitFailure { .. } => Some(
-                "the grep consumer detector reads the files git says the project owns; ensure git is installed and the working directory is a repository",
+                "retirement asks git which files the project owns and when each last changed; ensure git is installed, the working directory is a repository, and its history is not shallow",
             ),
             Self::LifecycleDemoteWithoutApproval { .. } => Some(
                 "demote applies only to previously Approved patterns; use reject for never-approved patterns",

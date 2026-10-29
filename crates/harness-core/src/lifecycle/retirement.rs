@@ -1,6 +1,7 @@
 //! Three-signal retirement classifier.
 //!
-//! - `Stale`: file mtime older than `stale_days`
+//! - `Stale`: the file last changed more than `stale_days` ago, by the
+//!   [`LastChange`] the caller derives from history
 //! - `NoConsumers`: ConsumerDetector finds zero referencing files
 //! - `Silent`: the telemetry ledger recorded a tracked invocation within
 //!   `silence_window_days` and none names the slug. A ledger with no tracked
@@ -25,6 +26,8 @@ pub struct RetirementOutcome {
     pub kind: String,
     pub slug: String,
     pub path: PathBuf,
+    /// Days since the last commit that touched the file; 0 while the working
+    /// tree holds a change no commit records.
     pub age_days: i64,
     pub consumer_count: usize,
     pub silence: SilenceState,
@@ -58,6 +61,27 @@ wire_enum! {
     }
 }
 
+/// When an artifact last changed, which `Stale` and the grace period read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LastChange {
+    /// The last commit that touched it; the working tree still matches it.
+    Committed(Timestamp),
+    /// A change no commit records yet — an edit in progress, or a file never
+    /// committed — so the artifact is changing now.
+    Uncommitted,
+}
+
+/// The [`LastChange`] of each of `paths`, in order, as the repository at
+/// `working_dir` records it. One history walk answers them all.
+pub fn last_changes(working_dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChange>> {
+    let committed = crate::git::last_committed(working_dir, paths)
+        .map_err(|crate::git::Failure(message)| Error::LifecycleGitFailure { message })?;
+    Ok(committed
+        .into_iter()
+        .map(|at| at.map_or(LastChange::Uncommitted, LastChange::Committed))
+        .collect())
+}
+
 pub struct RetirementClassifier<'a> {
     config: &'a LifecycleConfig,
     retirement: Option<&'a RetirementConfig>,
@@ -74,6 +98,7 @@ impl<'a> RetirementClassifier<'a> {
         path: &Path,
         consumer: &ConsumerDetector,
         silence: SilenceState,
+        changed: LastChange,
     ) -> Result<RetirementOutcome> {
         let slug = path
             .file_stem()
@@ -81,21 +106,16 @@ impl<'a> RetirementClassifier<'a> {
             .unwrap_or("")
             .to_string();
 
-        let metadata = std::fs::metadata(path).map_err(|e| Error::IoFailure {
+        std::fs::metadata(path).map_err(|e| Error::IoFailure {
             path: path.to_path_buf(),
             source: e,
         })?;
-        let mtime = metadata.modified().map_err(|e| Error::IoFailure {
-            path: path.to_path_buf(),
-            source: e,
-        })?;
-        let mtime_ts = Timestamp::try_from(mtime).map_err(|e| Error::IoFailure {
-            path: path.to_path_buf(),
-            source: std::io::Error::other(format!("modified-time conversion: {e}")),
-        })?;
-        let now = Timestamp::now();
-        let elapsed_secs = now.duration_since(mtime_ts).as_secs();
-        let age_days = (elapsed_secs / 86400).max(0);
+        let age_days = match changed {
+            LastChange::Committed(at) => {
+                (Timestamp::now().duration_since(at).as_secs() / 86_400).max(0)
+            }
+            LastChange::Uncommitted => 0,
+        };
         let in_grace = age_days < (self.config.grace_period_days as i64);
 
         let consumers = consumer.find_consumers(&slug)?;

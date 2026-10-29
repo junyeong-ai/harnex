@@ -39,7 +39,10 @@ pub use decision_recorder::{
 };
 pub use observation::{Observation, ObservationLedger};
 pub use retire::{RetirementSweeper, SweepOutcome};
-pub use retirement::{RetirementClassifier, RetirementOutcome, RetirementSignal, SilenceState};
+pub use retirement::{
+    LastChange, RetirementClassifier, RetirementOutcome, RetirementSignal, SilenceState,
+    last_changes,
+};
 
 /// Whether a ledger directory is there to be read, for the one caller shape
 /// both ledgers have: absent is an empty result, present is a scan, and

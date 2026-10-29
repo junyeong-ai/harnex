@@ -8,7 +8,7 @@ use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::lifecycle::{
     ConsumerDetector, DecisionLedger, LedgerReader, LifecycleDecisionRecorder, ObservationLedger,
-    PromotionDecision, RetirementClassifier, RetirementSweeper, SilenceState,
+    PromotionDecision, RetirementClassifier, RetirementSweeper, SilenceState, last_changes,
 };
 use harness_core::telemetry::{JsonlStorage, TelemetryQuery};
 
@@ -237,7 +237,8 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                 message: format!("unknown silence state '{silence}'"),
                 location: None,
             })?;
-            let verdict = classifier.classify(&kind, &target_path, &detector, silence)?;
+            let changed = last_changes(&root, std::slice::from_ref(&target_path))?[0];
+            let verdict = classifier.classify(&kind, &target_path, &detector, silence, changed)?;
             write_envelope_success(out, verdict)?;
             Ok(ExitCode::SUCCESS)
         }

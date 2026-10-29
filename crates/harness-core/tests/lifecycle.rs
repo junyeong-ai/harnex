@@ -6,8 +6,9 @@ use harness_core::config::{
 };
 use harness_core::error::Error;
 use harness_core::lifecycle::{
-    ConsumerDetector, DecisionLedger, LedgerReader, LifecycleDecisionRecorder, ObservationLedger,
-    PromotionDecision, RetirementClassifier, RetirementSignal, RetirementSweeper, SilenceState,
+    ConsumerDetector, DecisionLedger, LastChange, LedgerReader, LifecycleDecisionRecorder,
+    ObservationLedger, PromotionDecision, RetirementClassifier, RetirementSignal,
+    RetirementSweeper, SilenceState, last_changes,
 };
 use harness_core::telemetry::{Event, JsonlStorage, TelemetryAppender, TelemetryQuery};
 use jiff::{SignedDuration, Timestamp};
@@ -972,7 +973,13 @@ fn retirement_classifier_marks_no_consumers_silent() {
     let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, None);
     let verdict = classifier
-        .classify("rule", &rule_path, &detector, SilenceState::Silent)
+        .classify(
+            "rule",
+            &rule_path,
+            &detector,
+            SilenceState::Silent,
+            LastChange::Uncommitted,
+        )
         .unwrap();
     assert!(verdict.signals.contains(&RetirementSignal::NoConsumers));
     assert!(verdict.signals.contains(&RetirementSignal::Silent));
@@ -995,7 +1002,13 @@ fn retirement_classifier_honors_exempt_list() {
     let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, Some(&retire_cfg));
     let verdict = classifier
-        .classify("rule", &rule_path, &detector, SilenceState::Silent)
+        .classify(
+            "rule",
+            &rule_path,
+            &detector,
+            SilenceState::Silent,
+            LastChange::Uncommitted,
+        )
         .unwrap();
     assert!(verdict.exempt);
 }
@@ -1352,6 +1365,112 @@ fn sweep_walks_every_kind_with_consumer_detector() {
         assert_eq!(v.silence, SilenceState::Unmeasured);
         assert!(!v.signals.contains(&RetirementSignal::Silent));
     }
+}
+
+/// Commit everything in `dir`, dated `days` ago by both clocks git records.
+fn commit_days_ago(dir: &std::path::Path, days: i64) {
+    let at = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(24 * days);
+    let date = format!("{} +0000", at.as_second());
+    for args in [
+        &["add", "-A"][..],
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "-m",
+            "x",
+        ],
+    ] {
+        let status = common::git(dir)
+            .args(args)
+            .env("GIT_AUTHOR_DATE", &date)
+            .env("GIT_COMMITTER_DATE", &date)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    }
+}
+
+#[test]
+fn the_sweep_dates_each_artifact_by_its_history_not_its_checkout() {
+    // Every file here was written moments ago, as a fresh clone writes them;
+    // only the history says how long each has gone unchanged.
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("old.md"), "a rule").unwrap();
+    std::fs::write(rules.join("edited.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(rules.join("recent.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 3);
+    std::fs::write(rules.join("edited.md"), "a rule, mid-edit").unwrap();
+    std::fs::write(rules.join("new.md"), "a rule").unwrap();
+
+    let cfg = build_sweep_config(
+        tmp.path(),
+        vec![KindDecl {
+            name: "rule".into(),
+            glob: ".claude/rules/*.md".into(),
+            foundation: false,
+            invocation_kind: None,
+        }],
+    );
+    let query = TelemetryQuery::new(JsonlStorage::new(tmp.path().join("tele"), 10));
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    let verdict = |slug: &str| {
+        let v = outcome
+            .verdicts
+            .iter()
+            .find(|v| v.slug == slug)
+            .unwrap_or_else(|| panic!("no verdict for {slug}"));
+        (v.age_days, v.signals.contains(&RetirementSignal::Stale))
+    };
+    let (age, stale) = verdict("old");
+    assert!((199..=200).contains(&age) && stale, "old: {age} days");
+    let (age, stale) = verdict("recent");
+    assert!((2..=3).contains(&age) && !stale, "recent: {age} days");
+    assert_eq!(
+        verdict("edited"),
+        (0, false),
+        "an uncommitted edit is a change now"
+    );
+    assert_eq!(verdict("new"), (0, false), "a file never committed is new");
+}
+
+#[test]
+fn a_shallow_clone_is_refused_rather_than_dated_by_its_boundary() {
+    let origin = repo();
+    std::fs::write(origin.path().join("old.md"), "a rule").unwrap();
+    commit_days_ago(origin.path(), 200);
+    std::fs::write(origin.path().join("recent.md"), "a rule").unwrap();
+    commit_days_ago(origin.path(), 1);
+    let tmp = TempDir::new().unwrap();
+    let url = format!("file://{}", origin.path().display());
+    let cloned = common::git(tmp.path())
+        .args(["clone", "-q", "--depth", "1", &url, "clone"])
+        .status()
+        .unwrap();
+    assert!(cloned.success());
+    let clone = tmp.path().join("clone");
+
+    let err = last_changes(&clone, &[clone.join("old.md")]).unwrap_err();
+    assert_eq!(
+        err.code(),
+        harness_core::error::ErrorCode::LifecycleGitFailure
+    );
+    assert!(err.to_string().contains("shallow"), "{err}");
+
+    let full = last_changes(origin.path(), &[origin.path().join("old.md")]).unwrap();
+    assert!(
+        matches!(full[..], [LastChange::Committed(_)]),
+        "the same file in the full history is dated: {full:?}"
+    );
 }
 
 #[test]
