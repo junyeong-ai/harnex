@@ -44,10 +44,10 @@ as `.jsonl`, and what a ledger accepts is what it must read back. Absent means
 nothing written; a path that fails to stat and a directory symlink with no
 target are reads that did not happen, and each fails.
 
-Retirement classifier emits three signals: Stale (mtime > stale_days),
-NoConsumers (grep finds zero), Silent (caller-supplied `SilenceState` —
-derived from the telemetry query). Severity: 3 signals → Major, 2 → Minor,
-≤1 → Info. `SilenceState` is tri-state — `Silent` fires the signal;
+Retirement classifier emits three signals: Stale (last change older than
+stale_days), NoConsumers (grep finds zero), Silent (caller-supplied
+`SilenceState` — derived from the telemetry query). Severity: 3 signals →
+Major, 2 → Minor, ≤1 → Info. `SilenceState` is tri-state — `Silent` fires the signal;
 `Active` and `Unmeasured` do not. Silence is measured only against
 `[[kinds]] invocation_kind`, the telemetry Kind that kind declares as the
 record of its artifacts' invocations. Undeclared, or with no event of it in
@@ -63,6 +63,14 @@ when the runtime reads a file it governs, and that leaves no citation
 anywhere — so zero consumers on a rule says how often its name is written,
 never whether it is used. The load question has an owner: `retire.md` answers it
 from `facts.harness.rule_loads`, and states the window that evidence needs.
+
+Age, which Stale and the grace period read, is the caller's `LastChange`
+from `last_changes`: the last commit that touched the file, or now while the
+working tree holds a change no commit records. Never a modification time — a
+checkout writes every file's, so a fresh clone or a CI runner reads every
+artifact as new and inside its grace period. A shallow clone fails with
+`LIFECYCLE_GIT_FAILURE`, because its boundary commit dates every file it holds
+to the day the clone was cut. One history walk answers the whole sweep.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.

@@ -20,8 +20,8 @@ mod common;
 
 use harness_core::config::{ConsumerDetectorDecl, LifecycleConfig};
 use harness_core::lifecycle::{
-    ConsumerDetector, DecisionLedger, LedgerReader, ObservationLedger, RetirementClassifier,
-    RetirementSignal, SilenceState,
+    ConsumerDetector, DecisionLedger, LastChange, LedgerReader, ObservationLedger,
+    RetirementClassifier, RetirementSignal, SilenceState,
 };
 
 /// Each row of the passage's table: the surface it names, and the word that
@@ -147,7 +147,13 @@ fn retirement_fires_no_silence_signal_for_a_slug_it_could_not_measure() {
     let classifier = RetirementClassifier::new(&config, None);
 
     let unmeasured = classifier
-        .classify("rule", &rule, &detector, SilenceState::Unmeasured)
+        .classify(
+            "rule",
+            &rule,
+            &detector,
+            SilenceState::Unmeasured,
+            LastChange::Uncommitted,
+        )
         .unwrap();
     assert!(
         !unmeasured.signals.contains(&RetirementSignal::Silent),
@@ -156,7 +162,13 @@ fn retirement_fires_no_silence_signal_for_a_slug_it_could_not_measure() {
     );
 
     let silent = classifier
-        .classify("rule", &rule, &detector, SilenceState::Silent)
+        .classify(
+            "rule",
+            &rule,
+            &detector,
+            SilenceState::Silent,
+            LastChange::Uncommitted,
+        )
         .unwrap();
     assert!(
         silent.signals.contains(&RetirementSignal::Silent),
