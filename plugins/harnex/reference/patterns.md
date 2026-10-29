@@ -141,10 +141,13 @@ blank-page problem in disguise.
   refuses on its own, the settings files among it, needs none. Wire one
   PreToolUse entry in `.claude/settings.json` running
   `${CLAUDE_PROJECT_DIR}/hooks/check-floor.sh` with matcher
-  `Edit|Write|MultiEdit`. Install it only where editing the gate files is not
-  the project's ordinary work: where it is, each such edit needs the grant, and
-  a grant left standing to spare that prints its notice on every one, so the
-  one signal the freeze was bypassed stops being one. Tell the operator the
+  `Edit|Write|MultiEdit`. Offer it only where an agent has been seen weakening
+  a gate to get a change through — a reverted or corrected edit to a gate file
+  in the history, or a correction `harnex session facts` reports — and editing
+  the gate files is not the project's ordinary work. Without that evidence the
+  tripwire is the floor: every gate edit would need the grant, a grant left
+  standing to spare that prints its notice on every one, and the one signal the
+  freeze was bypassed stops being one. Tell the operator the
   break-glass entry by name, and that the `denyWrite` entries hold only in a
   session the sandbox runs in; both the grant and turning the sandbox on are
   theirs, not the agent's.

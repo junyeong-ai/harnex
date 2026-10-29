@@ -98,7 +98,7 @@ files = [
 
 [[pattern]]
 slug = "enforcement-floor"
-analyze = ["the project's gate-defining files (git hooks dir, secret-scan config, lint configs, verifier sources) for [guard.floor] protected_paths", "whether editing the gate files is the project's ordinary work — where it is, every such edit needs the break-glass grant and the pattern is the wrong fit", "the Edit|Write|MultiEdit PreToolUse entry in .claude/settings.json invoking hooks/check-floor.sh, beside the Bash entry every scaffold already carries", "the [guard.floor] section in harness.toml", "the sandbox.filesystem.denyWrite entry harnex check names for each frozen path"]
+analyze = ["the project's gate-defining files (git hooks dir, secret-scan config, lint configs, verifier sources) for [guard.floor] protected_paths", "evidence that an agent weakened a gate to get a change through — a reverted or corrected edit to a gate file in the history, or a correction harnex session facts reports; without it, or where editing the gate files is ordinary work, every such edit needs the break-glass grant and the pattern is the wrong fit", "the Edit|Write|MultiEdit PreToolUse entry in .claude/settings.json invoking hooks/check-floor.sh, beside the Bash entry every scaffold already carries", "the [guard.floor] section in harness.toml", "the sandbox.filesystem.denyWrite entry harnex check names for each frozen path"]
 files = [
   { template = "enforcement-floor.md", destination = ".claude/rules/enforcement-floor.md" },
 ]

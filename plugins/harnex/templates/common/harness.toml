@@ -117,9 +117,11 @@ reject_unknown_keys = true
 # The enforcement floor's second half. The first — refusing a git command
 # that would skip the hook stack — is wired for Bash in every scaffold and
 # reads nothing here. The freeze is the enforcement-floor pattern's to arm,
-# and it arms three things together: this section, the Edit|Write|MultiEdit
-# wiring, and the sandbox.filesystem.denyWrite entry `harnex check` names for
-# each path, since a declared floor is held to its sandbox entries.
+# only where an agent has been seen weakening a gate, since every gate edit
+# then needs the operator's grant. It arms three things together: this
+# section, the Edit|Write|MultiEdit wiring, and the sandbox.filesystem.denyWrite
+# entry `harnex check` names for each path, since a declared floor is held to
+# its sandbox entries.
 # harness.toml and the two settings files are built in; list the project's
 # own gate-defining files (a trailing / freezes a directory).
 # [guard.floor]
