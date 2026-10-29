@@ -17,10 +17,8 @@ fn write(p: &Path, contents: &str) {
 }
 
 fn minimal_config_toml() -> String {
-    r#"
-[meta]
-harnex_version = ">=0.37, <0.38"
-
+    common::pinned(
+        r#"
 [evidence]
 default_provenance = "memory-only"
 [[evidence.verifiers]]
@@ -43,8 +41,8 @@ max_description_chars = 1536
 
 [policy.permissions]
 profiles = ["baseline"]
-"#
-    .to_string()
+"#,
+    )
 }
 
 fn load_cfg(tmp: &TempDir, toml_body: &str) -> Config {
@@ -118,11 +116,7 @@ fn check_runs_every_enabled_validator() {
 #[test]
 fn check_skips_validators_with_no_config_section() {
     let tmp = project();
-    let minimal = r#"
-[meta]
-harnex_version = ">=0.37, <0.38"
-"#;
-    let cfg = load_cfg(&tmp, minimal);
+    let cfg = load_cfg(&tmp, &common::pinned(""));
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     assert!(outcome.run.is_empty());
     for expected in [
@@ -157,10 +151,8 @@ fn check_emits_codegen_drift_as_blocker() {
     let target = tmp.path().join("nodex.toml");
     fs::write(&target, "# BEGIN x\nallowed = [\"stale\"]\n# END x\n").unwrap();
 
-    let toml_body = r##"
-[meta]
-harnex_version = ">=0.37, <0.38"
-
+    let toml_body = common::pinned(
+        r##"
 [[codegen.groups]]
 name = "g"
 source = "enums.toml"
@@ -171,8 +163,9 @@ begin = "# BEGIN x"
 end = "# END x"
 format = "toml-array-assignment"
 name = "allowed"
-"##;
-    let cfg = load_cfg(&tmp, toml_body);
+"##,
+    );
+    let cfg = load_cfg(&tmp, &toml_body);
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     let drift: Vec<_> = outcome
         .findings
@@ -297,7 +290,7 @@ fn a_set_past_its_budget_is_one_finding_at_its_largest_member() {
     let tmp = project();
     let cfg = load_cfg(
         &tmp,
-        "[meta]\nharnex_version = \">=0.37, <0.38\"\n[validate.always_loaded]\nmax_chars = 10\n",
+        &common::pinned("[validate.always_loaded]\nmax_chars = 10\n"),
     );
     write(&tmp.path().join("CLAUDE.md"), "twelve chars\n");
     write(&tmp.path().join(".claude/CLAUDE.md"), "short\n");
@@ -383,10 +376,8 @@ fn fix_resolves_codegen_drift_and_re_check_clean() {
         "# BEGIN x\nallowed = [\"stale\"]\n# END x\n",
     )
     .unwrap();
-    let toml_body = r##"
-[meta]
-harnex_version = ">=0.37, <0.38"
-
+    let toml_body = common::pinned(
+        r##"
 [[codegen.groups]]
 name = "g"
 source = "enums.toml"
@@ -397,8 +388,9 @@ begin = "# BEGIN x"
 end = "# END x"
 format = "toml-array-assignment"
 name = "allowed"
-"##;
-    let cfg = load_cfg(&tmp, toml_body);
+"##,
+    );
+    let cfg = load_cfg(&tmp, &toml_body);
 
     let outcome = ProjectChecker::new(&cfg, tmp.path()).fix().unwrap();
     assert!(
@@ -744,11 +736,9 @@ fn check_gates_advisory_staleness_by_context() {
     );
 }
 
-fn evidence_config() -> &'static str {
-    r#"
-[meta]
-harnex_version = ">=0.37, <0.38"
-
+fn evidence_config() -> String {
+    common::pinned(
+        r#"
 [evidence]
 default_provenance = "internal"
 [[evidence.verifiers]]
@@ -761,13 +751,14 @@ max_lines = 200
 [validate.agents]
 [validate.output_styles]
 [validate.routines]
-"#
+"#,
+    )
 }
 
 #[test]
 fn evidence_rechecks_unchanged_claims_when_their_target_changes() {
     let tmp = project();
-    let cfg = load_cfg(&tmp, evidence_config());
+    let cfg = load_cfg(&tmp, &evidence_config());
     let source = tmp.path().join("src/api.rs");
     write(&source, "pub fn load() {}\n");
     write(
@@ -817,10 +808,9 @@ fn a_changed_config_revalidates_unchanged_surfaces_from_its_own_root() {
         let root = tmp.path().join(directory);
         let config = root.join("harness.toml");
         let policy = |reject| {
-            format!(
-                "[meta]\nharnex_version = \">=0.37, <0.38\"\n\
-             [validate.skills]\nreject_unknown_keys = {reject}\n"
-            )
+            common::pinned(&format!(
+                "[validate.skills]\nreject_unknown_keys = {reject}\n"
+            ))
         };
         write(&config, &policy(false));
         write(
@@ -896,7 +886,7 @@ fn an_untracked_config_revalidates_existing_surfaces_even_when_ignored() {
         }
         let cfg = load_cfg(
             &tmp,
-            "[meta]\nharnex_version=\">=0.37, <0.38\"\n[validate.skills]\nreject_unknown_keys=true\n",
+            &common::pinned("[validate.skills]\nreject_unknown_keys=true\n"),
         );
         let outcome = ProjectChecker::new(&cfg, tmp.path())
             .with_since("HEAD")
@@ -935,7 +925,7 @@ fn check_reads_a_claim_from_every_shape_validated_surface() {
     // shape and this list does not read is the silence this test exists for:
     // add a validator, and its glob has to appear in `run_evidence` too.
     let tmp = project();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(
         &tmp.path().join("CLAUDE.md"),
         "Owner: [file: no/such/root.rs:1].\n",
@@ -993,7 +983,7 @@ fn a_claude_md_the_project_ignores_is_not_its_own_and_one_it_tracks_is() {
     // other from the project root — that is the boundary, and it is not a
     // heuristic about directory names.
     let tmp = project();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(&tmp.path().join(".gitignore"), "vendor/\n");
     write(&tmp.path().join("CLAUDE.md"), "root\n");
     write(
@@ -1020,7 +1010,7 @@ fn a_changed_file_named_outside_ascii_is_still_in_the_since_window() {
     // unless asked not to, so a changed `한글.md` never equalled the candidate
     // the gate discovered: a windowed run scanned nothing and reported clean.
     let tmp = project();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(&tmp.path().join("CLAUDE.md"), "root\n");
     let rule = tmp.path().join(".claude/rules/한글.md");
     write(&rule, "---\npaths: [\"src/**\"]\n---\n\nbase\n");
@@ -1071,7 +1061,7 @@ fn personal_git_excludes_do_not_decide_what_the_project_owns() {
     // project's own ignore files decide; `.git/info/exclude` stands in for
     // the personal layer here because it is per-clone and not per-project.
     let tmp = project();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(&tmp.path().join(".git/info/exclude"), "CLAUDE.md\n");
     write(
         &tmp.path().join("CLAUDE.md"),
@@ -1099,7 +1089,7 @@ fn a_config_below_the_git_top_level_still_sees_its_changed_files() {
     // clean over two broken claims.
     let tmp = project();
     let web = tmp.path().join("apps/web");
-    write(&web.join("harness.toml"), evidence_config());
+    write(&web.join("harness.toml"), &evidence_config());
     write(&web.join("CLAUDE.md"), "base\n");
     write(
         &web.join(".claude/rules/r.md"),
@@ -1162,7 +1152,7 @@ fn the_runtimes_own_exclude_list_is_honored() {
     // its claims still count. A developer's local settings are theirs: the
     // same tree gets the same verdict wherever it is checked.
     let tmp = project();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(
         &tmp.path().join(".claude/settings.json"),
         "{\"claudeMdExcludes\": [\"examples/**/CLAUDE.md\", \"**/vendor/**/CLAUDE.md\", \
@@ -1205,7 +1195,7 @@ fn the_runtimes_own_exclude_list_is_honored() {
 #[test]
 fn an_agents_md_is_read_where_the_runtime_reads_it() {
     let tmp = project();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(
         &tmp.path().join("AGENTS.md"),
         "Owner: [file: no/such/agents.rs:1].\n",
@@ -1227,7 +1217,7 @@ fn a_file_in_two_candidate_sources_is_read_once() {
     // `.claude/rules/CLAUDE.md` is a rule and a memory file; both sources
     // listed it, and the same Blocker was emitted twice at the same line.
     let tmp = project();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(&tmp.path().join("CLAUDE.md"), "root\n");
     write(
         &tmp.path().join(".claude/rules/CLAUDE.md"),
@@ -1249,7 +1239,7 @@ fn without_git_the_nested_set_is_declared_unmeasured_and_the_rest_is_read() {
     // for, so that set is what is declared unmeasured — and nothing else
     // goes unread because of it.
     let tmp = TempDir::new().unwrap();
-    write(&tmp.path().join("harness.toml"), evidence_config());
+    write(&tmp.path().join("harness.toml"), &evidence_config());
     write(
         &tmp.path().join("CLAUDE.md"),
         "Owner: [file: no/such/root.rs:1].\n",
@@ -1384,16 +1374,15 @@ fn an_unreadable_file_is_reported_where_its_own_validator_is_disabled() {
     let tmp = project();
     let cfg = load_cfg(
         &tmp,
-        r#"
-[meta]
-harnex_version = ">=0.37, <0.38"
-
+        &common::pinned(
+            r#"
 [evidence]
 default_provenance = "memory-only"
 [[evidence.verifiers]]
 provenance = "memory-only"
 strategy = "memory-only"
 "#,
+        ),
     );
     let skill = tmp.path().join(".claude/skills/deploy/SKILL.md");
     write(&skill, "---\nname: deploy\ndescription: d\n---\nbody\n");
@@ -1489,10 +1478,7 @@ fn a_rule_both_pinned_always_loaded_and_scoped_is_a_contradiction() {
 #[test]
 fn a_preloaded_skill_changed_alone_is_caught_under_since() {
     let tmp = project();
-    let cfg = load_cfg(
-        &tmp,
-        "[meta]\nharnex_version = \">=0.37, <0.38\"\n\n[validate.agents]\n",
-    );
+    let cfg = load_cfg(&tmp, &common::pinned("[validate.agents]\n"));
     write(
         &tmp.path().join(".claude/agents/reviewer.md"),
         "---\nname: reviewer\ndescription: d\nskills: [lenses]\n---\nBody\n",

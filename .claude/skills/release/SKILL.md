@@ -81,10 +81,11 @@ test matrix carries two operating systems and a development machine is one of
 them, so the other leg is only ever green in CI. That is why the run is watched
 rather than predicted.
 
-The pins are not a manual sweep, but they take two gates and not one. A
-`harnex_version` in a fixture that excludes the new version fails the suite,
-and so does a shipped one — the template's, an example's, the README's — that
-does not start at it (`shipped_pin_sync`). This repository's own
+The pins are not a manual sweep, but they take two gates and not one. A test
+fixture states no version — it pins `FIXTURE_PIN`, computed from the crate's
+own — so the pins a release moves are the shipped ones: the template's, an
+example's, the README's, which fail the suite until they start at the new
+version (`shipped_pin_sync`). This repository's own
 `harness.toml` is loaded by no test, so a stale pin there is silent until
 `harnex check` reads it, which is what the audit job runs. Run both; neither
 alone covers every pin.
