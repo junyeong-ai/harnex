@@ -19,7 +19,8 @@ scheduled, so a session opens knowing what the harness is owed.
 
 - **`produces:` presence is completion.** The record file is the proof of
   work — a routine is done when the artifact it promised exists, never when
-  someone says so.
+  someone says so. Keep the record path tracked: an ignored record completes
+  the routine on one machine and leaves it overdue on every other clone.
 - **The next tick is scheduled by hand.** After producing, set the next
   `when:` and the next `produces:` yourself. A date derived from when the
   last run happened to land drifts the cadence toward slippage.
