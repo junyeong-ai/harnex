@@ -74,8 +74,8 @@ pub(crate) fn listed_paths(dir: &Path, args: &[&str]) -> Result<Vec<PathBuf>, Fa
 pub enum LastChange {
     /// The last commit that changed it; the working tree still matches it.
     Committed(Timestamp),
-    /// A change `git status` shows — an edit, or a file not yet committed —
-    /// so it is changing now.
+    /// A change no commit holds yet — an edit, or a file neither committed nor
+    /// ignored — so it is changing now.
     Uncommitted,
     /// Nothing this history records: a path outside the repository, inside a
     /// repository of its own, ignored, or not there at all.
@@ -280,17 +280,27 @@ impl<'a> Record<'a> {
         let mut record = Self::default();
         let committed = has_commits(top)?;
 
-        // Pending as `git status` reads it: an edit against `HEAD`, and a file
-        // untracked under the developer's own excludes too, since whether this
-        // checkout holds a change is its own question and a `.DS_Store` every
-        // Finder window writes is not one. Before the first commit, every
-        // tracked file is an addition. `--no-renames` lists a move as the path
-        // it left and the one it reached, since rename detection names only
-        // the second and the directory the file left changed too.
+        // Pending: an edit against `HEAD`, and a file untracked under the
+        // developer's own excludes too, since whether this checkout holds a
+        // change is its own question and a `.DS_Store` every Finder window
+        // writes is not one. Before the first commit, every tracked file is an
+        // addition. A file whose time alone moved is no edit, as `git status`
+        // reads it, whatever `diff.autoRefreshIndex` says. `--no-renames` lists
+        // a move as the path it left and the one it reached, since rename
+        // detection names only the second and the directory the file left
+        // changed too.
         let tracked_changes = match committed {
             true => stdout(
                 top,
-                &with_specs(&["diff", "--name-only", "-z", "--no-renames", "HEAD"]),
+                &with_specs(&[
+                    "-c",
+                    "diff.autoRefreshIndex=true",
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    "--no-renames",
+                    "HEAD",
+                ]),
             )?,
             false => stdout(top, &with_specs(&["ls-files", "-z", "--cached"]))?,
         };
