@@ -24,8 +24,7 @@ new sub-auditor:
 3. Implement the sub-auditor in `audit/<name>.rs` (visibility `pub(crate)`
    — only `ProjectAuditor` exposes a public entry).
 4. Add slug-specific behavior tests under the sub-auditor's
-   `#[cfg(test)] mod tests`; `from_str_round_trips_every_variant` already
-   covers the new variant.
+   `#[cfg(test)] mod tests`; the macro's own test covers the parse.
 
 Sub-auditor slugs (current):
 - `settings-drift` — `.claude/settings.json` value compliance

@@ -371,20 +371,3 @@ impl<'a> ProjectAuditor<'a> {
         })
     }
 }
-
-#[cfg(test)]
-mod kind_tests {
-    use super::AuditCheckKind;
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for k in AuditCheckKind::ALL {
-            assert_eq!(AuditCheckKind::from_str(k.as_str()), Some(*k));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert!(AuditCheckKind::from_str("made-up").is_none());
-    }
-}

@@ -429,18 +429,6 @@ mod tier_tests {
             );
         }
     }
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for t in Tier::ALL {
-            assert_eq!(Tier::from_str(t.as_str()), Some(*t));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert!(Tier::from_str("optional").is_none());
-    }
 }
 
 #[cfg(test)]

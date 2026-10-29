@@ -45,41 +45,19 @@ impl PromotionDecision {
 }
 
 #[cfg(test)]
-mod strategy_tests {
+mod decision_tests {
+    use super::PromotionDecision;
 
     #[test]
     fn promotion_decision_spells_itself_the_same_way_twice() {
+        // The CLI value_parser reads `as_str`; the ledger serializes through
+        // serde.
         for variant in PromotionDecision::ALL {
             assert_eq!(
                 serde_json::to_string(variant).unwrap(),
                 format!("{:?}", variant.as_str()),
                 "`rename_all` and the wire string are two spellings of one name"
             );
-        }
-    }
-    use super::PromotionDecision;
-
-    #[test]
-    fn from_str_round_trips_every_variant() {
-        for d in PromotionDecision::ALL {
-            assert_eq!(PromotionDecision::from_str(d.as_str()), Some(*d));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert_eq!(PromotionDecision::from_str("nope"), None);
-    }
-
-    #[test]
-    fn as_str_matches_serde_kebab_case() {
-        // serde_json emits the same kebab-case strings as as_str — the
-        // CLI value_parser (via decision_kind_values) and the ledger
-        // serialization MUST agree on the wire representation.
-        for d in PromotionDecision::ALL {
-            let json = serde_json::to_string(d).unwrap();
-            // serde quotes the variant: "\"approved\""
-            assert_eq!(json, format!("\"{}\"", d.as_str()));
         }
     }
 }

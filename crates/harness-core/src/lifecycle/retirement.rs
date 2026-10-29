@@ -165,29 +165,18 @@ impl<'a> RetirementClassifier<'a> {
 }
 
 #[cfg(test)]
-mod strategy_tests {
+mod silence_state_tests {
     use super::SilenceState;
 
     #[test]
-    fn from_str_round_trips_every_variant() {
-        for s in SilenceState::ALL {
-            assert_eq!(SilenceState::from_str(s.as_str()), Some(*s));
-        }
-    }
-
-    #[test]
-    fn from_str_rejects_unknown() {
-        assert_eq!(SilenceState::from_str("quiet"), None);
-    }
-
-    #[test]
-    fn as_str_matches_serde_kebab_case() {
+    fn silence_state_spells_itself_the_same_way_twice() {
         // The CLI `--silence` value_parser reads `as_str`; the envelope
-        // serializes through serde. The two must spell each state alike.
-        for s in SilenceState::ALL {
+        // serializes through serde.
+        for variant in SilenceState::ALL {
             assert_eq!(
-                serde_json::to_string(s).unwrap(),
-                format!("{:?}", s.as_str())
+                serde_json::to_string(variant).unwrap(),
+                format!("{:?}", variant.as_str()),
+                "`rename_all` and the wire string are two spellings of one name"
             );
         }
     }

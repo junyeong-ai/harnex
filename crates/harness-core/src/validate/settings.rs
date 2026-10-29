@@ -624,18 +624,6 @@ mod tests {
     }
 
     #[test]
-    fn scope_from_str_round_trips_every_variant() {
-        for scope in SettingsScope::ALL {
-            assert_eq!(SettingsScope::from_str(scope.as_str()), Some(*scope));
-        }
-    }
-
-    #[test]
-    fn scope_from_str_rejects_unknown() {
-        assert!(SettingsScope::from_str("unknown-scope").is_none());
-    }
-
-    #[test]
     fn project_scope_noop_applies_on_project_and_local() {
         assert!(SettingsScope::Project.project_scope_noop_applies());
         assert!(SettingsScope::Local.project_scope_noop_applies());

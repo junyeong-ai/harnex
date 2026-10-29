@@ -23,16 +23,13 @@ When adding a new schema target:
 2. Add one `Variant => "wire-string"` line to the `SchemaTarget` wire_enum
    (`ALL` and `from_str` are generated) + a match arm in `schema_for` —
    the exhaustive match forces it.
-3. Raise the floor in `target_all_is_unique_and_nonshrinking` to the new
-   `ALL` length, and name the target in README's `export schema` brace
-   block — `the_readme_names_every_schema_the_binary_will_emit`
+3. Name the target in README's `export schema` brace block —
+   `the_readme_names_every_schema_the_binary_will_emit`
    (release_install_sync) fails until it appears.
 
 `error-codes` derives from `ErrorCode::ALL` (the single source) via
-`error_code_strings()` — no parallel hand-maintained list. The exhaustive
-`ErrorCode::as_str` match forces `ALL` to stay complete; the
-`error_code_tests` (in `error.rs`) and `error_codes_schema_lists_all_variants`
-(in `export.rs`) catch drift.
+`error_code_strings()` — no parallel hand-maintained list; `wire_enum!`
+generates `ALL` from the declaration, so it cannot miss a variant.
 
 `all` bundles every other target, derived from `SchemaTarget::ALL`; the
 `all_schemas_emits_every_named_target` test iterates `ALL` too, so a new
