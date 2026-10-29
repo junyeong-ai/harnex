@@ -55,6 +55,30 @@ const ADOPTED_FRAGMENTS: &[&str] = &[
     "rust/permissions.allow.json",
 ];
 
+/// The pattern files this repo has installed, as `<slug>/<template>`.
+///
+/// Named for the reason the fragments are. A pattern's rules and skills are
+/// filled from the project at install, so a destination may hold this repo's
+/// own text, and only a file installed unchanged is comparable.
+const ADOPTED_PATTERN_FILES: &[&str] = &["routines/session-routines.sh"];
+
+#[derive(serde::Deserialize)]
+struct PatternManifest {
+    pattern: Vec<Pattern>,
+}
+
+#[derive(serde::Deserialize)]
+struct Pattern {
+    slug: String,
+    files: Vec<PatternFile>,
+}
+
+#[derive(serde::Deserialize)]
+struct PatternFile {
+    template: String,
+    destination: String,
+}
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -168,5 +192,35 @@ fn every_adopted_merge_fragment_is_present_in_its_destination() {
          the left side is one this repo stopped shipping what it runs — re-copy \
          it. One missing from the right is a fragment newly adopted, which is a \
          decision, so name it in ADOPTED_FRAGMENTS."
+    );
+}
+
+#[test]
+fn every_adopted_pattern_file_matches_its_template() {
+    let root = repo_root();
+    let patterns = templates_root().join("patterns");
+    let manifest: PatternManifest = toml::from_str(&read(&patterns.join("manifest.toml")))
+        .unwrap_or_else(|e| panic!("parse patterns/manifest.toml: {e}"));
+
+    let mut landed: Vec<String> = Vec::new();
+    for pattern in &manifest.pattern {
+        for file in &pattern.files {
+            let adopted = root.join(&file.destination);
+            let source = patterns.join(&pattern.slug).join(&file.template);
+            if adopted.exists() && read(&adopted) == read(&source) {
+                landed.push(format!("{}/{}", pattern.slug, file.template));
+            }
+        }
+    }
+    landed.sort();
+
+    let mut expected: Vec<String> = ADOPTED_PATTERN_FILES.iter().map(|s| s.to_string()).collect();
+    expected.sort();
+    assert_eq!(
+        landed, expected,
+        "the pattern files this repo carries have changed. A file missing from \
+         the left side is one this repo stopped shipping what it runs — re-copy \
+         it. One missing from the right is a file newly installed, which is a \
+         decision, so name it in ADOPTED_PATTERN_FILES."
     );
 }
