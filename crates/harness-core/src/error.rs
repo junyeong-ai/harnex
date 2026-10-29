@@ -272,7 +272,7 @@ impl Error {
                 Some("ensure git is installed and the working directory is a repository")
             }
             Self::LifecycleGitFailure { .. } => Some(
-                "retirement asks git which files the project owns and when each last changed; ensure git is installed, the working directory is a repository, and its history is not shallow",
+                "retirement asks git which files the project owns and when each last changed, which needs git installed, a repository with its full history, and each path readable under the name its directory lists; the message names what failed",
             ),
             Self::LifecycleDemoteWithoutApproval { .. } => Some(
                 "demote applies only to previously Approved patterns; use reject for never-approved patterns",

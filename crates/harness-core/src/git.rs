@@ -86,19 +86,12 @@ pub(crate) fn last_committed(
 ) -> Result<Vec<Option<Timestamp>>, Failure> {
     let root =
         std::fs::canonicalize(dir).map_err(|e| Failure(format!("{}: {e}", dir.display())))?;
-    // Each path is matched against what git lists, so it is spelled the way
-    // git spells it: `..` and a linked directory resolved, the last component
-    // kept, because an artifact that is itself a link is tracked as the link.
     let specs = paths
         .iter()
         .map(|path| {
-            let resolved = match (path.parent(), path.file_name()) {
-                (Some(parent), Some(name)) => std::fs::canonicalize(parent).map(|p| p.join(name)),
-                _ => std::fs::canonicalize(path),
-            };
             // A path that is not there has no history; any other reason it
             // cannot be resolved is a measurement that failed.
-            let resolved = match resolved {
+            let resolved = match stored_spelling(path) {
                 Ok(resolved) => resolved,
                 Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
                     return Ok(None);
@@ -251,6 +244,30 @@ pub(crate) fn last_committed(
             }
         })
         .collect()
+}
+
+/// `path` spelled as git spells it: `..` and linked directories resolved, and
+/// each component as its directory stores it, since a file system that folds
+/// case or composition finds a file under other spellings too. A last
+/// component that is itself a link stays the link, which git tracks; no
+/// portable call reads back a link's stored name, so one named otherwise than
+/// its directory lists it is refused.
+fn stored_spelling(path: &Path) -> std::io::Result<PathBuf> {
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+        return std::fs::canonicalize(path);
+    };
+    if !std::fs::symlink_metadata(path)?.file_type().is_symlink() {
+        return std::fs::canonicalize(path);
+    }
+    let parent = std::fs::canonicalize(parent)?;
+    for entry in std::fs::read_dir(&parent)? {
+        if entry?.file_name() == name {
+            return Ok(parent.join(name));
+        }
+    }
+    Err(std::io::Error::other(
+        "a link named otherwise than its directory lists it; give the name as listed",
+    ))
 }
 
 /// The paths asked about, matched against the paths git lists.
