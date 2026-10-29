@@ -23,6 +23,15 @@ outside the schema at write time.
   `Skill|Task|Agent`, best `async`. It is a no-op without the oracle and never
   blocks a tool call.
 - Add a Kind with a config edit, never a code edit.
+- Declare the auto-emit Kind in `harness.toml` exactly as below. Its closed
+  schema bounds the shape; `harnex guard telemetry-emit` bounds the value to
+  the element's own slug, and an undeclared Kind makes the emit a silent no-op.
+
+  ```toml
+  [[telemetry.kinds]]
+  name = "harness_invocation"
+  payload_schema = { type = "object", required = ["surface", "outcome"], properties = { surface = { type = "string" }, outcome = { type = "string", enum = ["ok", "failed"] } } }
+  ```
 - Set `invocation_kind = "harness_invocation"` on the `[[kinds]]` this record
   can name — the skill and sub-agent kinds, whose slugs are what `surface`
   carries. Never on a rule kind or any artifact that is loaded rather than
