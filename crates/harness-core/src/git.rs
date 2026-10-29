@@ -241,7 +241,12 @@ impl<'a> Record<'a> {
     /// One listing of what is pending and one walk of the history answer
     /// every path, each read as a literal, so a `[` in a name names that file.
     /// Run at `top`, every path is spelled from the repository's root.
-    fn read(top: &Path, pathspecs: &[&'a str]) -> Result<Self, Failure> {
+    ///
+    /// git is asked about the directory holding each path, so the specs stay
+    /// few however many artifacts share one: it matches each spec against
+    /// every path it lists, and what it lists beyond the paths asked matches
+    /// none of them. A path at the root is asked for itself.
+    fn read(top: &Path, paths: &[&'a str]) -> Result<Self, Failure> {
         if stdout(top, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
             return Err(Failure(
                 "this clone is shallow, so every file its oldest commit holds reads as changed \
@@ -249,26 +254,19 @@ impl<'a> Record<'a> {
                     .into(),
             ));
         }
+        let spelling = Spelling::of(top)?;
         // Where git ignores case, a pathspec matches as `git status` matches
         // the file system's names to the ones it tracks.
-        let ignore_case = stdout(
-            top,
-            &[
-                "config",
-                "--type=bool",
-                "--default=false",
-                "core.ignorecase",
-            ],
-        )?
-        .trim()
-            == "true";
-        let magic = match ignore_case {
+        let magic = match spelling.folds_case {
             true => ":(literal,icase)",
             false => ":(literal)",
         };
-        let specs: Vec<String> = pathspecs
+        let mut scopes: Vec<&str> = paths.iter().map(|path| scope(path)).collect();
+        scopes.sort_unstable();
+        scopes.dedup();
+        let specs: Vec<String> = scopes
             .iter()
-            .map(|spec| format!("{magic}{spec}"))
+            .map(|scope| format!("{magic}{scope}"))
             .collect();
         let with_specs = |args: &[&'static str]| {
             let mut args: Vec<&str> = args.to_vec();
@@ -276,7 +274,7 @@ impl<'a> Record<'a> {
             args.extend(specs.iter().map(String::as_str));
             args
         };
-        let asked = Asked::new(pathspecs, ignore_case);
+        let asked = Asked::new(paths, spelling);
         let mut record = Self::default();
         let committed = has_commits(top)?;
 
@@ -398,63 +396,98 @@ impl<'a> Record<'a> {
     }
 }
 
+/// What git is asked about for `path`: the directory holding it, or, at the
+/// repository's root, the path itself, and the root as `.`.
+fn scope(path: &str) -> &str {
+    match Path::new(path).parent().and_then(Path::to_str) {
+        Some(dir) if !dir.is_empty() => dir,
+        _ if path.is_empty() => ".",
+        _ => path,
+    }
+}
+
+/// How git matches the names a file system gives to the ones it lists, as
+/// the repository is configured.
+#[derive(Clone, Copy)]
+struct Spelling {
+    /// `core.precomposeUnicode`: git lists names composed, where the file
+    /// system may give them decomposed.
+    composes: bool,
+    /// `core.ignorecase`: git lists a file under the case it was added with,
+    /// which the file system may have changed since without git reading it as
+    /// a change.
+    folds_case: bool,
+}
+
+impl Spelling {
+    fn of(top: &Path) -> Result<Self, Failure> {
+        let set = |key: &str| -> Result<bool, Failure> {
+            let value = stdout(top, &["config", "--type=bool", "--default=false", key])?;
+            Ok(value.trim() == "true")
+        };
+        Ok(Self {
+            composes: set("core.precomposeUnicode")?,
+            folds_case: set("core.ignorecase")?,
+        })
+    }
+
+    /// The key two names share where git reads them as one name, or `None`
+    /// where it reads every name byte for byte. git's `icase` folds ASCII
+    /// letters only.
+    fn alike(self, name: &str) -> Option<String> {
+        if !self.composes && !self.folds_case {
+            return None;
+        }
+        let name: String = match self.composes {
+            true => name.nfc().collect(),
+            false => name.to_owned(),
+        };
+        Some(match self.folds_case {
+            true => name.to_ascii_lowercase(),
+            false => name,
+        })
+    }
+}
+
 /// The paths asked about, matched against the paths git lists.
 struct Asked<'a> {
     spelled: HashSet<&'a str>,
-    composed: HashMap<String, Vec<&'a str>>,
-    /// Kept where git ignores case: it lists a file under the case it was
-    /// added with, which the file system may have changed since without git
-    /// reading it as a change.
-    folded: Option<HashMap<String, Vec<&'a str>>>,
+    alike: HashMap<String, Vec<&'a str>>,
+    spelling: Spelling,
 }
 
 impl<'a> Asked<'a> {
-    fn new(paths: &[&'a str], ignore_case: bool) -> Self {
-        let mut composed: HashMap<String, Vec<&'a str>> = HashMap::new();
-        let mut folded: HashMap<String, Vec<&'a str>> = HashMap::new();
+    fn new(paths: &[&'a str], spelling: Spelling) -> Self {
+        let mut alike: HashMap<String, Vec<&'a str>> = HashMap::new();
         for &path in paths {
-            let key: String = path.nfc().collect();
-            folded.entry(fold(&key)).or_default().push(path);
-            composed.entry(key).or_default().push(path);
+            if let Some(key) = spelling.alike(path) {
+                alike.entry(key).or_default().push(path);
+            }
         }
         Self {
             spelled: paths.iter().copied().collect(),
-            composed,
-            folded: ignore_case.then_some(folded),
+            alike,
+            spelling,
         }
     }
 
     /// Every path asked about that `listed` is or lies under: git lists files,
-    /// and a change to one is a change to each directory holding it.
-    ///
-    /// git on macOS lists every name composed (`core.precomposeUnicode`),
-    /// while the file system may hand back a decomposed one. So a name
-    /// matches as it is spelled, failing that as it composes, and failing
-    /// both, where git ignores case, as it folds: two names a file system
-    /// keeps apart stay apart.
+    /// and a change to one is a change to each directory holding it. A name
+    /// matches as it is spelled, and only failing that as git reads it, so
+    /// two names a file system keeps apart stay apart. A repository nested
+    /// untracked inside this one is listed with a trailing `/`.
     fn holding(&self, listed: &str) -> Vec<&'a str> {
+        let listed = Path::new(listed.trim_end_matches('/'));
         let mut holding = Vec::new();
-        for ancestor in Path::new(listed).ancestors().filter_map(Path::to_str) {
+        for ancestor in listed.ancestors().filter_map(Path::to_str) {
             if let Some(&path) = self.spelled.get(ancestor) {
                 holding.push(path);
-                continue;
-            }
-            let composed: String = ancestor.nfc().collect();
-            match (self.composed.get(&composed), &self.folded) {
-                (Some(paths), _) => holding.extend(paths),
-                (None, Some(folded)) => {
-                    holding.extend(folded.get(&fold(&composed)).into_iter().flatten());
-                }
-                (None, None) => {}
+            } else if let Some(key) = self.spelling.alike(ancestor) {
+                holding.extend(self.alike.get(&key).into_iter().flatten());
             }
         }
         holding
     }
-}
-
-/// A name as git's `icase` matches it, which folds ASCII letters only.
-fn fold(name: &str) -> String {
-    name.to_ascii_lowercase()
 }
 
 /// Whether `HEAD` names a commit. A repository on an unborn branch has none,
@@ -498,25 +531,44 @@ fn stdout(dir: &Path, args: &[&str]) -> Result<String, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use super::Asked;
+    use super::{Asked, Spelling};
+
+    const BYTES: Spelling = Spelling {
+        composes: false,
+        folds_case: false,
+    };
 
     #[test]
     fn a_listed_name_matches_as_spelled_before_as_composed() {
         let composed = "\u{e9}.md";
         let decomposed = "e\u{301}.md";
         let skill = "\u{1112}\u{1161}\u{11ab}";
-        let asked = Asked::new(&[composed, decomposed, skill], false);
+        let composes = Spelling {
+            composes: true,
+            ..BYTES
+        };
+        let asked = Asked::new(&[composed, decomposed, skill], composes);
         assert_eq!(asked.holding(composed), [composed]);
         assert_eq!(asked.holding(decomposed), [decomposed]);
         assert_eq!(asked.holding("\u{d55c}/SKILL.md"), [skill]);
+        // Where git keeps names byte for byte, so does the match.
+        assert!(
+            Asked::new(&[skill], BYTES)
+                .holding("\u{d55c}/SKILL.md")
+                .is_empty()
+        );
     }
 
     #[test]
     fn a_listed_name_matches_in_another_case_only_where_git_ignores_case() {
-        let asked = |ignore_case| Asked::new(&["rules/old.md", "\u{e9}.md"], ignore_case);
-        assert_eq!(asked(true).holding("Rules/Old.md"), ["rules/old.md"]);
-        assert!(asked(false).holding("Rules/Old.md").is_empty());
+        let folds = Spelling {
+            folds_case: true,
+            ..BYTES
+        };
+        let asked = |spelling| Asked::new(&["rules/old.md", "\u{e9}.md"], spelling);
+        assert_eq!(asked(folds).holding("Rules/Old.md"), ["rules/old.md"]);
+        assert!(asked(BYTES).holding("Rules/Old.md").is_empty());
         // git folds ASCII letters only.
-        assert!(asked(true).holding("\u{c9}.md").is_empty());
+        assert!(asked(folds).holding("\u{c9}.md").is_empty());
     }
 }
