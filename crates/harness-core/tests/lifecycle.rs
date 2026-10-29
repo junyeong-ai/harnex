@@ -1485,23 +1485,25 @@ fn a_directory_is_dated_by_the_files_it_holds() {
     // A skill is the directory its files sit in, and git lists only files.
     let tmp = repo();
     let skills = tmp.path().join(".claude/skills");
-    for name in ["settled", "edited", "grown"] {
+    for name in ["settled", "littered", "edited", "grown"] {
         std::fs::create_dir_all(skills.join(name)).unwrap();
         std::fs::write(skills.join(name).join("SKILL.md"), "a skill").unwrap();
     }
     commit_days_ago(tmp.path(), 200);
+    std::fs::write(tmp.path().join(".git/info/exclude"), ".DS_Store\n").unwrap();
+    std::fs::write(skills.join("littered/.DS_Store"), "finder").unwrap();
     std::fs::write(skills.join("edited/SKILL.md"), "a skill, mid-edit").unwrap();
     std::fs::write(skills.join("grown/reference.md"), "not yet committed").unwrap();
 
     let changes = last_changes(
         tmp.path(),
-        &["settled", "edited", "grown"].map(|name| skills.join(name)),
+        &["settled", "littered", "edited", "grown"].map(|name| skills.join(name)),
     )
     .unwrap();
     let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(ages[..], [Some(199..=200), None, None]),
-        "an edited file and an untracked one are changes now: {ages:?}"
+        matches!(ages[..], [Some(199..=200), Some(199..=200), None, None]),
+        "an ignored file is no change; an edited file and an untracked one are: {ages:?}"
     );
 }
 
