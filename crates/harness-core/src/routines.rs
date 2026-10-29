@@ -383,6 +383,13 @@ mod tests {
     }
 
     #[test]
+    fn a_fence_may_trail_whitespace() {
+        let text = "--- \ncadence: quarterly\nowner: harness\nprompt: run the pass\n---  \n";
+        let decl = RoutineDecl::from_file(text, Path::new("r.md")).unwrap();
+        assert_eq!(decl.prompt, "run the pass");
+    }
+
+    #[test]
     fn a_routine_behind_a_byte_order_mark_is_read() {
         let decl =
             RoutineDecl::from_file(&format!("\u{feff}{}", routine("")), Path::new("r.md")).unwrap();
