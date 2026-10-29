@@ -383,6 +383,13 @@ mod tests {
     }
 
     #[test]
+    fn a_routine_behind_a_byte_order_mark_is_read() {
+        let decl =
+            RoutineDecl::from_file(&format!("\u{feff}{}", routine("")), Path::new("r.md")).unwrap();
+        assert_eq!(decl.cadence, "quarterly");
+    }
+
+    #[test]
     fn states_reads_the_tree_and_refuses_a_broken_schedule() {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join(".claude/routines");
