@@ -52,14 +52,7 @@ invoked the loop — the skill writes nothing outside the files the fixes touch
 - one line per pass — pass number, findings by severity, files touched;
 - every finding's terminal disposition, end-anchored on its row —
   `[fixed: what pinned it]`, `[refuted: the ground truth]`, or
-  `[accepted: who accepted it and why]`. Spec-bound, `harnex plan audit`
-  computes the whole contract — open rows, vanished rows, unrecorded
-  rounds — and the pre-commit arm holds it at the commit. A pass that adds
-  finding rows without its decision-log line is refused there
-  (`plan-round-unrecorded`), so a pass the loop ran outside this skill is
-  still on the record; a line stating fewer findings than the pass filed is
-  refused too (`plan-log-counts-short`), so the severities on it are the
-  ones on the page.
+  `[accepted: who accepted it and why]`.
 
 A cleared finding keeps its row and gains its disposition. Prose that narrates
 findings away — "these became inexpressible after the redesign" — leaves a gate

@@ -24,33 +24,14 @@ Append one bullet per firing to `## Decision log` in `specs/<slug>/spec.md` —
 the section `specs/_template/spec.md` ships for exactly this:
 
 ```
-- 2026-01-15 · review · needs_revision · 0C/2B/3M/1m · two Blockers in the migration path; see plan.md ## Outstanding issues
+- 2026-01-15 · review · needs_revision · two Blockers in the migration path; see plan.md ## Outstanding issues
 ```
 
-Append-only, at the margin, under the gate's own name, and a merge is no
-exception: bringing a branch's bullets in ahead of ones already committed
-rewrites the log, so merge by appending the other side's records after yours.
-A gate that fires three times leaves three bullets in order — the history of a decision is the
-interesting part, and overwriting keeps only the last one. `git log
-specs/<slug>/` is the timeline this rides on. The two ways a record stops being
-one are both reported: off the margin — nested, indented or quoted — it renders
-as a firing and no gate counts it; under a name this workflow never defined,
-the arm refuses it.
-
-A counted firing writes its counts into the line: the log is where what each
-round found is read back, and the counts stand over the rows that round lands.
-A commit landing more rows at a rank than its own `needs_revision` records
-counted there is refused — every other field of a record answers to something,
-and this is the field that says how much. Counting more than the commit lands
-is no finding: a round may re-find what the page already holds, and there is
-nothing to transcribe. An acceptance firing counts criteria rather than ranks,
-so it answers for as many rows as it had criteria it could not pass, and no
-more. Two gate classes count different things and each owes its own token:
-
-| Class | Gates | Token | What must reach zero |
-|---|---|---|---|
-| review | `design_review`, `review` | `<n>C/<n>B/<n>M/<n>m` | Critical + Blocker |
-| acceptance | `acceptance` | `<n>P/<n>F/<n>U` | failed + unmeasured |
+Append-only, and a merge is no exception: bringing a branch's bullets in ahead
+of ones already committed rewrites the log, so merge by appending the other
+side's records after yours. A gate that fires three times leaves three bullets
+in order — the history of a decision is the interesting part, and overwriting
+keeps only the last one. `git log specs/<slug>/` is the timeline this rides on.
 
 No count of rounds bounds a gate: a review still finding new defects is doing
 what it is for. The gate goes back to the operator on what its rounds find:
@@ -61,32 +42,16 @@ what it is for. The gate goes back to the operator on what its rounds find:
   to close comes back where that revision did not reach;
 - **disputed** — two rounds in a row each file a Critical or Blocker, and every
   one is refuted against ground truth;
-- **stalled** — a round's Critical and Blocker set is one the log already
-  records.
+- **stalled** — a round's Critical and Blocker findings are ones an earlier
+  round already filed.
 
 The operator decides between one more revision, a split that reviews each part
 as its own unit, disposing of every blocking row and approving, and stopping
 the work. Each is recorded as the decision it is.
 
-A pass that lands rows records its round. The commit that adds rows to
-`## Outstanding issues` carries a `needs_revision` bullet under the gate that
-ran — one of the three above, the gates that count — or the arm refuses it: a
-row's round is read back from the log, so rows landing without one are findings
-no record accounts for. A pass that lands rows and also ends the gate writes
-both bullets, the round it ran and the approval behind it.
-
-A row is never deleted, settled as much as open: the section is what review
-found, and a disposition ends a finding rather than retiring its row. The arm
-refuses a commit that drops one. A commit that leaves neither `plan.md` nor
-`spec.md` retires the spec and is held to none of this.
-
-Round-to-round counts are not compared. A round's count samples what one
-reviewer found, and a descent to zero is flat or rising in places; what tells
-a converging loop from a diverging one is where its findings land. The record
-is computed from the log's own lines by `harnex plan audit`, never recalled. A
-firing carrying the other class's token is a finding: the wrong token parses
-and reads as a total, so a review token on an acceptance line reports zero
-blocking while unmeasured criteria stand.
+A row in `## Outstanding issues` is never deleted, settled as much as open:
+the section is what review found, and a disposition ends a finding rather than
+retiring its row.
 
 ## clarify — inline, during specify
 
@@ -105,10 +70,9 @@ to reverse, and firing it on all of them teaches everyone to click through.
 Spawn a reviewer with fresh context over `plan.md`'s decisions. Tell it to
 refute, not to approve, and charge it with the document alone — never with
 what earlier rounds filed or which revisions to look at, because a reviewer
-steered by the last round's verdicts is that round again. On a Critical or
-Blocker: record `needs_revision`, revise, re-fire. On a clean report:
-transcribe what remains into `## Outstanding issues`, record the round that
-found it and `approved` behind it, proceed.
+steered by the last round's verdicts is that round again. Write what it found
+to `## Outstanding issues`. On a Critical or Blocker: record `needs_revision`,
+revise, re-fire. On a clean report: record `approved`, proceed.
 
 Revise by the smallest change that removes the finding. A Critical or Blocker
 that sits in what the previous revision wrote says that revision failed:
@@ -128,20 +92,12 @@ Delegate to <!-- harnex-fill: what this project reviews a diff with — the
 otherwise the project's own review command or a fresh-context reviewer --> over
 the spec's diff. It converges or reports why it stopped.
 
-Zero Critical and zero Blocker passes the gate. Write what remains to
-`plan.md ## Outstanding issues` — Major and Minor are follow-up signal, not
-blockers — and record the round that found them with `approved` behind it.
-Otherwise record `needs_revision` with the count, and the work goes back.
-
-A finding written to `## Outstanding issues` is one
-`- [Critical|Blocker|Major|Minor] <finding>` row, and a row is never deleted.
-Cleared, it ends with its terminal disposition — `[fixed: what pinned it]`,
-`[refuted: the ground truth]`, `[accepted: who accepted it and why]`. The gate
-passes on zero Critical/Blocker rows *without* a terminal disposition — a
-condition `harnex plan audit` computes, never on the rows' absence, which
-narration can fake: the pre-commit arm at `hooks/pre-commit.d/check-plan.sh`
-blocks the commit that leaves one standing, deletes a row, rewords one, or
-lands rows without recording the round that found them.
+Write what it found to `plan.md ## Outstanding issues`, one row per finding in
+the form `specs/_template/plan.md` gives. Zero Critical and zero Blocker rows
+without a terminal disposition passes the gate: record `approved`, and Major
+and Minor stay as follow-up signal. Otherwise record `needs_revision`, and the
+work goes back. The gate reads the rows, never their absence — a deleted row
+reads exactly like a finding no review filed.
 
 ## acceptance — blocking, end of implement, after review
 
@@ -158,27 +114,24 @@ Each criterion lands in one of three states, and the third is the point:
 | unmeasured | not checked — no instrument, no environment, or nobody ran it |
 
 **Unmeasured is not passed.** A criterion nothing answered is an open promise,
-and recording it as met is how a spec ships on an unobserved claim. It counts
-against approval exactly as a failure does, which is why one token carries
-both: `<n>P/<n>F/<n>U`, and `approved` requires the last two at zero —
-`harnex plan audit` refuses an approval that carries either.
+and recording it as met is how a spec ships on an unobserved claim. It blocks
+approval exactly as a failure does: `approved` requires every criterion
+passed.
 
 The way out of an unmeasured criterion is to measure it, or to say plainly
-that it cannot be measured here: `deferred`, with the counts and a rationale
-naming the criterion and what would answer it. `deferred` is a decision the
+that it cannot be measured here: `deferred`, with a rationale naming the
+criterion and what would answer it. `deferred` is a decision the
 log keeps; silence is not. It also stops the work short of `completed` — the
 spec waits for the gate to re-fire `approved`, or it is abandoned or
 superseded with the record saying which criteria went unanswered.
 
-The three counts add up to the list `spec.md` carries, and `harnex plan audit`
-holds them to it: a criterion left out of the token is one the gate never
-looked at, which is the omission the third state exists to name.
-
-Name the criteria by their number from `spec.md`, so the next session reads
-which ones stand rather than re-deriving them:
+Answer every criterion `spec.md` carries: one left out is one the gate never
+looked at, which is the omission the third state exists to name. Name the
+criteria by their number from `spec.md`, so the next session reads which ones
+stand rather than re-deriving them:
 
 ```
-- 2026-01-15 · acceptance · needs_revision · 4P/1F/2U · criterion 3 fails on empty input; 5 and 6 need the staging environment
+- 2026-01-15 · acceptance · needs_revision · criterion 3 fails on empty input; 5 and 6 need the staging environment; the rest passed
 ```
 
 A criterion that cannot be checked was not a criterion — the specify phase

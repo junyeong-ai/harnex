@@ -52,8 +52,7 @@ blank-page problem in disguise.
   session.
 - `spec-workflow` — the spec orchestrator as a skill (gate events with a
   closed decision-token enum, resume from disk), the threshold-and-lifecycle
-  rule, `specs/_template/`, and a pre-commit arm that audits a plan's review
-  state. Check for an existing `specs/` or `docs/adr/` directory.
+  rule, and `specs/_template/`. Check for an existing `specs/` or `docs/adr/` directory.
   If found, adapt to the existing layout instead of overwriting. Drop any
   phase whose artifact nobody on this project would review and no later
   session would read — the pipeline is checkpoints and state, and a phase
@@ -70,11 +69,7 @@ blank-page problem in disguise.
   that pattern is installed, otherwise this project's own review command).
   Resolve every marker the pattern ships, not a count stated here. The `<...>`
   placeholders inside the template files are filled per spec by whoever
-  starts one and are not install-time fill markers. `check-plan.sh` lands in
-  `hooks/pre-commit.d/`, is made executable, and its `PLAN_GLOB` follows the
-  layout the analysis observed — the scaffold's pre-commit dispatches every
-  arm there, which is how the review floor gets a commit-time computer
-  without editing a byte-identical hook. Verify a brownfield `harness.toml`
+  starts one and are not install-time fill markers. Verify a brownfield `harness.toml`
   carries `[lifecycle]`, and add it if not: wrapup records each harness
   proposal to the observation ledger in the commit that retires the spec
   directory, so a pattern installed without it reaches the one step whose

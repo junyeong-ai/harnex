@@ -41,7 +41,6 @@ skill composes templates — it never free-generates safety-critical code.
 | `harness-core::markdown` | the one reader for what a rendered document shows — a CommonMark parse giving visible lines and headings |
 | `harness-core::evidence` | provenance verifier (strategy enum per claim shape) |
 | `harness-core::telemetry` | append-only JSONL ledger with closed payload schema |
-| `harness-core::plan` | spec-workflow review grammar — finding rows, dispositions, the decision-log record — computed by `plan audit` |
 | `harness-core::policy` | permission rule grammar + profiles + version pins |
 | `harness-core::routines` | scheduled harness tasks — closed frontmatter grammar + schedule states |
 | `harness-core::scaffold` | composition manifest (`scaffold.toml`) + tier model |

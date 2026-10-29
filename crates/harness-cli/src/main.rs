@@ -68,12 +68,6 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::guard::GuardCommand,
     },
-    /// Spec-workflow review gate — finding rows, dispositions, decision-log
-    /// convergence
-    Plan {
-        #[command(subcommand)]
-        cmd: commands::plan::PlanCommand,
-    },
     /// Put a decision to the person on a page, and tell whether its answers
     /// still hold
     Ask {
@@ -158,7 +152,6 @@ fn main() -> ExitCode {
         Command::Validate { cmd } => commands::validate::run(cmd, &mut out),
         Command::Lifecycle { cmd } => commands::lifecycle::run(cmd, &mut out),
         Command::Guard { cmd } => commands::guard::run(cmd, &mut out),
-        Command::Plan { cmd } => commands::plan::run(cmd, &mut out),
         Command::Ask { cmd } => commands::ask::run(cmd, &mut out),
         Command::Export { cmd } => commands::export::run(cmd, &mut out),
         Command::Session { cmd } => commands::session::run(cmd, &mut out),

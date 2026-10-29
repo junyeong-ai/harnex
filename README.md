@@ -233,12 +233,6 @@ harnex guard floor                                    # PreToolUse floor-integri
 harnex guard telemetry-emit                           # PostToolUse: record a harness-element
                                                       # invocation (silent, never blocks)
 
-harnex plan audit --plan P [--spec S]                 # spec-workflow review floor:
-                  [--baseline B] [--baseline-spec BS] # open C/B rows, vanished rows,
-                  [--gates a,b,c]                     # rows added with no round recorded
-                                                      # or past what its rounds counted,
-                                                      # and firings under undeclared gates
-
 harnex ask serve <page> <asks.json> [--within <min>]  # a decision page on 127.0.0.1: ends on
                  [--no-open]                          # an answer set, taken or stale, or time
 harnex ask current <answered.json> <asks.json>        # which earlier answers still hold now
@@ -426,15 +420,6 @@ patterns covered out of the box:
   the check cannot evaluate without running it, so `--no-verify$(true)` and
   `$F` reach git as the flag and pass. The server-side re-run of the same
   gates is the backstop
-- The spec-workflow review floor — an open Critical/Blocker row, a row
-  deleted, reworded or downgraded instead of gaining its terminal
-  disposition, a commit adding finding rows without the decision line that
-  records the round that found them, a commit landing rows past what its own
-  rounds counted at that rank, a firing under a gate the workflow does not
-  have, a committed decision bullet edited instead of appended, and a
-  committed section none of them can be read against — each blocks at
-  commit (`plan audit`, driven by the shipped `hooks/pre-commit.d/`
-  arm)
 - Decisions put to the person instead of assumed (`harnex ask`) — any HTML
   page served on 127.0.0.1 takes one answer set; each answer comes back with
   what its ask showed, and `ask current` tells, when it is recorded, whether

@@ -58,47 +58,19 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 pub(crate) struct Line {
     pub(crate) no: u32,
     pub(crate) text: String,
-    /// An indent made this line code, where a fence would have been a
-    /// deliberate quotation. Which accessor yielded the line says how the
-    /// caller decided to read it, so this stays private.
-    indented_code: bool,
 }
 
 /// One heading, as a reader reads it: the inline text with its markup
 /// resolved, whatever spelling the source used.
 pub(crate) struct Heading {
-    pub(crate) level: u32,
     pub(crate) text: String,
     pub(crate) line: u32,
-    /// Spelled with leading `#`s rather than underlined. A gate that treats
-    /// a heading as a boundary reads this: an underline is a character an
-    /// author reaches for as a separator, and `text` + `---` silently ending
-    /// a section is not the same event as writing `## Next`.
-    pub(crate) atx: bool,
-    /// Not inside a block quote or a list. A heading a container holds is
-    /// that container's, and a gate reading the document's own sections
-    /// neither starts one there nor ends one — a quoted `## Outstanding
-    /// issues` is someone else's section, and a quoted `## Next` under the
-    /// real one is not where it stops.
-    pub(crate) top_level: bool,
-}
-
-/// A delimiter the document ends inside.
-///
-/// CommonMark closes both at the end of the document, so neither is an error
-/// — but everything the author wrote after the opener is inside it, which is
-/// the shape of a line believed recorded and never read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Unterminated {
-    Fence { line: u32 },
-    Comment { line: u32 },
 }
 
 /// A markdown document, read once.
 pub(crate) struct Document {
     lines: Vec<Line>,
     headings: Vec<Heading>,
-    unterminated: Option<Unterminated>,
 }
 
 impl Document {
@@ -108,39 +80,18 @@ impl Document {
         let mut indented: Vec<Range<usize>> = Vec::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut open_heading: Option<Heading> = None;
-        let mut unterminated = None;
-        let mut open_fence: Option<Fence> = None;
-        let mut comment_from: Option<usize> = None;
-        let mut containers = 0usize;
+        let mut in_comment = false;
 
         let options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
         for (event, range) in Parser::new_ext(&text, options).into_offset_iter() {
             if !matches!(event, Event::Html(_)) {
-                comment_from = None;
+                in_comment = false;
             }
             match event {
                 Event::Start(Tag::CodeBlock(kind)) => match kind {
-                    CodeBlockKind::Fenced(_) => {
-                        open_fence = Some(Fence {
-                            line: line_of(&text, range.start),
-                            end: range.end,
-                            content_end: line_end(&text, range.start),
-                        });
-                        quoted.push(range);
-                    }
+                    CodeBlockKind::Fenced(_) => quoted.push(range),
                     CodeBlockKind::Indented => indented.push(range),
                 },
-                Event::End(TagEnd::CodeBlock) => {
-                    // Reaching the document's end is the second half: a fence
-                    // its container closed swallows only to that boundary,
-                    // and everything past it is read as usual.
-                    if let Some(fence) = open_fence.take()
-                        && fence.end <= fence.content_end
-                        && fence.end >= text.len()
-                    {
-                        unterminated = Some(Unterminated::Fence { line: fence.line });
-                    }
-                }
                 Event::Html(_) => {
                     // Raw HTML is content a browser shows, except the comments
                     // in it, which it hides — each `<!-- -->` span is masked
@@ -150,28 +101,23 @@ impl Document {
                     let slice = &text[range.clone()];
                     let mut at = 0usize;
                     loop {
-                        if let Some(from) = comment_from {
+                        if in_comment {
                             match slice[at..].find("-->") {
                                 Some(close) => {
                                     let end = at + close + 3;
                                     quoted.push(range.start + at..range.start + end);
-                                    comment_from = None;
+                                    in_comment = false;
                                     at = end;
                                 }
                                 None => {
                                     quoted.push(range.start + at..range.end);
-                                    if range.end >= text.len() {
-                                        unterminated = Some(Unterminated::Comment {
-                                            line: line_of(&text, from),
-                                        });
-                                    }
                                     break;
                                 }
                             }
                         } else {
                             match slice[at..].find("<!--") {
                                 Some(open) => {
-                                    comment_from = Some(range.start + at + open);
+                                    in_comment = true;
                                     at += open;
                                 }
                                 None => break,
@@ -187,15 +133,10 @@ impl Document {
                     }
                 }
                 Event::Start(Tag::MetadataBlock(_)) => quoted.push(range),
-                Event::Start(Tag::BlockQuote(_) | Tag::List(_)) => containers += 1,
-                Event::End(TagEnd::BlockQuote(_) | TagEnd::List(_)) => containers -= 1,
-                Event::Start(Tag::Heading { level, .. }) => {
+                Event::Start(Tag::Heading { .. }) => {
                     open_heading = Some(Heading {
-                        level: level as u32,
                         text: String::new(),
                         line: line_of(&text, range.start),
-                        atx: !text[range.clone()].trim_end().contains('\n'),
-                        top_level: containers == 0,
                     });
                 }
                 Event::End(TagEnd::Heading(_)) => {
@@ -208,9 +149,6 @@ impl Document {
                     }
                 }
                 Event::Text(run) | Event::Code(run) => {
-                    if let Some(fence) = open_fence.as_mut() {
-                        fence.content_end = range.end;
-                    }
                     if let Some(heading) = open_heading.as_mut() {
                         heading.text.push_str(&run);
                     }
@@ -227,82 +165,17 @@ impl Document {
         Self {
             lines: read_lines(&text, &quoted, &indented),
             headings,
-            unterminated,
         }
     }
 
     /// The lines a reader reads as prose — what the document asserts.
     pub(crate) fn prose(&self) -> impl Iterator<Item = &Line> {
-        self.lines.iter().filter(|line| !line.indented_code)
-    }
-
-    /// Every line the author wrote and a reader can still see, including the
-    /// ones an indent turned into code. A gate looking for a shape its author
-    /// meant reads these: a stray tab is how such a line stops being read,
-    /// where a fence is a deliberate quotation and appears in neither.
-    pub(crate) fn as_written(&self) -> impl Iterator<Item = &Line> {
         self.lines.iter()
     }
 
     pub(crate) fn headings(&self) -> &[Heading] {
         &self.headings
     }
-
-    /// The heading a line opens, if it opens one.
-    pub(crate) fn heading_at(&self, line: u32) -> Option<&Heading> {
-        self.headings.iter().find(|heading| heading.line == line)
-    }
-
-    pub(crate) fn unterminated(&self) -> Option<Unterminated> {
-        self.unterminated
-    }
-}
-
-/// Remove CommonMark code spans: a run of N backticks up to the next run of
-/// exactly N. An unmatched run stays literal, as the spec reads it.
-pub(crate) fn strip_code_spans(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            let start = i;
-            while i < bytes.len() && bytes[i] == b'`' {
-                i += 1;
-            }
-            let run = i - start;
-            if let Some(close) = find_backtick_run(&text[i..], run) {
-                i += close + run;
-                continue;
-            }
-            out.push_str(&text[start..i]);
-            continue;
-        }
-        let ch = text[i..].chars().next().expect("in-bounds char");
-        out.push(ch);
-        i += ch.len_utf8();
-    }
-    out
-}
-
-/// Byte offset just past a run of exactly `len` backticks in `text`.
-fn find_backtick_run(text: &str, len: usize) -> Option<usize> {
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            let start = i;
-            while i < bytes.len() && bytes[i] == b'`' {
-                i += 1;
-            }
-            if i - start == len {
-                return Some(start);
-            }
-            continue;
-        }
-        i += 1;
-    }
-    None
 }
 
 /// The document as a renderer decodes it.
@@ -345,31 +218,8 @@ fn line_of(text: &str, offset: usize) -> u32 {
     u32::try_from(count).unwrap_or(u32::MAX)
 }
 
-/// A fenced block being read, and how far its content reaches.
-///
-/// A closing fence is the one line of a fenced block that is neither the
-/// opener nor content, so a block whose extent runs past its content closed
-/// itself and one that stops there was closed by the document. Both numbers
-/// come from the parser, which is what keeps this from re-deriving the fence
-/// rule it would then get wrong — a closing fence carries its container's
-/// indent inside a list and its `>` inside a block quote, and a run shorter
-/// than the opener closes nothing.
-struct Fence {
-    line: u32,
-    end: usize,
-    content_end: usize,
-}
-
-/// The offset just past the line `at` falls on.
-fn line_end(text: &str, at: usize) -> usize {
-    text[at..]
-        .find('\n')
-        .map_or(text.len(), |offset| at + offset + 1)
-}
-
-/// Each source line as a reader meets it: quoted spans removed, a line an
-/// indent turned into code kept whole and marked, and a line a reader sees
-/// nothing of dropped.
+/// Each source line as a reader meets it as prose: quoted spans removed, and
+/// a line an indent turned into code or a reader sees nothing of dropped.
 fn read_lines(text: &str, quoted: &[Range<usize>], indented: &[Range<usize>]) -> Vec<Line> {
     let mut out = Vec::new();
     let mut start = 0usize;
@@ -378,17 +228,12 @@ fn read_lines(text: &str, quoted: &[Range<usize>], indented: &[Range<usize>]) ->
         let no = u32::try_from(idx + 1).unwrap_or(u32::MAX);
 
         // An indented block's range opens at its content, past the indent
-        // that made it code, so the line is kept as written rather than
-        // masked — its indentation is the evidence.
+        // that made it code, so the whole line is dropped rather than masked
+        // down to that indent.
         if indented
             .iter()
             .any(|range| range.start < end && range.end > start)
         {
-            out.push(Line {
-                no,
-                text: raw.to_string(),
-                indented_code: true,
-            });
             start = end + 1;
             continue;
         }
@@ -414,11 +259,7 @@ fn read_lines(text: &str, quoted: &[Range<usize>], indented: &[Range<usize>]) ->
             start = end + 1;
             continue;
         }
-        out.push(Line {
-            no,
-            text: visible,
-            indented_code: false,
-        });
+        out.push(Line { no, text: visible });
         start = end + 1;
     }
     out
@@ -435,11 +276,11 @@ mod tests {
             .collect()
     }
 
-    fn headings(text: &str) -> Vec<(u32, String, u32)> {
+    fn headings(text: &str) -> Vec<(String, u32)> {
         Document::of(text)
             .headings()
             .iter()
-            .map(|h| (h.level, h.text.clone(), h.line))
+            .map(|h| (h.text.clone(), h.line))
             .collect()
     }
 
@@ -536,11 +377,9 @@ mod tests {
     }
 
     #[test]
-    fn a_fence_its_container_closed_is_not_a_fence_the_document_ends_inside() {
-        // The list item ends the block; everything past it is read as usual,
-        // so calling it unread was both a false Blocker and a false sentence.
+    fn a_fence_its_container_closed_hides_nothing_past_it() {
+        // The list item ends the block, and everything past it is read.
         let text = "- note:\n\n  ```\n  code\n\nBack at top level.\n";
-        assert_eq!(Document::of(text).unterminated(), None);
         let seen: Vec<String> = visible(text).into_iter().map(|(_, t)| t).collect();
         assert!(
             seen.iter().any(|line| line.contains("Back at top level")),
@@ -552,38 +391,18 @@ mod tests {
     fn a_heading_spanning_source_lines_reads_with_the_break_as_a_space() {
         assert_eq!(
             headings("Two\nLines\n=====\n"),
-            vec![(1, "Two Lines".into(), 1)]
+            vec![("Two Lines".into(), 1)]
         );
     }
 
     #[test]
-    fn a_heading_reports_whether_a_container_holds_it() {
-        let top_level = |text: &str| Document::of(text).headings()[0].top_level;
-        assert!(top_level("## Storage\n"));
-        assert!(top_level("Storage\n=======\n"));
-        assert!(!top_level("> ## Storage\n"));
-        assert!(!top_level("- a\n\n  ## Storage\n"));
-        assert!(!top_level("- a\n  - b\n\n    ## Storage\n"));
-        // And the container closing restores the level for what follows.
-        let doc = Document::of("> ## Quoted\n\n## Own\n");
-        assert_eq!(
-            doc.headings()
-                .iter()
-                .map(|h| h.top_level)
-                .collect::<Vec<_>>(),
-            vec![false, true]
-        );
-    }
-
-    #[test]
-    fn a_setext_heading_whose_text_starts_with_a_hash_is_not_atx() {
+    fn a_setext_heading_keeps_a_leading_hash_as_text() {
         // `#123 was closed upstream` over `---` is an h2 whose range opens
-        // with `#`. Read as ATX it ended a plan section, and every row after
-        // it was read by no gate; the release before caught the row.
-        let doc = Document::of("#123 was closed upstream\n---\n");
-        assert_eq!(doc.headings().len(), 1);
-        assert!(!doc.headings()[0].atx);
-        assert_eq!(doc.headings()[0].text, "#123 was closed upstream");
+        // with `#`, and the `#` is part of what a reader reads.
+        assert_eq!(
+            headings("#123 was closed upstream\n---\n"),
+            vec![("#123 was closed upstream".into(), 1)]
+        );
     }
 
     #[test]
@@ -621,16 +440,6 @@ mod tests {
         let seen = seen("<div>\nx <!-- hidden --> y\n</div>");
         assert!(seen.iter().any(|l| l == "x  y"), "{seen:?}");
         assert!(!seen.iter().any(|l| l.contains("hidden")), "{seen:?}");
-    }
-
-    #[test]
-    fn a_heading_reports_whether_it_was_spelled_with_hashes() {
-        let atx = |text: &str| Document::of(text).headings()[0].atx;
-        assert!(atx("## Storage\n"));
-        assert!(atx("   ## Storage\n"));
-        assert!(atx("> ## Storage\n"));
-        assert!(!atx("Storage\n=======\n"));
-        assert!(!atx("Some note\n---\n"));
     }
 
     #[test]
@@ -689,22 +498,19 @@ mod tests {
 
     #[test]
     fn a_heading_is_what_a_reader_reads_whatever_the_source_spells() {
-        assert_eq!(headings("## Storage\n"), vec![(2, "Storage".into(), 1)]);
-        assert_eq!(
-            headings("Storage\n=======\n"),
-            vec![(1, "Storage".into(), 1)]
-        );
-        assert_eq!(headings("## **Storage**\n"), vec![(2, "Storage".into(), 1)]);
-        assert_eq!(headings("## Storage ##\n"), vec![(2, "Storage".into(), 1)]);
+        assert_eq!(headings("## Storage\n"), vec![("Storage".into(), 1)]);
+        assert_eq!(headings("Storage\n=======\n"), vec![("Storage".into(), 1)]);
+        assert_eq!(headings("## **Storage**\n"), vec![("Storage".into(), 1)]);
+        assert_eq!(headings("## Storage ##\n"), vec![("Storage".into(), 1)]);
         assert_eq!(
             headings("## The `write_atomic` contract\n"),
-            vec![(2, "The write_atomic contract".into(), 1)]
+            vec![("The write_atomic contract".into(), 1)]
         );
         assert_eq!(headings("```\n## Decoy\n```\n"), vec![]);
         assert_eq!(headings("<!--\n## Decoy\n-->\n"), vec![]);
         assert_eq!(
             headings("# One\n\n## Two\n"),
-            vec![(1, "One".into(), 1), (2, "Two".into(), 3)]
+            vec![("One".into(), 1), ("Two".into(), 3)]
         );
     }
 
@@ -715,69 +521,24 @@ mod tests {
         assert_eq!(
             headings("## Storage\n\n## **Storage**\n")
                 .iter()
-                .filter(|(_, text, _)| text == "Storage")
+                .filter(|(text, _)| text == "Storage")
                 .count(),
             2
         );
     }
 
     #[test]
-    fn a_delimiter_the_document_ends_inside_is_named() {
-        let fence = |line| Some(Unterminated::Fence { line });
-        assert_eq!(Document::of("a\n\n```\nx\n").unterminated(), fence(3));
-        assert_eq!(Document::of("a\n\n```\n").unterminated(), fence(3));
-        // A shorter run inside a longer fence does not close it.
-        assert_eq!(Document::of("a\n\n````\nx\n```\n").unterminated(), fence(3));
-        assert_eq!(Document::of("a\n\n~~~\nx\n").unterminated(), fence(3));
-        assert_eq!(
-            Document::of("a\n\n<!-- opened\nswallowed\n").unterminated(),
-            Some(Unterminated::Comment { line: 3 })
-        );
-
-        // A closing fence carries whatever its container puts before it —
-        // spaces inside a list, `>` inside a block quote — so this reads the
-        // parser's extents rather than the fence's own spelling.
-        assert_eq!(Document::of("> ```\n> x\n").unterminated(), fence(1));
-        assert_eq!(
-            Document::of("- a\n\n    ```\n    x\n").unterminated(),
-            fence(3)
-        );
-
-        for closed in [
-            "a\n\n```\nx\n```\n",
-            "a\n\n```\nx\n```",
-            "a\n\n~~~\nx\n~~~\n",
-            "a\n\n```\n```\n",
-            "a\n\n    indented\n",
-            "a\n\n<!-- opened\nand closed\n-->\n",
-            "a\n\n```\nx\n```\n\nb\n",
-            "> ```\n> x\n> ```\n\nafter\n",
-            "- a\n\n    ```\n    x\n    ```\n\n- b\n",
-        ] {
-            assert_eq!(
-                Document::of(closed).unterminated(),
-                None,
-                "from: {closed:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn an_indent_makes_code_a_fence_would_have_quoted() {
-        // Two gates read this differently on purpose, so the reader reports
-        // which it is rather than choosing for them.
-        let doc = Document::of("Prose.\n\n    - [Critical] indented\n\n```\n- fenced\n```\n");
-        let marked: Vec<(u32, bool, String)> = doc
-            .as_written()
-            .map(|line| (line.no, line.indented_code, line.text.clone()))
+    fn an_indent_makes_code_as_a_fence_does() {
+        let seen: Vec<String> = visible("Prose.\n\n    indented\n\n```\nfenced\n```\n")
+            .into_iter()
+            .map(|(_, t)| t)
             .collect();
+        assert!(seen.iter().any(|line| line == "Prose."), "{seen:?}");
         assert!(
-            marked.contains(&(3, true, "    - [Critical] indented".into())),
-            "an indented line is kept whole and marked: {marked:?}"
-        );
-        assert!(
-            !marked.iter().any(|(_, _, text)| text.contains("fenced")),
-            "a fenced line is a quotation and is gone: {marked:?}"
+            !seen
+                .iter()
+                .any(|line| line.contains("indented") || line.contains("fenced")),
+            "{seen:?}"
         );
     }
 }

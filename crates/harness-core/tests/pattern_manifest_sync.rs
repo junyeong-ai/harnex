@@ -97,116 +97,33 @@ fn reference_patterns_doc_mirrors_the_manifest() {
     );
 }
 
-/// The review grammar's owner is `harness_core::plan` — the computer — and
-/// the template prose that teaches it is a projection. Every file that states
-/// the disposition vocabulary spells each token in the form the parser reads,
-/// `[<disposition>: …]`, so renaming a token in one place only, or teaching a
-/// spelling the computer rejects, fails here.
-#[test]
-fn disposition_vocabulary_is_stated_identically() {
-    for rel in [
-        "spec-workflow/skill/gates.md",
-        "spec-workflow/specs/plan.md",
-        "review-lenses/skill/convergence.md",
-    ] {
-        let path = patterns_dir().join(rel);
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        for token in harness_core::plan::Disposition::ALL {
-            assert!(
-                text.contains(&format!("`[{}:", token.as_str())),
-                "{rel} does not spell `[{}: …]` — the prose teaches the grammar the computer \
-                 reads, in the computer's own form",
-                token.as_str()
-            );
-        }
-    }
-}
-
-/// Every counted gate is documented by gates.md, and every counts class is
-/// shown there by an example the parser reads back in that class's own token.
-/// Checking headings alone leaves the doc free to teach one class's token on
-/// another class's line — the exact mistake `plan-log-counts-class` catches in
-/// a real spec, taught by the file a reader learns the grammar from. Classes
-/// rather than gates: two gates of one class share a token, and a second
-/// example of it teaches nothing a reader did not already have.
-#[test]
-fn every_counted_gate_is_documented_and_every_class_shown_in_its_own_token() {
-    let text = std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
-        .expect("read gates.md");
-    let examples: Vec<harness_core::plan::DecisionLine> = text
-        .lines()
-        .filter_map(|l| l.strip_prefix("- ").filter(|rest| rest.contains(" · ")))
-        .map(|example| {
-            harness_core::plan::parse_decision(example)
-                .unwrap_or_else(|| panic!("a gates.md example does not parse: {example}"))
-        })
-        .collect();
-
-    for (gate, _) in harness_core::plan::COUNTED_GATES {
-        assert!(
-            text.lines()
-                .any(|l| l.trim_end().starts_with(&format!("## {gate} "))),
-            "gates.md documents no `## {gate}` event, yet the parser holds it to the counts \
-             contract"
-        );
-    }
-
-    for class in harness_core::plan::GateClass::ALL {
-        let shown = examples
-            .iter()
-            .find(|line| harness_core::plan::gate_class(&line.gate) == Some(*class))
-            .unwrap_or_else(|| {
-                panic!(
-                    "gates.md shows no example firing of a {} gate",
-                    class.as_str()
-                )
-            });
-        assert_eq!(
-            shown.counts.map(|c| c.class()),
-            Some(*class),
-            "the {} example is written in the wrong class's token — a reader would learn the \
-             grammar the audit rejects",
-            class.as_str()
-        );
-    }
-}
-
-/// The gates the shipped pre-commit arm declares are the gates the shipped
-/// `gates.md` defines. The arm passes them to `plan audit --gates`, which
-/// refuses a firing under any other name, so a gate documented and not
-/// declared is refused at its first firing and a name declared and not
-/// documented is a spelling nothing teaches (constitution IX).
-#[test]
-fn the_hook_declares_exactly_the_gates_its_workflow_documents() {
-    let documented: BTreeSet<String> =
-        std::fs::read_to_string(patterns_dir().join("spec-workflow/skill/gates.md"))
-            .expect("read gates.md")
-            .lines()
-            .filter_map(|line| line.strip_prefix("## ")?.split_once(" — "))
-            .map(|(gate, _)| gate.to_string())
-            .filter(|gate| {
-                gate.chars()
-                    .all(|c| c.is_ascii_lowercase() || c == '_' || c == '-')
-            })
-            .collect();
-    assert!(!documented.is_empty(), "gates.md documents no gate event");
-
-    let hook = std::fs::read_to_string(patterns_dir().join("spec-workflow/check-plan.sh"))
-        .expect("read check-plan.sh");
-    let declared: BTreeSet<String> = hook
-        .split_whitespace()
-        .skip_while(|token| *token != "--gates")
-        .nth(1)
-        .expect("check-plan.sh passes --gates")
-        .trim_matches(|c| c == ')' || c == '"' || c == '\'')
-        .split(',')
+/// The terminal dispositions a template states: every code span that opens
+/// `[<word>:`.
+fn dispositions(rel: &str) -> BTreeSet<String> {
+    let text = std::fs::read_to_string(patterns_dir().join(rel))
+        .unwrap_or_else(|e| panic!("read {rel}: {e}"));
+    text.split("`[")
+        .skip(1)
+        .filter_map(|rest| rest.split_once(':'))
+        .map(|(word, _)| word)
+        .filter(|word| !word.is_empty() && word.chars().all(|c| c.is_ascii_lowercase()))
         .map(str::to_string)
-        .collect();
+        .collect()
+}
 
+/// A finding row ends with its terminal disposition in two patterns that
+/// install independently — the spec plan template, where spec-bound rows live,
+/// and the review loop's convergence record — so each states the vocabulary
+/// itself. A token renamed in one leaves the loop writing rows the plan never
+/// taught.
+#[test]
+fn both_patterns_that_record_findings_state_one_disposition_vocabulary() {
+    let plan = dispositions("spec-workflow/specs/plan.md");
+    assert!(!plan.is_empty(), "the plan template states no disposition");
     assert_eq!(
-        declared, documented,
-        "check-plan.sh's --gates and the events gates.md defines have drifted"
+        plan,
+        dispositions("review-lenses/skill/convergence.md"),
+        "the plan template and the review loop's record state different dispositions"
     );
 }
 

@@ -111,19 +111,15 @@ what the last one found.
 
 ## Enforcement
 
-`hooks/pre-commit.d/check-plan.sh` runs `harnex plan audit` over every staged
-plan: an open Critical/Blocker row, a row deleted, reworded or downgraded
-instead of gaining its terminal disposition, finding rows added without the
-decision line recording the round that found them, rows landing past what
-that commit's own rounds counted at that rank, a firing under a gate the
-workflow does not have, a committed decision bullet edited instead of
-appended, and a committed section none of them can be read against — each
-blocks the commit. The grammar the gates write is computed there, never
-trusted to narration.
+Each gate is decided by something other than the session's say-so: `review`
+by the verdict a fresh-context reviewer delivered, `acceptance` by what was run
+or read for each criterion. The decision log is what the next phase reads
+before it moves — wrapup starts only once it records `approved` for both — so
+record a decision before the work moves past it.
 
-For a gate before the session ends rather than at the commit,
-`harnex guard stop-audit` (`[guard.stop_audit]` in `harness.toml`) adds a
-bounded fresh-context critique at Stop. It spawns a model call, so
+For a gate before the session ends, `harnex guard stop-audit`
+(`[guard.stop_audit]` in `harness.toml`) adds a bounded fresh-context critique
+at Stop. It spawns a model call, so
 `has_changes_check` is required — the section is declared with the command
 that says whether this session left work behind, and fires only then. Reach
 for it where the commit-time gates do not already compute what a critique
