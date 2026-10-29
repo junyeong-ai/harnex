@@ -21,8 +21,8 @@ mod common;
 use harness_core::config::{ConsumerDetectorDecl, LifecycleConfig};
 use harness_core::guard::{StopAuditor, StopDecision};
 use harness_core::lifecycle::{
-    DecisionLedger, LedgerReader, ObservationLedger, RetirementClassifier, RetirementSignal,
-    SilenceState, consumer_detector_for,
+    ConsumerDetector, DecisionLedger, LedgerReader, ObservationLedger, RetirementClassifier,
+    RetirementSignal, SilenceState,
 };
 use harness_core::plan::AcceptanceCounts;
 
@@ -143,16 +143,15 @@ fn retirement_fires_no_silence_signal_for_a_slug_it_could_not_measure() {
         decision_dir: dir.path().join("dec"),
         consumer_detectors: vec![ConsumerDetectorDecl {
             kind: "rule".into(),
-            strategy: "grep".into(),
             pattern: "{slug}".into(),
             exclude_globs: vec![],
         }],
     };
-    let detector = consumer_detector_for(config.consumer_detectors[0].clone(), dir.path()).unwrap();
+    let detector = ConsumerDetector::new(config.consumer_detectors[0].clone(), dir.path()).unwrap();
     let classifier = RetirementClassifier::new(&config, None);
 
     let unmeasured = classifier
-        .classify("rule", &rule, detector.as_ref(), SilenceState::Unmeasured)
+        .classify("rule", &rule, &detector, SilenceState::Unmeasured)
         .unwrap();
     assert!(
         !unmeasured.signals.contains(&RetirementSignal::Silent),
@@ -161,7 +160,7 @@ fn retirement_fires_no_silence_signal_for_a_slug_it_could_not_measure() {
     );
 
     let silent = classifier
-        .classify("rule", &rule, detector.as_ref(), SilenceState::Silent)
+        .classify("rule", &rule, &detector, SilenceState::Silent)
         .unwrap();
     assert!(
         silent.signals.contains(&RetirementSignal::Silent),

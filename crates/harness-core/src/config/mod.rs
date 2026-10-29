@@ -503,8 +503,6 @@ fn default_decision_dir() -> PathBuf {
 pub struct ConsumerDetectorDecl {
     /// Kind name this detector applies to.
     pub kind: String,
-    /// `grep`
-    pub strategy: String,
     /// Template using `{slug}` placeholder.
     pub pattern: String,
     #[serde(default)]
@@ -1031,21 +1029,6 @@ impl Config {
                     message: format!(
                         "[[lifecycle.consumer_detectors]] kind '{}' is not declared in [[kinds]]",
                         d.kind
-                    ),
-                    location: None,
-                });
-            }
-            if crate::lifecycle::ConsumerStrategy::from_str(&d.strategy).is_none() {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "consumer detector for kind '{}' uses unknown strategy '{}' (known: {})",
-                        d.kind,
-                        d.strategy,
-                        crate::lifecycle::ConsumerStrategy::ALL
-                            .iter()
-                            .map(|s| s.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
                     ),
                     location: None,
                 });

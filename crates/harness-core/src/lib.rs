@@ -26,7 +26,6 @@ pub mod export;
 mod git;
 pub mod glob_root;
 pub mod governs;
-pub mod graph;
 pub mod guard;
 pub mod lifecycle;
 mod markdown;

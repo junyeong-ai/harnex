@@ -673,10 +673,6 @@
           "description": "Kind name this detector applies to.",
           "type": "string"
         },
-        "strategy": {
-          "description": "`grep`",
-          "type": "string"
-        },
         "pattern": {
           "description": "Template using `{slug}` placeholder.",
           "type": "string"
@@ -692,7 +688,6 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "strategy",
         "pattern"
       ]
     },

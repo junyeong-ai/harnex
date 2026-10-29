@@ -107,23 +107,14 @@ record in the decision ledger sorted by timestamp descending. Operators
 audit the promote / reject / defer / demote history without reading
 raw jsonl.
 
-ConsumerDetector is a trait; built-in strategies are the `ConsumerStrategy`
-variants (that enum is the source of truth — do not count them here):
-- `grep` — reads every plain file the project owns (`harness-core::git`:
-  tracked plus untracked not ignored by `.gitignore`; a submodule, a nested
-  repository and a symlink's target are not read), matches the
-  `{slug}`-substituted pattern, listed once at construction. Not a
-  repository → `LIFECYCLE_GIT_FAILURE`, never a walk.
-- `graph-backlinks` — calls `nodex query backlinks <node_id>` via the
-  graph module. Fails explicitly if nodex is absent (never silent
-  fallback to grep). Pattern field holds the node-id template.
+`ConsumerDetector` reads every plain file the project owns
+(`harness-core::git`: tracked plus untracked not ignored by `.gitignore`; a
+submodule, a nested repository and a symlink's target are not read), listed
+once at construction, and matches the `{slug}`-substituted pattern. Not a
+repository → `LIFECYCLE_GIT_FAILURE`, never a walk. Keep the corpus every file
+the project owns: a consumer outside it reads as `NoConsumers`, which
+recommends retiring an artifact something still uses.
 
-A detector that cannot read its corpus — no repository, no nodex — fails
-`classify`, which asked for that path; the sweep declares the kind in
-`kinds_skipped` as `consumers unmeasured` and sweeps the rest.
-
-When adding a new strategy: add a `ConsumerStrategy` variant (single
-source of truth — `from_str`/`as_str`/`ALL` derive from it), add a
-`ConsumerDetector` impl, add a match arm in `consumer_detector_for`
-(exhaustive match enforces this step at compile time), add a test
-asserting both happy and unknown-strategy paths.
+A detector that cannot read its corpus fails `classify`, which asked for that
+path; the sweep declares the kind in `kinds_skipped` as `consumers unmeasured`
+and sweeps the rest.

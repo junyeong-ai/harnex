@@ -6,7 +6,6 @@ pub mod context;
 pub mod evidence;
 pub mod export;
 pub mod governs;
-pub mod graph;
 pub mod guard;
 pub mod lifecycle;
 pub mod plan;

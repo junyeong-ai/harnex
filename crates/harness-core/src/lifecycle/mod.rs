@@ -4,7 +4,7 @@
 //! Promotion surfaces candidates that crossed (instances × time) thresholds
 //! and lays every open wording out by tag for the reader who judges what the
 //! thresholds cannot; retirement classifies stale + unused + silent elements; consumer detection
-//! finds every file referencing a slug (grep or graph-backlinks strategy);
+//! finds every file referencing a slug;
 //! the decision ledger records human-authored promote / reject / defer / demote
 //! verdicts.
 //!
@@ -31,10 +31,7 @@ pub mod observation;
 pub mod retire;
 pub mod retirement;
 
-pub use consumer::{
-    ConsumerDetector, ConsumerStrategy, GraphBacklinksConsumerDetector, GrepConsumerDetector,
-    consumer_detector_for,
-};
+pub use consumer::ConsumerDetector;
 pub use decision::{DecisionLedger, DecisionRecord, PromotionDecision};
 pub use decision_recorder::{
     CandidateSurvey, LedgerReader, LifecycleDecisionRecorder, LiveObservations, ObservationGroup,
