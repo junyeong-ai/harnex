@@ -1567,6 +1567,7 @@ fn a_name_is_dated_however_its_characters_are_composed() {
     // `core.precomposeUnicode` is on, its macOS default, and as stored where
     // it is off, as on every other system.
     let decomposed = "\u{1112}\u{1161}\u{11AB}\u{1100}\u{1173}\u{11AF}.md";
+    let composed = "\u{D55C}\u{AE00}.md";
     for precompose in ["true", "false"] {
         let tmp = repo();
         let set = common::git(tmp.path())
@@ -1577,11 +1578,20 @@ fn a_name_is_dated_however_its_characters_are_composed() {
         std::fs::write(tmp.path().join(decomposed), "a rule").unwrap();
         commit_days_ago(tmp.path(), 200);
 
-        let changes = last_changes(tmp.path(), &[tmp.path().join(decomposed)]).unwrap();
-        assert!(
-            matches!(days_since(&changes[0]), Some(199..=200)),
-            "precomposeUnicode={precompose}: {changes:?}"
-        );
+        // A file system that composes names finds the file either way.
+        let spellings: Vec<_> = [decomposed, composed]
+            .map(|name| tmp.path().join(name))
+            .into_iter()
+            .filter(|path| path.exists())
+            .collect();
+        let changes = last_changes(tmp.path(), &spellings).unwrap();
+        for (spelling, change) in spellings.iter().zip(&changes) {
+            assert!(
+                matches!(days_since(change), Some(199..=200)),
+                "precomposeUnicode={precompose}, {}: {change:?}",
+                spelling.display()
+            );
+        }
     }
 }
 
@@ -1721,18 +1731,54 @@ fn a_path_is_dated_however_it_is_spelled() {
     let links = TempDir::new().unwrap();
     std::os::unix::fs::symlink(tmp.path(), links.path().join("project")).unwrap();
 
-    let spellings = [
+    let mut spellings = vec![
         rules.join("old.md"),
         tmp.path().join("./.claude/rules/old.md"),
         tmp.path().join(".claude/../.claude/rules/old.md"),
         links.path().join("project/.claude/rules/old.md"),
     ];
+    // A file system that folds case finds the file under any case of its name.
+    let folded = tmp.path().join(".CLAUDE/RULES/OLD.md");
+    if folded.exists() {
+        spellings.push(folded);
+    }
     let changes = last_changes(tmp.path(), &spellings).unwrap();
     for (spelling, change) in spellings.iter().zip(&changes) {
         assert!(
             matches!(days_since(change), Some(199..=200)),
             "{}: {change:?}",
             spelling.display()
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_linked_artifact_is_dated_as_the_link_under_the_name_it_is_listed() {
+    // A skill shared from outside is committed here as a link; git tracks the
+    // link, not what it points at.
+    let tmp = repo();
+    let shared = TempDir::new().unwrap();
+    std::fs::write(shared.path().join("SKILL.md"), "a skill").unwrap();
+    let skills = tmp.path().join(".claude/skills");
+    std::fs::create_dir_all(&skills).unwrap();
+    std::os::unix::fs::symlink(shared.path(), skills.join("shared")).unwrap();
+    commit_days_ago(tmp.path(), 200);
+
+    let changes = last_changes(tmp.path(), &[skills.join("shared")]).unwrap();
+    assert!(
+        matches!(days_since(&changes[0]), Some(199..=200)),
+        "{changes:?}"
+    );
+
+    // Named any other way, the link is refused rather than read as a path
+    // no commit records.
+    let folded = skills.join("SHARED");
+    if folded.exists() {
+        let err = last_changes(tmp.path(), &[folded]).unwrap_err();
+        assert_eq!(
+            err.code(),
+            harness_core::error::ErrorCode::LifecycleGitFailure
         );
     }
 }
