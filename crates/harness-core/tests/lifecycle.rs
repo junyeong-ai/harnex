@@ -1498,16 +1498,40 @@ fn a_directory_is_dated_by_the_files_it_holds() {
         &["settled", "edited", "grown"].map(|name| skills.join(name)),
     )
     .unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(days_since(&changes[0]), Some(199..=200)),
-        "{changes:?}"
+        matches!(ages[..], [Some(199..=200), None, None]),
+        "an edited file and an untracked one are changes now: {ages:?}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_path_with_no_history_here_is_uncommitted_rather_than_a_failure() {
+    // Skills linked in from outside the project hold no history this
+    // repository can read; the rule beside them still has its own.
+    let tmp = repo();
+    let outside = TempDir::new().unwrap();
+    std::fs::create_dir_all(outside.path().join("alpha")).unwrap();
+    std::fs::write(outside.path().join("alpha/SKILL.md"), "a skill").unwrap();
+    std::fs::create_dir_all(tmp.path().join(".claude/rules")).unwrap();
+    std::fs::write(tmp.path().join(".claude/rules/rule.md"), "a rule").unwrap();
+    std::os::unix::fs::symlink(outside.path(), tmp.path().join(".claude/skills")).unwrap();
+    commit_days_ago(tmp.path(), 200);
+
+    let changes = last_changes(
+        tmp.path(),
+        &[
+            tmp.path().join(".claude/rules/rule.md"),
+            tmp.path().join(".claude/skills/alpha"),
+            tmp.path().join(".claude/missing/rule.md"),
+        ],
+    )
+    .unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(
-            changes[1..],
-            [LastChange::Uncommitted, LastChange::Uncommitted]
-        ),
-        "an edited file and an untracked one are changes now: {changes:?}"
+        matches!(ages[..], [Some(199..=200), None, None]),
+        "{ages:?}"
     );
 }
 
