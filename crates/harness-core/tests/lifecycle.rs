@@ -1014,6 +1014,32 @@ fn retirement_classifier_honors_exempt_list() {
 }
 
 #[test]
+fn an_artifact_outside_the_project_is_neither_stale_nor_new() {
+    // A skill a linked directory brings in from elsewhere has no history
+    // here: its age is unknown, not zero and not old.
+    let tmp = repo();
+    let rule_dir = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rule_dir).unwrap();
+    let rule_path = rule_dir.join("shared.md");
+    std::fs::write(&rule_path, "body").unwrap();
+    let mut cfg = default_lifecycle(tmp.path().join(".harness/observations"));
+    cfg.grace_period_days = 30;
+    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
+    let verdict = RetirementClassifier::new(&cfg, None)
+        .classify(
+            "rule",
+            &rule_path,
+            &detector,
+            SilenceState::Silent,
+            LastChange::Outside,
+        )
+        .unwrap();
+    assert_eq!(verdict.age_days, None);
+    assert!(!verdict.signals.contains(&RetirementSignal::Stale));
+    assert!(!verdict.exempt, "no recorded change puts it in its grace");
+}
+
+#[test]
 fn promote_rejects_empty_decision_text() {
     let tmp = TempDir::new().unwrap();
     let cfg = default_lifecycle(tmp.path().to_path_buf());
@@ -1432,15 +1458,19 @@ fn the_sweep_dates_each_artifact_by_its_history_not_its_checkout() {
         (v.age_days, v.signals.contains(&RetirementSignal::Stale))
     };
     let (age, stale) = verdict("old");
-    assert!((199..=200).contains(&age) && stale, "old: {age} days");
+    assert!(matches!(age, Some(199..=200)) && stale, "old: {age:?} days");
     let (age, stale) = verdict("recent");
-    assert!((2..=3).contains(&age) && !stale, "recent: {age} days");
+    assert!(matches!(age, Some(2..=3)) && !stale, "recent: {age:?} days");
     assert_eq!(
         verdict("edited"),
-        (0, false),
+        (Some(0), false),
         "an uncommitted edit is a change now"
     );
-    assert_eq!(verdict("new"), (0, false), "a file never committed is new");
+    assert_eq!(
+        verdict("new"),
+        (Some(0), false),
+        "a file never committed is new"
+    );
 }
 
 #[test]
@@ -1476,7 +1506,7 @@ fn a_shallow_clone_is_refused_rather_than_dated_by_its_boundary() {
 fn days_since(change: &LastChange) -> Option<i64> {
     match change {
         LastChange::Committed(at) => Some(Timestamp::now().duration_since(*at).as_secs() / 86_400),
-        LastChange::Uncommitted => None,
+        LastChange::Uncommitted | LastChange::Outside => None,
     }
 }
 
@@ -1509,7 +1539,7 @@ fn a_directory_is_dated_by_the_files_it_holds() {
 
 #[cfg(unix)]
 #[test]
-fn a_path_with_no_history_here_is_uncommitted_rather_than_a_failure() {
+fn a_path_outside_the_project_is_answered_rather_than_a_failure() {
     // Skills linked in from outside the project hold no history this
     // repository can read; the rule beside them still has its own.
     let tmp = repo();
@@ -1530,10 +1560,16 @@ fn a_path_with_no_history_here_is_uncommitted_rather_than_a_failure() {
         ],
     )
     .unwrap();
-    let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(ages[..], [Some(199..=200), None, None]),
-        "{ages:?}"
+        matches!(
+            changes[..],
+            [
+                LastChange::Committed(_),
+                LastChange::Outside,
+                LastChange::Uncommitted
+            ]
+        ),
+        "{changes:?}"
     );
 }
 

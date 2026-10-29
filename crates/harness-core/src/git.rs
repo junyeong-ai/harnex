@@ -69,24 +69,38 @@ pub(crate) fn listed_paths(dir: &Path, args: &[&str]) -> Result<Vec<PathBuf>, Fa
         .collect())
 }
 
-/// The committer time of the last commit that changed each of `paths` on this
-/// branch, in the order given, or `None` for a path whose working-tree
-/// content no commit here records: an edit not yet committed, a file never
-/// committed, a path that is not there, or one a linked directory places
-/// outside `dir`. A directory is dated by the files under it, and holds an
+/// When a project's history last changed a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LastChange {
+    /// The last commit that changed it; the working tree still matches it.
+    Committed(Timestamp),
+    /// A change no commit records yet — an edit in progress, a file never
+    /// committed, or a path that is not there — so it is changing now.
+    Uncommitted,
+    /// A path a linked directory places outside the project, which no history
+    /// here records.
+    Outside,
+}
+
+/// One path asked about: the pathspec git answers it by, or an answer that
+/// needs no history.
+enum Query {
+    Pathspec(String),
+    Answered(LastChange),
+}
+
+/// When the history at `dir` last changed each of `paths` on this branch, in
+/// the order given. A directory is dated by the files under it, and holds an
 /// uncommitted change when any of them does or is untracked.
 ///
 /// One walk of the history answers every path, each read as a literal, so a
 /// `[` in a name names that file. A shallow clone is a failure rather than an
 /// answer: its boundary commit lists every file it holds, which reads as each
 /// one changing the day the clone was cut.
-pub(crate) fn last_committed(
-    dir: &Path,
-    paths: &[PathBuf],
-) -> Result<Vec<Option<Timestamp>>, Failure> {
+pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChange>, Failure> {
     let root =
         std::fs::canonicalize(dir).map_err(|e| Failure(format!("{}: {e}", dir.display())))?;
-    let specs = paths
+    let queries = paths
         .iter()
         .map(|path| {
             // A path that is not there has no history; any other reason it
@@ -94,22 +108,37 @@ pub(crate) fn last_committed(
             let resolved = match stored_spelling(path) {
                 Ok(resolved) => resolved,
                 Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
-                    return Ok(None);
+                    return Ok(Query::Answered(LastChange::Uncommitted));
                 }
                 Err(e) => return Err(Failure(format!("{}: {e}", path.display()))),
             };
             let Ok(relative) = resolved.strip_prefix(&root) else {
-                return Ok(None);
+                return Ok(Query::Answered(LastChange::Outside));
             };
             relative
                 .to_str()
-                .map(|spec| Some(spec.to_owned()))
+                .map(|spec| Query::Pathspec(spec.to_owned()))
                 .ok_or_else(|| Failure(format!("{} is not a UTF-8 path", path.display())))
         })
-        .collect::<Result<Vec<Option<String>>, Failure>>()?;
-    let pathspecs: Vec<&str> = specs.iter().flatten().map(String::as_str).collect();
+        .collect::<Result<Vec<Query>, Failure>>()?;
+    let pathspecs: Vec<&str> = queries
+        .iter()
+        .filter_map(|query| match query {
+            Query::Pathspec(spec) => Some(spec.as_str()),
+            Query::Answered(_) => None,
+        })
+        .collect();
+    let unrecorded = || {
+        queries
+            .iter()
+            .map(|query| match query {
+                Query::Pathspec(_) => LastChange::Uncommitted,
+                Query::Answered(answer) => *answer,
+            })
+            .collect()
+    };
     if pathspecs.is_empty() {
-        return Ok(vec![None; specs.len()]);
+        return Ok(unrecorded());
     }
     if stdout(dir, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
         return Err(Failure(
@@ -119,7 +148,7 @@ pub(crate) fn last_committed(
         ));
     }
     if !has_commits(dir)? {
-        return Ok(vec![None; specs.len()]);
+        return Ok(unrecorded());
     }
 
     let with_specs = |args: &[&'static str]| {
@@ -230,17 +259,18 @@ pub(crate) fn last_committed(
         }
     }
 
-    specs
+    queries
         .iter()
-        .map(|spec| {
-            let Some(spec) = spec.as_deref() else {
-                return Ok(None);
+        .map(|query| {
+            let spec = match query {
+                Query::Pathspec(spec) => spec.as_str(),
+                Query::Answered(answer) => return Ok(*answer),
             };
             match (edited.contains(spec), latest.get(spec)) {
                 (false, Some(&seconds)) => Timestamp::from_second(seconds)
-                    .map(Some)
+                    .map(LastChange::Committed)
                     .map_err(|e| Failure(format!("commit time {seconds} for '{spec}': {e}"))),
-                _ => Ok(None),
+                _ => Ok(LastChange::Uncommitted),
             }
         })
         .collect()
