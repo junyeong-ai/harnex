@@ -33,13 +33,6 @@ wire_enum! {
         IoFailure => "IO_FAILURE",
         TelemetryKindUnknown => "TELEMETRY_KIND_UNKNOWN",
         TelemetryPayloadInvalid => "TELEMETRY_PAYLOAD_INVALID",
-        CodegenSourceMissing => "CODEGEN_SOURCE_MISSING",
-        CodegenSourceKeyMissing => "CODEGEN_SOURCE_KEY_MISSING",
-        CodegenSourceShapeInvalid => "CODEGEN_SOURCE_SHAPE_INVALID",
-        CodegenRendererUnknown => "CODEGEN_RENDERER_UNKNOWN",
-        CodegenSentinelMissing => "CODEGEN_SENTINEL_MISSING",
-        CodegenSentinelDuplicate => "CODEGEN_SENTINEL_DUPLICATE",
-        CodegenCycle => "CODEGEN_CYCLE",
         PolicyProfileUnknown => "POLICY_PROFILE_UNKNOWN",
         PolicyRuleInert => "POLICY_RULE_INERT",
         PolicyRuleMisleading => "POLICY_RULE_MISLEADING",
@@ -103,35 +96,6 @@ pub enum Error {
 
     #[error("telemetry payload invalid: {message}")]
     TelemetryPayloadInvalid { message: String },
-
-    #[error("codegen source file missing: {path:?}")]
-    CodegenSourceMissing { path: PathBuf },
-
-    #[error("codegen source key '{key}' not found in {path:?}")]
-    CodegenSourceKeyMissing { key: String, path: PathBuf },
-
-    #[error("codegen source key '{key}' is not an array of strings in {path:?}")]
-    CodegenSourceShapeInvalid { key: String, path: PathBuf },
-
-    #[error("codegen renderer unknown: '{name}'")]
-    CodegenRendererUnknown { name: String },
-
-    #[error("codegen sentinel '{begin}' / '{end}' not found in {path:?}")]
-    CodegenSentinelMissing {
-        begin: String,
-        end: String,
-        path: PathBuf,
-    },
-
-    #[error("codegen sentinel '{begin}' / '{end}' appears more than once in {path:?}")]
-    CodegenSentinelDuplicate {
-        begin: String,
-        end: String,
-        path: PathBuf,
-    },
-
-    #[error("codegen cycle: target {path:?} is also a source")]
-    CodegenCycle { path: PathBuf },
 
     #[error("policy profile unknown: '{name}'")]
     PolicyProfileUnknown { name: String },
@@ -253,13 +217,6 @@ impl Error {
             Self::IoFailure { .. } => ErrorCode::IoFailure,
             Self::TelemetryKindUnknown { .. } => ErrorCode::TelemetryKindUnknown,
             Self::TelemetryPayloadInvalid { .. } => ErrorCode::TelemetryPayloadInvalid,
-            Self::CodegenSourceMissing { .. } => ErrorCode::CodegenSourceMissing,
-            Self::CodegenSourceKeyMissing { .. } => ErrorCode::CodegenSourceKeyMissing,
-            Self::CodegenSourceShapeInvalid { .. } => ErrorCode::CodegenSourceShapeInvalid,
-            Self::CodegenRendererUnknown { .. } => ErrorCode::CodegenRendererUnknown,
-            Self::CodegenSentinelMissing { .. } => ErrorCode::CodegenSentinelMissing,
-            Self::CodegenSentinelDuplicate { .. } => ErrorCode::CodegenSentinelDuplicate,
-            Self::CodegenCycle { .. } => ErrorCode::CodegenCycle,
             Self::PolicyProfileUnknown { .. } => ErrorCode::PolicyProfileUnknown,
             Self::PolicyRuleInert { .. } => ErrorCode::PolicyRuleInert,
             Self::PolicyRuleMisleading { .. } => ErrorCode::PolicyRuleMisleading,
@@ -319,23 +276,6 @@ impl Error {
             Self::TelemetryPayloadInvalid { .. } => {
                 Some("adjust payload to match the kind's payload_schema")
             }
-            Self::CodegenSourceMissing { .. } => {
-                Some("create the source file or correct the source path")
-            }
-            Self::CodegenSourceKeyMissing { .. } => Some("check the dot-path in source_key"),
-            Self::CodegenSourceShapeInvalid { .. } => {
-                Some("source value must be a TOML array of strings")
-            }
-            Self::CodegenRendererUnknown { .. } => Some(
-                "use one of: toml-array-assignment, bash-array-assignment, markdown-bullet-list",
-            ),
-            Self::CodegenSentinelMissing { .. } => {
-                Some("add the BEGIN/END sentinel lines to the target file")
-            }
-            Self::CodegenSentinelDuplicate { .. } => Some(
-                "the target file must contain exactly one BEGIN/END sentinel pair — remove the duplicate",
-            ),
-            Self::CodegenCycle { .. } => Some("targets must not be source files in any group"),
             Self::PolicyProfileUnknown { .. } => Some(
                 "use one of the built-in profiles or register a custom profile in harness.toml",
             ),
@@ -440,7 +380,7 @@ mod error_code_tests {
         let count = ErrorCode::ALL.len();
         let unique: BTreeSet<&str> = ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(count, unique.len(), "ALL has a duplicate variant");
-        assert!(count >= 43, "ALL shrank unexpectedly — variant dropped?");
+        assert!(count >= 36, "ALL shrank unexpectedly — variant dropped?");
     }
 
     #[test]

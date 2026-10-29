@@ -6,7 +6,6 @@ governs:
   live_truth:
     - crates/harness-core/src/ask
     - crates/harness-core/src/audit
-    - crates/harness-core/src/codegen
     - crates/harness-core/src/config
     - crates/harness-core/src/evidence
     - crates/harness-core/src/graph

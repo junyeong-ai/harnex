@@ -44,8 +44,6 @@ pub struct Config {
     #[serde(default)]
     pub telemetry: Option<TelemetryConfig>,
     #[serde(default)]
-    pub codegen: Option<CodegenConfig>,
-    #[serde(default)]
     pub policy: Option<PolicyConfig>,
     #[serde(default)]
     pub validate: Option<ValidateConfig>,
@@ -263,43 +261,6 @@ fn default_rotate_at_mb() -> u32 {
 pub struct TelemetryKindDecl {
     pub name: String,
     pub payload_schema: serde_json::Value,
-}
-
-// ---------- Codegen ----------
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CodegenConfig {
-    #[serde(default)]
-    pub groups: Vec<CodegenGroupDecl>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CodegenGroupDecl {
-    pub name: String,
-    pub source: PathBuf,
-    pub source_key: String,
-    /// Serialization format of the source file: `toml` | `json` | `yaml`.
-    #[serde(default = "default_source_format")]
-    pub source_format: String,
-    #[serde(default)]
-    pub targets: Vec<SentinelTargetDecl>,
-}
-
-fn default_source_format() -> String {
-    "toml".to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SentinelTargetDecl {
-    pub path: PathBuf,
-    pub begin: String,
-    pub end: String,
-    pub format: String,
-    #[serde(default)]
-    pub name: Option<String>,
 }
 
 // ---------- Policy ----------
@@ -694,7 +655,6 @@ impl Config {
         self.validate_kinds()?;
         self.validate_evidence()?;
         self.validate_telemetry()?;
-        self.validate_codegen()?;
         self.validate_policy()?;
         self.validate_lifecycle()?;
         self.validate_guard()?;
@@ -966,140 +926,6 @@ impl Config {
                     location: None,
                 }
             })?;
-        }
-        Ok(())
-    }
-
-    fn validate_codegen(&self) -> Result<()> {
-        let Some(cg) = &self.codegen else {
-            return Ok(());
-        };
-        let mut group_names = HashSet::new();
-        // Cycle detection compares LEXICALLY-NORMALIZED paths so equivalent
-        // spellings (`./nodex.toml` vs `nodex.toml`) cannot evade the
-        // source-is-target guard.
-        let mut sources: HashSet<PathBuf> = HashSet::new();
-        for group in &cg.groups {
-            if !group_names.insert(&group.name) {
-                return Err(Error::ConfigInvalid {
-                    message: format!("duplicate [[codegen.groups]] name: {}", group.name),
-                    location: None,
-                });
-            }
-            if crate::codegen::SourceFormat::from_str(&group.source_format).is_none() {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "codegen group '{}' has unknown source_format '{}' (known: {})",
-                        group.name,
-                        group.source_format,
-                        crate::codegen::SourceFormat::ALL
-                            .iter()
-                            .map(|f| f.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                    location: None,
-                });
-            }
-            if group.source_key.trim().is_empty() {
-                return Err(Error::ConfigInvalid {
-                    message: format!("codegen group '{}' has empty source_key", group.name),
-                    location: None,
-                });
-            }
-            // Source and target paths must stay inside the project: reject
-            // both `..` traversal AND absolute paths (an absolute path wins a
-            // `join`, silently escaping working_dir). The runtime write/read
-            // guard would reject these at execution time, so per Article IV
-            // reject them at load rather than deferring to a runtime failure
-            // on an otherwise "valid" config.
-            if crate::path_guard::reject_traversal(&group.source).is_err()
-                || group.source.is_absolute()
-            {
-                return Err(Error::ConfigInvalid {
-                    message: format!(
-                        "codegen group '{}' source '{}' must be project-relative (no `..`, no leading `/`)",
-                        group.name,
-                        group.source.display()
-                    ),
-                    location: None,
-                });
-            }
-            sources.insert(normalize_lexical(&group.source));
-            for target in &group.targets {
-                if crate::path_guard::reject_traversal(&target.path).is_err()
-                    || target.path.is_absolute()
-                {
-                    return Err(Error::ConfigInvalid {
-                        message: format!(
-                            "codegen group '{}' target '{}' must be project-relative (no `..`, no leading `/`)",
-                            group.name,
-                            target.path.display()
-                        ),
-                        location: None,
-                    });
-                }
-                if crate::codegen::RendererStrategy::from_str(&target.format).is_none() {
-                    return Err(Error::ConfigInvalid {
-                        message: format!(
-                            "codegen group '{}' target has unknown format '{}' (known: {})",
-                            group.name,
-                            target.format,
-                            crate::codegen::RendererStrategy::ALL
-                                .iter()
-                                .map(|s| s.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ),
-                        location: None,
-                    });
-                }
-                if target.begin.trim().is_empty() || target.end.trim().is_empty() {
-                    return Err(Error::ConfigInvalid {
-                        message: format!(
-                            "codegen group '{}' target '{}' has empty begin/end sentinel",
-                            group.name,
-                            target.path.display()
-                        ),
-                        location: None,
-                    });
-                }
-            }
-        }
-        // Cycle: a target file must not be the source of any group.
-        for group in &cg.groups {
-            for target in &group.targets {
-                if sources.contains(&normalize_lexical(&target.path)) {
-                    return Err(Error::CodegenCycle {
-                        path: target.path.clone(),
-                    });
-                }
-            }
-        }
-        // Duplicate target sentinels across groups would create non-convergent
-        // sync. Key on the LEXICALLY-NORMALIZED path (as the cycle check above
-        // does) so `target.md` and `./target.md` are recognized as the same
-        // file rather than slipping past as distinct keys.
-        let mut target_sentinels: HashSet<(PathBuf, String, String)> = HashSet::new();
-        for group in &cg.groups {
-            for target in &group.targets {
-                let key = (
-                    normalize_lexical(&target.path),
-                    target.begin.clone(),
-                    target.end.clone(),
-                );
-                if !target_sentinels.insert(key) {
-                    return Err(Error::ConfigInvalid {
-                        message: format!(
-                            "duplicate codegen target sentinel: {} ({} / {})",
-                            target.path.display(),
-                            target.begin,
-                            target.end
-                        ),
-                        location: None,
-                    });
-                }
-            }
         }
         Ok(())
     }
@@ -1411,30 +1237,9 @@ impl Config {
     }
 }
 
-/// Lexically normalize a relative path for equality comparison: drop `.`
-/// components and redundant separators without touching the filesystem.
-/// `./nodex.toml`, `nodex.toml`, and `dir/../nodex.toml` are NOT all
-/// collapsed (no `..` resolution — that needs the real tree); this only
-/// removes `CurDir` segments, which is the spelling difference that evades
-/// the codegen cycle guard.
 /// Whether one glob path component can match more than one literal name.
 fn has_glob_meta(component: &str) -> bool {
     component.contains(['*', '?', '['])
-}
-
-fn normalize_lexical(path: &Path) -> PathBuf {
-    use std::path::Component;
-    let mut out = PathBuf::new();
-    for comp in path.components() {
-        match comp {
-            Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    if out.as_os_str().is_empty() {
-        out.push(".");
-    }
-    out
 }
 
 fn find_config_file(working_dir: &Path) -> Option<PathBuf> {
@@ -1886,104 +1691,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_codegen_target_path_traversal() {
-        // A target path with `..` must be rejected at load — the runtime
-        // write guard would reject it, so an otherwise-valid config that the
-        // runtime cannot honor must not load (Article IV).
-        let src = r#"
-
-            [codegen]
-            [[codegen.groups]]
-            name = "group-a"
-            source = "source.toml"
-            source_key = "values"
-            [[codegen.groups.targets]]
-            path = "../outside.md"
-            begin = "<!-- BEGIN:x -->"
-            end = "<!-- END:x -->"
-            format = "markdown-bullet-list"
-        "#;
-        let err = parse(src).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("must be project-relative"));
-    }
-
-    #[test]
-    fn rejects_codegen_target_absolute_path() {
-        // An absolute target path wins a `join` and escapes working_dir, so it
-        // must be rejected at load just like `..`.
-        let src = r#"
-
-            [codegen]
-            [[codegen.groups]]
-            name = "group-a"
-            source = "source.toml"
-            source_key = "values"
-            [[codegen.groups.targets]]
-            path = "/etc/cron.d/evil.md"
-            begin = "<!-- BEGIN:x -->"
-            end = "<!-- END:x -->"
-            format = "markdown-bullet-list"
-        "#;
-        let err = parse(src).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("must be project-relative"));
-    }
-
-    #[test]
-    fn rejects_duplicate_codegen_target_sentinel() {
-        let src = r#"
-
-            [codegen]
-            [[codegen.groups]]
-            name = "group-a"
-            source = "source.toml"
-            source_key = "values"
-            [[codegen.groups.targets]]
-            path = "target.md"
-            begin = "<!-- BEGIN:x -->"
-            end = "<!-- END:x -->"
-            format = "markdown-bullet-list"
-
-            [[codegen.groups]]
-            name = "group-b"
-            source = "other.toml"
-            source_key = "values"
-            [[codegen.groups.targets]]
-            path = "target.md"
-            begin = "<!-- BEGIN:x -->"
-            end = "<!-- END:x -->"
-            format = "markdown-bullet-list"
-        "#;
-        let err = parse(src).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(
-            err.to_string()
-                .contains("duplicate codegen target sentinel")
-        );
-    }
-
-    #[test]
-    fn detects_codegen_cycle_across_path_spellings() {
-        // `./nodex.toml` (target) vs `nodex.toml` (source) are the same file;
-        // lexical normalization must catch the cycle despite the spelling.
-        let src = r#"
-
-            [codegen]
-            [[codegen.groups]]
-            name = "group-a"
-            source = "nodex.toml"
-            source_key = "values"
-            [[codegen.groups.targets]]
-            path = "./nodex.toml"
-            begin = "<!-- BEGIN:x -->"
-            end = "<!-- END:x -->"
-            format = "markdown-bullet-list"
-        "#;
-        assert_eq!(parse(src).unwrap_err().code(), ErrorCode::CodegenCycle);
-    }
-
-    #[test]
     fn rejects_telemetry_required_non_string() {
         let src = r#"
             [telemetry]
@@ -2031,47 +1738,6 @@ mod tests {
             type = "garbage"
         "#;
         assert_eq!(parse(src).unwrap_err().code(), ErrorCode::ConfigInvalid);
-    }
-
-    #[test]
-    fn rejects_unknown_codegen_source_format() {
-        let src = r#"
-
-            [codegen]
-            [[codegen.groups]]
-            name = "group-a"
-            source = "source.xml"
-            source_key = "values"
-            source_format = "xml"
-            [[codegen.groups.targets]]
-            path = "target.md"
-            begin = "<!-- BEGIN:x -->"
-            end = "<!-- END:x -->"
-            format = "markdown-bullet-list"
-        "#;
-        let err = parse(src).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("unknown source_format"));
-    }
-
-    #[test]
-    fn rejects_empty_codegen_source_key() {
-        let src = r#"
-
-            [codegen]
-            [[codegen.groups]]
-            name = "group-a"
-            source = "source.toml"
-            source_key = ""
-            [[codegen.groups.targets]]
-            path = "target.md"
-            begin = "<!-- BEGIN:x -->"
-            end = "<!-- END:x -->"
-            format = "markdown-bullet-list"
-        "#;
-        let err = parse(src).unwrap_err();
-        assert_eq!(err.code(), ErrorCode::ConfigInvalid);
-        assert!(err.to_string().contains("empty source_key"));
     }
 
     #[test]

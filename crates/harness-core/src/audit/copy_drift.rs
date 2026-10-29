@@ -86,8 +86,6 @@ impl CopyDriftAuditor {
                          own script; or ignore this if the difference is a version you have not \
                          regenerated to yet"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

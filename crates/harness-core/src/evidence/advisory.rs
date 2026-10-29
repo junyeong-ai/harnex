@@ -302,8 +302,6 @@ impl<'a> AdvisoryAuditor<'a> {
                         "run the measurement and record it: `harnex evidence record --id {}`",
                         decl.id
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 continue;
             }
@@ -320,8 +318,6 @@ impl<'a> AdvisoryAuditor<'a> {
                         location: Location::file(path),
                         message: format!("evidence does not parse: {e}"),
                         hint: Some("re-record it; the schema is closed".into()),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                     continue;
                 }
@@ -337,8 +333,6 @@ impl<'a> AdvisoryAuditor<'a> {
                         evidence.id, decl.id
                     ),
                     hint: Some("re-record it under its own declaration".into()),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 continue;
             }
@@ -416,8 +410,6 @@ impl<'a> AdvisoryAuditor<'a> {
                  gates, its basis going stale is what does",
                 decl.id
             )),
-            auto_fixable: false,
-            fix_command: None,
         });
     }
 
@@ -459,8 +451,6 @@ impl<'a> AdvisoryAuditor<'a> {
                          the declaration"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

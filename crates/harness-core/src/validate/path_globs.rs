@@ -639,8 +639,6 @@ impl PathsReadingAuditor {
                  unless another `/` anchors it, and no `!` glob re-includes a file under it: {}",
                 rewrites.join("; ")
             )),
-            auto_fixable: false,
-            fix_command: None,
         })
     }
 }

@@ -79,29 +79,6 @@ enum = ["ok", "warn", "fail", "blocked"]
 [telemetry.kinds.payload_schema.properties.tool]
 type = "string"
 
-# ---------- codegen ----------
-
-[[codegen.groups]]
-name = "kinds-enum"
-source = "examples/enums.toml"
-source_key = "kinds.allowed"
-# Source serialization: toml (default) | json | yaml.
-source_format = "toml"
-
-[[codegen.groups.targets]]
-path = "nodex.toml"
-begin = "# BEGIN kinds-allowed"
-end = "# END kinds-allowed"
-format = "toml-array-assignment"
-name = "allowed"
-
-[[codegen.groups.targets]]
-path = "hooks/commit-msg"
-begin = "# BEGIN ALLOWED_KINDS"
-end = "# END ALLOWED_KINDS"
-format = "bash-array-assignment"
-name = "ALLOWED_KINDS"
-
 # ---------- policy ----------
 
 [policy.permissions]

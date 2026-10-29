@@ -158,21 +158,19 @@ cp <harnex>/examples/harness.toml.minimal harness.toml
 
 # Unified gate — every enabled validator in one JSON envelope
 harnex check
-harnex check --fix        # auto-fix what can be fixed (currently: codegen sync)
 ```
 
 `examples/harness.toml.minimal` enables just evidence (provenance verifier)
 and telemetry (event ledger) — the smallest useful surface.
 `examples/harness.toml.team` is a broad config (adds
-validate.rules/skills, policy.permissions, lifecycle, codegen, …). Start
+validate.rules/skills, policy.permissions, lifecycle, …). Start
 from one and extend with `[[kinds]]`, `[[lifecycle.consumer_detectors]]`,
-`[[codegen.groups]]`, `[[policy.versions]]`, `[validate.commit_msg]` as your
-project grows.
+`[[policy.versions]]`, `[validate.commit_msg]` as your project grows.
 
 ## Command surface
 
 ```
-harnex check [--since <ref>] [--fix] [--unattended]   # unified validation gate;
+harnex check [--since <ref>] [--unattended]           # unified validation gate;
                                                       # unattended downgrades
                                                       # unclearable advisory staleness
 harnex audit [--plugin-root <path>]                   # generated harness vs. its composition
@@ -183,8 +181,6 @@ harnex evidence record --id <id> [--payload <file|->] # advisory baseline:
 harnex telemetry append --kind K --payload <json>
 harnex telemetry count --kind K [--since <rfc3339>]
 harnex telemetry report [--kind K] [--window 1,7,30,90]
-
-harnex codegen sync | check
 
 harnex policy permissions generate | audit [--path <p>]
 harnex policy versions show | check --tool T --installed V
@@ -385,7 +381,6 @@ patterns covered out of the box:
   reserve it for a place inside a body that no name identifies.
 
 - Append-only telemetry with a closed payload schema
-- Sentinel-block enum codegen across many files
 - Permission profiles for Claude Code settings: two floors (`baseline` deny,
   `workspace` allow), the tool surfaces (`git-strict`, `gcp-strict`,
   `aws-strict`, `infra-strict`), and one `*-dev` toolchain profile per

@@ -35,17 +35,6 @@
       ],
       "default": null
     },
-    "codegen": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/CodegenConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
-    },
     "policy": {
       "anyOf": [
         {
@@ -302,82 +291,6 @@
       "required": [
         "name",
         "payload_schema"
-      ]
-    },
-    "CodegenConfig": {
-      "type": "object",
-      "properties": {
-        "groups": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/CodegenGroupDecl"
-          },
-          "default": []
-        }
-      },
-      "additionalProperties": false
-    },
-    "CodegenGroupDecl": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "source": {
-          "type": "string"
-        },
-        "source_key": {
-          "type": "string"
-        },
-        "source_format": {
-          "description": "Serialization format of the source file: `toml` | `json` | `yaml`.",
-          "type": "string",
-          "default": "toml"
-        },
-        "targets": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/SentinelTargetDecl"
-          },
-          "default": []
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "name",
-        "source",
-        "source_key"
-      ]
-    },
-    "SentinelTargetDecl": {
-      "type": "object",
-      "properties": {
-        "path": {
-          "type": "string"
-        },
-        "begin": {
-          "type": "string"
-        },
-        "end": {
-          "type": "string"
-        },
-        "format": {
-          "type": "string"
-        },
-        "name": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "path",
-        "begin",
-        "end",
-        "format"
       ]
     },
     "PolicyConfig": {

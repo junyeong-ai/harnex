@@ -74,8 +74,6 @@ pub fn read_text(path: &Path) -> std::result::Result<String, Finding> {
              the covered path"
                 .into(),
         ),
-        auto_fixable: false,
-        fix_command: None,
     };
     // What the path names is settled before it is opened. Reading a fifo waits
     // for a writer that a covered directory has no reason to hold, and the

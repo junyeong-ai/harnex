@@ -85,8 +85,6 @@ impl FillMarkerAuditor {
                          explicit \"none observed yet\" note — {} is what it was asked to record",
                         marker.wanted
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

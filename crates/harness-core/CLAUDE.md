@@ -32,13 +32,12 @@ call site's; where one derives `Serialize`, `#[serde(rename_all)]` spells the
 wire string a second time and a test beside that type holds the two equal.
 
 **Suffix is chosen for what the type names**, not for the pattern:
-`Strategy` for swappable algorithms (`VerifierStrategy`, `RendererStrategy`,
-`ConsumerStrategy`); `Format` for serialization (`SourceFormat`); `Kind`
-for storage / shape (`StorageKind`, `PermissionFindingKind`); `Profile`
-for composable policy (`PermissionProfile`); `Decision` for ledger
-verdicts (`PromotionDecision`); `Command` for executable identity
-(`FixCommand`); `Target` for output destination (`SchemaTarget`);
-`Outcome` for terminal state (`HookRunOutcome`, `SyncOutcome`);
+`Strategy` for swappable algorithms (`VerifierStrategy`,
+`ConsumerStrategy`); `Kind` for storage / shape (`StorageKind`,
+`PermissionFindingKind`); `Profile` for composable policy
+(`PermissionProfile`); `Decision` for ledger verdicts
+(`PromotionDecision`); `Target` for output destination (`SchemaTarget`);
+`Outcome` for terminal state (`VerifyOutcome`, `EmitOutcome`);
 `Severity` for finding rank. The pattern is the SSoT + exhaustive
 match, not the suffix.
 
@@ -54,7 +53,6 @@ domain-suffix convention:
 | `Verifier` | provenance / claim verification | `EvidenceVerifier` |
 | `Classifier` | enrichment that assigns a category | `RetirementClassifier` |
 | `Sweeper` | top-level driver that fans out classifiers over kinds | `RetirementSweeper` |
-| `Syncer` | drift detection between SSoT and projection | `SentinelSyncer` |
 | `Recorder` | append-only ledger writer | `LifecycleDecisionRecorder` |
 | `Generator` | composes config-declared inputs into one artifact | `PermissionGenerator` |
 | `Checker` | orchestrator that runs producers and aggregates, or a pass/fail gate | `ProjectChecker`, `VersionChecker` |
@@ -89,18 +87,13 @@ table — never invent a new one without extending this table first.
 
 Every `Finding` must carry an actionable `hint`. There are no
 `hint: None` production sites — the audit guard is that the absence is
-visible at code review time. If a finding is `auto_fixable`, its
-`fix_command` is `Option<FixCommand>` — a closed set, not a string —
-because `ProjectChecker::try_fix` dispatches via the enum, and
-`every_fix_command_clears_the_finding_it_is_attached_to` runs each command
-against the finding it is attached to.
+visible at code review time.
 
 ### Trait abstractions in use
 
 | Trait | Reason it exists (not speculation) |
 |---|---|
 | `Verifier` | runtime dispatch per claim shape |
-| `Renderer` | one impl per sentinel-block output format |
 | `ConsumerDetector` | grep + graph-backlinks, each anchored at construction |
 | `NodexRunner` | external-process boundary + test mock seam (see `graph::client`) |
 | `CommandRunner` | external-process boundary + test mock seam (see `guard::stop_audit`) |

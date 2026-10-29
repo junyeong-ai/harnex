@@ -1349,7 +1349,6 @@ fn build_sweep_config(tmp_path: &std::path::Path, extra_kinds: Vec<KindDecl>) ->
         kinds: extra_kinds,
         evidence: None,
         telemetry: Some(telemetry_cfg(tmp_path.join("tele"))),
-        codegen: None,
         policy: None,
         validate: None,
         lifecycle: Some(default_lifecycle(tmp_path.join("obs"))),

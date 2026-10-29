@@ -134,8 +134,6 @@ impl SettingsDriftAuditor {
                         "add the `__<tool>` segment or a regex wildcard; bare `mcp__server` is a no-op"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -165,8 +163,6 @@ impl SettingsDriftAuditor {
                          Claude Code timeouts are in SECONDS (defaults 600/30/60); {t} looks like milliseconds"
                     ),
                     hint: Some("rewrite as seconds (e.g., 30 instead of 30000)".into()),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

@@ -98,8 +98,6 @@ impl<'a> RuleValidator<'a> {
                     location: Location::line(path.to_path_buf(), 1),
                     message: e.to_string(),
                     hint,
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -125,8 +123,6 @@ impl<'a> RuleValidator<'a> {
                                      them — a malformed one governs nothing"
                                             .into(),
                                     ),
-                                    auto_fixable: false,
-                                    fix_command: None,
                                 });
                                 // Declared, however badly — the missing-declaration
                                 // finding on top would be two findings for one defect.
@@ -142,8 +138,6 @@ impl<'a> RuleValidator<'a> {
                                     location: Location::line(path.to_path_buf(), fm.begin_line),
                                     message: format!("`paths:` glob {defect}"),
                                     hint: Some(defect.hint().into()),
-                                    auto_fixable: false,
-                                    fix_command: None,
                                 });
                             }
                         } else {
@@ -158,8 +152,6 @@ impl<'a> RuleValidator<'a> {
                                      read as globs leaves the rule loading unconditionally"
                                         .into(),
                                 ),
-                                auto_fixable: false,
-                                fix_command: None,
                             });
                         }
                     }
@@ -180,8 +172,6 @@ impl<'a> RuleValidator<'a> {
                              unquoted strings with `:`, tab indentation, missing list `- ` prefix"
                                 .into(),
                         ),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                     return findings;
                 }
@@ -199,8 +189,6 @@ impl<'a> RuleValidator<'a> {
                      or turn off [validate.rules].require_governs"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -221,8 +209,6 @@ impl<'a> RuleValidator<'a> {
                      [validate.rules].always_loaded_slugs"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
         if declares_paths && declared_always_loaded {
@@ -239,8 +225,6 @@ impl<'a> RuleValidator<'a> {
                      from [validate.rules].always_loaded_slugs"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -260,8 +244,6 @@ impl<'a> RuleValidator<'a> {
                         "review for domain mixing; split only if the rule covers separable topics"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         } else if total_lines > self.policy.max_lines {
@@ -278,8 +260,6 @@ impl<'a> RuleValidator<'a> {
                      an always-loaded rule spends its length on every session"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 

@@ -181,8 +181,6 @@ impl<'a> AgentValidator<'a> {
                         "open the file with a `---` fence declaring at least `name` and `description`"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -194,8 +192,6 @@ impl<'a> AgentValidator<'a> {
                     location: Location::line(path.to_path_buf(), 1),
                     message: e.to_string(),
                     hint,
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -215,8 +211,6 @@ impl<'a> AgentValidator<'a> {
                          unquoted strings with `:`, tab indentation, missing list `- ` prefix"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -241,8 +235,6 @@ impl<'a> AgentValidator<'a> {
                             "remove it or fix the typo — known keys: {}",
                             KNOWN_AGENT_KEYS.join(", ")
                         )),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -259,8 +251,6 @@ impl<'a> AgentValidator<'a> {
                      `Agent(...)` permission rules address"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             }),
             Some(name) if !name_is_valid(name) => findings.push(Finding {
                 slug: "agent-name-shape".into(),
@@ -273,8 +263,6 @@ impl<'a> AgentValidator<'a> {
                     "rename to the `agent_type` form; `:` is reserved for the plugin namespace"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             }),
             Some(_) => {}
         }
@@ -289,8 +277,6 @@ impl<'a> AgentValidator<'a> {
                     "declare `description:` — it is the surface Claude reads to decide delegation"
                         .into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -319,8 +305,6 @@ impl<'a> AgentValidator<'a> {
                     hint: Some(format!(
                         "set {field} to one of the documented values, or remove the field"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -334,8 +318,6 @@ impl<'a> AgentValidator<'a> {
                 location: Location::line(path.to_path_buf(), line),
                 message: "maxTurns must be a positive integer".into(),
                 hint: Some("set `maxTurns: <n>` with n ≥ 1, or remove the field".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -348,8 +330,6 @@ impl<'a> AgentValidator<'a> {
                 location: Location::line(path.to_path_buf(), line),
                 message: "background must be a boolean (true or false)".into(),
                 hint: Some("set `background: true` or `background: false`".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -373,8 +353,6 @@ impl<'a> AgentValidator<'a> {
                 location: Location::line(path.to_path_buf(), line),
                 message: "skills must be a list of skill-name strings".into(),
                 hint: Some("write `skills: [name-one, name-two]`".into()),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -400,8 +378,6 @@ impl<'a> AgentValidator<'a> {
                     hint: Some(
                         "write `mcpServers: [server-name]` or nest the inline config".into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }
@@ -422,8 +398,6 @@ impl<'a> AgentValidator<'a> {
                 hint: Some(
                     "write `hooks:` with an event key beneath it, e.g. `PreToolUse:`".into(),
                 ),
-                auto_fixable: false,
-                fix_command: None,
             });
         }
 
@@ -440,8 +414,6 @@ impl<'a> AgentValidator<'a> {
                             "hook event '{event}' is not in the Claude Code spec /en/hooks"
                         ),
                         hint: Some(format!("known events: {}", KNOWN_HOOK_EVENTS.join(", "))),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -471,8 +443,6 @@ fn tool_list_finding(
         location: Location::line(path.to_path_buf(), line),
         message: format!("{field} must be a string or a list of tool-name strings"),
         hint: Some(format!("write `{field}: Read, Grep` or `[Read, Grep]`")),
-        auto_fixable: false,
-        fix_command: None,
     })
 }
 
@@ -529,8 +499,6 @@ pub fn audit_preload(content: &str, path: &Path) -> Vec<Finding> {
                 "remove `disable-model-invocation` from `{name}` — `user-invocable: false` hides \
                  it from the menu and still lets an agent preload it — or drop it from `skills`"
             )),
-            auto_fixable: false,
-            fix_command: None,
         })
         .collect()
 }

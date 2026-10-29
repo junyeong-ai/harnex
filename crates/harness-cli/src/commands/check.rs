@@ -14,10 +14,6 @@ pub struct CheckArgs {
     /// changes revalidate every surface; cross-file checks run in full.
     #[arg(long)]
     pub since: Option<String>,
-    /// Execute every auto_fixable finding via the safe-fix registry,
-    /// then re-run check. Exit code reflects the post-fix findings.
-    #[arg(long, default_value_t = false)]
-    pub fix: bool,
     /// Declare an unattended context (a push gate, CI): advisory staleness
     /// gates only where the entry declares re-measurement clearable in the
     /// same sitting.
@@ -35,26 +31,12 @@ pub fn run<W: Write>(args: CheckArgs, out: &mut W) -> Result<ExitCode> {
     if args.unattended {
         check = check.with_unattended();
     }
-    let gating_in = |findings: &[harness_core::envelope::Finding]| {
-        findings.iter().any(|f| f.severity.fails_gate())
-    };
-    if args.fix {
-        let outcome = check.fix()?;
-        let has_gating_finding = gating_in(&outcome.after.findings);
-        write_envelope_success(out, outcome)?;
-        Ok(if has_gating_finding {
-            ExitCode::from(1)
-        } else {
-            ExitCode::SUCCESS
-        })
+    let outcome = check.run()?;
+    let has_gating_finding = outcome.findings.iter().any(|f| f.severity.fails_gate());
+    write_envelope_success(out, outcome)?;
+    Ok(if has_gating_finding {
+        ExitCode::from(1)
     } else {
-        let outcome = check.run()?;
-        let has_gating_finding = gating_in(&outcome.findings);
-        write_envelope_success(out, outcome)?;
-        Ok(if has_gating_finding {
-            ExitCode::from(1)
-        } else {
-            ExitCode::SUCCESS
-        })
-    }
+        ExitCode::SUCCESS
+    })
 }

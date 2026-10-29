@@ -80,8 +80,6 @@ impl<'a> OutputStyleValidator<'a> {
                          `keep-coding-instructions` and drops Claude's engineering instructions"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -93,8 +91,6 @@ impl<'a> OutputStyleValidator<'a> {
                     location: Location::line(path.to_path_buf(), 1),
                     message: e.to_string(),
                     hint,
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -114,8 +110,6 @@ impl<'a> OutputStyleValidator<'a> {
                          unquoted strings with `:`, tab indentation, missing list `- ` prefix"
                             .into(),
                     ),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 return findings;
             }
@@ -140,8 +134,6 @@ impl<'a> OutputStyleValidator<'a> {
                             "remove it or fix the typo — known keys: {}",
                             KNOWN_OUTPUT_STYLE_KEYS.join(", ")
                         )),
-                        auto_fixable: false,
-                        fix_command: None,
                     });
                 }
             }
@@ -169,8 +161,6 @@ impl<'a> OutputStyleValidator<'a> {
                     location: Location::line(path.to_path_buf(), line),
                     message: format!("{field} must be a boolean — {consequence}"),
                     hint: Some(format!("write `{field}: true` unquoted")),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

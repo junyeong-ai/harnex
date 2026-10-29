@@ -133,8 +133,6 @@ impl<'a> ManagedRegionAuditor<'a> {
                         "restore the sentinels:\n\
                          <!-- harnex-managed:start {slug} --> ... <!-- harnex-managed:end {slug} -->"
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
                 continue;
             };
@@ -152,8 +150,6 @@ impl<'a> ManagedRegionAuditor<'a> {
                         "restore the managed region from {} while preserving project-authored content",
                         template_path.display()
                     )),
-                    auto_fixable: false,
-                    fix_command: None,
                 });
             }
         }

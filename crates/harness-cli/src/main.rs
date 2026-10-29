@@ -48,11 +48,6 @@ enum Command {
         #[command(subcommand)]
         cmd: commands::telemetry::TelemetryCommand,
     },
-    /// Cross-file sentinel-block sync
-    Codegen {
-        #[command(subcommand)]
-        cmd: commands::codegen::CodegenCommand,
-    },
     /// Permission profiles + version pins
     Policy {
         #[command(subcommand)]
@@ -164,7 +159,6 @@ fn main() -> ExitCode {
         Command::Context { cmd } => commands::context::run(cmd, &mut out),
         Command::Evidence { cmd } => commands::evidence::run(cmd, &mut out),
         Command::Telemetry { cmd } => commands::telemetry::run(cmd, &mut out),
-        Command::Codegen { cmd } => commands::codegen::run(cmd, &mut out),
         Command::Policy { cmd } => commands::policy::run(cmd, &mut out),
         Command::Validate { cmd } => commands::validate::run(cmd, &mut out),
         Command::Lifecycle { cmd } => commands::lifecycle::run(cmd, &mut out),

@@ -147,8 +147,6 @@ impl<'a> HookWiringAuditor<'a> {
                                 hint: Some(format!(
                                     "restore {rel}, or remove the hook entry that points at it"
                                 )),
-                                auto_fixable: false,
-                                fix_command: None,
                             });
                             continue;
                         }
@@ -170,8 +168,6 @@ impl<'a> HookWiringAuditor<'a> {
                                      every invocation fails before the script runs, so the wrapper's own fail-open cannot help"
                                 ),
                                 hint: Some(format!("chmod +x {rel}")),
-                                auto_fixable: false,
-                                fix_command: None,
                             });
                         }
                     }
