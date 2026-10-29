@@ -203,7 +203,14 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
     }
     let top = stdout(dir, &["rev-parse", "--show-toplevel"])?;
     let top = Path::new(top.trim_end_matches('\n'));
-    let top = std::fs::canonicalize(top).map_err(|e| Failure(format!("{}: {e}", top.display())))?;
+    let canonical = |path: &Path| {
+        std::fs::canonicalize(path).map_err(|e| Failure(format!("{}: {e}", path.display())))
+    };
+    let top = canonical(top)?;
+    let project = canonical(dir)?;
+    let project = project
+        .strip_prefix(&top)
+        .map_err(|_| Failure(format!("{} is outside {}", dir.display(), top.display())))?;
     let readings = paths
         .iter()
         .map(|path| Reading::of(&top, path))
@@ -211,7 +218,7 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
     let pathspecs: Vec<&str> = readings.iter().flat_map(Reading::parts).collect();
     let record = match pathspecs.is_empty() {
         true => Record::default(),
-        false => Record::read(&top, &pathspecs)?,
+        false => Record::read(&top, project, &pathspecs)?,
     };
     readings
         .iter()
@@ -240,13 +247,9 @@ struct Record<'a> {
 impl<'a> Record<'a> {
     /// One listing of what is pending and one walk of the history answer
     /// every path, each read as a literal, so a `[` in a name names that file.
-    /// Run at `top`, every path is spelled from the repository's root.
-    ///
-    /// git is asked about the directory holding each path, so the specs stay
-    /// few however many artifacts share one: it matches each spec against
-    /// every path it lists, and what it lists beyond the paths asked matches
-    /// none of them. A path at the root is asked for itself.
-    fn read(top: &Path, paths: &[&'a str]) -> Result<Self, Failure> {
+    /// Run at `top`, every path is spelled from the repository's root, and
+    /// `project` is the project's own directory spelled the same way.
+    fn read(top: &Path, project: &Path, paths: &[&'a str]) -> Result<Self, Failure> {
         if stdout(top, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
             return Err(Failure(
                 "this clone is shallow, so every file its oldest commit holds reads as changed \
@@ -261,10 +264,7 @@ impl<'a> Record<'a> {
             true => ":(literal,icase)",
             false => ":(literal)",
         };
-        let mut scopes: Vec<&str> = paths.iter().map(|path| scope(path)).collect();
-        scopes.sort_unstable();
-        scopes.dedup();
-        let specs: Vec<String> = scopes
+        let specs: Vec<String> = scopes(project, paths)
             .iter()
             .map(|scope| format!("{magic}{scope}"))
             .collect();
@@ -396,14 +396,40 @@ impl<'a> Record<'a> {
     }
 }
 
-/// What git is asked about for `path`: the directory holding it, or, at the
-/// repository's root, the path itself, and the root as `.`.
-fn scope(path: &str) -> &str {
-    match Path::new(path).parent().and_then(Path::to_str) {
-        Some(dir) if !dir.is_empty() => dir,
-        _ if path.is_empty() => ".",
-        _ => path,
+/// What git is asked about for `paths`, `project` the project's own directory.
+/// git matches every spec against every name it walks, so paths sharing a
+/// directory, a set of skills, are asked as that directory; and it lists every
+/// file under a directory asked, so a path alone in its directory, or in one
+/// holding the project, is asked as itself. The root is asked as `.`.
+fn scopes<'a>(project: &Path, paths: &[&'a str]) -> Vec<&'a str> {
+    let parent = |path: &'a str| -> &'a str {
+        Path::new(path)
+            .parent()
+            .and_then(Path::to_str)
+            .unwrap_or("")
+    };
+    let distinct: HashSet<&'a str> = paths.iter().copied().collect();
+    let mut sharing: HashMap<&'a str, usize> = HashMap::new();
+    for &path in &distinct {
+        *sharing.entry(parent(path)).or_default() += 1;
     }
+    let mut scopes: Vec<&'a str> = distinct
+        .into_iter()
+        .map(|path| {
+            let dir = parent(path);
+            match sharing[dir] > 1 && !project.starts_with(dir) {
+                true => dir,
+                false => path,
+            }
+        })
+        .map(|scope| match scope {
+            "" => ".",
+            scope => scope,
+        })
+        .collect();
+    scopes.sort_unstable();
+    scopes.dedup();
+    scopes
 }
 
 /// How git matches the names a file system gives to the ones it lists, as
@@ -531,7 +557,52 @@ fn stdout(dir: &Path, args: &[&str]) -> Result<String, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Asked, Spelling};
+    use std::path::Path;
+
+    use super::{Asked, Spelling, scopes};
+
+    #[test]
+    fn git_is_asked_about_a_directory_only_where_it_merges_paths_outside_the_project() {
+        let asked = scopes(
+            Path::new("apps/web"),
+            &[
+                "apps/web/.claude/skills/a",
+                "apps/web/.claude/skills/b",
+                "apps/web/CLAUDE.md",
+                "apps/web/AGENTS.md",
+                "apps/shared.md",
+                "apps/notes.md",
+                "packages/x/CLAUDE.md",
+                // Two artifacts reading one rule through links.
+                "shared/rules/r.md",
+                "shared/rules/r.md",
+                "",
+            ],
+        );
+        assert_eq!(
+            asked,
+            [
+                ".",
+                "apps/notes.md",
+                "apps/shared.md",
+                "apps/web/.claude/skills",
+                "apps/web/AGENTS.md",
+                "apps/web/CLAUDE.md",
+                "packages/x/CLAUDE.md",
+                "shared/rules/r.md",
+            ]
+        );
+        let at_the_root = scopes(
+            Path::new(""),
+            &[
+                ".claude/rules/a.md",
+                ".claude/rules/b.md",
+                "CLAUDE.md",
+                "AGENTS.md",
+            ],
+        );
+        assert_eq!(at_the_root, [".claude/rules", "AGENTS.md", "CLAUDE.md"]);
+    }
 
     const BYTES: Spelling = Spelling {
         composes: false,
