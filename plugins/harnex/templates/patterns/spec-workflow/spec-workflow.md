@@ -91,7 +91,7 @@ superseded_by:          # slug of replacement spec, if superseded
 `completed` and `abandoned` both retire the directory: the durable half moves
 to wherever this project keeps learnings, references retarget onto it, and the
 spec directory is removed. The two differ only in what the record says. A spec
-directory is state for work in flight, and `.claude/rules/artifact-lifecycle.md`
+directory is state for work in flight, and `.claude/rules/governance.md`
 retires every other artifact that stopped earning its context cost — a finished
 spec is not an exception to that, it is the clearest case of it.
 

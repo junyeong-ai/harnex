@@ -91,7 +91,7 @@ than re-deciding it. Then retire the spec.
 ## Retiring a spec
 
 A finished spec is state for work that is over. Left in the tree it costs every
-future reader the question "is this live?" — which `.claude/rules/artifact-lifecycle.md`
+future reader the question "is this live?" — which `.claude/rules/governance.md`
 answers for every other artifact and this one is not an exception.
 
 On wrapup or abandonment: write the durable half — what was learned, what a

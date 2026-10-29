@@ -130,12 +130,6 @@ destination = ".claude/rules/governance.md"
 [[artifact]]
 tier = "foundation"
 content = { kind = "seed" }
-template = "common/rules/artifact-lifecycle.md"
-destination = ".claude/rules/artifact-lifecycle.md"
-
-[[artifact]]
-tier = "foundation"
-content = { kind = "seed" }
 template = "common/harness.toml"
 destination = "harness.toml"
 
