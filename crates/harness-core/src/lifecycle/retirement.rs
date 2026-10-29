@@ -27,8 +27,8 @@ pub struct RetirementOutcome {
     pub slug: String,
     pub path: PathBuf,
     /// Days since the last commit that touched the file; 0 while the working
-    /// tree holds a change no commit records; null for a file a linked
-    /// directory places outside the project, which no history here dates.
+    /// tree holds a change no commit records; null when no history here
+    /// records the file at all.
     pub age_days: Option<i64>,
     pub consumer_count: usize,
     pub silence: SilenceState,
@@ -100,14 +100,14 @@ impl<'a> RetirementClassifier<'a> {
             path: path.to_path_buf(),
             source: e,
         })?;
-        // An artifact outside the project has no age here, so it is neither
-        // stale nor new: no measurement is read as a zero.
+        // What no history here records has no age, so it is neither stale
+        // nor new: no measurement is read as a zero.
         let age_days = match changed {
             LastChange::Committed(at) => {
                 Some((Timestamp::now().duration_since(at).as_secs() / 86_400).max(0))
             }
             LastChange::Uncommitted => Some(0),
-            LastChange::Outside => None,
+            LastChange::Unrecorded => None,
         };
         let in_grace = age_days.is_some_and(|age| age < self.config.grace_period_days as i64);
 

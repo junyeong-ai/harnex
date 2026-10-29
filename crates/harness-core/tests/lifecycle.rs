@@ -1014,9 +1014,8 @@ fn retirement_classifier_honors_exempt_list() {
 }
 
 #[test]
-fn an_artifact_outside_the_project_is_neither_stale_nor_new() {
-    // A skill a linked directory brings in from elsewhere has no history
-    // here: its age is unknown, not zero and not old.
+fn an_artifact_no_history_records_is_neither_stale_nor_new() {
+    // No history here dates it, so its age is unknown: not zero, not old.
     let tmp = repo();
     let rule_dir = tmp.path().join(".claude/rules");
     std::fs::create_dir_all(&rule_dir).unwrap();
@@ -1031,7 +1030,7 @@ fn an_artifact_outside_the_project_is_neither_stale_nor_new() {
             &rule_path,
             &detector,
             SilenceState::Silent,
-            LastChange::Outside,
+            LastChange::Unrecorded,
         )
         .unwrap();
     assert_eq!(verdict.age_days, None);
@@ -1506,7 +1505,7 @@ fn a_shallow_clone_is_refused_rather_than_dated_by_its_boundary() {
 fn days_since(change: &LastChange) -> Option<i64> {
     match change {
         LastChange::Committed(at) => Some(Timestamp::now().duration_since(*at).as_secs() / 86_400),
-        LastChange::Uncommitted | LastChange::Outside => None,
+        LastChange::Uncommitted | LastChange::Unrecorded => None,
     }
 }
 
@@ -1532,31 +1531,50 @@ fn a_directory_is_dated_by_the_files_it_holds() {
     .unwrap();
     let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(ages[..], [Some(199..=200), Some(199..=200), None, None]),
-        "an ignored file is no change; an edited file and an untracked one are: {ages:?}"
+        matches!(ages[..2], [Some(199..=200), Some(199..=200)])
+            && matches!(
+                changes[2..],
+                [LastChange::Uncommitted, LastChange::Uncommitted]
+            ),
+        "an ignored file is no change; an edited file and an untracked one are: {changes:?}"
     );
 }
 
 #[cfg(unix)]
 #[test]
-fn a_path_outside_the_project_is_answered_rather_than_a_failure() {
-    // Skills linked in from outside the project hold no history this
-    // repository can read; the rule beside them still has its own.
+fn what_no_history_here_records_has_no_age() {
+    // A skill linked in from elsewhere, a personal rule the project ignores,
+    // and one inside a repository of its own are files this history never
+    // records, however long they have sat unchanged.
     let tmp = repo();
     let outside = TempDir::new().unwrap();
     std::fs::create_dir_all(outside.path().join("alpha")).unwrap();
     std::fs::write(outside.path().join("alpha/SKILL.md"), "a skill").unwrap();
-    std::fs::create_dir_all(tmp.path().join(".claude/rules")).unwrap();
-    std::fs::write(tmp.path().join(".claude/rules/rule.md"), "a rule").unwrap();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("rule.md"), "a rule").unwrap();
+    std::fs::write(rules.join("personal.md"), "mine").unwrap();
+    std::fs::write(tmp.path().join(".gitignore"), "personal.md\n").unwrap();
     std::os::unix::fs::symlink(outside.path(), tmp.path().join(".claude/skills")).unwrap();
+    let vendored = tmp.path().join("vendor/rules");
+    std::fs::create_dir_all(&vendored).unwrap();
+    std::fs::write(vendored.join("shared.md"), "a shared rule").unwrap();
+    let nested = common::git(&vendored)
+        .args(["init", "-q"])
+        .status()
+        .unwrap();
+    assert!(nested.success());
+    commit_days_ago(&vendored, 200);
     commit_days_ago(tmp.path(), 200);
 
     let changes = last_changes(
         tmp.path(),
         &[
-            tmp.path().join(".claude/rules/rule.md"),
+            rules.join("rule.md"),
             tmp.path().join(".claude/skills/alpha"),
-            tmp.path().join(".claude/missing/rule.md"),
+            rules.join("personal.md"),
+            vendored.join("shared.md"),
+            rules.join("missing.md"),
         ],
     )
     .unwrap();
@@ -1565,11 +1583,41 @@ fn a_path_outside_the_project_is_answered_rather_than_a_failure() {
             changes[..],
             [
                 LastChange::Committed(_),
-                LastChange::Outside,
-                LastChange::Uncommitted
+                LastChange::Unrecorded,
+                LastChange::Unrecorded,
+                LastChange::Unrecorded,
+                LastChange::Unrecorded
             ]
         ),
         "{changes:?}"
+    );
+}
+
+#[test]
+fn a_repository_with_no_commits_holds_pending_changes_and_unrecorded_files() {
+    let tmp = repo();
+    std::fs::write(tmp.path().join(".gitignore"), "ignored.md\n").unwrap();
+    for name in ["ignored.md", "new.md", "staged.md"] {
+        std::fs::write(tmp.path().join(name), name).unwrap();
+    }
+    let staged = common::git(tmp.path())
+        .args(["add", "staged.md"])
+        .status()
+        .unwrap();
+    assert!(staged.success());
+
+    let changes = last_changes(
+        tmp.path(),
+        &["ignored.md", "new.md", "staged.md"].map(|name| tmp.path().join(name)),
+    )
+    .unwrap();
+    assert_eq!(
+        changes,
+        [
+            LastChange::Unrecorded,
+            LastChange::Uncommitted,
+            LastChange::Uncommitted
+        ]
     );
 }
 
@@ -1666,8 +1714,12 @@ fn a_move_changes_the_directory_it_left() {
     .unwrap();
     let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(ages[..], [Some(0..=1), Some(0..=1), None, None]),
-        "{ages:?}"
+        matches!(ages[..2], [Some(0..=1), Some(0..=1)])
+            && matches!(
+                changes[2..],
+                [LastChange::Uncommitted, LastChange::Uncommitted]
+            ),
+        "{changes:?}"
     );
 }
 

@@ -74,12 +74,12 @@ pub(crate) fn listed_paths(dir: &Path, args: &[&str]) -> Result<Vec<PathBuf>, Fa
 pub enum LastChange {
     /// The last commit that changed it; the working tree still matches it.
     Committed(Timestamp),
-    /// A change no commit records yet — an edit in progress, a file never
-    /// committed, or a path that is not there — so it is changing now.
+    /// A change `git status` shows — an edit, or a file not yet committed —
+    /// so it is changing now.
     Uncommitted,
-    /// A path a linked directory places outside the project, which no history
-    /// here records.
-    Outside,
+    /// Nothing this history records: a path outside the project, inside a
+    /// repository of its own, ignored, or not there at all.
+    Unrecorded,
 }
 
 /// One path asked about: the pathspec git answers it by, or an answer that
@@ -93,10 +93,12 @@ enum Query {
 /// the order given. A directory is dated by the files under it, and holds an
 /// uncommitted change when any of them does or is untracked.
 ///
-/// One walk of the history answers every path, each read as a literal, so a
-/// `[` in a name names that file. A shallow clone is a failure rather than an
-/// answer: its boundary commit lists every file it holds, which reads as each
-/// one changing the day the clone was cut.
+/// Each path is answered as `git status` and the history see it, so what
+/// neither records is [`LastChange::Unrecorded`] rather than a change.
+///
+/// A shallow clone is a failure rather than an answer: its boundary commit
+/// lists every file it holds, which reads as each one changing the day the
+/// clone was cut.
 pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChange>, Failure> {
     let root =
         std::fs::canonicalize(dir).map_err(|e| Failure(format!("{}: {e}", dir.display())))?;
@@ -108,12 +110,12 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
             let resolved = match stored_spelling(path) {
                 Ok(resolved) => resolved,
                 Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
-                    return Ok(Query::Answered(LastChange::Uncommitted));
+                    return Ok(Query::Answered(LastChange::Unrecorded));
                 }
                 Err(e) => return Err(Failure(format!("{}: {e}", path.display()))),
             };
             let Ok(relative) = resolved.strip_prefix(&root) else {
-                return Ok(Query::Answered(LastChange::Outside));
+                return Ok(Query::Answered(LastChange::Unrecorded));
             };
             relative
                 .to_str()
@@ -128,152 +130,174 @@ pub(crate) fn last_changes(dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastChan
             Query::Answered(_) => None,
         })
         .collect();
-    let unrecorded = || {
-        queries
-            .iter()
-            .map(|query| match query {
-                Query::Pathspec(_) => LastChange::Uncommitted,
-                Query::Answered(answer) => *answer,
-            })
-            .collect()
+    let record = match pathspecs.is_empty() {
+        true => Record::default(),
+        false => Record::read(dir, &pathspecs)?,
     };
-    if pathspecs.is_empty() {
-        return Ok(unrecorded());
-    }
-    if stdout(dir, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
-        return Err(Failure(
-            "this clone is shallow, so every file its oldest commit holds reads as changed \
-             the day the clone was cut — fetch the full history (`git fetch --unshallow`)"
-                .into(),
-        ));
-    }
-    if !has_commits(dir)? {
-        return Ok(unrecorded());
-    }
-
-    let with_specs = |args: &[&'static str]| {
-        let mut args: Vec<&str> = args.to_vec();
-        args.push("--");
-        args.extend(&pathspecs);
-        args
-    };
-    // `--no-renames` lists a move as the path it left and the one it
-    // reached, since rename detection names only the second and the
-    // directory the file left changed too.
-    let asked = Asked::new(&pathspecs);
-    let holders = |listed: &str| asked.holding(listed);
-    let edited = stdout(
-        dir,
-        &with_specs(&[
-            "--literal-pathspecs",
-            "diff",
-            "--name-only",
-            "-z",
-            "--relative",
-            "--no-renames",
-            "HEAD",
-        ]),
-    )?;
-    // Untracked as `git status` reads it, the developer's own excludes too:
-    // whether this checkout holds a pending change is its own question, and a
-    // `.DS_Store` every Finder window writes is not one.
-    let untracked = stdout(
-        dir,
-        &with_specs(&[
-            "--literal-pathspecs",
-            "ls-files",
-            "-z",
-            "--others",
-            "--exclude-standard",
-        ]),
-    )?;
-    let edited: HashSet<&str> = edited
-        .split('\0')
-        .chain(untracked.split('\0'))
-        .filter(|listed| !listed.is_empty())
-        .flat_map(holders)
-        .collect();
-    // A change is dated when it reached this branch: `--first-parent` credits
-    // a merge with what it changed against the branch it landed on, so a side
-    // commit written long before keeps no old date, and a conflict resolution
-    // is a change. Walking every parent instead hides a merge that took one
-    // side whole, and its side commit's date stands. Where the first parents
-    // run through a feature branch — a trunk fast-forwarded past a merge of
-    // itself — the trunk's own changes date from that merge, younger than
-    // they are: the sweep errs toward keeping.
-    //
-    // The user's configuration may not reshape what is parsed below:
-    // `log.showSignature` prints verification lines into it, and
-    // `log.showRoot=false` drops the names the first commit added.
-    let log = stdout(
-        dir,
-        &with_specs(&[
-            "--literal-pathspecs",
-            "log",
-            "-z",
-            "--format=%x00%ct",
-            "--name-only",
-            "--relative",
-            "--first-parent",
-            "--no-renames",
-            "--root",
-            "--no-show-signature",
-            "HEAD",
-        ]),
-    )?;
-
-    // Each commit opens with an empty field, then its time, then the paths it
-    // touched — the first of them behind the newline that ends the header.
-    let mut latest: HashMap<&str, i64> = HashMap::new();
-    let mut fields = log.split('\0');
-    let mut time: Option<i64> = None;
-    let mut first = false;
-    while let Some(field) = fields.next() {
-        if field.is_empty() {
-            time = match fields.next() {
-                Some(raw) => Some(raw.parse().map_err(|_| {
-                    Failure(format!(
-                        "git log printed '{raw}' where a commit time belongs"
-                    ))
-                })?),
-                None => None,
-            };
-            first = true;
-            continue;
-        }
-        let Some(time) = time else {
-            return Err(Failure(format!(
-                "git log printed the path '{field}' before any commit"
-            )));
-        };
-        let path = match first {
-            true => field.strip_prefix('\n').unwrap_or(field),
-            false => field,
-        };
-        first = false;
-        for holder in holders(path) {
-            latest
-                .entry(holder)
-                .and_modify(|seen| *seen = (*seen).max(time))
-                .or_insert(time);
-        }
-    }
-
     queries
         .iter()
-        .map(|query| {
-            let spec = match query {
-                Query::Pathspec(spec) => spec.as_str(),
-                Query::Answered(answer) => return Ok(*answer),
-            };
-            match (edited.contains(spec), latest.get(spec)) {
-                (false, Some(&seconds)) => Timestamp::from_second(seconds)
-                    .map(LastChange::Committed)
-                    .map_err(|e| Failure(format!("commit time {seconds} for '{spec}': {e}"))),
-                _ => Ok(LastChange::Uncommitted),
-            }
+        .map(|query| match query {
+            Query::Pathspec(spec) => record.of(spec),
+            Query::Answered(answer) => Ok(*answer),
         })
         .collect()
+}
+
+/// What the working tree and the history hold of the paths asked about, each
+/// under the path asked: a file git lists is a file under each directory
+/// asked that holds it.
+#[derive(Default)]
+struct Record<'a> {
+    pending: HashSet<&'a str>,
+    latest: HashMap<&'a str, i64>,
+}
+
+impl<'a> Record<'a> {
+    /// One listing of what is pending and one walk of the history answer
+    /// every path, each read as a literal, so a `[` in a name names that file.
+    fn read(dir: &Path, pathspecs: &[&'a str]) -> Result<Self, Failure> {
+        if stdout(dir, &["rev-parse", "--is-shallow-repository"])?.trim() == "true" {
+            return Err(Failure(
+                "this clone is shallow, so every file its oldest commit holds reads as changed \
+                 the day the clone was cut — fetch the full history (`git fetch --unshallow`)"
+                    .into(),
+            ));
+        }
+        let with_specs = |args: &[&'static str]| {
+            let mut args: Vec<&str> = args.to_vec();
+            args.push("--");
+            args.extend(pathspecs);
+            args
+        };
+        let asked = Asked::new(pathspecs);
+        let mut record = Self::default();
+        let committed = has_commits(dir)?;
+
+        // Pending as `git status` reads it: an edit against `HEAD`, and a file
+        // untracked under the developer's own excludes too, since whether this
+        // checkout holds a change is its own question and a `.DS_Store` every
+        // Finder window writes is not one. Before the first commit, every
+        // tracked file is an addition. `--no-renames` lists a move as the path
+        // it left and the one it reached, since rename detection names only
+        // the second and the directory the file left changed too.
+        let tracked_changes = match committed {
+            true => stdout(
+                dir,
+                &with_specs(&[
+                    "--literal-pathspecs",
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    "--relative",
+                    "--no-renames",
+                    "HEAD",
+                ]),
+            )?,
+            false => stdout(
+                dir,
+                &with_specs(&["--literal-pathspecs", "ls-files", "-z", "--cached"]),
+            )?,
+        };
+        let untracked = stdout(
+            dir,
+            &with_specs(&[
+                "--literal-pathspecs",
+                "ls-files",
+                "-z",
+                "--others",
+                "--exclude-standard",
+            ]),
+        )?;
+        record.pending = tracked_changes
+            .split('\0')
+            .chain(untracked.split('\0'))
+            .filter(|listed| !listed.is_empty())
+            .flat_map(|listed| asked.holding(listed))
+            .collect();
+        if !committed {
+            return Ok(record);
+        }
+
+        // A change is dated when it reached this branch: `--first-parent`
+        // credits a merge with what it changed against the branch it landed
+        // on, so a side commit written long before keeps no old date, and a
+        // conflict resolution is a change. Walking every parent instead hides
+        // a merge that took one side whole, and its side commit's date stands.
+        // Where the first parents run through a feature branch — a trunk
+        // fast-forwarded past a merge of itself — the trunk's own changes date
+        // from that merge, younger than they are: the sweep errs toward
+        // keeping.
+        //
+        // The user's configuration may not reshape what is parsed below:
+        // `log.showSignature` prints verification lines into it, and
+        // `log.showRoot=false` drops the names the first commit added.
+        let log = stdout(
+            dir,
+            &with_specs(&[
+                "--literal-pathspecs",
+                "log",
+                "-z",
+                "--format=%x00%ct",
+                "--name-only",
+                "--relative",
+                "--first-parent",
+                "--no-renames",
+                "--root",
+                "--no-show-signature",
+                "HEAD",
+            ]),
+        )?;
+
+        // Each commit opens with an empty field, then its time, then the paths
+        // it touched — the first of them behind the newline that ends the
+        // header.
+        let mut fields = log.split('\0');
+        let mut time: Option<i64> = None;
+        let mut first = false;
+        while let Some(field) = fields.next() {
+            if field.is_empty() {
+                time = match fields.next() {
+                    Some(raw) => Some(raw.parse().map_err(|_| {
+                        Failure(format!(
+                            "git log printed '{raw}' where a commit time belongs"
+                        ))
+                    })?),
+                    None => None,
+                };
+                first = true;
+                continue;
+            }
+            let Some(time) = time else {
+                return Err(Failure(format!(
+                    "git log printed the path '{field}' before any commit"
+                )));
+            };
+            let path = match first {
+                true => field.strip_prefix('\n').unwrap_or(field),
+                false => field,
+            };
+            first = false;
+            for holder in asked.holding(path) {
+                record
+                    .latest
+                    .entry(holder)
+                    .and_modify(|seen| *seen = (*seen).max(time))
+                    .or_insert(time);
+            }
+        }
+        Ok(record)
+    }
+
+    /// The answer for one path asked about.
+    fn of(&self, spec: &str) -> Result<LastChange, Failure> {
+        match (self.pending.contains(spec), self.latest.get(spec)) {
+            (true, _) => Ok(LastChange::Uncommitted),
+            (false, Some(&seconds)) => Timestamp::from_second(seconds)
+                .map(LastChange::Committed)
+                .map_err(|e| Failure(format!("commit time {seconds} for '{spec}': {e}"))),
+            (false, None) => Ok(LastChange::Unrecorded),
+        }
+    }
 }
 
 /// `path` spelled as git spells it: `..` and linked directories resolved, and
