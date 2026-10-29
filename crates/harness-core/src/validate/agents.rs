@@ -10,7 +10,8 @@
 //!   `agent_type` surface cannot address.
 //! - `permissionMode`, `effort`, `isolation`, `memory`, `color` are closed
 //!   sets in the spec — a value outside one is silently ignored at load.
-//! - `maxTurns` is a positive integer; `background` is a boolean.
+//! - `maxTurns` is a positive integer; `background` is `true` or `false`,
+//!   unquoted or quoted — the loader reads no other spelling.
 //! - `tools` / `disallowedTools` / `skills` / `mcpServers` carry a shape the
 //!   loader can read.
 //! - [`audit_preload`]: a project skill listed under `skills` can be preloaded.
@@ -322,13 +323,15 @@ impl<'a> AgentValidator<'a> {
         }
 
         if let Some(v) = &parsed.background
-            && !v.is_bool()
+            && !(v.is_bool() || matches!(v.as_str(), Some("true" | "false")))
         {
             findings.push(Finding {
                 slug: "agent-background-invalid".into(),
                 severity: Severity::Major,
                 location: Location::line(path.to_path_buf(), line),
-                message: "background must be a boolean (true or false)".into(),
+                message: "background must be true or false; the runtime reads any other value \
+                          as unset, so the agent runs in the foreground"
+                    .into(),
                 hint: Some("set `background: true` or `background: false`".into()),
             });
         }

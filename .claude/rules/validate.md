@@ -99,7 +99,9 @@ Agent validator (per <https://code.claude.com/docs/en/sub-agents>):
 - `permissionMode` ∈ `KNOWN_PERMISSION_MODES`, `effort` ∈
   `KNOWN_EFFORT_LEVELS`, `isolation` ∈ `KNOWN_ISOLATION_MODES`, `memory` ∈
   `KNOWN_MEMORY_SCOPES`, `color` ∈ `KNOWN_COLORS` (Major).
-- `maxTurns` is a positive integer; `background` is a boolean.
+- `maxTurns` is a positive integer; `background` is `true` or `false`,
+  unquoted or quoted. Unlike a skill's flags, the agent loader reads no
+  other spelling: it logs a warning and runs the agent in the foreground.
 - `tools` / `disallowedTools` are a string or a list of strings; `skills` is a
   list of strings. Whether each named project skill can be preloaded is
   `audit_preload`'s, which `check` runs as its own arm because it reads the

@@ -1583,6 +1583,33 @@ fn agent_validator_flags_closed_set_violations() {
 }
 
 #[test]
+fn agent_validator_reads_background_as_the_agent_loader_does() {
+    // The loader takes `true` and `false`, unquoted or quoted, and nothing
+    // else: a skill's `yes` or `1` leaves an agent in the foreground.
+    let policy = agents_policy(false);
+    let v = AgentValidator::new(&policy);
+    for (spelled, flagged) in [
+        ("true", false),
+        ("\"true\"", false),
+        ("false", false),
+        ("'false'", false),
+        ("yes", true),
+        ("\"True\"", true),
+        ("1", true),
+    ] {
+        let md = format!("---\nname: r\ndescription: d\nbackground: {spelled}\n---\nBody\n");
+        let findings = v.validate_text(&md, Path::new(".claude/agents/r.md"));
+        assert_eq!(
+            findings
+                .iter()
+                .any(|f| f.slug == "agent-background-invalid"),
+            flagged,
+            "`{spelled}`: {findings:?}"
+        );
+    }
+}
+
+#[test]
 fn agent_validator_flags_a_hooks_block_that_is_not_a_mapping() {
     // Only the mapping arm was read, so every other shape declared hooks and
     // wired none of them without a word.
