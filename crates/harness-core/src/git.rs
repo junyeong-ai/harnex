@@ -410,8 +410,8 @@ fn scope(path: &str) -> &str {
 /// the repository is configured.
 #[derive(Clone, Copy)]
 struct Spelling {
-    /// `core.precomposeUnicode`: git lists names composed, where the file
-    /// system may give them decomposed.
+    /// `core.precomposeUnicode`, which git reads on macOS only: git lists
+    /// names composed, where the file system may give them decomposed.
     composes: bool,
     /// `core.ignorecase`: git lists a file under the case it was added with,
     /// which the file system may have changed since without git reading it as
@@ -426,7 +426,7 @@ impl Spelling {
             Ok(value.trim() == "true")
         };
         Ok(Self {
-            composes: set("core.precomposeUnicode")?,
+            composes: cfg!(target_os = "macos") && set("core.precomposeUnicode")?,
             folds_case: set("core.ignorecase")?,
         })
     }
