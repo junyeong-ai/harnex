@@ -20,11 +20,10 @@
 //!   *filename* is a guess dressed as a check: it clears a correct wrapper
 //!   that does not carry the naming convention and cannot see an incorrect
 //!   one that does. The invariant is enforced where it is decidable, at
-//!   generation: `_stop_runner.sh` hardcodes `exit 0`, the `extend hook`
-//!   verb routes Stop-class events through it, and
-//!   `guard::HookRunner::run_stop` holds the same contract in Rust. A
-//!   harness harnex did not generate is outside what this auditor knows,
-//!   and silence is the honest answer there.
+//!   generation: `_stop_runner.sh` hardcodes `exit 0`, and the `extend hook`
+//!   verb routes Stop-class events through it. A harness harnex did not
+//!   generate is outside what this auditor knows, and silence is the honest
+//!   answer there.
 
 use std::path::Path;
 

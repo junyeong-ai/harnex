@@ -40,12 +40,6 @@ without extending this list:
   artifact (schema JSON / shell script) for committing to disk or sourcing.
   The default (no `--raw`) wraps in an envelope; `--raw` is the explicit
   opt-out for non-programmatic consumers.
-- `guard hook-run`: propagates the wrapped hook's exit code verbatim (the
-  code is meaningful to Claude Code — e.g. PreToolUse exit 2 blocks the
-  action). See guard.md.
-- `guard hook-stop`: always exits 0, including a spawn or reporting failure.
-  It emits one success or error envelope when stdout is writable; child
-  output goes to stderr and cannot supply Stop control fields. See guard.md.
 - `guard stop-audit`: speaks the Stop hook contract instead of the envelope —
   a Block exits 2 with its reason on stderr (the sole exception to Article II's
   exit-code set, and the only channel a blocked stop's reason is read from), a
