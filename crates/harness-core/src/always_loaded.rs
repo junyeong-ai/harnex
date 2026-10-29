@@ -24,11 +24,11 @@
 //! - A file loads only as a regular file within its kind's size limit
 //!   ([`MEMORY_FILE_LIMIT`], [`SKILL_FILE_LIMIT`], [`DEFINITION_FILE_LIMIT`]),
 //!   decoded as UTF-8 with invalid bytes replaced.
-//! - Frontmatter opens with `---` and closes at the next `---`, wherever that
-//!   falls; without one the whole file is body. YAML that does not parse is
-//!   parsed again after the runtime's repair — a `key: value` line whose
-//!   unquoted value holds a YAML indicator is quoted, leading tabs become
-//!   spaces — and yields no keys when that fails too.
+//! - Frontmatter is split as [`frontmatter::split`] reads it; without it the
+//!   whole file is body. YAML that does not parse is parsed again after the
+//!   runtime's repair — a `key: value` line whose unquoted value holds a YAML
+//!   indicator is quoted, leading tabs become spaces — and yields no keys when
+//!   that fails too.
 //! - A rule under `.claude/rules/`, and each file its imports reach, loads when
 //!   its own `paths:` scopes nothing (`validate::path_globs::declares_scope`);
 //!   a file `CLAUDE.md` imports loads whatever its `paths:` says. A skill
@@ -89,7 +89,7 @@ use yaml_serde::{Mapping, Value};
 
 use crate::envelope::{Finding, Location, Severity};
 use crate::error::{Error, Result};
-use crate::validate::frontmatter::{flag, js_string};
+use crate::validate::frontmatter::{self, flag, js_string};
 use crate::validate::{
     AgentValidator, RuleValidator, SkillValidator, SurfaceValidator, path_globs,
 };
@@ -236,9 +236,6 @@ pub const DEFINITION_FILE_LIMIT: u64 = 1_048_576;
 /// Commands and output styles are read from every directory below their root.
 const COMMAND_GLOB: &str = ".claude/commands/**/*.md";
 const OUTPUT_STYLE_GLOB: &str = ".claude/output-styles/**/*.md";
-
-static FRONTMATTER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\A---\s*\n((?s:.*?))---\s*\n?").expect("FRONTMATTER regex"));
 
 /// A top-level `key: value` line, as the runtime's YAML repair matches one.
 static PLAIN_PAIR: LazyLock<Regex> = LazyLock::new(|| {
@@ -1302,19 +1299,11 @@ struct Source {
 }
 
 impl Source {
-    /// A leading byte-order mark is dropped: every reader of the text trims
-    /// it away.
     fn parse(text: &str) -> Self {
-        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        match FRONTMATTER.captures(text) {
-            None => Self {
-                fields: Mapping::new(),
-                body: text.to_string(),
-            },
-            Some(block) => Self {
-                fields: fields(&block[1]),
-                body: text[block.get(0).expect("group 0 is the match").end()..].to_string(),
-            },
+        let (yaml, body) = frontmatter::split(text);
+        Self {
+            fields: yaml.map(fields).unwrap_or_default(),
+            body: body.to_string(),
         }
     }
 }

@@ -10,7 +10,9 @@ governs:
 # validate — Claude Code surface checks
 
 Seven sub-validators. Each reads frontmatter or JSON, returns
-[`Finding`] list, never mutates input.
+[`Finding`] list, never mutates input. Frontmatter is split by
+`frontmatter::split`, the runtime's grammar that `always_loaded` reads with
+too; a validator never finds the fences itself.
 
 `validate::path_globs` owns the `paths:` grammar shared by rule and skill
 validation, `context resolve` and check's `paths-reading` arm; its module doc
