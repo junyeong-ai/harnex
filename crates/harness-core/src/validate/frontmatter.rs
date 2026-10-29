@@ -111,7 +111,10 @@ fn js_number(n: f64) -> String {
     let (mantissa, exponent) = scientific
         .split_once('e')
         .expect("`{:e}` writes an exponent");
-    let digits = mantissa.replace('.', "");
+    let mut digits = mantissa.replace('.', "");
+    if let Some(even) = even_of_a_tie(n, &digits, exponent) {
+        digits = even;
+    }
     let k = digits.len() as i64;
     let point = exponent.parse::<i64>().expect("`{:e}` writes an integer") + 1;
     if k <= point && point <= 21 {
@@ -130,6 +133,31 @@ fn js_number(n: f64) -> String {
         };
         format!("{mantissa}e{sign}{}", (point - 1).abs())
     }
+}
+
+/// The even spelling where two shortest ones lie equally close to `n`: the
+/// standard takes it, and Rust's formatter takes the upper. They part only at
+/// an exact tie — `n`'s exact expansion is the lower spelling followed by a
+/// single 5 — and only where the lower spelling also reads back as `n`.
+fn even_of_a_tie(n: f64, digits: &str, exponent: &str) -> Option<String> {
+    let (head, last) = digits.split_at(digits.len() - 1);
+    let last = last.parse::<u8>().ok()?;
+    if last % 2 == 0 {
+        return None;
+    }
+    let lower = format!("{head}{}", last - 1);
+    // 767 fractional digits hold the exact expansion of every finite double.
+    let exact = format!("{n:.767e}");
+    let (exact_mantissa, exact_exponent) = exact.split_once('e')?;
+    let tail = exact_mantissa
+        .replace('.', "")
+        .strip_prefix(lower.as_str())?
+        .to_string();
+    let tie =
+        exact_exponent == exponent && tail.starts_with('5') && tail[1..].bytes().all(|b| b == b'0');
+    let (first, rest) = lower.split_at(1);
+    let reads_back = format!("{first}.{rest}0e{exponent}").parse::<f64>().ok() == Some(n);
+    (tie && reads_back).then_some(lower)
 }
 
 /// `String(value)` as the runtime spells a frontmatter value, `None` for null.
@@ -250,6 +278,7 @@ mod tests {
             (1e-7, "1e-7"),
             (1.25e-7, "1.25e-7"),
             (9007199254740993.0, "9007199254740992"),
+            (1.000_007_629_394_531_2, "1.0000076293945312"),
             (f64::INFINITY, "Infinity"),
             (f64::NAN, "NaN"),
         ] {
