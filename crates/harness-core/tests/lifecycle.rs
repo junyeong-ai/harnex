@@ -857,6 +857,10 @@ fn a_file_no_ask_can_count_is_not_touched() {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(bits)).unwrap();
     };
     lock(&vault, 0o000);
+    // Only a directory that refuses this process shows whether anything looked
+    // inside: a superuser, or an ACL the temporary directory hands down,
+    // enters it whatever its mode, and then nothing here is refused.
+    let barred = std::fs::symlink_metadata(vault.join("secret.md")).is_err();
     let detector = ConsumerDetector::new(tmp.path());
     let excluded = detector.as_ref().map(|detector| {
         detector.find(&[ConsumerAsk {
@@ -869,11 +873,13 @@ fn a_file_no_ask_can_count_is_not_touched() {
     let unasked = detector.as_ref().map(|detector| detector.find(&[]));
     lock(&vault, 0o755);
     lock(&index, 0o644);
-    assert_eq!(
-        excluded.unwrap().unwrap(),
-        [vec![PathBuf::from("index.md")]]
-    );
-    assert!(unasked.unwrap().unwrap().is_empty());
+    if barred {
+        assert_eq!(
+            excluded.unwrap().unwrap(),
+            [vec![PathBuf::from("index.md")]]
+        );
+        assert!(unasked.unwrap().unwrap().is_empty());
+    }
 }
 
 #[test]
