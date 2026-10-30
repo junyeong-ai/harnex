@@ -137,7 +137,8 @@ raw jsonl.
 (`harness-core::git`: tracked plus untracked not ignored by `.gitignore`; a
 submodule, a nested repository and a symlink's target are not read), listed
 once at construction, and matches the `{slug}`-substituted pattern. One read of
-each file answers every slug a sweep asks about, of every kind. Not a
+each file answers every slug a sweep asks about, of every kind, and a file
+every ask excludes is not read, so it cannot fail the sweep. Not a
 repository → `LIFECYCLE_GIT_FAILURE`, never a walk. Keep the corpus every file
 the project owns: a consumer outside it reads as `NoConsumers`, which
 recommends retiring an artifact something still uses.
