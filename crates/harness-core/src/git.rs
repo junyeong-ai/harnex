@@ -47,12 +47,17 @@ pub(crate) fn owned_files(dir: &Path, pathspecs: &[&str]) -> Result<Vec<PathBuf>
         "-z",
         "--cached",
         "--others",
-        "--deduplicate",
         "--exclude-per-directory=.gitignore",
         "--",
     ];
     args.extend_from_slice(pathspecs);
-    listed_paths(dir, &args)
+    let mut paths = listed_paths(dir, &args)?;
+    // The index holds a path's stages side by side, so its repeats are
+    // adjacent. `--deduplicate` would say this too, but the git of Ubuntu
+    // 20.04 and Debian 11 refuses it, and every gate reading this listing
+    // would fail there.
+    paths.dedup();
+    Ok(paths)
 }
 
 /// The NUL-delimited paths a git listing prints, joined to `dir`.
