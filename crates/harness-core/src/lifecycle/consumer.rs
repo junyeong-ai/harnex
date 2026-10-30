@@ -37,23 +37,8 @@ impl ConsumerDetector {
     /// Lists the project's files up front, so a project that cannot be
     /// listed is known before any slug is asked about.
     pub fn new(working_dir: &Path) -> Result<Self> {
-        let owned = git::owned_files(working_dir, &[])
+        let files = git::owned_files(working_dir, &[])
             .map_err(|git::Failure(message)| Error::LifecycleGitFailure { message })?;
-        let mut files = Vec::with_capacity(owned.len());
-        for path in owned {
-            // The listing names more than plain files, and only a plain file
-            // references anything here: a tracked file deleted from the tree,
-            // a submodule's gitlink and a nested repository's directory hold
-            // nothing of this project's, and a symlink's content is its link
-            // text — its target may be outside the project, or a file already
-            // counted under its own path.
-            match std::fs::symlink_metadata(&path) {
-                Ok(meta) if meta.is_file() => files.push(path),
-                Ok(_) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(Error::IoFailure { path, source: e }),
-            }
-        }
         Ok(Self {
             working_dir: working_dir.to_path_buf(),
             files,
@@ -62,7 +47,7 @@ impl ConsumerDetector {
 
     /// For each ask, in order, every file relative to the working directory
     /// that references it. Each file is read once, whatever the number of
-    /// asks, and one every ask excludes is not read.
+    /// asks, and one every ask excludes is not touched.
     pub fn find(&self, asks: &[ConsumerAsk<'_>]) -> Result<Vec<Vec<PathBuf>>> {
         // Asks looking for the same text share one needle: two kinds may
         // write one pattern.
@@ -92,12 +77,30 @@ impl ConsumerDetector {
         for path in &self.files {
             let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
             // A file every ask excludes counts for none of them, so it is not
-            // read: what it holds answers nothing, and it may be unreadable.
+            // touched: what it holds answers nothing, and it, or a directory
+            // above it, may be unreadable.
             if excludes
                 .iter()
                 .all(|globs| globs.iter().any(|p| p.matches_path(relative)))
             {
                 continue;
+            }
+            // The listing names more than plain files, and only a plain file
+            // references anything here: a tracked file deleted from the tree,
+            // a submodule's gitlink and a nested repository's directory hold
+            // nothing of this project's, and a symlink's content is its link
+            // text — its target may be outside the project, or a file already
+            // counted under its own path.
+            match std::fs::symlink_metadata(path) {
+                Ok(meta) if meta.is_file() => {}
+                Ok(_) => continue,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    return Err(Error::IoFailure {
+                        path: path.clone(),
+                        source: e,
+                    });
+                }
             }
             // A file that cannot be read fails rather than being skipped: a
             // skipped consumer is a false `NoConsumers` signal. The bytes are
