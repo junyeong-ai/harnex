@@ -1051,7 +1051,7 @@ fn retirement_classifier_marks_no_consumers_silent() {
     std::fs::write(&rule_path, "body").unwrap();
     let cfg = default_lifecycle(tmp.path().join(".harness/observations"));
     let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
-    let classifier = RetirementClassifier::new(&cfg, None);
+    let classifier = RetirementClassifier::new(&cfg, None, Timestamp::now());
     let verdict = classifier
         .classify(
             "rule",
@@ -1080,7 +1080,7 @@ fn retirement_classifier_honors_exempt_list() {
         },
     };
     let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
-    let classifier = RetirementClassifier::new(&cfg, Some(&retire_cfg));
+    let classifier = RetirementClassifier::new(&cfg, Some(&retire_cfg), Timestamp::now());
     let verdict = classifier
         .classify(
             "rule",
@@ -1104,7 +1104,7 @@ fn an_artifact_no_history_records_is_neither_stale_nor_new() {
     let mut cfg = default_lifecycle(tmp.path().join(".harness/observations"));
     cfg.grace_period_days = 30;
     let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
-    let verdict = RetirementClassifier::new(&cfg, None)
+    let verdict = RetirementClassifier::new(&cfg, None, Timestamp::now())
         .classify(
             "rule",
             &rule_path,
@@ -1116,6 +1116,31 @@ fn an_artifact_no_history_records_is_neither_stale_nor_new() {
     assert_eq!(verdict.age_days, None);
     assert!(!verdict.signals.contains(&RetirementSignal::Stale));
     assert!(!verdict.exempt, "no recorded change puts it in its grace");
+}
+
+#[test]
+fn an_age_is_counted_back_from_the_instant_the_verdicts_are_as_of() {
+    let tmp = repo();
+    let rule_dir = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rule_dir).unwrap();
+    let rule_path = rule_dir.join("dated.md");
+    std::fs::write(&rule_path, "body").unwrap();
+    std::fs::write(tmp.path().join("index.md"), "see dated").unwrap();
+    let cfg = default_lifecycle(tmp.path().join(".harness/observations"));
+    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
+    let changed: Timestamp = "2020-01-01T00:00:00Z".parse().unwrap();
+    let as_of = changed + SignedDuration::from_hours(24 * 31);
+    let verdict = RetirementClassifier::new(&cfg, None, as_of)
+        .classify(
+            "rule",
+            &rule_path,
+            &detector,
+            SilenceState::Unmeasured,
+            LastChange::Committed(changed),
+        )
+        .unwrap();
+    assert_eq!(verdict.age_days, Some(31));
+    assert_eq!(verdict.signals, [RetirementSignal::Stale]);
 }
 
 #[test]

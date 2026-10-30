@@ -85,7 +85,8 @@ configuration may not reshape the log the age is parsed from. Never a
 modification time — a checkout writes every file's, so a fresh clone or a CI
 runner reads every artifact as new and inside its grace period. A shallow clone
 fails with `LIFECYCLE_GIT_FAILURE`, because its boundary commit dates every file
-it holds to the day the clone was cut. One history walk answers the whole sweep.
+it holds to the day the clone was cut. One history walk and one instant, the
+sweep's now, answer the whole sweep.
 
 Exempt sources (`grace_period_days` recency + `[retirement.exempt]` kinds
 and slugs) flip `exempt: true` but signals still surface for visibility.

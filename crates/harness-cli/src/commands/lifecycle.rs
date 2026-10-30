@@ -227,7 +227,8 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                 })?
                 .clone();
             let detector = ConsumerDetector::new(detector_decl, &root)?;
-            let classifier = RetirementClassifier::new(lc, config.retirement.as_ref());
+            let classifier =
+                RetirementClassifier::new(lc, config.retirement.as_ref(), jiff::Timestamp::now());
             let target_path = if path.is_absolute() {
                 path
             } else {
