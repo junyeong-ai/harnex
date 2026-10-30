@@ -767,8 +767,11 @@ mod tests {
 
     #[test]
     fn a_path_that_resolves_to_the_root_asks_git_about_everything() {
+        // Rules that would be asked as their directory less the drafts beside
+        // them are not: the root needs the drafts too.
         let tmp = tempfile::TempDir::new().unwrap();
-        let scopes = scopes(tmp.path(), &["", "rules/r.md"]);
+        std::fs::create_dir_all(tmp.path().join("rules/drafts")).unwrap();
+        let scopes = scopes(tmp.path(), &["", "rules/a.md", "rules/b.md", "rules/c.md"]);
         assert_eq!((scopes.asked, scopes.left_out), (vec!["."], vec![]));
     }
 
