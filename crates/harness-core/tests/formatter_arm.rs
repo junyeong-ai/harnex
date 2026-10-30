@@ -99,29 +99,38 @@ const PROFILES: &[(&str, &str)] = &[
     ("jvm", "kt"),
 ];
 
+/// Every profile hands `_format-target.sh` the path it decoded and formats only
+/// what that accepts, so the boundary cases below run through one profile.
 #[test]
-fn formatters_accept_regular_files_inside_the_project() {
+fn every_formatter_takes_its_file_through_the_shared_boundary() {
     for &(lang, extension) in PROFILES {
         let project = Project::new(lang);
         write(&project.root.join("biome.json"), "{}");
-        let file = project.root.join(format!("src/source..{extension}"));
-        write(&file, "source\n");
-        fs::create_dir_all(project.root.join("src/nested")).unwrap();
-        symlink(project.root.join("src"), project.root.join("alias")).unwrap();
-        for path in [
-            file.clone(),
-            PathBuf::from(format!("src/source..{extension}")),
-            project
-                .root
-                .join(format!("src/nested/../source..{extension}")),
-            project.root.join(format!("alias/source..{extension}")),
-        ] {
-            let calls = project.run(lang, &path);
-            assert!(
-                calls.contains(file.to_str().unwrap()),
-                "{lang}, {path:?}: {calls}"
-            );
-        }
+        let inside = project.root.join(format!("source.{extension}"));
+        write(&inside, "internal\n");
+        let outside = project.outside.join(format!("source.{extension}"));
+        write(&outside, "external\n");
+        let calls = project.run(lang, &inside);
+        assert!(calls.contains(inside.to_str().unwrap()), "{lang}: {calls}");
+        assert!(project.run(lang, &outside).is_empty(), "{lang}");
+    }
+}
+
+#[test]
+fn formatters_accept_regular_files_inside_the_project() {
+    let project = Project::new("rust");
+    let file = project.root.join("src/source..rs");
+    write(&file, "source\n");
+    fs::create_dir_all(project.root.join("src/nested")).unwrap();
+    symlink(project.root.join("src"), project.root.join("alias")).unwrap();
+    for path in [
+        file.clone(),
+        PathBuf::from("src/source..rs"),
+        project.root.join("src/nested/../source..rs"),
+        project.root.join("alias/source..rs"),
+    ] {
+        let calls = project.run("rust", &path);
+        assert!(calls.contains(file.to_str().unwrap()), "{path:?}: {calls}");
     }
 }
 
@@ -146,28 +155,25 @@ fn formatters_leave_lint_fixes_to_the_gate() {
 
 #[test]
 fn formatters_never_dispatch_an_external_file_or_a_symlinked_leaf() {
-    for &(lang, extension) in PROFILES {
-        let project = Project::new(lang);
-        write(&project.root.join("biome.json"), "{}");
-        let outside = project.outside.join(format!("source.{extension}"));
-        write(&outside, "external\n");
-        let inside = project.root.join(format!("source.{extension}"));
-        write(&inside, "internal\n");
-        symlink(&project.outside, project.root.join("linked")).unwrap();
-        let leaf = project.root.join(format!("external.{extension}"));
-        symlink(&outside, &leaf).unwrap();
-        let local_leaf = project.root.join(format!("internal.{extension}"));
-        symlink(&inside, &local_leaf).unwrap();
-        for path in [
-            outside,
-            project.root.join(format!("linked/source.{extension}")),
-            leaf,
-            local_leaf,
-            project.root.join(format!("missing.{extension}")),
-            project.root.clone(),
-        ] {
-            assert!(project.run(lang, &path).is_empty(), "{lang}: {path:?}");
-        }
+    let project = Project::new("rust");
+    let outside = project.outside.join("source.rs");
+    write(&outside, "external\n");
+    let inside = project.root.join("source.rs");
+    write(&inside, "internal\n");
+    symlink(&project.outside, project.root.join("linked")).unwrap();
+    let leaf = project.root.join("external.rs");
+    symlink(&outside, &leaf).unwrap();
+    let local_leaf = project.root.join("internal.rs");
+    symlink(&inside, &local_leaf).unwrap();
+    for path in [
+        outside,
+        project.root.join("linked/source.rs"),
+        leaf,
+        local_leaf,
+        project.root.join("missing.rs"),
+        project.root.clone(),
+    ] {
+        assert!(project.run("rust", &path).is_empty(), "{path:?}");
     }
 }
 
@@ -236,19 +242,13 @@ fn biome_resolves_pnp_binaries_from_the_root_and_the_edited_workspace() {
 
 #[test]
 fn formatters_resolve_a_project_root_reached_through_a_symlink() {
-    for &(lang, extension) in PROFILES {
-        let mut project = Project::new(lang);
-        write(&project.root.join("biome.json"), "{}");
-        let file = project.root.join(format!("source.{extension}"));
-        write(&file, "source\n");
-        let alias = project.root.parent().unwrap().join("project-alias");
-        symlink(&project.root, &alias).unwrap();
-        project.root = alias;
-        assert!(
-            project.run(lang, &file).contains(file.to_str().unwrap()),
-            "{lang}"
-        );
-    }
+    let mut project = Project::new("rust");
+    let file = project.root.join("source.rs");
+    write(&file, "source\n");
+    let alias = project.root.parent().unwrap().join("project-alias");
+    symlink(&project.root, &alias).unwrap();
+    project.root = alias;
+    assert!(project.run("rust", &file).contains(file.to_str().unwrap()));
 }
 
 #[test]
