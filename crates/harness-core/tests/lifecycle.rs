@@ -1116,6 +1116,57 @@ fn a_link_whose_target_is_gone_is_declared_and_the_rest_is_swept() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_foundation_kind_carves_out_a_link_whose_target_is_gone() {
+    // The declaration is about the path: whether its target is on this
+    // machine changes neither what was carved out nor what is swept.
+    let tmp = repo();
+    let skills = tmp.path().join(".claude/skills");
+    std::fs::create_dir_all(&skills).unwrap();
+    std::os::unix::fs::symlink("../../shared/skills/tools", skills.join("shared-tools")).unwrap();
+    let kind = |name: &str, glob: &str, foundation| KindDecl {
+        name: name.into(),
+        glob: glob.into(),
+        foundation,
+        invocation_kind: None,
+    };
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![
+            kind("rule", ".claude/rules/*.md", false),
+            kind("skill", ".claude/skills/*", false),
+            kind("shared", ".claude/skills/shared-*", true),
+        ],
+    );
+    cfg.lifecycle
+        .as_mut()
+        .unwrap()
+        .consumer_detectors
+        .push(ConsumerDetectorDecl {
+            kind: "skill".into(),
+            pattern: "{slug}".into(),
+            exclude_globs: vec![],
+        });
+    let query = TelemetryQuery::new(JsonlStorage::new(tmp.path().join("tele"), 10));
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    let skips: Vec<(&str, &str)> = outcome
+        .kinds_skipped
+        .iter()
+        .map(|s| (s.slug.as_str(), s.reason.as_str()))
+        .collect();
+    assert_eq!(
+        skips,
+        [(
+            "shared",
+            "foundation kind (excluded from retirement): 1 path(s) carved out"
+        )]
+    );
+}
+
 #[test]
 fn retirement_classifier_marks_no_consumers_silent() {
     let tmp = repo();
