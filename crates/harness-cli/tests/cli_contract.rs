@@ -116,23 +116,39 @@ fn version_is_clap_native_and_exits_0() {
 }
 
 /// Git's pathspec variables, exported in the caller's shell, would reread the
-/// magic harnex writes: a committed rule's age reads as unrecorded, and a
-/// `claude.md` joins the memory a `CLAUDE.md` names.
+/// pathspecs harnex hands git: a committed rule's age reads as unrecorded, a
+/// `claude.md` joins the memory a `CLAUDE.md` names, and a declared harness
+/// path is read as a file's name or with its `*` stopping at a `/`, so a
+/// baseline records a harness older than the one the window ran under.
 #[test]
 fn the_callers_pathspec_variables_change_no_answer() {
     let project = tempfile::tempdir().unwrap();
+    let transcripts = tempfile::tempdir().unwrap();
     let root = project.path();
+    // A finding and a session name the project as the system resolves it.
+    let seen_root = root.canonicalize().unwrap();
     let git = |args: &[&str], date: &str| {
-        let status = Command::new("git")
+        let out = Command::new("git")
             .args(args)
             .current_dir(root)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_SYSTEM", "/dev/null")
             .env("GIT_AUTHOR_DATE", date)
             .env("GIT_COMMITTER_DATE", date)
-            .status()
+            .output()
             .unwrap();
-        assert!(status.success(), "git {args:?}");
+        assert!(out.status.success(), "git {args:?}");
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    };
+    let write = |path: &str, body: &str| {
+        std::fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
+        std::fs::write(root.join(path), body).unwrap();
+    };
+    let commit = |date: &str| {
+        git(&["add", "."], date);
+        let args = ["-c", "user.name=t", "-c", "user.email=t@t"];
+        git(&[&args[..], &["commit", "-qm", "x"]].concat(), date);
+        git(&["rev-parse", "HEAD"], date)
     };
     let ten_days_ago = format!(
         "{} +0000",
@@ -140,40 +156,37 @@ fn the_callers_pathspec_variables_change_no_answer() {
     );
     git(&["init", "-q"], &ten_days_ago);
     git(&["config", "core.ignorecase", "false"], &ten_days_ago);
-    for (path, body) in [
-        (
-            "harness.toml",
-            concat!(
-                "[meta]\nharnex_version = \">=",
-                env!("CARGO_PKG_VERSION"),
-                "\"\n[evidence]\n[[kinds]]\nname = \"rule\"\nglob = \".claude/rules/*.md\"\n\
-                 [lifecycle]\n[[lifecycle.consumer_detectors]]\nkind = \"rule\"\npattern = \"{slug}\"\n",
-            ),
+    write(
+        "harness.toml",
+        &format!(
+            "[meta]\nharnex_version = \">={}\"\n[evidence]\n[[kinds]]\nname = \"rule\"\n\
+             glob = \".claude/rules/*.md\"\n[lifecycle]\n[[lifecycle.consumer_detectors]]\n\
+             kind = \"rule\"\npattern = \"{{slug}}\"\n[session]\nroots = [{}]\n\
+             harness_paths = [\"**/CLAUDE.md\", \"docs/*.md\"]\n",
+            env!("CARGO_PKG_VERSION"),
+            serde_json::to_string(transcripts.path()).unwrap()
         ),
-        (".claude/rules/r.md", "# r\n"),
-        ("a/CLAUDE.md", "Owner: [file: no/such/a.rs:1].\n"),
-        ("b/claude.md", "Owner: [file: no/such/b.rs:1].\n"),
-    ] {
-        std::fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
-        std::fs::write(root.join(path), body).unwrap();
-    }
-    git(&["add", "."], &ten_days_ago);
-    git(
-        &[
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "commit",
-            "-qm",
-            "x",
-        ],
-        &ten_days_ago,
     );
+    write(".claude/rules/r.md", "# r\n");
+    write("b/claude.md", "Owner: [file: no/such/b.rs:1].\n");
+    commit(&ten_days_ago);
+    // Read as a file's name, `**/CLAUDE.md` names neither change below, and
+    // with its `*` stopping at a `/`, `docs/*.md` names not the last.
+    write("a/CLAUDE.md", "Owner: [file: no/such/a.rs:1].\n");
+    commit(&ten_days_ago);
+    write("docs/guide/setup.md", "setup\n");
+    let last = commit(&ten_days_ago);
+    let session = transcripts.path().join("p/s.jsonl");
+    std::fs::create_dir_all(session.parent().unwrap()).unwrap();
+    std::fs::write(
+        &session,
+        format!(
+            r#"{{"type":"user","uuid":"u","timestamp":"2026-10-01T09:00:00Z","sessionId":"s","version":"2.1.246","cwd":{},"origin":{{"kind":"human"}},"promptSource":"typed","message":{{"content":"go"}}}}"#,
+            serde_json::to_string(&seen_root).unwrap()
+        ) + "\n",
+    )
+    .unwrap();
 
-    // A finding names its file from the directory the binary ran in, which
-    // the system reports with every link resolved.
-    let seen_root = root.canonicalize().unwrap();
     let answers = |variable: Option<&str>| {
         let run = |args: &[&str]| {
             let mut command = harness();
@@ -211,13 +224,32 @@ fn the_callers_pathspec_variables_change_no_answer() {
                     .to_path_buf()
             })
             .collect();
-        (classified["data"]["age_days"].clone(), unresolved)
+        let saved = run(&[
+            "session",
+            "baseline",
+            "save",
+            "--label",
+            variable.unwrap_or("unset"),
+            "--project",
+            seen_root.to_str().unwrap(),
+            "--since",
+            "2026-01-01T00:00:00Z",
+        ]);
+        (
+            classified["data"]["age_days"].clone(),
+            unresolved,
+            saved["data"]["harness"].clone(),
+        )
     };
 
     let unset = answers(None);
     assert_eq!(
         unset,
-        (serde_json::json!(10), vec![PathBuf::from("a/CLAUDE.md")])
+        (
+            serde_json::json!(10),
+            vec![PathBuf::from("a/CLAUDE.md")],
+            serde_json::json!({"head": last, "uncommitted": false}),
+        )
     );
     for variable in [
         "GIT_LITERAL_PATHSPECS",

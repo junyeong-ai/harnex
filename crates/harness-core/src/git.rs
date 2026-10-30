@@ -655,8 +655,9 @@ fn has_commits(dir: &Path) -> Result<bool, Failure> {
 /// Git's global pathspec magic. Exported in the caller's shell, each rereads
 /// every pathspec a command is given: `GIT_LITERAL_PATHSPECS` makes
 /// `:(literal)` part of a file name, so an age matches no commit and reads as
-/// unrecorded, and `GIT_ICASE_PATHSPECS` folds the case of a path asked for
-/// exactly.
+/// unrecorded, `GIT_ICASE_PATHSPECS` folds the case of a path asked for
+/// exactly, and the other two change what a pattern written without magic, a
+/// declared harness path, names.
 const PATHSPEC_VARIABLES: [&str; 4] = [
     "GIT_LITERAL_PATHSPECS",
     "GIT_ICASE_PATHSPECS",
