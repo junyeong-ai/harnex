@@ -117,7 +117,7 @@ impl<'a> RetirementSweeper<'a> {
                 slug: kind_decl.name.clone(),
                 reason,
             });
-            foundation.extend(matches.into_iter().map(|(path, _)| path));
+            foundation.extend(matches);
         }
 
         // The files the project owns are one set for every kind, listed once,
@@ -156,10 +156,11 @@ impl<'a> RetirementSweeper<'a> {
                 });
                 continue;
             }
-            let Some(mut entries) = self.subjects(kind_decl, &mut skipped) else {
+            let Some(mut matches) = self.subjects(kind_decl, &mut skipped) else {
                 continue;
             };
-            entries.retain(|(path, _)| !foundation.contains(path));
+            matches.retain(|path| !foundation.contains(path));
+            let entries = readable(kind_decl, matches, &mut skipped);
             units.push(Unit {
                 kind: &kind_decl.name,
                 record: kind_decl.invocation_kind.as_deref(),
@@ -254,14 +255,16 @@ impl<'a> RetirementSweeper<'a> {
         })
     }
 
-    /// Every path a kind's glob names, with its slug, or `None` when the glob
-    /// itself could not be read — reported as a skip either way, so a kind
-    /// that matched nothing is told apart from one the sweep could not see.
+    /// Every path a kind's glob names, or `None` when the glob itself could
+    /// not be read — reported as a skip either way, so a kind that matched
+    /// nothing is told apart from one the sweep could not see. A path is named
+    /// whether or not it can be read: a link whose target is gone is still
+    /// one a foundation kind carves out.
     fn subjects(
         &self,
         kind_decl: &KindDecl,
         skipped: &mut Vec<SkippedRule>,
-    ) -> Option<Vec<(PathBuf, String)>> {
+    ) -> Option<Vec<PathBuf>> {
         // The project's own path is a literal, not a pattern — see
         // `glob_root`. Unescaped, a `[` in an ancestor directory empties
         // every kind's match list and retirement reads it as "nothing here".
@@ -282,37 +285,14 @@ impl<'a> RetirementSweeper<'a> {
                 return None;
             }
         };
-        // An unreadable match (e.g. permission-denied during traversal, or a
-        // link whose target is gone) must NOT be dropped: a silently skipped
-        // artifact could escape classification and be treated as if it does
-        // not exist. Nor may it end the sweep, which would leave every other
-        // artifact unjudged. Record each as a skip so the gap is visible.
-        let mut entries = Vec::new();
+        let mut matches = Vec::new();
         for entry in glob_iter {
-            let (path, error) = match entry {
-                Ok(p) => match std::fs::metadata(&p) {
-                    Ok(_) => {
-                        let slug = slug_of(&p);
-                        entries.push((p, slug));
-                        continue;
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound && p.is_symlink() => {
-                        (p, "a link to a path that does not exist".to_string())
-                    }
-                    Err(e) => (p, e.to_string()),
-                },
-                Err(e) => (e.path().to_path_buf(), e.error().to_string()),
-            };
-            skipped.push(SkippedRule {
-                slug: kind_decl.name.clone(),
-                reason: format!(
-                    "kind '{}' match unreadable ({}): {error}",
-                    kind_decl.name,
-                    path.display()
-                ),
-            });
+            match entry {
+                Ok(path) => matches.push(path),
+                Err(e) => unreadable(kind_decl, e.path(), &e.error().to_string(), skipped),
+            }
         }
-        Some(entries)
+        Some(matches)
     }
 
     /// Read every declared invocation record over the window, as a map from
@@ -364,6 +344,47 @@ impl<'a> RetirementSweeper<'a> {
         })?;
         Ok(records)
     }
+}
+
+/// The matches a kind can classify, each with its slug. One that cannot be
+/// read — a link whose target is gone among them — is neither dropped, which
+/// would treat a present artifact as absent, nor the end of the sweep, which
+/// would leave every other unjudged: it is declared a skip.
+fn readable(
+    kind_decl: &KindDecl,
+    matches: Vec<PathBuf>,
+    skipped: &mut Vec<SkippedRule>,
+) -> Vec<(PathBuf, String)> {
+    let mut entries = Vec::new();
+    for path in matches {
+        match std::fs::metadata(&path) {
+            Ok(_) => {
+                let slug = slug_of(&path);
+                entries.push((path, slug));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && path.is_symlink() => {
+                unreadable(
+                    kind_decl,
+                    &path,
+                    "a link to a path that does not exist",
+                    skipped,
+                );
+            }
+            Err(e) => unreadable(kind_decl, &path, &e.to_string(), skipped),
+        }
+    }
+    entries
+}
+
+fn unreadable(kind_decl: &KindDecl, path: &Path, error: &str, skipped: &mut Vec<SkippedRule>) {
+    skipped.push(SkippedRule {
+        slug: kind_decl.name.clone(),
+        reason: format!(
+            "kind '{}' match unreadable ({}): {error}",
+            kind_decl.name,
+            path.display()
+        ),
+    });
 }
 
 fn json_contains_string_exact(value: &Value, needle: &str) -> bool {

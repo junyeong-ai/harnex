@@ -125,8 +125,8 @@ entire surface in one call.
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`
 with a reason carrying how many paths its glob carved out — the exclusion
 is explicit, never silent, and a glob that names nothing says so — and every
-path it names is foundation for every other kind, so a broader glob cannot
-put it back.
+path it names, a link whose target is gone included, is foundation for every
+other kind, so a broader glob cannot put it back.
 
 `harnex lifecycle decisions [--tag T] [--decision D]` lists every
 record in the decision ledger sorted by timestamp descending. Operators
