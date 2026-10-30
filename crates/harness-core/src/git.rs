@@ -22,6 +22,8 @@
 //! - Never read a file's age from the checkout. A modification time is the
 //!   moment this clone wrote the file, so every file in a fresh clone reads as
 //!   changed today; the history is the same in every clone of a commit.
+//! - Never let the caller's environment reread a pathspec. Every git command
+//!   harnex runs is built by [`command`].
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
@@ -634,9 +636,8 @@ impl<'a> Asked<'a> {
 /// Whether `HEAD` names a commit. A repository on an unborn branch has none,
 /// and no file in it has a history yet.
 fn has_commits(dir: &Path) -> Result<bool, Failure> {
-    let status = Command::new("git")
+    let status = command(dir)
         .args(["rev-parse", "--verify", "--quiet", "HEAD"])
-        .current_dir(dir)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -651,13 +652,35 @@ fn has_commits(dir: &Path) -> Result<bool, Failure> {
     }
 }
 
+/// Git's global pathspec magic. Exported in the caller's shell, each rereads
+/// every pathspec a command is given: `GIT_LITERAL_PATHSPECS` makes
+/// `:(literal)` part of a file name, so an age matches no commit and reads as
+/// unrecorded, and `GIT_ICASE_PATHSPECS` folds the case of a path asked for
+/// exactly.
+const PATHSPEC_VARIABLES: [&str; 4] = [
+    "GIT_LITERAL_PATHSPECS",
+    "GIT_ICASE_PATHSPECS",
+    "GIT_GLOB_PATHSPECS",
+    "GIT_NOGLOB_PATHSPECS",
+];
+
+/// A git command run in `dir` that reads each pathspec as written, whatever
+/// the caller's environment says about pathspecs: [`PATHSPEC_VARIABLES`].
+pub(crate) fn command(dir: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(dir);
+    for variable in PATHSPEC_VARIABLES {
+        command.env_remove(variable);
+    }
+    command
+}
+
 /// What a git command printed, which must be UTF-8: every caller reads paths
 /// from it, and a lossy decode names a file that does not exist.
 fn stdout(dir: &Path, args: &[&str]) -> Result<String, Failure> {
     let command = format!("git {}", args.join(" "));
-    let output = Command::new("git")
+    let output = self::command(dir)
         .args(args)
-        .current_dir(dir)
         .output()
         .map_err(|e| Failure(format!("{command} spawn: {e}")))?;
     if !output.status.success() {
