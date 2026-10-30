@@ -1116,6 +1116,66 @@ fn a_link_whose_target_is_gone_is_declared_and_the_rest_is_swept() {
     );
 }
 
+#[test]
+fn each_swept_artifact_is_counted_by_its_own_consumers() {
+    // Every kind's slugs are answered in one read, so each verdict has to take
+    // its count back from the right place in that one answer.
+    let tmp = repo();
+    for (path, body) in [
+        (".claude/rules/style.md", "body"),
+        (".claude/rules/unused.md", "body"),
+        (".claude/skills/cited/SKILL.md", "a skill"),
+        (".claude/skills/uncited/SKILL.md", "a skill"),
+        ("README.md", "see style, then run /cited"),
+    ] {
+        let path = tmp.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+    let kind = |name: &str, glob: &str| KindDecl {
+        name: name.into(),
+        glob: glob.into(),
+        foundation: false,
+        invocation_kind: None,
+    };
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![
+            kind("rule", ".claude/rules/*.md"),
+            kind("skill", ".claude/skills/*"),
+        ],
+    );
+    cfg.lifecycle
+        .as_mut()
+        .unwrap()
+        .consumer_detectors
+        .push(ConsumerDetectorDecl {
+            kind: "skill".into(),
+            pattern: "/{slug}".into(),
+            exclude_globs: vec![".claude/skills/{slug}/**".into()],
+        });
+    let query = TelemetryQuery::new(JsonlStorage::new(tmp.path().join("tele"), 10));
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    let mut counts: Vec<(&str, &str, usize)> = outcome
+        .verdicts
+        .iter()
+        .map(|v| (v.kind.as_str(), v.slug.as_str(), v.consumer_count))
+        .collect();
+    counts.sort();
+    assert_eq!(
+        counts,
+        [
+            ("rule", "style", 1),
+            ("rule", "unused", 0),
+            ("skill", "cited", 1),
+            ("skill", "uncited", 0),
+        ]
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn a_foundation_kind_carves_out_a_link_whose_target_is_gone() {
