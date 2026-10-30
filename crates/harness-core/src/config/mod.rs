@@ -915,8 +915,8 @@ impl Config {
                     location: None,
                 });
             }
-            // Each exclude_glob must compile, or the runtime silently drops
-            // it (`.ok()`) and the exclusion never takes effect. `{slug}` is a
+            // Each exclude_glob must compile, so a malformed one fails at load
+            // rather than at the first slug a sweep asks about. `{slug}` is a
             // runtime placeholder; substitute a sentinel before compiling so
             // the glob alternation parser doesn't mask a structural error.
             for g in &d.exclude_globs {
