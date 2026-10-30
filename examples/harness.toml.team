@@ -1,7 +1,7 @@
 # Team baseline (≥3 active developers): a broad config across most sections.
 
 [meta]
-harnex_version = ">=0.38.0, <0.39"
+harnex_version = ">=0.38.1, <0.39"
 
 [[kinds]]
 name = "rule"
