@@ -107,7 +107,7 @@ the plugin reports the oracle as missing rather than fetching it.
 ### Pin the oracle per repository
 
 `harness.toml` pins the release a harness was written from, up to the next
-minor — `[meta] harnex_version = ">=0.37.1, <0.38"` — and a binary outside that
+minor — `[meta] harnex_version = ">=0.38.0, <0.39"` — and a binary outside that
 range refuses every command that loads it, except the `guard` hooks, which
 skip rather than block a session. A break ships only in a new minor; a patch
 changes a gate's verdict on an unchanged tree only to catch a defect that was
