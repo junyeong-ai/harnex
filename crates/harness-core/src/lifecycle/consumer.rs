@@ -87,14 +87,22 @@ impl ConsumerDetector {
             }
             // The listing names more than plain files, and only a plain file
             // references anything here: a tracked file deleted from the tree,
-            // a submodule's gitlink and a nested repository's directory hold
-            // nothing of this project's, and a symlink's content is its link
-            // text — its target may be outside the project, or a file already
-            // counted under its own path.
+            // or under a directory that has become a file, a submodule's
+            // gitlink and a nested repository's directory hold nothing of this
+            // project's, and a symlink's content is its link text — its target
+            // may be outside the project, or a file already counted under its
+            // own path.
             match std::fs::symlink_metadata(path) {
                 Ok(meta) if meta.is_file() => {}
                 Ok(_) => continue,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                    ) =>
+                {
+                    continue;
+                }
                 Err(e) => {
                     return Err(Error::IoFailure {
                         path: path.clone(),

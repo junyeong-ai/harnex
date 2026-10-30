@@ -63,10 +63,17 @@ impl FillMarkerAuditor {
             let body = match std::fs::read_to_string(&path) {
                 Ok(body) => body,
                 // git lists a tracked file whether or not it is still on
-                // disk, and one that is gone carries no marker. Any other
-                // failure is a file left unread, which must not report as a
-                // file read clean.
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                // disk, and one that is gone, or whose directory has become a
+                // file, carries no marker. Any other failure is a file left
+                // unread, which must not report as a file read clean.
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                    ) =>
+                {
+                    continue;
+                }
                 Err(source) => return Err(Error::IoFailure { path, source }),
             };
             files_scanned += 1;
@@ -321,8 +328,15 @@ mod tests {
             "CLAUDE.md",
             "<!-- harnex-fill: the project name -->\n",
         );
-        git(dir.path(), &["add", "CLAUDE.md"]);
+        write(
+            dir.path(),
+            ".claude/rules/r.md",
+            "<!-- harnex-fill: the rule -->\n",
+        );
+        git(dir.path(), &["add", "CLAUDE.md", ".claude/rules/r.md"]);
         std::fs::remove_file(dir.path().join("CLAUDE.md")).unwrap();
+        std::fs::remove_dir_all(dir.path().join(".claude/rules")).unwrap();
+        std::fs::write(dir.path().join(".claude/rules"), "").unwrap();
 
         let outcome = FillMarkerAuditor::new().audit(dir.path()).unwrap();
         assert!(outcome.findings.is_empty(), "{:?}", outcome.findings);
