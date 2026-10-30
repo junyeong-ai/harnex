@@ -988,6 +988,60 @@ fn a_directory_that_is_not_a_repository_is_refused_rather_than_walked() {
     assert!(outcome.kinds_processed.is_empty());
 }
 
+#[cfg(unix)]
+#[test]
+fn a_link_whose_target_is_gone_is_declared_and_the_rest_is_swept() {
+    // A skill linked in from a checkout this machine does not have: no session
+    // loads it, and it must not leave every other artifact unjudged.
+    let tmp = repo();
+    let skills = tmp.path().join(".claude/skills");
+    std::fs::create_dir_all(skills.join("kept")).unwrap();
+    std::fs::write(skills.join("kept/SKILL.md"), "a skill").unwrap();
+    std::os::unix::fs::symlink("../../shared/skills/gone", skills.join("gone")).unwrap();
+    let kind = |name: &str, glob: &str| KindDecl {
+        name: name.into(),
+        glob: glob.into(),
+        foundation: false,
+        invocation_kind: None,
+    };
+    let mut cfg = build_sweep_config(
+        tmp.path(),
+        vec![
+            kind("rule", ".claude/rules/*.md"),
+            kind("skill", ".claude/skills/*"),
+        ],
+    );
+    cfg.lifecycle
+        .as_mut()
+        .unwrap()
+        .consumer_detectors
+        .push(ConsumerDetectorDecl {
+            kind: "skill".into(),
+            pattern: "{slug}".into(),
+            exclude_globs: vec![],
+        });
+    let query = TelemetryQuery::new(JsonlStorage::new(tmp.path().join("tele"), 10));
+    let outcome = RetirementSweeper::new(&cfg, tmp.path(), &query)
+        .unwrap()
+        .run()
+        .unwrap();
+    let slugs: Vec<&str> = outcome.verdicts.iter().map(|v| v.slug.as_str()).collect();
+    assert_eq!(slugs, ["kept"]);
+    let skip = outcome
+        .kinds_skipped
+        .iter()
+        .find(|s| s.slug == "skill")
+        .expect("the link is declared, not dropped");
+    assert!(
+        skip.reason.contains(".claude/skills/gone")
+            && skip
+                .reason
+                .ends_with("a link to a path that does not exist"),
+        "{}",
+        skip.reason
+    );
+}
+
 #[test]
 fn retirement_classifier_marks_no_consumers_silent() {
     let tmp = repo();
