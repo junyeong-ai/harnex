@@ -2076,8 +2076,9 @@ fn a_merge_dates_what_it_brought_to_the_branch() {
 #[test]
 fn the_history_reads_the_same_under_any_git_configuration() {
     // A developer's configuration signs every commit, prints each signature's
-    // verification into `git log`, hides what the first commit added, and
-    // leaves `git diff` reading a file whose time alone moved as changed.
+    // verification into `git log`, hides what the first commit added, lists
+    // only what a merge changed against every parent, and leaves `git diff`
+    // reading a file whose time alone moved as changed.
     let tmp = repo();
     let keys = TempDir::new().unwrap();
     let key = keys.path().join("key");
@@ -2097,6 +2098,7 @@ fn the_history_reads_the_same_under_any_git_configuration() {
         ("commit.gpgSign", "true"),
         ("log.showSignature", "true"),
         ("log.showRoot", "false"),
+        ("log.diffMerges", "combined"),
         ("diff.autoRefreshIndex", "false"),
     ] {
         let set = common::git(tmp.path())
@@ -2109,6 +2111,26 @@ fn the_history_reads_the_same_under_any_git_configuration() {
     commit_days_ago(tmp.path(), 200);
     std::fs::write(tmp.path().join("recent.md"), "a rule").unwrap();
     commit_days_ago(tmp.path(), 3);
+    let git = |args: &[&str]| {
+        let status = common::git(tmp.path()).args(args).status().unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["switch", "-q", "-c", "side"]);
+    std::fs::write(tmp.path().join("side.md"), "a rule").unwrap();
+    commit_days_ago(tmp.path(), 100);
+    git(&["switch", "-q", "-"]);
+    let landed = format!(
+        "{} +0000",
+        (Timestamp::now() - SignedDuration::from_hours(24)).as_second()
+    );
+    let merged = common::git(tmp.path())
+        .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+        .args(["merge", "-q", "--no-ff", "-m", "merge", "side"])
+        .env("GIT_AUTHOR_DATE", &landed)
+        .env("GIT_COMMITTER_DATE", &landed)
+        .status()
+        .unwrap();
+    assert!(merged.success());
     std::fs::File::options()
         .write(true)
         .open(tmp.path().join("old.md"))
@@ -2118,12 +2140,16 @@ fn the_history_reads_the_same_under_any_git_configuration() {
 
     let changes = last_changes(
         tmp.path(),
-        &[tmp.path().join("old.md"), tmp.path().join("recent.md")],
+        &[
+            tmp.path().join("old.md"),
+            tmp.path().join("recent.md"),
+            tmp.path().join("side.md"),
+        ],
     )
     .unwrap();
     let ages: Vec<_> = changes.iter().map(days_since).collect();
     assert!(
-        matches!(ages[..], [Some(199..=200), Some(2..=3)]),
+        matches!(ages[..], [Some(199..=200), Some(2..=3), Some(0..=1)]),
         "{ages:?}"
     );
 }

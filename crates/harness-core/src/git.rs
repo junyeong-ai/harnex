@@ -353,19 +353,26 @@ impl<'a> Record<'a> {
         // Where the first parents run through a feature branch — a trunk
         // fast-forwarded past a merge of itself — the trunk's own changes date
         // from that merge, younger than they are: the sweep errs toward
-        // keeping.
+        // keeping. `-m` asks for a merge's changes at all: an older git,
+        // Ubuntu 20.04's, lists none without it and would date what a merge
+        // brought by the side commit, long before it landed.
         //
         // The user's configuration may not reshape what is parsed below:
-        // `log.showSignature` prints verification lines into it, and
-        // `log.showRoot=false` drops the names the first commit added.
+        // `log.showSignature` prints verification lines into it,
+        // `log.showRoot=false` drops the names the first commit added, and
+        // `log.diffMerges=combined` lists none of what a merge took whole from
+        // its side. A git older than that key ignores it.
         let log = stdout(
             top,
             &with_specs(&[
+                "-c",
+                "log.diffMerges=first-parent",
                 "log",
                 "-z",
                 "--format=%x00%ct",
                 "--name-only",
                 "--first-parent",
+                "-m",
                 "--no-renames",
                 "--root",
                 "--no-show-signature",
