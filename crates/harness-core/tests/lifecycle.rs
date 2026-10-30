@@ -835,6 +835,39 @@ fn one_read_answers_every_ask_however_their_texts_overlap() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn a_file_no_ask_can_count_is_not_read() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = repo();
+    std::fs::create_dir_all(tmp.path().join("vault")).unwrap();
+    let secret = tmp.path().join("vault/secret.md");
+    let index = tmp.path().join("index.md");
+    std::fs::write(&secret, "style.md").unwrap();
+    std::fs::write(&index, "see style.md").unwrap();
+    let decl = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}.md".into(),
+        exclude_globs: vec!["vault/**".into()],
+    };
+    let detector = ConsumerDetector::new(tmp.path()).unwrap();
+    let lock = |path: &std::path::Path, bits| {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(bits)).unwrap();
+    };
+    // Every ask excludes the vault, and with no ask nothing can count.
+    lock(&secret, 0o000);
+    let excluded = detector.find(&[ConsumerAsk {
+        decl: &decl,
+        slug: "style",
+    }]);
+    lock(&index, 0o000);
+    let unasked = detector.find(&[]);
+    lock(&secret, 0o644);
+    lock(&index, 0o644);
+    assert_eq!(excluded.unwrap(), [vec![PathBuf::from("index.md")]]);
+    assert!(unasked.unwrap().is_empty());
+}
+
 #[test]
 fn a_slug_stands_for_itself_in_an_exclude_glob() {
     // Read as a pattern, `[x]` names `x.md` and not the rule's own file, so

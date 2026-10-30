@@ -62,7 +62,7 @@ impl ConsumerDetector {
 
     /// For each ask, in order, every file relative to the working directory
     /// that references it. Each file is read once, whatever the number of
-    /// asks.
+    /// asks, and one every ask excludes is not read.
     pub fn find(&self, asks: &[ConsumerAsk<'_>]) -> Result<Vec<Vec<PathBuf>>> {
         // Asks looking for the same text share one needle: two kinds may
         // write one pattern.
@@ -90,6 +90,15 @@ impl ConsumerDetector {
         let mut found = vec![Vec::new(); asks.len()];
         let mut present = vec![false; needles.len()];
         for path in &self.files {
+            let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
+            // A file every ask excludes counts for none of them, so it is not
+            // read: what it holds answers nothing, and it may be unreadable.
+            if excludes
+                .iter()
+                .all(|globs| globs.iter().any(|p| p.matches_path(relative)))
+            {
+                continue;
+            }
             // A file that cannot be read fails rather than being skipped: a
             // skipped consumer is a false `NoConsumers` signal. The bytes are
             // searched as they are, so one stray byte neither aborts the
@@ -103,7 +112,6 @@ impl ConsumerDetector {
             for hit in automaton.find_overlapping_iter(&bytes) {
                 present[hit.pattern().as_usize()] = true;
             }
-            let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
             for (n, asks) in asks_of.iter().enumerate() {
                 if !present[n] {
                     continue;
