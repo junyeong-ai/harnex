@@ -7,8 +7,10 @@
 //!   `silence_window_days` and none names the slug. A ledger with no tracked
 //!   invocation in the window yields [`SilenceState::Unmeasured`], not Silent
 //!   — silence cannot be concluded from a ledger with nothing to be absent
-//!   from, so it never counts as a signal. The caller derives the state; the
-//!   classifier counts it.
+//!   from, so it never counts as a signal.
+//!
+//! The caller derives all three measurements, so a sweep reads each source
+//! once for every artifact; the classifier counts them.
 
 use std::path::{Path, PathBuf};
 
@@ -18,7 +20,6 @@ use serde::Serialize;
 use crate::config::{LifecycleConfig, RetirementConfig};
 use crate::envelope::Severity;
 use crate::error::{Error, Result};
-use crate::lifecycle::consumer::ConsumerDetector;
 use crate::wire_enum::wire_enum;
 
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
@@ -72,6 +73,14 @@ pub fn last_changes(working_dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastCha
         .map_err(|crate::git::Failure(message)| Error::LifecycleGitFailure { message })
 }
 
+/// The name an artifact is cited and recorded by: its file stem.
+pub fn slug_of(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string()
+}
+
 pub struct RetirementClassifier<'a> {
     config: &'a LifecycleConfig,
     retirement: Option<&'a RetirementConfig>,
@@ -97,15 +106,11 @@ impl<'a> RetirementClassifier<'a> {
         &self,
         kind: &str,
         path: &Path,
-        consumer: &ConsumerDetector,
+        consumer_count: usize,
         silence: SilenceState,
         changed: LastChange,
     ) -> Result<RetirementOutcome> {
-        let slug = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
+        let slug = slug_of(path);
 
         std::fs::metadata(path).map_err(|e| Error::IoFailure {
             path: path.to_path_buf(),
@@ -121,9 +126,6 @@ impl<'a> RetirementClassifier<'a> {
             LastChange::Unrecorded => None,
         };
         let in_grace = age_days.is_some_and(|age| age < self.config.grace_period_days as i64);
-
-        let consumers = consumer.find_consumers(&slug)?;
-        let consumer_count = consumers.len();
 
         let mut signals = Vec::new();
         if age_days.is_some_and(|age| age > self.config.stale_days as i64) {
