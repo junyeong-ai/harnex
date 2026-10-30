@@ -1782,6 +1782,41 @@ fn a_directory_left_out_of_a_set_of_skills_changes_none_of_them() {
 }
 
 #[test]
+fn a_directory_left_out_is_named_by_its_own_bytes_alone() {
+    // Left out beside the skills: `draft*`, which read as a pattern would also
+    // name every file of the skill `drafts`, and, where the file system keeps
+    // case apart, `Drafts`, which read without case would name that skill too.
+    let tmp = repo();
+    let skills = tmp.path().join(".claude/skills");
+    for name in ["a", "b", "c", "drafts", "draft*", "Drafts"] {
+        std::fs::create_dir_all(skills.join(name)).unwrap();
+        std::fs::write(skills.join(name).join("SKILL.md"), name).unwrap();
+    }
+    commit_days_ago(tmp.path(), 200);
+    std::fs::write(skills.join("drafts/SKILL.md"), "revised").unwrap();
+    commit_days_ago(tmp.path(), 1);
+
+    let paths = ["a", "b", "c", "drafts"].map(|name| skills.join(name));
+    let changes = last_changes(tmp.path(), &paths).unwrap();
+    let ages: Vec<_> = changes.iter().map(days_since).collect();
+    assert!(
+        matches!(
+            ages[..],
+            [
+                Some(199..=200),
+                Some(199..=200),
+                Some(199..=200),
+                Some(0..=1)
+            ]
+        ),
+        "{changes:?}"
+    );
+    std::fs::write(skills.join("drafts/SKILL.md"), "pending").unwrap();
+    let changes = last_changes(tmp.path(), &paths).unwrap();
+    assert_eq!(changes[3], LastChange::Uncommitted, "{changes:?}");
+}
+
+#[test]
 fn a_directory_artifact_is_dated_by_all_it_holds_whatever_else_is_asked_inside_it() {
     // Two kinds overlap: a skill, and the documents inside it. Its scripts,
     // which no kind reads, still change the skill.
