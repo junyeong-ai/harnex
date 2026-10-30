@@ -356,8 +356,8 @@ impl<'a> Record<'a> {
         // fast-forwarded past a merge of itself — the trunk's own changes date
         // from that merge, younger than they are: the sweep errs toward
         // keeping. `-m` asks for a merge's changes at all: an older git,
-        // Ubuntu 20.04's, lists none without it and would date what a merge
-        // brought by the side commit, long before it landed.
+        // Ubuntu 20.04's, lists none without it, so what a merge brought
+        // would be dated by an earlier change on this branch, or not at all.
         //
         // The user's configuration may not reshape what is parsed below:
         // `log.showSignature` prints verification lines into it,
