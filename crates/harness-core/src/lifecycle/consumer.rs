@@ -91,7 +91,8 @@ impl ConsumerDetector {
             // gitlink and a nested repository's directory hold nothing of this
             // project's, and a symlink's content is its link text — its target
             // may be outside the project, or a file already counted under its
-            // own path.
+            // own path. Only the file itself is looked at: a directory on its
+            // path that has become a link is followed.
             match std::fs::symlink_metadata(path) {
                 Ok(meta) if meta.is_file() => {}
                 Ok(_) => continue,

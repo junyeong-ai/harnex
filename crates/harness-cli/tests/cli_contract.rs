@@ -119,7 +119,7 @@ fn version_is_clap_native_and_exits_0() {
 /// pathspecs harnex hands git: a committed rule's age reads as unrecorded, a
 /// `claude.md` joins the memory a `CLAUDE.md` names, and a declared harness
 /// path is read as a file's name or with its `*` stopping at a `/`, so a
-/// baseline records a harness older than the one the window ran under.
+/// baseline records an older harness than the window ran under, or none.
 #[test]
 fn the_callers_pathspec_variables_change_no_answer() {
     let project = tempfile::tempdir().unwrap();
