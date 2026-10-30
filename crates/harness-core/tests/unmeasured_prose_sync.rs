@@ -144,7 +144,7 @@ fn retirement_fires_no_silence_signal_for_a_slug_it_could_not_measure() {
         }],
     };
     let detector = ConsumerDetector::new(config.consumer_detectors[0].clone(), dir.path()).unwrap();
-    let classifier = RetirementClassifier::new(&config, None);
+    let classifier = RetirementClassifier::new(&config, None, jiff::Timestamp::now());
 
     let unmeasured = classifier
         .classify(

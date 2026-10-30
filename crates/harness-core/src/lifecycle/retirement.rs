@@ -75,11 +75,22 @@ pub fn last_changes(working_dir: &Path, paths: &[PathBuf]) -> Result<Vec<LastCha
 pub struct RetirementClassifier<'a> {
     config: &'a LifecycleConfig,
     retirement: Option<&'a RetirementConfig>,
+    now: Timestamp,
 }
 
 impl<'a> RetirementClassifier<'a> {
-    pub fn new(config: &'a LifecycleConfig, retirement: Option<&'a RetirementConfig>) -> Self {
-        Self { config, retirement }
+    /// Ages are days before `now`, one instant for every verdict, so the
+    /// verdicts of one sweep agree on what day it is.
+    pub fn new(
+        config: &'a LifecycleConfig,
+        retirement: Option<&'a RetirementConfig>,
+        now: Timestamp,
+    ) -> Self {
+        Self {
+            config,
+            retirement,
+            now,
+        }
     }
 
     pub fn classify(
@@ -104,7 +115,7 @@ impl<'a> RetirementClassifier<'a> {
         // nor new: no measurement is read as a zero.
         let age_days = match changed {
             LastChange::Committed(at) => {
-                Some((Timestamp::now().duration_since(at).as_secs() / 86_400).max(0))
+                Some((self.now.duration_since(at).as_secs() / 86_400).max(0))
             }
             LastChange::Uncommitted => Some(0),
             LastChange::Unrecorded => None,

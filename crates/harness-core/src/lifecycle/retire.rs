@@ -78,7 +78,10 @@ impl<'a> RetirementSweeper<'a> {
 
     pub fn run(&self) -> Result<SweepOutcome> {
         let lc = self.config.lifecycle.as_ref().unwrap();
-        let classifier = RetirementClassifier::new(lc, self.config.retirement.as_ref());
+        // One instant for the whole sweep: the silence window and every age
+        // are measured back from it.
+        let now = Timestamp::now();
+        let classifier = RetirementClassifier::new(lc, self.config.retirement.as_ref(), now);
 
         let mut processed = Vec::new();
         let mut skipped = Vec::new();
@@ -165,7 +168,7 @@ impl<'a> RetirementSweeper<'a> {
             .iter()
             .flat_map(|u| u.entries.iter().map(|(_, slug)| slug.as_str()))
             .collect();
-        let records = self.invocations_in_window(&all_slugs)?;
+        let records = self.invocations_in_window(now, &all_slugs)?;
         // And one history walk, for when each of them last changed.
         let paths: Vec<PathBuf> = units
             .iter()
@@ -306,7 +309,11 @@ impl<'a> RetirementSweeper<'a> {
     /// retire every rule in the project. Declaring the record per kind decides
     /// both, and leaves payload shape to the project, which a brownfield
     /// ledger needs.
-    fn invocations_in_window(&self, slugs: &[&str]) -> Result<HashMap<String, HashSet<String>>> {
+    fn invocations_in_window(
+        &self,
+        now: Timestamp,
+        slugs: &[&str],
+    ) -> Result<HashMap<String, HashSet<String>>> {
         let declared: HashSet<&str> = self
             .config
             .kinds
@@ -316,8 +323,7 @@ impl<'a> RetirementSweeper<'a> {
         if declared.is_empty() {
             return Ok(HashMap::new());
         }
-        let cutoff =
-            Timestamp::now() - SignedDuration::from_hours((self.silence_window_days as i64) * 24);
+        let cutoff = now - SignedDuration::from_hours((self.silence_window_days as i64) * 24);
         let mut records: HashMap<String, HashSet<String>> = HashMap::new();
         self.telemetry.scan_events(&mut |event| {
             if event.timestamp < cutoff || !declared.contains(event.kind.as_str()) {
