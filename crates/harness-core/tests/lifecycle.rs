@@ -877,6 +877,27 @@ fn a_file_no_ask_can_count_is_not_touched() {
 }
 
 #[test]
+fn a_tracked_file_under_a_directory_that_became_a_file_is_gone() {
+    // git lists the file and reports it deleted; it holds nothing to count.
+    let tmp = repo();
+    std::fs::create_dir_all(tmp.path().join("docs")).unwrap();
+    std::fs::write(tmp.path().join("docs/a.md"), "see style.md").unwrap();
+    std::fs::write(tmp.path().join("index.md"), "see style.md").unwrap();
+    commit_days_ago(tmp.path(), 0);
+    std::fs::remove_dir_all(tmp.path().join("docs")).unwrap();
+    std::fs::write(tmp.path().join("docs"), "a file").unwrap();
+    let decl = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}.md".into(),
+        exclude_globs: vec![],
+    };
+    assert_eq!(
+        consumers_of(tmp.path(), &decl, "style"),
+        [PathBuf::from("index.md")]
+    );
+}
+
+#[test]
 fn a_slug_stands_for_itself_in_an_exclude_glob() {
     // Read as a pattern, `[x]` names `x.md` and not the rule's own file, so
     // the rule would count itself and its one real consumer would vanish.
