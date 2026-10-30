@@ -34,7 +34,8 @@ pub struct SweepOutcome {
     pub kinds_processed: Vec<String>,
     /// Kinds that were skipped, with the reason: foundation (and how many
     /// paths it carved out), no consumer detector, a detector that could not
-    /// read its corpus, or a glob that could not be read.
+    /// read its corpus, a glob that could not be read, or one match that
+    /// could not be — a link whose target is gone.
     pub kinds_skipped: Vec<SkippedRule>,
     /// Total files classified.
     pub files_classified: usize,
@@ -251,31 +252,39 @@ impl<'a> RetirementSweeper<'a> {
                 return None;
             }
         };
-        // An unreadable match (e.g. permission-denied during traversal)
-        // must NOT be dropped: a silently skipped artifact could escape
-        // classification and be treated as if it does not exist. Record
-        // each unreadable entry as a skip so the gap is visible.
+        // An unreadable match (e.g. permission-denied during traversal, or a
+        // link whose target is gone) must NOT be dropped: a silently skipped
+        // artifact could escape classification and be treated as if it does
+        // not exist. Nor may it end the sweep, which would leave every other
+        // artifact unjudged. Record each as a skip so the gap is visible.
         let mut entries = Vec::new();
         for entry in glob_iter {
-            match entry {
-                Ok(p) => {
-                    let slug = p
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("")
-                        .to_string();
-                    entries.push((p, slug));
-                }
-                Err(e) => skipped.push(SkippedRule {
-                    slug: kind_decl.name.clone(),
-                    reason: format!(
-                        "kind '{}' match unreadable ({}): {}",
-                        kind_decl.name,
-                        e.path().display(),
-                        e.error()
-                    ),
-                }),
-            }
+            let (path, error) = match entry {
+                Ok(p) => match std::fs::metadata(&p) {
+                    Ok(_) => {
+                        let slug = p
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .to_string();
+                        entries.push((p, slug));
+                        continue;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound && p.is_symlink() => {
+                        (p, "a link to a path that does not exist".to_string())
+                    }
+                    Err(e) => (p, e.to_string()),
+                },
+                Err(e) => (e.path().to_path_buf(), e.error().to_string()),
+            };
+            skipped.push(SkippedRule {
+                slug: kind_decl.name.clone(),
+                reason: format!(
+                    "kind '{}' match unreadable ({}): {error}",
+                    kind_decl.name,
+                    path.display()
+                ),
+            });
         }
         Some(entries)
     }
