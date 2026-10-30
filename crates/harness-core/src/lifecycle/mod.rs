@@ -31,7 +31,7 @@ pub mod observation;
 pub mod retire;
 pub mod retirement;
 
-pub use consumer::ConsumerDetector;
+pub use consumer::{ConsumerAsk, ConsumerDetector};
 pub use decision::{DecisionLedger, DecisionRecord, PromotionDecision};
 pub use decision_recorder::{
     CandidateSurvey, LedgerReader, LifecycleDecisionRecorder, LiveObservations, ObservationGroup,
@@ -41,7 +41,7 @@ pub use observation::{Observation, ObservationLedger};
 pub use retire::{RetirementSweeper, SweepOutcome};
 pub use retirement::{
     LastChange, RetirementClassifier, RetirementOutcome, RetirementSignal, SilenceState,
-    last_changes,
+    last_changes, slug_of,
 };
 
 /// Whether a ledger directory is there to be read, for the one caller shape

@@ -16,12 +16,12 @@ use jiff::{SignedDuration, Timestamp};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::config::{Config, KindDecl};
+use crate::config::{Config, ConsumerDetectorDecl, KindDecl};
 use crate::envelope::SkippedRule;
 use crate::error::{Error, Result};
-use crate::lifecycle::consumer::ConsumerDetector;
+use crate::lifecycle::consumer::{ConsumerAsk, ConsumerDetector};
 use crate::lifecycle::retirement::{
-    RetirementClassifier, RetirementOutcome, SilenceState, last_changes,
+    RetirementClassifier, RetirementOutcome, SilenceState, last_changes, slug_of,
 };
 use crate::telemetry::TelemetryQuery;
 
@@ -86,14 +86,14 @@ impl<'a> RetirementSweeper<'a> {
         let mut processed = Vec::new();
         let mut skipped = Vec::new();
 
-        // Pass 1: resolve every classifiable artifact and its per-kind consumer
-        // detector. The silence state needs the whole slug set before any single
-        // verdict (see the scan below), so classification waits for pass 2.
+        // Pass 1: resolve every classifiable artifact and its kind's consumer
+        // pattern. Silence and consumers are each read once for the whole slug
+        // set (see below), so classification waits for pass 2.
         struct Unit<'u> {
             kind: &'u str,
             /// The telemetry Kind recording this kind's invocations, if any.
             record: Option<&'u str>,
-            detector: ConsumerDetector,
+            detector_decl: &'u ConsumerDetectorDecl,
             entries: Vec<(PathBuf, String)>,
         }
         // A path a foundation kind names is foundation for every kind: the
@@ -120,6 +120,9 @@ impl<'a> RetirementSweeper<'a> {
             foundation.extend(matches.into_iter().map(|(path, _)| path));
         }
 
+        // The files the project owns are one set for every kind, listed once,
+        // the first time a kind needs them.
+        let mut detector: Option<std::result::Result<ConsumerDetector, String>> = None;
         let mut units: Vec<Unit<'_>> = Vec::new();
         for kind_decl in &self.config.kinds {
             if kind_decl.foundation {
@@ -136,20 +139,23 @@ impl<'a> RetirementSweeper<'a> {
                 });
                 continue;
             };
-            // A detector that cannot read its corpus measures nothing for
-            // this kind, and says so; the other kinds are still swept. The
-            // explicit ask, `classify`, still fails on the same error.
-            let detector = match ConsumerDetector::new(detector_decl.clone(), self.working_dir) {
-                Ok(detector) => detector,
-                Err(Error::LifecycleGitFailure { message }) => {
-                    skipped.push(SkippedRule {
-                        slug: kind_decl.name.clone(),
-                        reason: format!("consumers unmeasured: {message}"),
-                    });
-                    continue;
-                }
-                Err(e) => return Err(e),
-            };
+            if detector.is_none() {
+                detector = Some(match ConsumerDetector::new(self.working_dir) {
+                    Ok(detector) => Ok(detector),
+                    Err(Error::LifecycleGitFailure { message }) => Err(message),
+                    Err(e) => return Err(e),
+                });
+            }
+            // A corpus that cannot be listed measures no consumers, and each
+            // kind says so. The explicit ask, `classify`, fails on the same
+            // error.
+            if let Some(Err(message)) = &detector {
+                skipped.push(SkippedRule {
+                    slug: kind_decl.name.clone(),
+                    reason: format!("consumers unmeasured: {message}"),
+                });
+                continue;
+            }
             let Some(mut entries) = self.subjects(kind_decl, &mut skipped) else {
                 continue;
             };
@@ -157,7 +163,7 @@ impl<'a> RetirementSweeper<'a> {
             units.push(Unit {
                 kind: &kind_decl.name,
                 record: kind_decl.invocation_kind.as_deref(),
-                detector,
+                detector_decl,
                 entries,
             });
             processed.push(kind_decl.name.clone());
@@ -169,12 +175,28 @@ impl<'a> RetirementSweeper<'a> {
             .flat_map(|u| u.entries.iter().map(|(_, slug)| slug.as_str()))
             .collect();
         let records = self.invocations_in_window(now, &all_slugs)?;
-        // And one history walk, for when each of them last changed.
+        // One history walk, for when each of them last changed.
         let paths: Vec<PathBuf> = units
             .iter()
             .flat_map(|u| u.entries.iter().map(|(path, _)| path.clone()))
             .collect();
         let mut changes = last_changes(self.working_dir, &paths)?.into_iter();
+        // And one read of the project's files, for what cites each of them.
+        let asks: Vec<ConsumerAsk<'_>> = units
+            .iter()
+            .flat_map(|u| {
+                u.entries.iter().map(|(_, slug)| ConsumerAsk {
+                    decl: u.detector_decl,
+                    slug,
+                })
+            })
+            .collect();
+        let mut consumers = match &detector {
+            Some(Ok(detector)) => detector.find(&asks)?,
+            // No kind was swept, so nothing was asked.
+            Some(Err(_)) | None => Vec::new(),
+        }
+        .into_iter();
 
         // Pass 2: classify each artifact against its derived silence state.
         let mut verdicts = Vec::new();
@@ -184,7 +206,12 @@ impl<'a> RetirementSweeper<'a> {
             // that Kind recorded something in the window. Absent, silence is
             // unknowable for every slug of the kind — never presumed.
             let named = unit.record.and_then(|record| records.get(record));
-            for ((path, slug), changed) in unit.entries.iter().zip(changes.by_ref()) {
+            for (((path, slug), changed), cited_by) in unit
+                .entries
+                .iter()
+                .zip(changes.by_ref())
+                .zip(consumers.by_ref())
+            {
                 // An empty slug (a file with no stem) names nothing an
                 // invocation could record, so its silence is unknowable too.
                 let silence = match named {
@@ -198,7 +225,7 @@ impl<'a> RetirementSweeper<'a> {
                     _ => SilenceState::Unmeasured,
                 };
                 let verdict =
-                    classifier.classify(unit.kind, path, &unit.detector, silence, changed)?;
+                    classifier.classify(unit.kind, path, cited_by.len(), silence, changed)?;
                 verdicts.push(verdict);
                 files_classified += 1;
             }
@@ -265,11 +292,7 @@ impl<'a> RetirementSweeper<'a> {
             let (path, error) = match entry {
                 Ok(p) => match std::fs::metadata(&p) {
                     Ok(_) => {
-                        let slug = p
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("")
-                            .to_string();
+                        let slug = slug_of(&p);
                         entries.push((p, slug));
                         continue;
                     }

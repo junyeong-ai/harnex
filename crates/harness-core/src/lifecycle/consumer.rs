@@ -1,16 +1,19 @@
-//! Consumer detection — find every file referencing a slug under the
-//! anchored working directory.
+//! Consumer detection — find every file of the project referencing a slug.
 //!
-//! [`ConsumerDetector`] is anchored to a working directory at construction,
-//! so [`ConsumerDetector::find_consumers`] takes only a slug.
+//! [`ConsumerDetector`] lists the project's files once, at construction, and
+//! [`ConsumerDetector::find`] answers every slug a sweep asks about in one
+//! read of each file.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+use aho_corasick::AhoCorasick;
 
 use crate::config::ConsumerDetectorDecl;
 use crate::error::{Error, Result};
 use crate::git;
 
-/// Matches the `{slug}`-substituted pattern against every plain file the
+/// Matches each `{slug}`-substituted pattern against every plain file the
 /// project owns, as its own ignore files define it through
 /// [`git::owned_files`]. A directory walk would count a match in
 /// build output, a fixture tree or a sibling checkout on this machine as a
@@ -19,17 +22,21 @@ use crate::git;
 /// the project owns but reads no rule from — a lockfile, a ledger — is
 /// `exclude_globs`' to name; no extension list stands in for it.
 pub struct ConsumerDetector {
-    decl: ConsumerDetectorDecl,
     working_dir: PathBuf,
-    /// The plain files the project owns, listed once: the set is the same
-    /// for every slug, and a sweep asks for one slug per artifact.
     files: Vec<PathBuf>,
+}
+
+/// One question to the detector: the files referencing `slug`, as `decl`,
+/// the detector declared for its kind, writes it.
+pub struct ConsumerAsk<'a> {
+    pub decl: &'a ConsumerDetectorDecl,
+    pub slug: &'a str,
 }
 
 impl ConsumerDetector {
     /// Lists the project's files up front, so a project that cannot be
     /// listed is known before any slug is asked about.
-    pub fn new(decl: ConsumerDetectorDecl, working_dir: &Path) -> Result<Self> {
+    pub fn new(working_dir: &Path) -> Result<Self> {
         let owned = git::owned_files(working_dir, &[])
             .map_err(|git::Failure(message)| Error::LifecycleGitFailure { message })?;
         let mut files = Vec::with_capacity(owned.len());
@@ -48,44 +55,86 @@ impl ConsumerDetector {
             }
         }
         Ok(Self {
-            decl,
             working_dir: working_dir.to_path_buf(),
             files,
         })
     }
 
-    /// Every file, relative to the anchored working directory, that
-    /// references `slug`.
-    pub fn find_consumers(&self, slug: &str) -> Result<Vec<PathBuf>> {
-        let needle = self.decl.pattern.replace("{slug}", slug);
-        // The slug stands in literally: unescaped, a slug's `[` or `*` would be
-        // read as a pattern, and the artifact's own file would count as its
-        // consumer.
-        let literal = glob::Pattern::escape(slug);
-        let excludes: Vec<glob::Pattern> = self
-            .decl
-            .exclude_globs
+    /// For each ask, in order, every file relative to the working directory
+    /// that references it. Each file is read once, whatever the number of
+    /// asks.
+    pub fn find(&self, asks: &[ConsumerAsk<'_>]) -> Result<Vec<Vec<PathBuf>>> {
+        // Asks looking for the same text share one needle: two kinds may
+        // write one pattern.
+        let mut index: HashMap<String, usize> = HashMap::new();
+        let mut needles: Vec<String> = Vec::new();
+        let mut asks_of: Vec<Vec<usize>> = Vec::new();
+        for (i, ask) in asks.iter().enumerate() {
+            let needle = ask.decl.pattern.replace("{slug}", ask.slug);
+            let n = *index.entry(needle).or_insert_with_key(|needle| {
+                needles.push(needle.clone());
+                asks_of.push(Vec::new());
+                needles.len() - 1
+            });
+            asks_of[n].push(i);
+        }
+        let excludes = asks
             .iter()
-            .filter_map(|g| glob::Pattern::new(&g.replace("{slug}", &literal)).ok())
-            .collect();
-        let mut out = Vec::new();
+            .map(|ask| excludes(ask.decl, ask.slug))
+            .collect::<Result<Vec<_>>>()?;
+        let automaton = AhoCorasick::new(&needles).map_err(|e| Error::ConfigInvalid {
+            message: format!("the consumer patterns cannot be searched together: {e}"),
+            location: None,
+        })?;
+
+        let mut found = vec![Vec::new(); asks.len()];
+        let mut present = vec![false; needles.len()];
         for path in &self.files {
-            let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
-            if excludes.iter().any(|p| p.matches_path(relative)) {
-                continue;
-            }
-            // Read bytes and decode lossily: a file that cannot be read must
-            // fail rather than be skipped — a skipped consumer is a false
-            // `NoConsumers` signal — while one stray byte neither aborts the
+            // A file that cannot be read fails rather than being skipped: a
+            // skipped consumer is a false `NoConsumers` signal. The bytes are
+            // searched as they are, so one stray byte neither aborts the
             // sweep nor hides a match.
             let bytes = std::fs::read(path).map_err(|e| Error::IoFailure {
                 path: path.clone(),
                 source: e,
             })?;
-            if String::from_utf8_lossy(&bytes).contains(&needle) {
-                out.push(relative.to_path_buf());
+            present.fill(false);
+            // Overlapping, so a needle inside another's match is still seen.
+            for hit in automaton.find_overlapping_iter(&bytes) {
+                present[hit.pattern().as_usize()] = true;
+            }
+            let relative = path.strip_prefix(&self.working_dir).unwrap_or(path);
+            for (n, asks) in asks_of.iter().enumerate() {
+                if !present[n] {
+                    continue;
+                }
+                for &i in asks {
+                    if !excludes[i].iter().any(|p| p.matches_path(relative)) {
+                        found[i].push(relative.to_path_buf());
+                    }
+                }
             }
         }
-        Ok(out)
+        Ok(found)
     }
+}
+
+/// The exclude globs of `decl` for `slug`. The slug stands in literally:
+/// unescaped, a slug's `[` or `*` would be read as a pattern, and the
+/// artifact's own file would count as its consumer.
+fn excludes(decl: &ConsumerDetectorDecl, slug: &str) -> Result<Vec<glob::Pattern>> {
+    let slug = glob::Pattern::escape(slug);
+    decl.exclude_globs
+        .iter()
+        .map(|g| {
+            let glob = g.replace("{slug}", &slug);
+            glob::Pattern::new(&glob).map_err(|e| Error::ConfigInvalid {
+                message: format!(
+                    "consumer detector for kind '{}' has invalid exclude_glob '{glob}': {e}",
+                    decl.kind
+                ),
+                location: None,
+            })
+        })
+        .collect()
 }

@@ -233,6 +233,7 @@ dependencies = [
 name = "harness-core"
 version = "0.38.0"
 dependencies = [
+ "aho-corasick",
  "getrandom",
  "glob",
  "httparse",

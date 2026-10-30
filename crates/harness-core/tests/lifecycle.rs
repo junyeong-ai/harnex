@@ -6,9 +6,9 @@ use harness_core::config::{
 };
 use harness_core::error::Error;
 use harness_core::lifecycle::{
-    ConsumerDetector, DecisionLedger, LastChange, LedgerReader, LifecycleDecisionRecorder,
-    ObservationLedger, PromotionDecision, RetirementClassifier, RetirementSignal,
-    RetirementSweeper, SilenceState, last_changes,
+    ConsumerAsk, ConsumerDetector, DecisionLedger, LastChange, LedgerReader,
+    LifecycleDecisionRecorder, ObservationLedger, PromotionDecision, RetirementClassifier,
+    RetirementSignal, RetirementSweeper, SilenceState, last_changes,
 };
 use harness_core::telemetry::{Event, JsonlStorage, TelemetryAppender, TelemetryQuery};
 use jiff::{SignedDuration, Timestamp};
@@ -27,6 +27,15 @@ fn repo() -> TempDir {
         .unwrap();
     assert!(init.success());
     tmp
+}
+
+/// The files of the project at `dir` that `decl` finds citing `slug`.
+fn consumers_of(dir: &std::path::Path, decl: &ConsumerDetectorDecl, slug: &str) -> Vec<PathBuf> {
+    ConsumerDetector::new(dir)
+        .unwrap()
+        .find(&[ConsumerAsk { decl, slug }])
+        .unwrap()
+        .remove(0)
 }
 
 fn default_lifecycle(observation_dir: PathBuf) -> LifecycleConfig {
@@ -761,20 +770,68 @@ fn consumer_detector_finds_references() {
     let unrelated = tmp.path().join("docs/other.md");
     std::fs::write(&unrelated, "irrelevant content").unwrap();
 
-    let detector = ConsumerDetector::new(
-        ConsumerDetectorDecl {
-            kind: "rule".into(),
-            pattern: "{slug}".into(),
-            exclude_globs: vec![".claude/rules/{slug}.md".into()],
-        },
-        tmp.path(),
-    )
-    .unwrap();
-    let consumers = detector.find_consumers("my-rule").unwrap();
+    let detector = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}".into(),
+        exclude_globs: vec![".claude/rules/{slug}.md".into()],
+    };
+    let consumers = consumers_of(tmp.path(), &detector, "my-rule");
     assert_eq!(
         consumers,
         [PathBuf::from("docs/spec.md")],
         "the excluded rule file is not its own consumer"
+    );
+}
+
+#[test]
+fn one_read_answers_every_ask_however_their_texts_overlap() {
+    // `rule` lies inside `my-rule.md`, and two kinds look for the same text
+    // with different excludes: each ask still gets its own files.
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("my-rule.md"), "body").unwrap();
+    std::fs::write(rules.join("rule.md"), "body").unwrap();
+    std::fs::write(tmp.path().join("index.md"), "see my-rule.md").unwrap();
+    std::fs::write(tmp.path().join("notes.md"), "a rule.md aside").unwrap();
+
+    let by_file = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}.md".into(),
+        exclude_globs: vec![],
+    };
+    let not_in_notes = ConsumerDetectorDecl {
+        kind: "doc".into(),
+        pattern: "{slug}.md".into(),
+        exclude_globs: vec!["notes.md".into()],
+    };
+    let mut found = ConsumerDetector::new(tmp.path())
+        .unwrap()
+        .find(&[
+            ConsumerAsk {
+                decl: &by_file,
+                slug: "my-rule",
+            },
+            ConsumerAsk {
+                decl: &by_file,
+                slug: "rule",
+            },
+            ConsumerAsk {
+                decl: &not_in_notes,
+                slug: "rule",
+            },
+        ])
+        .unwrap();
+    for files in &mut found {
+        files.sort();
+    }
+    assert_eq!(
+        found,
+        [
+            vec![PathBuf::from("index.md")],
+            vec![PathBuf::from("index.md"), PathBuf::from("notes.md")],
+            vec![PathBuf::from("index.md")],
+        ]
     );
 }
 
@@ -788,17 +845,13 @@ fn a_slug_stands_for_itself_in_an_exclude_glob() {
     std::fs::write(rules.join("[x].md"), "Read [x].md first.").unwrap();
     std::fs::write(rules.join("x.md"), "Follows [x].md.").unwrap();
 
-    let detector = ConsumerDetector::new(
-        ConsumerDetectorDecl {
-            kind: "rule".into(),
-            pattern: "{slug}.md".into(),
-            exclude_globs: vec![".claude/rules/{slug}.md".into()],
-        },
-        tmp.path(),
-    )
-    .unwrap();
+    let detector = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}.md".into(),
+        exclude_globs: vec![".claude/rules/{slug}.md".into()],
+    };
     assert_eq!(
-        detector.find_consumers("[x]").unwrap(),
+        consumers_of(tmp.path(), &detector, "[x]"),
         [PathBuf::from(".claude/rules/x.md")],
         "the excluded rule file is not its own consumer"
     );
@@ -824,16 +877,12 @@ fn consumer_detector_reads_what_the_project_owns_and_nothing_else_on_the_machine
     std::fs::write(target.join("build.log"), "references my-rule here").unwrap();
     std::fs::write(tmp.path().join("notes.md"), "my-rule, untracked as yet").unwrap();
 
-    let detector = ConsumerDetector::new(
-        ConsumerDetectorDecl {
-            kind: "rule".into(),
-            pattern: "{slug}".into(),
-            exclude_globs: vec![],
-        },
-        tmp.path(),
-    )
-    .unwrap();
-    let mut consumers = detector.find_consumers("my-rule").unwrap();
+    let detector = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}".into(),
+        exclude_globs: vec![],
+    };
+    let mut consumers = consumers_of(tmp.path(), &detector, "my-rule");
     consumers.sort();
     assert_eq!(
         consumers,
@@ -861,17 +910,13 @@ fn a_symlink_is_its_link_text_and_neither_its_target_nor_a_second_count() {
     .unwrap();
     std::os::unix::fs::symlink("docs/spec.md", tmp.path().join("again.md")).unwrap();
 
-    let detector = ConsumerDetector::new(
-        ConsumerDetectorDecl {
-            kind: "rule".into(),
-            pattern: "{slug}".into(),
-            exclude_globs: vec![],
-        },
-        tmp.path(),
-    )
-    .unwrap();
+    let detector = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}".into(),
+        exclude_globs: vec![],
+    };
     assert_eq!(
-        detector.find_consumers("my-rule").unwrap(),
+        consumers_of(tmp.path(), &detector, "my-rule"),
         [PathBuf::from("docs/spec.md")]
     );
 }
@@ -918,17 +963,13 @@ fn an_unmerged_file_is_one_consumer_not_one_per_index_stage() {
          listing has nothing to repeat"
     );
 
-    let detector = ConsumerDetector::new(
-        ConsumerDetectorDecl {
-            kind: "rule".into(),
-            pattern: "{slug}".into(),
-            exclude_globs: vec![],
-        },
-        tmp.path(),
-    )
-    .unwrap();
+    let detector = ConsumerDetectorDecl {
+        kind: "rule".into(),
+        pattern: "{slug}".into(),
+        exclude_globs: vec![],
+    };
     assert_eq!(
-        detector.find_consumers("my-rule").unwrap(),
+        consumers_of(tmp.path(), &detector, "my-rule"),
         [PathBuf::from("conf.md")]
     );
 }
@@ -946,7 +987,7 @@ fn a_directory_that_is_not_a_repository_is_refused_rather_than_walked() {
     };
     assert!(
         matches!(
-            ConsumerDetector::new(decl.clone(), tmp.path()),
+            ConsumerDetector::new(tmp.path()),
             Err(Error::LifecycleGitFailure { .. })
         ),
         "without git the set the detector reads does not exist, and a walk in its place \
@@ -1050,13 +1091,12 @@ fn retirement_classifier_marks_no_consumers_silent() {
     let rule_path = rule_dir.join("orphan-rule.md");
     std::fs::write(&rule_path, "body").unwrap();
     let cfg = default_lifecycle(tmp.path().join(".harness/observations"));
-    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, None, Timestamp::now());
     let verdict = classifier
         .classify(
             "rule",
             &rule_path,
-            &detector,
+            0,
             SilenceState::Silent,
             LastChange::Uncommitted,
         )
@@ -1079,13 +1119,12 @@ fn retirement_classifier_honors_exempt_list() {
             slugs: vec!["constitution".into()],
         },
     };
-    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let classifier = RetirementClassifier::new(&cfg, Some(&retire_cfg), Timestamp::now());
     let verdict = classifier
         .classify(
             "rule",
             &rule_path,
-            &detector,
+            0,
             SilenceState::Silent,
             LastChange::Uncommitted,
         )
@@ -1103,12 +1142,11 @@ fn an_artifact_no_history_records_is_neither_stale_nor_new() {
     std::fs::write(&rule_path, "body").unwrap();
     let mut cfg = default_lifecycle(tmp.path().join(".harness/observations"));
     cfg.grace_period_days = 30;
-    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let verdict = RetirementClassifier::new(&cfg, None, Timestamp::now())
         .classify(
             "rule",
             &rule_path,
-            &detector,
+            0,
             SilenceState::Silent,
             LastChange::Unrecorded,
         )
@@ -1125,16 +1163,14 @@ fn an_age_is_counted_back_from_the_instant_the_verdicts_are_as_of() {
     std::fs::create_dir_all(&rule_dir).unwrap();
     let rule_path = rule_dir.join("dated.md");
     std::fs::write(&rule_path, "body").unwrap();
-    std::fs::write(tmp.path().join("index.md"), "see dated").unwrap();
     let cfg = default_lifecycle(tmp.path().join(".harness/observations"));
-    let detector = ConsumerDetector::new(cfg.consumer_detectors[0].clone(), tmp.path()).unwrap();
     let changed: Timestamp = "2020-01-01T00:00:00Z".parse().unwrap();
     let as_of = changed + SignedDuration::from_hours(24 * 31);
     let verdict = RetirementClassifier::new(&cfg, None, as_of)
         .classify(
             "rule",
             &rule_path,
-            &detector,
+            1,
             SilenceState::Unmeasured,
             LastChange::Committed(changed),
         )

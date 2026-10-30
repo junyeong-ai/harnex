@@ -7,8 +7,9 @@ use clap::Subcommand;
 use harness_core::envelope::ListResponse;
 use harness_core::error::{Error, Result};
 use harness_core::lifecycle::{
-    ConsumerDetector, DecisionLedger, LedgerReader, LifecycleDecisionRecorder, ObservationLedger,
-    PromotionDecision, RetirementClassifier, RetirementSweeper, SilenceState, last_changes,
+    ConsumerAsk, ConsumerDetector, DecisionLedger, LedgerReader, LifecycleDecisionRecorder,
+    ObservationLedger, PromotionDecision, RetirementClassifier, RetirementSweeper, SilenceState,
+    last_changes, slug_of,
 };
 use harness_core::telemetry::{JsonlStorage, TelemetryQuery};
 
@@ -224,9 +225,8 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                         "no [[lifecycle.consumer_detectors]] for kind '{kind}' in harness.toml"
                     ),
                     location: None,
-                })?
-                .clone();
-            let detector = ConsumerDetector::new(detector_decl, &root)?;
+                })?;
+            let detector = ConsumerDetector::new(&root)?;
             let classifier =
                 RetirementClassifier::new(lc, config.retirement.as_ref(), jiff::Timestamp::now());
             let target_path = if path.is_absolute() {
@@ -239,7 +239,13 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                 location: None,
             })?;
             let changed = last_changes(&root, std::slice::from_ref(&target_path))?[0];
-            let verdict = classifier.classify(&kind, &target_path, &detector, silence, changed)?;
+            let slug = slug_of(&target_path);
+            let cited_by = detector.find(&[ConsumerAsk {
+                decl: detector_decl,
+                slug: &slug,
+            }])?;
+            let verdict =
+                classifier.classify(&kind, &target_path, cited_by[0].len(), silence, changed)?;
             write_envelope_success(out, verdict)?;
             Ok(ExitCode::SUCCESS)
         }
