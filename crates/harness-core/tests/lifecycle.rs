@@ -1154,17 +1154,18 @@ fn a_link_whose_target_is_gone_is_declared_and_the_rest_is_swept() {
 #[test]
 fn each_swept_artifact_is_counted_by_its_own_consumers() {
     // Every kind's slugs are answered in one read, so each verdict has to take
-    // its count back from the right place in that one answer. No two counts in
-    // a kind repeat another kind's, so an answer handed to the wrong artifact,
-    // within a kind or across kinds, changes one.
+    // its count back from the right place in that one answer. No two counts
+    // are equal, so an answer handed to any other artifact, within a kind or
+    // across kinds, changes one.
     let tmp = repo();
     for (path, body) in [
         (".claude/rules/style.md", "body"),
         (".claude/rules/unused.md", "body"),
         (".claude/skills/cited/SKILL.md", "a skill"),
-        (".claude/skills/uncited/SKILL.md", "a skill"),
-        ("README.md", "see style, then run /cited"),
-        ("GUIDE.md", "run /cited"),
+        (".claude/skills/quoted/SKILL.md", "a skill"),
+        ("README.md", "see style, then run /cited and /quoted"),
+        ("GUIDE.md", "run /cited and /quoted"),
+        ("NOTES.md", "run /quoted"),
     ] {
         let path = tmp.path().join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1209,7 +1210,7 @@ fn each_swept_artifact_is_counted_by_its_own_consumers() {
             ("rule", "style", 1),
             ("rule", "unused", 0),
             ("skill", "cited", 2),
-            ("skill", "uncited", 0),
+            ("skill", "quoted", 3),
         ]
     );
 }
