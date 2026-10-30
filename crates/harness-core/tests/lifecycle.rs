@@ -779,6 +779,32 @@ fn consumer_detector_finds_references() {
 }
 
 #[test]
+fn a_slug_stands_for_itself_in_an_exclude_glob() {
+    // Read as a pattern, `[x]` names `x.md` and not the rule's own file, so
+    // the rule would count itself and its one real consumer would vanish.
+    let tmp = repo();
+    let rules = tmp.path().join(".claude/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("[x].md"), "Read [x].md first.").unwrap();
+    std::fs::write(rules.join("x.md"), "Follows [x].md.").unwrap();
+
+    let detector = ConsumerDetector::new(
+        ConsumerDetectorDecl {
+            kind: "rule".into(),
+            pattern: "{slug}.md".into(),
+            exclude_globs: vec![".claude/rules/{slug}.md".into()],
+        },
+        tmp.path(),
+    )
+    .unwrap();
+    assert_eq!(
+        detector.find_consumers("[x]").unwrap(),
+        [PathBuf::from(".claude/rules/x.md")],
+        "the excluded rule file is not its own consumer"
+    );
+}
+
+#[test]
 fn consumer_detector_reads_what_the_project_owns_and_nothing_else_on_the_machine() {
     // The set is the project's own: tracked, plus untracked the project's
     // `.gitignore` does not ignore. A match in build output is not a consumer

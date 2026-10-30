@@ -58,11 +58,15 @@ impl ConsumerDetector {
     /// references `slug`.
     pub fn find_consumers(&self, slug: &str) -> Result<Vec<PathBuf>> {
         let needle = self.decl.pattern.replace("{slug}", slug);
+        // The slug stands in literally: unescaped, a slug's `[` or `*` would be
+        // read as a pattern, and the artifact's own file would count as its
+        // consumer.
+        let literal = glob::Pattern::escape(slug);
         let excludes: Vec<glob::Pattern> = self
             .decl
             .exclude_globs
             .iter()
-            .filter_map(|g| glob::Pattern::new(&g.replace("{slug}", slug)).ok())
+            .filter_map(|g| glob::Pattern::new(&g.replace("{slug}", &literal)).ok())
             .collect();
         let mut out = Vec::new();
         for path in &self.files {
