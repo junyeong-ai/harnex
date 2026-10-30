@@ -1,6 +1,8 @@
 //! End-to-end CLI contract tests: every invocation — including a malformed
-//! one — honors the envelope + exit-code contract.
+//! one — honors the envelope + exit-code contract, and answers the same
+//! whatever its caller exports about git pathspecs.
 
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use harness_core::guard::{OPERATOR_CHANNEL_KEY, SUPPRESS_OUTPUT_KEY};
@@ -111,4 +113,118 @@ fn help_is_clap_native_and_exits_0() {
 fn version_is_clap_native_and_exits_0() {
     let out = harness().arg("--version").output().unwrap();
     assert_eq!(out.status.code(), Some(0));
+}
+
+/// Git's pathspec variables, exported in the caller's shell, would reread the
+/// magic harnex writes: a committed rule's age reads as unrecorded, and a
+/// `claude.md` joins the memory a `CLAUDE.md` names.
+#[test]
+fn the_callers_pathspec_variables_change_no_answer() {
+    let project = tempfile::tempdir().unwrap();
+    let root = project.path();
+    let git = |args: &[&str], date: &str| {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_AUTHOR_DATE", date)
+            .env("GIT_COMMITTER_DATE", date)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    let ten_days_ago = format!(
+        "{} +0000",
+        (jiff::Timestamp::now() - jiff::SignedDuration::from_hours(240)).as_second()
+    );
+    git(&["init", "-q"], &ten_days_ago);
+    git(&["config", "core.ignorecase", "false"], &ten_days_ago);
+    for (path, body) in [
+        (
+            "harness.toml",
+            concat!(
+                "[meta]\nharnex_version = \">=",
+                env!("CARGO_PKG_VERSION"),
+                "\"\n[evidence]\n[[kinds]]\nname = \"rule\"\nglob = \".claude/rules/*.md\"\n\
+                 [lifecycle]\n[[lifecycle.consumer_detectors]]\nkind = \"rule\"\npattern = \"{slug}\"\n",
+            ),
+        ),
+        (".claude/rules/r.md", "# r\n"),
+        ("a/CLAUDE.md", "Owner: [file: no/such/a.rs:1].\n"),
+        ("b/claude.md", "Owner: [file: no/such/b.rs:1].\n"),
+    ] {
+        std::fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
+        std::fs::write(root.join(path), body).unwrap();
+    }
+    git(&["add", "."], &ten_days_ago);
+    git(
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "x",
+        ],
+        &ten_days_ago,
+    );
+
+    // A finding names its file from the directory the binary ran in, which
+    // the system reports with every link resolved.
+    let seen_root = root.canonicalize().unwrap();
+    let answers = |variable: Option<&str>| {
+        let run = |args: &[&str]| {
+            let mut command = harness();
+            command
+                .args(args)
+                .current_dir(root)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null");
+            if let Some(variable) = variable {
+                command.env(variable, "1");
+            }
+            let out = command.output().unwrap();
+            serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+        };
+        let classified = run(&[
+            "lifecycle",
+            "classify",
+            "--kind",
+            "rule",
+            "--path",
+            ".claude/rules/r.md",
+            "--silence",
+            "unmeasured",
+        ]);
+        let checked = run(&["check"]);
+        let unresolved: Vec<PathBuf> = checked["data"]["findings"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{checked}"))
+            .iter()
+            .filter(|f| f["slug"] == "evidence-claim-unresolved")
+            .map(|f| {
+                Path::new(f["location"]["path"].as_str().unwrap())
+                    .strip_prefix(&seen_root)
+                    .unwrap()
+                    .to_path_buf()
+            })
+            .collect();
+        (classified["data"]["age_days"].clone(), unresolved)
+    };
+
+    let unset = answers(None);
+    assert_eq!(
+        unset,
+        (serde_json::json!(10), vec![PathBuf::from("a/CLAUDE.md")])
+    );
+    for variable in [
+        "GIT_LITERAL_PATHSPECS",
+        "GIT_ICASE_PATHSPECS",
+        "GIT_GLOB_PATHSPECS",
+        "GIT_NOGLOB_PATHSPECS",
+    ] {
+        assert_eq!(answers(Some(variable)), unset, "{variable}=1");
+    }
 }

@@ -32,11 +32,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::git;
 use crate::path_guard;
 use crate::wire_enum::wire_enum;
 
@@ -437,9 +438,8 @@ fn stdin_query(project: &Path, args: &[&str], query: &str, what: &str) -> Result
         source: e,
     })?;
 
-    let output = Command::new("git")
+    let output = git::command(project)
         .args(args)
-        .current_dir(project)
         .stdin(Stdio::from(stdin))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -468,9 +468,8 @@ fn stdin_query(project: &Path, args: &[&str], query: &str, what: &str) -> Result
 /// matched as git matches it — a substring of the author line — so an address
 /// that is a prefix of a colleague's counts both.
 fn configured_author(project: &Path) -> Result<Option<String>> {
-    match Command::new("git")
+    match git::command(project)
         .args(["config", "--get", "user.email"])
-        .current_dir(project)
         .output()
     {
         Ok(out) if out.status.success() => {
@@ -489,9 +488,8 @@ fn configured_author(project: &Path) -> Result<Option<String>> {
 /// `rev-parse HEAD` fails on an unborn branch, and that failure is a fact about
 /// the repository rather than about git, so it is asked for rather than caught.
 fn has_commits(project: &Path) -> Result<bool> {
-    match Command::new("git")
+    match git::command(project)
         .args(["rev-parse", "--verify", "--quiet", "HEAD"])
-        .current_dir(project)
         .output()
     {
         Ok(out) => Ok(out.status.success()),
@@ -514,9 +512,8 @@ fn work_tree_root(project: &Path) -> Result<PathBuf> {
 }
 
 fn is_work_tree(project: &Path) -> Result<bool> {
-    match Command::new("git")
+    match git::command(project)
         .args(["rev-parse", "--is-inside-work-tree"])
-        .current_dir(project)
         .output()
     {
         Ok(out) => Ok(out.status.success()),
@@ -527,9 +524,8 @@ fn is_work_tree(project: &Path) -> Result<bool> {
 }
 
 fn run(project: &Path, args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
+    let output = git::command(project)
         .args(args)
-        .current_dir(project)
         .output()
         .map_err(|e| Error::CheckGitFailure {
             message: format!("git {} spawn: {e}", args.join(" ")),
