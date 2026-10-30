@@ -100,7 +100,8 @@ const PROFILES: &[(&str, &str)] = &[
 ];
 
 /// Every profile hands `_format-target.sh` the path it decoded and formats only
-/// what that accepts, so the boundary cases below run through one profile.
+/// what that accepts, which reaches the profile's own code as one physical
+/// path, so the path cases below run through one profile.
 #[test]
 fn every_formatter_takes_its_file_through_the_shared_boundary() {
     for &(lang, extension) in PROFILES {
@@ -240,15 +241,23 @@ fn biome_resolves_pnp_binaries_from_the_root_and_the_edited_workspace() {
     }
 }
 
+/// The root's spelling reaches past the shared boundary — the typescript
+/// profile climbs from the file to it — so every profile runs from an alias.
 #[test]
 fn formatters_resolve_a_project_root_reached_through_a_symlink() {
-    let mut project = Project::new("rust");
-    let file = project.root.join("source.rs");
-    write(&file, "source\n");
-    let alias = project.root.parent().unwrap().join("project-alias");
-    symlink(&project.root, &alias).unwrap();
-    project.root = alias;
-    assert!(project.run("rust", &file).contains(file.to_str().unwrap()));
+    for &(lang, extension) in PROFILES {
+        let mut project = Project::new(lang);
+        write(&project.root.join("biome.json"), "{}");
+        let file = project.root.join(format!("source.{extension}"));
+        write(&file, "source\n");
+        let alias = project.root.parent().unwrap().join("project-alias");
+        symlink(&project.root, &alias).unwrap();
+        project.root = alias;
+        assert!(
+            project.run(lang, &file).contains(file.to_str().unwrap()),
+            "{lang}"
+        );
+    }
 }
 
 #[test]
