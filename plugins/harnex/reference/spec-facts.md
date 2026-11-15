@@ -71,15 +71,18 @@ already contradicted both a page and the binary's own schema.
   schema-valid fields are still read but cannot override the block. Any other
   exit = non-blocking error whose notice carries the first line of stderr —
   but schema-valid JSON on stdout makes it a success the fields alone decide,
-  and a handler with `onFailure: "block"` blocks instead.
+  and a handler with `onFailure: "block"` does what exit 2 does instead. Some
+  events keep rules of their own (WorktreeCreate and WorktreeRemove fail on
+  any non-zero exit; Elicitation applies its output only on exit 0); the page's
+  per-event table, not this summary, says what an exit does on an event.
 - **Stop / SubagentStop exit 2 FORCES continuation** (prevents stopping → a
-  re-stop loop). A Stop-class wrapper that only wants to surface findings must
+  re-stop loop), except with stdout empty and a stderr saying a file is
+  missing, which is a non-blocking error. A Stop-class wrapper that only wants to surface findings must
   exit 0 and write `systemMessage`, never a non-zero exit as a generic "found
   something" signal — and neither `decision`, whose only value is `block`, nor
   `additionalContext`, which on Stop also continues the conversation. Exit 2
-  cannot block on StopFailure and PermissionDenied, which ignore it, nor on
-  PostToolUse and PostToolUseFailure, which show its stderr to Claude after
-  the tool ran.
+  cannot block on PostToolUse and PostToolUseFailure, which show its stderr to
+  Claude after the tool ran, and the per-event table names the rest.
 - **`timeout` is in SECONDS.** Defaults: 600 (command/http/mcp_tool), 30
   (prompt), 60 (agent); UserPromptSubmit, PreModelSwitch and PostModelSwitch
   lower the command, http and mcp_tool default to 30 — and a PreModelSwitch
@@ -129,9 +132,10 @@ already contradicted both a page and the binary's own schema.
   bound written beside `async` reads as one and is not), `asyncRewake`
   (non-blocking + rewake Claude on exit 2 with stderr/stdout as system
   reminder), `shell` (`"bash"` | `"powershell"`). Command and http:
-  `onFailure` (2.1.295+) — `"block"` makes a hook that fails or times out
-  block the action instead of letting it through, and does nothing on Stop,
-  SubagentStop, TaskCompleted or TeammateIdle.
+  `onFailure` (2.1.295+) — `"block"` makes a hook that fails or times out do
+  what exit 2 does on its event (deny, on PermissionRequest) instead of
+  letting the action through, and does nothing on Stop, SubagentStop,
+  TaskCompleted, TeammateIdle or an `async` hook.
 - **stdin** carries session_id, prompt_id (2.1.196+), transcript_path,
   scratchpad_dir (2.1.257+), cwd, permission_mode, hook_event_name, effort
   (PreToolUse adds tool_name, tool_input, tool_use_id). Inside subagents: also
@@ -335,13 +339,14 @@ already contradicted both a page and the binary's own schema.
   an absent entry is `on` (/en/settings-reference). `autoMemoryEnabled`: bool,
   default true.
 - Managed-scope enforcement: two distinct tiers, do not conflate.
-  *Managed-ONLY floors* are the Scope column's `Managed` class
-  (`validate::ScopeClass::Managed`), `allowManagedPermissionRulesOnly`,
-  `allowManagedHooksOnly` and `strictPluginOnlyCustomization` among them.
+  *Managed-ONLY floors* — `allowManagedPermissionRulesOnly`,
+  `allowManagedHooksOnly`, `strictPluginOnlyCustomization` — are among the
+  keys the Scope column gives the `Managed` class
+  (`validate::ScopeClass::Managed`), which only managed settings honor; that
+  class also holds `claudeMd`, managed-only memory content and no floor.
   *Strongest-from-managed* keys are `Any file`, such as `disableAllHooks` and
   `disableSkillShellExecution`: settable at every scope, and a managed value
-  wins by precedence. `claudeMd` is managed-only memory content, not an
-  enforcement floor.
+  wins by precedence.
 
 ## Skills (/en/skills)
 
