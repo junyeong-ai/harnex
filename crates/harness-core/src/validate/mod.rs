@@ -129,8 +129,8 @@ pub use output_styles::{KNOWN_OUTPUT_STYLE_KEYS, OutputStyleValidator};
 pub use routines::RoutineValidator;
 pub use rules::RuleValidator;
 pub use settings::{
-    KNOWN_DEFAULT_MODE_VALUES, KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS,
-    KNOWN_SESSION_START_SOURCES, KNOWN_SKILL_OVERRIDE_VALUES, SettingsScope, SettingsValidator,
+    KNOWN_DEFAULT_MODE_VALUES, KNOWN_HOOK_EVENTS, KNOWN_SESSION_START_SOURCES,
+    KNOWN_SKILL_OVERRIDE_VALUES, ScopeClass, SettingsScope, SettingsValidator,
 };
 pub use skills::{KNOWN_SKILL_KEYS, SkillScope, SkillValidator};
 

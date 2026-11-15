@@ -104,7 +104,13 @@ impl SpecSurface {
             name: "settings",
             doc: "/en/settings",
             measured: "2026-08-17",
-            digest: 0xd0c3_9c78_19f1_90e2,
+            digest: 0x4231_c059_baab_533a,
+        },
+        Self {
+            name: "settings-reference",
+            doc: "/en/settings-reference",
+            measured: "2026-11-15",
+            digest: 0x5dd4_bb1d_eb42_d42f,
         },
         Self {
             name: "permissions",
@@ -151,6 +157,7 @@ impl SpecSurface {
             "sub-agents" => agents::SPEC_SETS,
             "output-styles" => output_styles::SPEC_SETS,
             "settings" => settings::SPEC_SETS,
+            "settings-reference" => settings::SCOPE_SPEC_SETS,
             "permissions" => rule::SPEC_SETS,
             "memory" => crate::always_loaded::SPEC_SETS,
             "sandboxing" => crate::guard::floor::sandbox::SPEC_SETS,

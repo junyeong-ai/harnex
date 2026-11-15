@@ -163,10 +163,14 @@ Settings validator:
 - `permissions.deny` empty raises a Minor advisory.
 - `permissions.defaultMode` must be in `KNOWN_DEFAULT_MODE_VALUES` if present
   (Major).
-- Project / local scope settings carrying a key in
-  `KNOWN_PROJECT_SCOPE_NOOP_KEYS` (the const is the owner — see settings.rs;
-  `defaultMode: "auto"` is the value-restricted special case) raise a Major
-  advisory — those keys silently no-op outside user/managed.
+- A key or value the file's scope does not take effect from raises
+  `settings-ignored-key` or `settings-ignored-value`. `ScopeClass` owns the
+  Scope column of /en/settings-reference, one stamped set per class. The key
+  gates (Major) where it withholds a protection — a managed policy, or a key
+  the reference files under Permission or Sandbox settings — and is Minor where
+  it sets a preference. Judge only a restriction the reference states
+  unconditionally: a limit that holds under an admin-required sandbox turns on
+  managed state no repository shows.
 - `skillOverrides` values must be in `KNOWN_SKILL_OVERRIDE_VALUES` (Major).
 - Allow rules whose command base is in `DANGEROUS_ALLOW_BASES` without a deny
   of the same base raise a Minor advisory. Match on the normalized base via `bash_base`, which

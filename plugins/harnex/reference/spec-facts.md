@@ -9,8 +9,8 @@
 The perishable knowledge harnex centralizes. Every generated artifact must
 obey these. Re-verify against the live docs before a release; the upstream
 surface evolves and freezing it is the failure mode harnex exists to prevent.
-Sources: /en/hooks, /en/settings, /en/permissions, /en/skills, /en/memory,
-/en/plugins.
+Sources: /en/hooks, /en/settings, /en/settings-reference, /en/permissions,
+/en/skills, /en/memory, /en/plugins.
 
 Re-verifying is reading every bullet of a surface, not re-deriving its
 mirrored sets: the stamp's digest vouches for the sets and its date is the
@@ -222,17 +222,13 @@ already contradicted both a page and the binary's own schema.
   (concat + dedupe) across scopes — they do not override.** An `allow` cannot
   loosen a higher-scope `deny`. With no matching rule, `default` mode PROMPTS
   (asks) — it is not a hard-deny; hard-deny is the opt-in `dontAsk` mode.
-- **Silently ignored in project/local settings** (set only in user/managed).
-  Canonical SSoT is `KNOWN_PROJECT_SCOPE_NOOP_KEYS` in
-  `crates/harness-core/src/validate/settings.rs`; the mirror below is held
-  in sync by the `spec_facts_noop_keys_match` integration test.
-  <!-- harnex-managed:start spec-facts-project-scope-noop-keys -->
-  autoMemoryDirectory, autoMode, useAutoModeDuringPlan,
-  skipDangerousModePermissionPrompt, claudeMd.
-  <!-- harnex-managed:end spec-facts-project-scope-noop-keys -->
-  (`defaultMode: "auto"` is a VALUE restriction, not a key restriction —
-  handled separately by the `SettingsScope` check.) Never emit these into a
-  generated `.claude/settings.json` — they become no-ops.
+- **Which settings file a key takes effect from** is the Scope column of
+  /en/settings-reference. A key scoped to managed or user settings, or to
+  `~/.claude.json`, is ignored in `.claude/settings.json`; so are
+  `permissions.defaultMode` `auto` and `bypassPermissions` and a
+  `sandbox.credentials` `mask` entry, which take effect only from user or
+  managed settings. `harnex validate settings` holds the column
+  (`validate::ScopeClass`), and a generated `.claude/settings.json` passes it.
 - **Pattern syntax:** `Bash(npm run *)`, `Read(.env)`, `Read(./secrets/**)`,
   `Edit(...)`, `PowerShell(Get-ChildItem *)`, `WebFetch(domain:github.com)`,
   `Skill(name)`, `Agent(Explore)`.
@@ -313,8 +309,7 @@ already contradicted both a page and the binary's own schema.
   `strictPluginOnlyCustomization`. *Strongest-from-managed* (settable at other
   scopes too, but managed wins / cannot be overridden there):
   `disableAllHooks`, `disableSkillShellExecution`, `sandbox` (per-subkey).
-  `claudeMd` is managed/policy-only memory content (not an enforcement floor) —
-  it no-ops at project/local (see the no-op-keys list above).
+  `claudeMd` is managed-only memory content, not an enforcement floor.
 
 ## Skills (/en/skills)
 
