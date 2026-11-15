@@ -76,12 +76,40 @@ fn probe(root: &Path) -> String {
     probe_from(root, &root.join("hooks/session-start.sh"))
 }
 
-/// As [`probe_from`], with `env` overriding the child's environment.
+/// An executable `harnex` in its own directory, which `script` is.
+fn oracle(script: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("harnex"), script).expect("write oracle");
+    set_mode(&dir.path().join("harnex"), 0o755);
+    dir
+}
+
+/// As [`probe_from`], with `env` overriding the child's environment. A
+/// `harnex` that runs stands first on its `PATH`, so a case hears only the
+/// state it built; the oracle's own cases name their `PATH` ([`probe_on`]).
 fn probe_with(root: &Path, script: &Path, env: &[(&str, &str)]) -> String {
+    let healthy = oracle("#!/bin/sh\nexit 0\n");
+    let inherited = std::env::var("PATH").unwrap_or_default();
+    let rest = env
+        .iter()
+        .find(|(key, _)| *key == "PATH")
+        .map_or(inherited.as_str(), |(_, value)| value);
+    let path = format!("{}:{rest}", healthy.path().display());
+    let others: Vec<(&str, &str)> = env
+        .iter()
+        .filter(|(key, _)| *key != "PATH")
+        .copied()
+        .collect();
+    probe_on(root, script, &path, &others)
+}
+
+/// The probe run with exactly `path` as the child's `PATH`.
+fn probe_on(root: &Path, script: &Path, path: &str, env: &[(&str, &str)]) -> String {
     let mut command = Command::new("bash");
     command
         .arg(script)
         .current_dir(root)
+        .env("PATH", path)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_SYSTEM", "/dev/null");
     for (key, value) in env {
@@ -137,6 +165,42 @@ fn the_report_does_not_rest_on_one_of_the_two_hooks() {
     assert!(
         said.contains("are not armed"),
         "a clone shipping only commit-msg hears about it too: {said}"
+    );
+}
+
+/// Where the system's own tools live and no `harnex` is installed.
+const SYSTEM_PATH: &str = "/usr/bin:/bin";
+
+#[test]
+fn a_machine_without_the_oracle_hears_its_hooks_pass_unchecked() {
+    let dir = clone_with(&[]);
+    let said = probe_on(
+        dir.path(),
+        &dir.path().join("hooks/session-start.sh"),
+        SYSTEM_PATH,
+        &[],
+    );
+    assert!(
+        said.contains("harnex is not installed on this machine")
+            && said.contains("/scripts/install.sh | bash -s -- --version"),
+        "{said}"
+    );
+}
+
+#[test]
+fn an_oracle_that_cannot_run_the_floor_is_named() {
+    let dir = clone_with(&[]);
+    let broken = oracle("#!/bin/sh\nexit 2\n");
+    let said = probe_on(
+        dir.path(),
+        &dir.path().join("hooks/session-start.sh"),
+        &format!("{}:{SYSTEM_PATH}", broken.path().display()),
+        &[],
+    );
+    assert!(
+        said.contains("cannot run the hook-bypass floor")
+            && said.contains(&broken.path().join("harnex").display().to_string()),
+        "{said}"
     );
 }
 

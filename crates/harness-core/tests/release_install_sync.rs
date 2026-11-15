@@ -23,6 +23,8 @@ const INSTALL_URL_SITES: &[&str] = &[
     "plugins/harnex/SKILL.md",
     "plugins/harnex/commands/measure.md",
     "crates/harness-core/src/error.rs",
+    "plugins/harnex/templates/common/session-start.sh",
+    "hooks/session-start.sh",
 ];
 
 fn repo_file(rel: &str) -> String {
