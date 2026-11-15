@@ -35,8 +35,8 @@ set -euo pipefail
 
 # Every exit below is 0, so the notice is the whole of what the operator gets
 # and it has to go where an exit of 0 is read: the control JSON on stdout. A
-# hook's stderr reaches a reader only where it exits 2, so a skip written
-# there is a verifier that quietly did not run.
+# hook's stderr on exit 0 reaches no reader, so a skip written there is a
+# verifier that quietly did not run.
 #
 # A reason carries a path, and a JSON string body admits neither of the two
 # characters that end it nor anything below 0x20. The class and not a range:

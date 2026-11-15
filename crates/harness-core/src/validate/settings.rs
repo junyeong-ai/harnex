@@ -472,20 +472,18 @@ pub const KNOWN_SESSION_START_SOURCES: &[&str] = &["startup", "resume", "clear",
 pub const HOOK_SPEC_SETS: &[(&str, &[&str])] = &[
     ("hook-events", KNOWN_HOOK_EVENTS),
     ("session-start-sources", KNOWN_SESSION_START_SOURCES),
+    ("matcher-wide-charset-events", KNOWN_MATCHER_EVENTS),
+    ("tool-query-events", TOOL_QUERY_EVENTS),
 ];
 
 /// The events whose matchers take the wide exact-string charset
 /// (`[a-zA-Z0-9_|, -]`) and split on `|` and `,` alike. Every other event
 /// takes `[a-zA-Z0-9_|]` split on `|` only.
 ///
-/// Measured from the hook dispatcher of the Claude Code binary (2.1.220),
-/// not read from a page — the docs state neither the charsets nor the
-/// separators, and this set is distinct from the dispatcher's query-field
-/// switch. Re-measure against the installed binary rather than the docs:
-/// search it for the wide charset regex and for the known-event set
-/// literal; a divergence updates this constant and the measured test rows.
-/// Deliberately outside `HOOK_SPEC_SETS`: the stamp digest vouches for what
-/// a page said on a date, and no page says this.
+/// /en/hooks names the two narrow events among those with matcher support,
+/// `FileChanged` and `StopFailure`, so this set is the rest of its matcher
+/// table; the dispatcher's own set literal agreed at 2.1.325. It is distinct
+/// from the dispatcher's query-field switch.
 pub const KNOWN_MATCHER_EVENTS: &[&str] = &[
     "ConfigChange",
     "DirectoryAdded",
@@ -496,9 +494,11 @@ pub const KNOWN_MATCHER_EVENTS: &[&str] = &[
     "PermissionDenied",
     "PermissionRequest",
     "PostCompact",
+    "PostModelSwitch",
     "PostToolUse",
     "PostToolUseFailure",
     "PreCompact",
+    "PreModelSwitch",
     "PreToolUse",
     "SessionEnd",
     "SessionStart",
@@ -511,8 +511,8 @@ pub const KNOWN_MATCHER_EVENTS: &[&str] = &[
 /// The events whose matcher query is a tool name — the only events where a
 /// token like `mcp__server__tool` is what the dispatcher compares. On an
 /// event outside the dispatcher's query switch it consults no matcher at
-/// all and every hook fires, so a matcher there is ignored, not dead.
-/// Same provenance and same mover as [`KNOWN_MATCHER_EVENTS`].
+/// all and every hook fires, so a matcher there is ignored, not dead. The
+/// tool-name row of /en/hooks's matcher table.
 pub const TOOL_QUERY_EVENTS: &[&str] = &[
     "PermissionDenied",
     "PermissionRequest",

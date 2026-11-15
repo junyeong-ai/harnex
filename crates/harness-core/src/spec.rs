@@ -99,8 +99,8 @@ impl SpecSurface {
             name: "hooks",
             doc: "/en/hooks",
             vocabulary: settings::HOOK_SPEC_SETS,
-            measured: "2026-08-30",
-            digest: 0xb915_fac0_3e31_6d08,
+            measured: "2026-11-15",
+            digest: 0xc574_4a82_e57b_91ff,
         },
         Self {
             name: "skills",
