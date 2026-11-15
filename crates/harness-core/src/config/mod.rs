@@ -374,11 +374,12 @@ pub struct RulesPolicy {
     #[serde(default = "default_rule_max_lines")]
     pub max_lines: usize,
     /// Opt-in line budget for path-scoped rules, which load only when a
-    /// matching file is read. `None` (the default) leaves them unbounded:
-    /// a cohesive long rule that costs context only on its own paths is not
-    /// a defect, and a fixed ceiling over that set blocks more than it
-    /// protects. Set it when the project wants a review-for-domain-mixing
-    /// prompt; the finding is advisory either way.
+    /// matching file is read. `None` (the default) leaves their line count
+    /// unbounded: a cohesive long rule that costs context only on its own
+    /// paths is not a defect, and a fixed ceiling over that set blocks more
+    /// than it protects. The runtime's own cut is reported whatever this
+    /// says (`rule-cut-when-loaded`). Set it when the project wants a
+    /// review-for-domain-mixing prompt; the finding is advisory either way.
     #[serde(default)]
     pub max_scoped_lines: Option<usize>,
     /// Rule slugs that may omit `paths:` frontmatter (always-loaded).
