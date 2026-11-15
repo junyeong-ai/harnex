@@ -15,6 +15,12 @@ use crate::error::{Error, Result};
 /// U+FEFF.
 const JS_SPACE: &str = r"[\t\n\x0B\x0C\r \u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}]";
 
+/// Whether `c` is in [`JS_SPACE`], which is also what JavaScript's `trim`
+/// removes: Unicode's `White_Space` with U+FEFF added and U+0085 left out.
+pub(crate) fn is_js_space(c: char) -> bool {
+    c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}')
+}
+
 /// The runtime's frontmatter: `---` and whitespace through a line break open
 /// it, and the next `---` closes it wherever that falls — inside a value too,
 /// which the runtime then reads as cut there — with the whitespace after it.
@@ -208,6 +214,25 @@ pub fn flag(value: &Value) -> Option<bool> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn js_space_is_what_javascript_trims() {
+        // Every code point `String.prototype.trim` removed under Node 26.13.1.
+        const TRIMMED: &[u32] = &[
+            0x9, 0xa, 0xb, 0xc, 0xd, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004,
+            0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+            0xfeff,
+        ];
+        let class = Regex::new(&format!(r"\A{JS_SPACE}\z")).unwrap();
+        let every = || (0..=u32::from(char::MAX)).filter_map(char::from_u32);
+        let predicate: Vec<u32> = every().filter(|&c| is_js_space(c)).map(u32::from).collect();
+        let matched: Vec<u32> = every()
+            .filter(|&c| class.is_match(c.encode_utf8(&mut [0; 4])))
+            .map(u32::from)
+            .collect();
+        assert_eq!(predicate, TRIMMED);
+        assert_eq!(matched, TRIMMED);
+    }
 
     #[test]
     fn no_frontmatter_returns_none() {

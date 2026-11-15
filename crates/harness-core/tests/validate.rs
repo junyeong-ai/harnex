@@ -124,6 +124,11 @@ fn a_rule_loaded_on_demand_past_the_runtime_cut_is_reported_in_its_units() {
     // A comment block the runtime strips is not delivered.
     let commented = format!("<!-- {} -->\n\n{}", "c".repeat(10_000), "a".repeat(39_000));
     assert!(cut(scoped, commented, "rule.md").is_empty());
+    // JavaScript's trim removes U+FEFF and keeps U+0085.
+    let bom = format!("{}\u{feff}", "a".repeat(40_000));
+    assert!(cut(scoped, bom, "rule.md").is_empty());
+    let next_line = format!("{}\u{85}", "a".repeat(40_000));
+    assert_eq!(cut(scoped, next_line, "rule.md"), [Severity::Minor]);
     // A rule loaded at launch is not cut.
     assert!(cut("", "a".repeat(40_001), "always.md").is_empty());
 }
