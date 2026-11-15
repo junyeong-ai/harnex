@@ -1448,9 +1448,17 @@ fn a_key_is_ignored_in_each_file_its_scope_column_leaves_out() {
             );
         }
     }
-    let on = ignored(r#"{"bashEditDiffEnabled": true}"#, SettingsScope::Project);
-    assert_eq!(on.len(), 1, "{on:?}");
-    assert!(on[0].message.ends_with("only a `false` applies"), "{on:?}");
+    for json in [
+        r#"{"bashEditDiffEnabled": true}"#,
+        r#"{"autoContinueAtUsageLimit": true}"#,
+    ] {
+        let on = ignored(json, SettingsScope::Project);
+        assert_eq!(on.len(), 1, "{on:?}");
+        assert!(
+            on[0].message.ends_with("it can only turn the feature off"),
+            "{on:?}"
+        );
+    }
 }
 
 #[test]
@@ -1495,8 +1503,15 @@ fn a_restricted_value_is_ignored_outside_user_and_managed_settings() {
             assert!(findings.iter().all(|f| f.severity == Severity::Major));
         }
     }
+    // A preference a repository can turn off and not on is advisory.
+    for (scope, flagged) in SCOPES.into_iter().zip([true, true, false, false]) {
+        let findings = ignored(r#"{"remoteControlAtStartup": true}"#, scope);
+        assert_eq!(!findings.is_empty(), flagged, "at {scope:?}");
+        assert!(findings.iter().all(|f| f.severity == Severity::Minor));
+    }
     for json in [
         r#"{"permissions": {"defaultMode": "plan"}}"#,
+        r#"{"remoteControlAtStartup": false}"#,
         r#"{"sandbox": {"credentials": {"files": [{"path": "~/.netrc", "mode": "deny"}]}}}"#,
     ] {
         assert!(ignored(json, SettingsScope::Project).is_empty(), "{json}");
