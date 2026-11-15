@@ -1415,6 +1415,23 @@ fn a_key_is_ignored_in_each_file_its_scope_column_leaves_out() {
             [true, true, false, true],
         ),
         (r#"{"copyOnSelect": true}"#, [true, true, true, true]),
+        // A repository file still switches these off.
+        (
+            r#"{"sandbox": {"allowNestedUserNamespaces": false}}"#,
+            [false, false, false, false],
+        ),
+        (
+            r#"{"sandbox": {"allowNestedUserNamespaces": true}}"#,
+            [true, true, false, false],
+        ),
+        (
+            r#"{"bashEditDiffEnabled": false}"#,
+            [false, false, false, false],
+        ),
+        (
+            r#"{"autoContinueAtUsageLimit": false}"#,
+            [false, false, false, false],
+        ),
     ];
     for (json, expected) in cases {
         for (scope, flagged) in SCOPES.into_iter().zip(expected) {
@@ -1425,10 +1442,13 @@ fn a_key_is_ignored_in_each_file_its_scope_column_leaves_out() {
             );
         }
     }
+    let on = ignored(r#"{"bashEditDiffEnabled": true}"#, SettingsScope::Project);
+    assert_eq!(on.len(), 1, "{on:?}");
+    assert!(on[0].message.ends_with("only a `false` applies"), "{on:?}");
 }
 
 #[test]
-fn an_ignored_key_gates_only_where_it_withholds_a_protection() {
+fn an_ignored_key_gates_only_where_it_decides_what_a_session_may_do() {
     let cases = [
         (r#"{"strictKnownMarketplaces": []}"#, Severity::Major),
         (r#"{"autoMode": {"environment": []}}"#, Severity::Major),

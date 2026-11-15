@@ -10,8 +10,8 @@
 //! - [`output_styles`] — `.claude/output-styles/*.md`: the two booleans that
 //!   decide what a style does to the system prompt.
 //! - [`settings`] — `.claude/settings.json`: hook event name typo
-//!   detection (per /en/hooks), permission tier shape, project-scope
-//!   no-op key detection, `defaultMode` closed-enum check.
+//!   detection (per /en/hooks), permission tier shape, keys and values the
+//!   file's scope ignores, `defaultMode` closed-enum check.
 //! - [`routines`] — routine frontmatter and schedule declaration shape.
 //! - [`commit_msg`] — git commit messages: closed-enum trailer values
 //!   and required-trailer presence per `[validate.commit_msg]` config.

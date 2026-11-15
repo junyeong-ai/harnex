@@ -224,7 +224,8 @@ already contradicted both a page and the binary's own schema.
   (asks) — it is not a hard-deny; hard-deny is the opt-in `dontAsk` mode.
 - **Which settings file a key takes effect from** is the Scope column of
   /en/settings-reference. A key scoped to managed or user settings, or to
-  `~/.claude.json`, is ignored in `.claude/settings.json`; so are
+  `~/.claude.json`, is ignored in `.claude/settings.json`, apart from the few a
+  repository file can still switch off, whose Scope line says so; so are
   `permissions.defaultMode` `auto` and `bypassPermissions` and a
   `sandbox.credentials` `mask` entry, which take effect only from user or
   managed settings. `harnex validate settings` holds the column
