@@ -294,7 +294,8 @@ already contradicted both a page and the binary's own schema.
   reads as a floor and enforces nothing. Claude Code warns at startup
   (`… is not matched by file permission checks`) for each but `Grep` (2.1.325,
   read from the CLI). A deny or ask `Tool(param:value)` rule on one of them
-  names a parameter, not a path, and is read. Canonical SSoT is
+  names a parameter, not a path, and is read; an allow rule of that shape is a
+  path, and is not. Canonical SSoT is
   `crates/harness-core/src/policy/rule.rs`; the mirrors below are held in sync
   by the `spec_facts_*` integration tests, and both `harnex validate settings`
   and `harness.toml` load reject such a rule where it is written.

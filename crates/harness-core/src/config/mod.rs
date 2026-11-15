@@ -837,7 +837,7 @@ impl Config {
             ] {
                 for rule in rules {
                     let parsed = crate::policy::PermissionRule::parse(rule);
-                    if let crate::policy::RuleEffect::Inert(inert) = parsed.effect() {
+                    if let crate::policy::RuleEffect::Inert(inert) = parsed.effect(direction) {
                         return Err(Error::PolicyRuleInert {
                             field,
                             rule: rule.clone(),
@@ -1570,6 +1570,7 @@ mod tests {
             ("extra_deny", "Bash(command:rm -rf *)"),
             ("extra_ask", "NotebookEdit(notebooks/**)"),
             ("extra_allow", "Glob(src/**)"),
+            ("extra_allow", "Glob(pattern:*.pem)"),
         ] {
             let src = format!(
                 r#"
@@ -1595,7 +1596,7 @@ mod tests {
         let src = r#"
             [policy.permissions]
             profiles = ["baseline"]
-            extra_deny = ["Edit(/vault/**)", "Bash(terraform apply *)", "Agent(model:opus)", "Bash(find * -delete)"]
+            extra_deny = ["Edit(/vault/**)", "Bash(terraform apply *)", "Agent(model:opus)", "Bash(find * -delete)", "Glob(pattern:*.pem)"]
             extra_allow = ["Bash(pnpm gate *)", "Write"]
         "#;
         parse(src).unwrap();

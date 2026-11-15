@@ -657,7 +657,7 @@ impl SettingsValidator {
             ] {
                 for rule in rules {
                     let parsed = PermissionRule::parse(rule);
-                    if let RuleEffect::Inert(inert) = parsed.effect() {
+                    if let RuleEffect::Inert(inert) = parsed.effect(direction) {
                         findings.push(Finding {
                             slug: "settings-inert-permission-rule".into(),
                             severity: Severity::Major,
