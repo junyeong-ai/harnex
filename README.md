@@ -257,7 +257,8 @@ without the binary having to claim they measured the same work.
 read: root `CLAUDE.md` and `.claude/CLAUDE.md`, unconditional or matching rules,
 and ancestor `CLAUDE.md` files; `CLAUDE.local.md` follows memory in each
 directory. Where no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`
-stands at the root or above it, `AGENTS.md` and `.claude/AGENTS.md` are read
+stands at the root or above it, outside the repository too and the user's own
+`~/.claude/CLAUDE.md` aside, `AGENTS.md` and `.claude/AGENTS.md` are read
 as Claude Code's default Project instructions read them: at the root, and in
 each ancestor directory that holds no CLAUDE file. Paths are relative to the directory containing `harness.toml`, even
 from a nested working directory; future files are accepted.

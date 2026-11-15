@@ -439,6 +439,20 @@ pub(crate) fn reads_agents_md(levels: &[&Path], deciding: &[&str]) -> bool {
         .all(|level| present(level, deciding).is_empty())
 }
 
+/// Whether a session this machine starts at `project` reads `AGENTS.md`:
+/// [`reads_agents_md`] over [`SESSION_CLAUDE_NAMES`] in every directory from
+/// `project` up, since the runtime's memory walk does not stop where the
+/// repository does. `.claude/CLAUDE.md` under `home` is the user's memory
+/// and does not count.
+pub(crate) fn machine_reads_agents_md(project: &Path, home: Option<&Path>) -> bool {
+    let user_memory = home.map(|home| home.join(".claude/CLAUDE.md"));
+    project.ancestors().all(|dir| {
+        present(dir, SESSION_CLAUDE_NAMES)
+            .iter()
+            .all(|path| Some(path) == user_memory.as_ref())
+    })
+}
+
 fn memory_names(reads_agents_md: bool) -> &'static [&'static str] {
     if reads_agents_md {
         AGENTS_MEMORY_NAMES

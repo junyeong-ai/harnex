@@ -151,11 +151,10 @@ pub fn resolve(root: &Path, inputs: &[String]) -> Result<Resolution> {
         .flat_map(|(logical, real)| [logical, real])
         .collect();
     // This machine's answer: its own `CLAUDE.local.md` keeps `AGENTS.md` out
-    // of its sessions as a committed `CLAUDE.md` would.
-    let reads_agents_md = always_loaded::reads_agents_md(
-        &always_loaded::levels(&root),
-        always_loaded::SESSION_CLAUDE_NAMES,
-    );
+    // of its sessions as a committed `CLAUDE.md` would, and so does a CLAUDE
+    // file above the repository.
+    let home = std::env::home_dir().and_then(|home| std::fs::canonicalize(home).ok());
+    let reads_agents_md = always_loaded::machine_reads_agents_md(&root, home.as_deref());
     let mut required_instructions = Vec::new();
     for name in always_loaded::SESSION_CLAUDE_NAMES {
         memory(&root, Path::new(name), &mut required_instructions)?;
@@ -410,27 +409,60 @@ mod tests {
     #[test]
     fn agents_md_is_required_where_this_machine_reads_it() {
         let temp = tempfile::tempdir().unwrap();
+        // Each of the three CLAUDE files keeps its own directory's
+        // `AGENTS.md` out.
         for path in [
             "AGENTS.md",
             "apps/AGENTS.md",
             "apps/web/CLAUDE.md",
             "apps/web/AGENTS.md",
+            "apps/api/.claude/CLAUDE.md",
+            "apps/api/AGENTS.md",
+            "apps/cli/CLAUDE.local.md",
+            "apps/cli/AGENTS.md",
         ] {
             put(temp.path(), path, "# Memory\n");
         }
-        let target = ["apps/web/page.tsx".to_string()];
+        let target = [
+            "apps/web/page.tsx".to_string(),
+            "apps/api/main.rs".to_string(),
+            "apps/cli/main.rs".to_string(),
+        ];
         let out = resolve(temp.path(), &target).unwrap();
         assert_eq!(
             out.required_instructions,
-            ["AGENTS.md", "apps/AGENTS.md", "apps/web/CLAUDE.md"]
+            [
+                "AGENTS.md",
+                "apps/AGENTS.md",
+                "apps/cli/CLAUDE.local.md",
+                "apps/web/CLAUDE.md"
+            ]
         );
 
         put(temp.path(), "CLAUDE.local.md", "# Mine\n");
         let out = resolve(temp.path(), &target).unwrap();
         assert_eq!(
             out.required_instructions,
-            ["CLAUDE.local.md", "apps/web/CLAUDE.md"]
+            [
+                "CLAUDE.local.md",
+                "apps/cli/CLAUDE.local.md",
+                "apps/web/CLAUDE.md"
+            ]
         );
+    }
+
+    #[test]
+    fn a_claude_file_above_the_repository_keeps_agents_md_out_on_this_machine() {
+        let temp = tempfile::tempdir().unwrap();
+        put(temp.path(), "repo/AGENTS.md", "# Memory\n");
+        std::fs::create_dir(temp.path().join("repo/.git")).unwrap();
+        let root = temp.path().join("repo");
+        let out = resolve(&root, &[]).unwrap();
+        assert_eq!(out.required_instructions, ["AGENTS.md"]);
+
+        put(temp.path(), "CLAUDE.md", "# Above\n");
+        let out = resolve(&root, &[]).unwrap();
+        assert!(out.required_instructions.is_empty(), "{out:?}");
     }
 
     #[test]

@@ -55,3 +55,32 @@ fn context_resolves_from_nested_cwd_and_refuses_incomplete_scope() {
     assert_eq!(json["ok"], false);
     assert!(json.get("data").is_none());
 }
+
+#[test]
+fn context_counts_a_claude_file_above_the_repository_but_not_the_user_s_memory() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = std::fs::canonicalize(temp.path()).unwrap();
+    let config = format!("[meta]\nharnex_version = {:?}\n", env!("CARGO_PKG_VERSION"));
+    for (path, text) in [
+        ("repo/harness.toml", config.as_str()),
+        ("repo/AGENTS.md", "agents\n"),
+        (".claude/CLAUDE.md", "the user's memory\n"),
+    ] {
+        write_atomic(&home.join(path), text.as_bytes()).unwrap();
+    }
+    std::fs::create_dir(home.join("repo/.git")).unwrap();
+    let required = || {
+        let out = Command::new(env!("CARGO_BIN_EXE_harnex"))
+            .current_dir(home.join("repo"))
+            .env("HOME", &home)
+            .args(["context", "resolve"])
+            .output()
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        json["data"]["required_instructions"].clone()
+    };
+    assert_eq!(required(), serde_json::json!(["AGENTS.md"]));
+
+    write_atomic(&home.join("CLAUDE.md"), b"above the repository\n").unwrap();
+    assert_eq!(required(), serde_json::json!([]));
+}
