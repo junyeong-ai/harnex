@@ -200,7 +200,11 @@ pub fn flag(value: &Value) -> Option<bool> {
     match value {
         Value::Bool(set) => Some(*set),
         spelled @ (Value::String(_) | Value::Number(_)) => {
-            match js_string(spelled)?.trim().to_ascii_lowercase().as_str() {
+            match js_string(spelled)?
+                .trim_matches(is_js_space)
+                .to_ascii_lowercase()
+                .as_str()
+            {
                 "1" | "true" | "yes" | "on" => Some(true),
                 "0" | "false" | "no" | "off" => Some(false),
                 _ => None,
@@ -320,6 +324,17 @@ mod tests {
         for (text, expected) in [("1.0", Some(true)), ("0.0", Some(false)), ("2", None)] {
             let value: Value = yaml_serde::from_str(text).unwrap();
             assert_eq!(flag(&value), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_text_flag_is_trimmed_as_javascript_trims() {
+        for (text, expected) in [
+            ("\u{feff}true", Some(true)),
+            (" off\u{3000}", Some(false)),
+            ("true\u{85}", None),
+        ] {
+            assert_eq!(flag(&Value::String(text.into())), expected, "{text:?}");
         }
     }
 
