@@ -37,20 +37,20 @@ already contradicted both a page and the binary's own schema.
   WorktreeCreate, WorktreeRemove, TaskCreated, TaskCompleted, TeammateIdle,
   Elicitation, ElicitationResult.
   <!-- harnex-managed:end spec-facts-hook-events -->
-- **Matcher grammar is measured from the binary, not documented.** The docs
-  state neither charsets nor separators. Measured (2.1.220): on the tool and
-  lifecycle events most matchers ride, an exact-string matcher's charset is
-  `[a-zA-Z0-9_|, -]` and it splits on `|` AND `,`, with tokens trimmed and
-  empty alternatives dropped — `startup, resume` fires for both. A matcher
-  outside its event's charset is an UNANCHORED regex over the query. A
-  hyphen is inside the charset, so `mcp__claude-in-chrome` is an exact
-  string that equals no tool — a no-op, not a regex. Matcher tokens pass a
-  static alias substitution: `Task` is replaced by `Agent` before compare,
-  so a `Task` matcher fires for the renamed tool and never for one literally
-  named Task. Which events take the wide charset is a measured closed set —
-  owner `crates/harness-core/src/validate/settings.rs::KNOWN_MATCHER_EVENTS`
-  (deliberately unmirrored here: no page states it, so re-measurement
-  against the installed binary, not a doc re-read, is what moves it).
+- **Matcher grammar.** On every event with matcher support but `FileChanged`
+  and `StopFailure`, an exact-string matcher's charset is `[a-zA-Z0-9_|, -]`
+  and it splits on `|` AND `,`, with tokens trimmed and empty alternatives
+  dropped — `startup, resume` fires for both; those two take `[a-zA-Z0-9_|]`
+  split on `|` only. A matcher outside its event's charset is an UNANCHORED
+  regex over the query. A hyphen is inside the wide charset, so
+  `mcp__claude-in-chrome` is an exact string that equals no tool — a no-op,
+  not a regex. On PreToolUse and PermissionRequest a `Bash` matcher also
+  matches Monitor commands (2.1.314+). Matcher tokens pass a static alias
+  substitution (from the binary): `Task` is replaced by `Agent` before
+  compare, so a `Task` matcher fires for the renamed tool and never for one
+  literally named Task. The wide set's owner is
+  `crates/harness-core/src/validate/settings.rs::KNOWN_MATCHER_EVENTS`; the
+  2.1.325 dispatcher's own set literal agrees with the page.
 - **`SessionStart` matcher selects how the session started**, and three of the
   five sources are context-loss boundaries — after `compact`, `clear` or
   `fork` the model holds none of what the hook injected the first time. A
@@ -63,21 +63,27 @@ already contradicted both a page and the binary's own schema.
   <!-- harnex-managed:start spec-facts-session-start-sources -->
   startup, resume, clear, compact, fork.
   <!-- harnex-managed:end spec-facts-session-start-sources -->
-- **Exit codes.** 0 = success, stdout JSON parsed for control fields (stdout
-  reaches Claude as context only for UserPromptSubmit, UserPromptExpansion,
-  SessionStart, PostModelSwitch). 1 = non-blocking error, action proceeds.
-  2 = blocking; stderr feeds back to Claude, stdout/JSON ignored. Other =
-  non-blocking.
+- **Exit codes.** 0 = success: schema-valid stdout JSON applies, and plain
+  stdout reaches Claude as context only for UserPromptSubmit,
+  UserPromptExpansion, SessionStart and PostModelSwitch; stderr on exit 0 is
+  never seen. 2 = blocking on an event that can block: stderr is the reason,
+  unless the printed JSON makes a blocking decision, whose reason is used;
+  schema-valid fields are still read but cannot override the block. Any other
+  exit = non-blocking error whose notice carries the first line of stderr —
+  but schema-valid JSON on stdout makes it a success the fields alone decide,
+  and a handler with `onFailure: "block"` blocks instead.
 - **Stop / SubagentStop exit 2 FORCES continuation** (prevents stopping → a
   re-stop loop). A Stop-class wrapper that only wants to surface findings must
-  exit 0 and write to one of the reader channels below, never a non-zero exit
-  as a generic "found something" signal — and never `decision`, whose two
-  values on this event are a no-op and a block, so it can say nothing without
-  holding the session. Events where exit 2 is genuinely ignored: StopFailure,
-  PostToolUse, PostToolUseFailure, PermissionDenied.
+  exit 0 and write `systemMessage`, never a non-zero exit as a generic "found
+  something" signal — and neither `decision`, whose only value is `block`, nor
+  `additionalContext`, which on Stop also continues the conversation. Exit 2
+  cannot block on StopFailure and PermissionDenied, which ignore it, nor on
+  PostToolUse and PostToolUseFailure, which show its stderr to Claude after
+  the tool ran.
 - **`timeout` is in SECONDS.** Defaults: 600 (command/http/mcp_tool), 30
   (prompt), 60 (agent); UserPromptSubmit, PreModelSwitch and PostModelSwitch
-  lower the command default to 30 — and a PreModelSwitch hook cancelled at its
+  lower the command, http and mcp_tool default to 30 — and a PreModelSwitch
+  hook cancelled at its
   timeout BLOCKS the model switch (fail-closed), so a slow hook there breaks
   switching rather than degrading quietly. **PreToolUse goes the other way and
   says nothing.** Measured (2.1.283) against a hook sleeping past a 2-second
@@ -92,14 +98,16 @@ already contradicted both a page and the binary's own schema.
   property, not a latency one. The Bash *tool's* `tool_input.timeout` in PreToolUse stdin is
   milliseconds — a different field, opposite unit. Never emit a 4-digit "ms"
   timeout.
-- **A hook ends when its stdout closes, not when its command returns.** The
-  runtime reads that stream to EOF to parse the control JSON, so a child
-  started with `&` that inherits stdout holds the hook open for as long as the
-  child lives: `&` does not detach. Reproduced — a verifier running `sleep 2 &`
-  costs 2067 ms, and 32 ms once the child's stdout is redirected. Not a
-  rounding error in practice: a backgrounded notification sound was the single
-  largest hook cost in both repositories measured over a fourteen-day window.
-  Redirect the child (`>/dev/null 2>&1 &`), or declare the handler `async`.
+- **A hook does not end when its command returns.** A child started with `&`
+  that inherits stdout and stderr keeps a hook that is not `async` running for
+  up to 10 seconds after its own process exits: `&` does not detach.
+  Reproduced — a verifier running `sleep 2 &` costs 2067 ms, and 32 ms once
+  the child's stdout is redirected. Not a rounding error in practice: a
+  backgrounded notification sound was the single largest hook cost in both
+  repositories measured over a fourteen-day window. And a hook that prints an
+  allow and then leaves such a child gets its tool call BLOCKED (`stdio went
+  quiet`). Redirect the child (`>/dev/null 2>&1 &`), or declare the handler
+  `async`.
 - **`*` / `""` / an omitted matcher all match everything.** What the other
   spellings mean is the measured grammar above, whose tiers are owned by
   `KNOWN_MATCHER_EVENTS` — a second statement of the charset here is what
@@ -120,26 +128,30 @@ already contradicted both a page and the binary's own schema.
   `async` (non-blocking — and the runtime stops enforcing `timeout` on it, so a
   bound written beside `async` reads as one and is not), `asyncRewake`
   (non-blocking + rewake Claude on exit 2 with stderr/stdout as system
-  reminder), `shell` (`"bash"` | `"powershell"`).
+  reminder), `shell` (`"bash"` | `"powershell"`). Command and http:
+  `onFailure` (2.1.295+) — `"block"` makes a hook that fails or times out
+  block the action instead of letting it through, and does nothing on Stop,
+  SubagentStop, TaskCompleted or TeammateIdle.
 - **stdin** carries session_id, prompt_id (2.1.196+), transcript_path,
   scratchpad_dir (2.1.257+), cwd, permission_mode, hook_event_name, effort
   (PreToolUse adds tool_name, tool_input, tool_use_id). Inside subagents: also
   agent_id, agent_type.
-- **`additionalContext`** injects context on SessionStart, Setup,
-  SubagentStart, UserPromptSubmit, UserPromptExpansion, the tool events
-  (PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch), and **Stop**,
-  where the stop summary keeps a `hookAdditionalContext` field for it. It does
-  not prevent the stop — blocking is `decision`/exit 2 and nothing else. Write
-  it as factual statements, not imperatives (imperative phrasing trips
-  prompt-injection defenses).
+- **`additionalContext`** injects context on SessionStart, SubagentStart,
+  UserPromptSubmit, UserPromptExpansion, the tool events (PreToolUse,
+  PostToolUse, PostToolUseFailure, PostToolBatch), PostModelSwitch, and
+  **Stop** and SubagentStop — where the conversation CONTINUES so Claude can
+  act on it, under the same loop protections as `decision: "block"`
+  (`stop_hook_active`, eight consecutive continuations), labelled `Stop hook
+  feedback` rather than a hook error. Setup discards it. Write it as factual
+  statements, not imperatives (imperative phrasing trips prompt-injection
+  defenses).
 - **A hook's channels differ by reader, and Stop carries both.**
   `systemMessage` is the operator's and `hookSpecificOutput.additionalContext`
   is the model's, and on Stop each arrives. Pick by who must act: a
   configuration the operator has to repair is theirs, a finding the model can
   act on is the model's.
-  Read that from the transcript rather than from the binary's schema or the
-  page — the schema accepts the field on events that discard it, and the
-  page's not-honored list names SubagentStart, which delivers it. Read it by
+  Read that from the transcript rather than from the binary's schema, which
+  accepts the field on events that discard it. Read it by
   the attachment **type**: the runtime moves each field into its own record
   (`hook_system_message`, `hook_additional_context`), so the
   `hook_success` record for the same hook carries empty `content` whichever
