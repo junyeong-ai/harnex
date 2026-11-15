@@ -1226,9 +1226,9 @@ fn settings_validator_flags_a_rule_no_permission_check_consults() {
     let v = SettingsValidator::new();
     let json = r#"{
         "permissions": {
-            "allow": ["Glob(src/**)"],
+            "allow": ["Glob(src/**)", "Write(content:*)"],
             "ask": ["NotebookEdit(notebooks/**)"],
-            "deny": ["Write(*.pem)", "Edit(*.pem)", "Bash(command:rm -rf *)"]
+            "deny": ["Write(*.pem)", "Edit(*.pem)", "Bash(command:rm -rf *)", "Write(content:*KEY*)"]
         }
     }"#;
     let findings = v.validate_text(
@@ -1240,7 +1240,13 @@ fn settings_validator_flags_a_rule_no_permission_check_consults() {
         .iter()
         .filter(|f| f.slug == "settings-inert-permission-rule")
         .collect();
-    assert_eq!(inert.len(), 4, "expected 4 inert rules: {findings:?}");
+    // A deny on a file tool's parameter is read; the same rule as an allow
+    // is a path, and is not.
+    assert_eq!(inert.len(), 5, "expected 5 inert rules: {findings:?}");
+    assert!(inert.iter().any(|f| {
+        f.message
+            .contains("'Write(content:*)' in permissions.allow")
+    }));
     let write = inert
         .iter()
         .find(|f| f.message.contains("Write(*.pem)"))

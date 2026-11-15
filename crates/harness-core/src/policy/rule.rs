@@ -84,8 +84,13 @@ pub struct InertRule {
 pub enum InertReason {
     /// File permission checks consult `Read(path)` and `Edit(path)` only.
     UnconsultedFileTool { consulted: &'static str },
-    /// The specifier names the tool's primary content field.
-    PrimaryContentField { field: &'static str },
+    /// The specifier names the tool's primary content field. `consulted` is
+    /// the tool whose path rules cover this one, for a tool whose own are
+    /// never read.
+    PrimaryContentField {
+        field: &'static str,
+        consulted: Option<&'static str>,
+    },
 }
 
 impl InertRule {
@@ -96,7 +101,7 @@ impl InertRule {
                 "file permission checks consult `Read(path)` and `Edit(path)` only, and \
                  `{consulted}` already covers this tool"
             ),
-            InertReason::PrimaryContentField { field } => format!(
+            InertReason::PrimaryContentField { field, .. } => format!(
                 "`{field}` is the tool's primary content field, which parameter matching refuses"
             ),
         }
@@ -106,11 +111,26 @@ impl InertRule {
     pub fn hint(&self) -> String {
         match (&self.reason, &self.rewrite_as) {
             (_, Some(rewrite)) => format!("state it as `{rewrite}`"),
-            (InertReason::PrimaryContentField { field }, None) => {
+            (
+                InertReason::PrimaryContentField {
+                    field,
+                    consulted: Some(consulted),
+                },
+                None,
+            ) => {
+                format!("drop the `{field}:` parameter and write the path as `{consulted}(<path>)`")
+            }
+            (
+                InertReason::PrimaryContentField {
+                    field,
+                    consulted: None,
+                },
+                None,
+            ) => {
                 format!("drop the `{field}:` parameter and use the tool's own specifier syntax")
             }
             (InertReason::UnconsultedFileTool { consulted }, None) => {
-                format!("state it as a `{consulted}` rule")
+                format!("write the path as `{consulted}(<path>)`")
             }
         }
     }
@@ -284,25 +304,34 @@ impl<'a> PermissionRule<'a> {
         self.specifier
     }
 
-    /// Whether a permission check reads this rule.
-    pub fn effect(&self) -> RuleEffect {
+    /// Whether a permission check reads this rule, written in `direction`.
+    pub fn effect(&self, direction: RuleDirection) -> RuleEffect {
         let Some(specifier) = self.specifier else {
             return RuleEffect::Consulted;
         };
         if let Some(field) = self.primary_content_field(specifier) {
             return RuleEffect::Inert(InertRule {
-                reason: InertReason::PrimaryContentField { field },
+                reason: InertReason::PrimaryContentField {
+                    field,
+                    consulted: self.consulted_file_tool(),
+                },
                 rewrite_as: None,
             });
         }
         // A deny or an ask rule on another of the tool's parameters is read
-        // on any built-in tool, a file tool too; only a path is not.
+        // on any built-in tool, a file tool too. An allow rule keeps the
+        // tool's own specifier syntax, which for a file tool is a path.
+        let names_parameter = direction != RuleDirection::Allow && parameter(specifier).is_some();
         if let Some(consulted) = self.consulted_file_tool()
-            && parameter(specifier).is_none()
+            && !names_parameter
         {
+            // An allow rule naming a parameter asked for a match no allow makes,
+            // so it holds no path to carry over.
             return RuleEffect::Inert(InertRule {
                 reason: InertReason::UnconsultedFileTool { consulted },
-                rewrite_as: Some(format!("{consulted}({specifier})")),
+                rewrite_as: parameter(specifier)
+                    .is_none()
+                    .then(|| format!("{consulted}({specifier})")),
             });
         }
         RuleEffect::Consulted
@@ -317,7 +346,7 @@ impl<'a> PermissionRule<'a> {
     /// deny or an ask that reaches further than it reads still refuses or
     /// still asks, and the baseline deny writes that shape deliberately.
     pub fn misleading(&self, direction: RuleDirection) -> Option<MisleadingRule> {
-        if self.tool != "Bash" || self.effect() != RuleEffect::Consulted {
+        if self.tool != "Bash" || self.effect(direction) != RuleEffect::Consulted {
             return None;
         }
         let body = self.specifier?;
@@ -399,8 +428,9 @@ fn parameter(specifier: &str) -> Option<&str> {
 mod tests {
     use super::*;
 
+    /// A rule's effect as a deny, the direction a guardrail is written in.
     fn effect(rule: &str) -> RuleEffect {
-        PermissionRule::parse(rule).effect()
+        PermissionRule::parse(rule).effect(RuleDirection::Deny)
     }
 
     fn inert(rule: &str) -> InertRule {
@@ -450,6 +480,19 @@ mod tests {
             inert("Grep(docs/**)").rewrite_as.as_deref(),
             Some("Read(docs/**)")
         );
+        // A colon after no field name is part of a path.
+        for rule in ["Write(:x)", "Write(dir/name:x)"] {
+            assert!(
+                matches!(
+                    effect(rule),
+                    RuleEffect::Inert(InertRule {
+                        reason: InertReason::UnconsultedFileTool { consulted: "Edit" },
+                        ..
+                    })
+                ),
+                "{rule}"
+            );
+        }
         for tool in COVERED_BY_EDIT_RULES {
             let rule = format!("{tool}(/secrets/**)");
             assert_eq!(
@@ -480,7 +523,10 @@ mod tests {
         let i = inert("Bash(command:rm *)");
         assert_eq!(
             i.reason,
-            InertReason::PrimaryContentField { field: "command" }
+            InertReason::PrimaryContentField {
+                field: "command",
+                consulted: None
+            }
         );
         assert_eq!(
             i.rewrite_as, None,
@@ -504,6 +550,18 @@ mod tests {
                 })
             ));
         }
+        // A file tool's path rules are another tool's, so the hint names it.
+        for (rule, says) in [
+            ("Write(file_path:.env)", "`Edit(<path>)`"),
+            ("Grep(path:src)", "`Read(<path>)`"),
+            ("Bash(command:rm *)", "the tool's own specifier syntax"),
+        ] {
+            assert!(
+                inert(rule).hint().contains(says),
+                "{rule}: {}",
+                inert(rule).hint()
+            );
+        }
     }
 
     #[test]
@@ -523,6 +581,28 @@ mod tests {
         ] {
             assert_eq!(effect(rule), RuleEffect::Consulted, "{rule}");
         }
+        assert_eq!(
+            PermissionRule::parse("Grep(pattern:password)").effect(RuleDirection::Ask),
+            RuleEffect::Consulted
+        );
+        // An allow rule keeps each tool's own specifier syntax, which on a
+        // file tool is a path.
+        for rule in ["Write(content:*PRIVATE KEY*)", "Glob(pattern:*.pem)"] {
+            assert!(
+                matches!(
+                    PermissionRule::parse(rule).effect(RuleDirection::Allow),
+                    RuleEffect::Inert(InertRule {
+                        reason: InertReason::UnconsultedFileTool { .. },
+                        rewrite_as: None,
+                    })
+                ),
+                "{rule}"
+            );
+        }
+        assert_eq!(
+            PermissionRule::parse("Agent(model:opus)").effect(RuleDirection::Allow),
+            RuleEffect::Consulted
+        );
     }
 
     #[test]

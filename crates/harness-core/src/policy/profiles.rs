@@ -428,7 +428,7 @@ fn jvm_dev() -> PermissionProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy::{PermissionRule, RuleEffect};
+    use crate::policy::{PermissionRule, RuleDirection, RuleEffect};
 
     /// Every `<lang>-dev` profile, derived from the registry rather than
     /// listed. A language added to `ALL` then fails here instead of passing
@@ -572,13 +572,20 @@ mod tests {
     fn every_profile_rule_is_consulted() {
         for name in PermissionProfile::ALL {
             let p = PermissionProfile::from_str(name).unwrap();
-            for rule in p.allow.iter().chain(&p.ask).chain(&p.deny) {
-                if let RuleEffect::Inert(inert) = PermissionRule::parse(rule).effect() {
-                    panic!(
-                        "profile '{name}' rule '{rule}' is never consulted — {}; {}",
-                        inert.reason_text(),
-                        inert.hint()
-                    );
+            for (rules, direction) in [
+                (&p.allow, RuleDirection::Allow),
+                (&p.ask, RuleDirection::Ask),
+                (&p.deny, RuleDirection::Deny),
+            ] {
+                for rule in rules.iter() {
+                    if let RuleEffect::Inert(inert) = PermissionRule::parse(rule).effect(direction)
+                    {
+                        panic!(
+                            "profile '{name}' rule '{rule}' is never consulted — {}; {}",
+                            inert.reason_text(),
+                            inert.hint()
+                        );
+                    }
                 }
             }
         }
@@ -589,7 +596,6 @@ mod tests {
     /// that adopts it.
     #[test]
     fn no_profile_rule_is_misleading() {
-        use crate::policy::RuleDirection;
         for name in PermissionProfile::ALL {
             let p = PermissionProfile::from_str(name).unwrap();
             for (rules, direction) in [
