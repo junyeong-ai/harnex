@@ -1203,7 +1203,7 @@ impl Walk<'_> {
             return;
         }
         let read = read_memory(&source.body);
-        let text = read.text.trim();
+        let text = runtime_trim(&read.text);
         if text.is_empty() {
             return;
         }
@@ -1275,7 +1275,12 @@ impl Walk<'_> {
             };
             match source.fields.get("name").and_then(js_string) {
                 Some(name) if name == selected => {
-                    self.admit(MemberKind::OutputStyle, &path, &target, source.body.trim());
+                    self.admit(
+                        MemberKind::OutputStyle,
+                        &path,
+                        &target,
+                        runtime_trim(&source.body),
+                    );
                     return Ok(true);
                 }
                 None if by_stem.is_none() && path.file_stem().is_some_and(|s| s == selected) => {
@@ -1286,7 +1291,7 @@ impl Walk<'_> {
         }
         Ok(match by_stem {
             Some((path, target, body)) => {
-                self.admit(MemberKind::OutputStyle, &path, &target, body.trim());
+                self.admit(MemberKind::OutputStyle, &path, &target, runtime_trim(&body));
                 true
             }
             None => false,
@@ -1460,7 +1465,7 @@ fn agent_entry(fields: &Mapping) -> Option<(String, String)> {
 /// spelled out, and nothing for an empty one or any other shape.
 fn description(value: Option<&Value>) -> Option<String> {
     match value? {
-        Value::String(text) => Some(text.trim())
+        Value::String(text) => Some(runtime_trim(text))
             .filter(|t| !t.is_empty())
             .map(str::to_string),
         scalar @ (Value::Bool(_) | Value::Number(_)) => js_string(scalar),
@@ -1477,7 +1482,7 @@ struct MemoryText {
 
 /// A memory file's body as the runtime injects it, trimmed.
 pub(crate) fn injected_text(body: &str) -> String {
-    read_memory(body).text.trim().to_owned()
+    runtime_trim(&read_memory(body).text).to_owned()
 }
 
 fn read_memory(body: &str) -> MemoryText {
@@ -1519,7 +1524,7 @@ fn read_memory(body: &str) -> MemoryText {
                         .take_while(|&b| b == b'\n')
                         .count();
                 if let Some(rest) = without_comments(&body[range.start..end]) {
-                    let kept = !rest.trim().is_empty();
+                    let kept = !runtime_trim(&rest).is_empty();
                     if kept {
                         scan_imports(&rest, &mut imports);
                     }
@@ -1542,7 +1547,11 @@ fn read_memory(body: &str) -> MemoryText {
 /// `raw` with every `<!-- … -->` removed, when it opens with a comment and
 /// closes one; `None` for HTML the runtime keeps and does not read.
 fn without_comments(raw: &str) -> Option<String> {
-    if !(raw.trim_start().starts_with("<!--") && raw.contains("-->")) {
+    if !(raw
+        .trim_start_matches(frontmatter::is_js_space)
+        .starts_with("<!--")
+        && raw.contains("-->"))
+    {
         return None;
     }
     let mut out = String::with_capacity(raw.len());
@@ -1626,14 +1635,14 @@ pub(crate) fn normalize(path: &Path) -> Option<PathBuf> {
 /// The body's first non-empty line, a heading's text in place of the line, and
 /// `unnamed` for a body with none.
 fn fallback_description(body: &str, unnamed: &str) -> String {
-    let Some(line) = body.lines().map(str::trim).find(|l| !l.is_empty()) else {
+    let Some(line) = body.lines().map(runtime_trim).find(|l| !l.is_empty()) else {
         return unnamed.to_string();
     };
     let heading = line
         .strip_prefix('#')
         .map(|rest| rest.trim_start_matches('#'))
         .filter(|rest| rest.starts_with(char::is_whitespace))
-        .map(str::trim)
+        .map(runtime_trim)
         .filter(|text| !text.is_empty());
     cap(heading.unwrap_or(line), FALLBACK_DESCRIPTION_CAP, "...")
 }
@@ -1642,6 +1651,11 @@ fn fallback_description(body: &str, unnamed: &str) -> String {
 /// a character outside the Basic Multilingual Plane counts twice.
 pub(crate) fn runtime_len(text: &str) -> usize {
     text.encode_utf16().count()
+}
+
+/// `text` trimmed as the runtime's JavaScript `trim` trims it.
+pub(crate) fn runtime_trim(text: &str) -> &str {
+    text.trim_matches(frontmatter::is_js_space)
 }
 
 /// `text` cut as the runtime cuts it: past `limit` ([`runtime_len`]), the code
