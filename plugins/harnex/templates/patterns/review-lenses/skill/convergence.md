@@ -1,5 +1,16 @@
 # Convergence mechanics
 
+- [Scope grows, never shrinks](#scope-grows-never-shrinks)
+- [Stalled](#stalled)
+- [A finding in the last fix](#a-finding-in-the-last-fix)
+- [The record outlives the context](#the-record-outlives-the-context)
+- [A fix is pinned or it is surfaced](#a-fix-is-pinned-or-it-is-surfaced)
+- [A class that comes back](#a-class-that-comes-back)
+- [A dispute](#a-dispute)
+- [No count stops the loop](#no-count-stops-the-loop)
+- [What the loop never does](#what-the-loop-never-does)
+- [Scaling the terminal pass](#scaling-the-terminal-pass)
+
 Read when the loop needs a decision the SKILL body does not settle.
 
 ## Scope grows, never shrinks

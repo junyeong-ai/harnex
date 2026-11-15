@@ -1,5 +1,5 @@
 ---
-description: <one line — what this skill does AND when to use it. Claude reads this to decide auto-invocation; put the key use case first. description + when_to_use stay under 1536 chars.>
+description: <one line — what this skill does AND when to use it, in the third person ("Generates…", never "I" or "you"). Claude reads this to decide auto-invocation; put the key use case first. description + when_to_use stay under 1536 chars.>
 disable-model-invocation: true
 ---
 
