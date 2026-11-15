@@ -153,7 +153,7 @@ pub fn resolve(root: &Path, inputs: &[String]) -> Result<Resolution> {
     // This machine's answer: its own `CLAUDE.local.md` keeps `AGENTS.md` out
     // of its sessions as a committed `CLAUDE.md` would, and so does a CLAUDE
     // file above the repository.
-    let home = std::env::home_dir().and_then(|home| std::fs::canonicalize(home).ok());
+    let home = always_loaded::home();
     let reads_agents_md = always_loaded::machine_reads_agents_md(&root, home.as_deref());
     let mut required_instructions = Vec::new();
     for name in always_loaded::SESSION_CLAUDE_NAMES {
