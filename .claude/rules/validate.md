@@ -49,6 +49,10 @@ turn:
 - Path-scoped rules: `max_scoped_lines` cap as Minor, unset by default. The
   always-loaded budget never applies to them — a rule's own text costs
   context only on its paths, so a cohesive long rule is not a defect.
+- Path-scoped rules longer than `ON_DEMAND_CUT` once loaded raise a Minor
+  `rule-cut-when-loaded`, counted on the text the runtime injects
+  (`always_loaded::injected_text`, UTF-16 units). Advisory, because the
+  runtime tells Claude to read the rest and a larger context window cuts later.
 - Unparseable frontmatter returns the Blocker alone and asserts no budget:
   the runtime loads such a rule under whatever keys its repair recovers,
   which is not the scope the author wrote.

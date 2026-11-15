@@ -17,6 +17,9 @@
 //!   file that enters every session's context.
 //! - Path-scoped rules stay within `max_scoped_lines` when the project opts
 //!   in; unbounded by default.
+//! - A path-scoped rule longer, once loaded, than the runtime delivers whole
+//!   ([`ON_DEMAND_CUT`]) is reported as advisory: the runtime tells Claude
+//!   to read the rest, and a session with a larger context window cuts later.
 //!
 //! ## What this module refuses to do
 //!
@@ -43,6 +46,12 @@ pub struct RuleValidator<'a> {
 }
 
 pub(crate) const RULE_DIRECTORY: &str = ".claude/rules";
+
+/// Length past which Claude Code delivers only the start of a rule it loads
+/// on demand, counted as `always_loaded::runtime_len` counts the trimmed text
+/// it injects: the cut a 200K-token context window applies, and the smallest
+/// any session applies (2.1.325; a 1M window raises it to 150,000).
+pub(crate) const ON_DEMAND_CUT: usize = 40_000;
 
 /// The rule's identity for `always_loaded_slugs`: its path below
 /// `.claude/rules/`, extension removed. A bare file stem would let one entry
@@ -230,6 +239,26 @@ impl<'a> RuleValidator<'a> {
 
         let total_lines = content.lines().count();
         if declares_paths {
+            let delivered = crate::always_loaded::runtime_len(
+                &crate::always_loaded::injected_text(frontmatter::split(content).1),
+            );
+            if delivered > ON_DEMAND_CUT {
+                findings.push(Finding {
+                    slug: "rule-cut-when-loaded".into(),
+                    severity: Severity::Minor,
+                    location: Location::file(path.to_path_buf()),
+                    message: format!(
+                        "{delivered} characters once loaded, as Claude Code counts them; a \
+                         session with a 200K-token context window delivers the first \
+                         {ON_DEMAND_CUT} and tells Claude to Read the rest"
+                    ),
+                    hint: Some(
+                        "split it into rules scoped to the paths each part governs — each \
+                         file is cut on its own"
+                            .into(),
+                    ),
+                });
+            }
             if let Some(cap) = self.policy.max_scoped_lines
                 && total_lines > cap
             {

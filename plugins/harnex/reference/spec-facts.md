@@ -393,6 +393,12 @@ already contradicted both a page and the binary's own schema.
   directory's `.claude/` is read as the user's before any level's.
 - **Target ≤ 200 lines** per file; longer reduces adherence. A file over 4 MiB
   is skipped whole rather than truncated.
+- **A file that loads on demand is cut** (2.1.309+): a path-scoped rule, a
+  subdirectory's `CLAUDE.md` and `.claude/rules/`, and their imports. Past
+  `max(40000, window × 0.05 × characters per token)` UTF-16 units of trimmed
+  text — 40,000 at a 200K-token window, 150,000 at 1M on current models —
+  Claude gets the start and a note to Read the rest. Files loaded at launch
+  are not cut. `harnex validate rules` reports a path-scoped rule past 40,000.
 - **Path-scoped rules:** `.claude/rules/**/*.md`; with `paths:` frontmatter (glob,
   brace expansion) they load only on matching files; without `paths:` they load
   every session. So does a `paths:` whose globs, each with a trailing `/**`

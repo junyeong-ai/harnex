@@ -1461,6 +1461,11 @@ struct MemoryText {
     imports: Vec<String>,
 }
 
+/// A memory file's body as the runtime injects it, trimmed.
+pub(crate) fn injected_text(body: &str) -> String {
+    read_memory(body).text.trim().to_owned()
+}
+
 fn read_memory(body: &str) -> MemoryText {
     // The runtime rebuilds a file that holds a comment from its lexer's
     // tokens, and that lexer reads every line break as `\n`.

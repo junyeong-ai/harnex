@@ -101,6 +101,34 @@ fn rule_validator_flags_overlong_path_scoped_rule_when_opted_in() {
 }
 
 #[test]
+fn a_rule_loaded_on_demand_past_the_runtime_cut_is_reported_in_its_units() {
+    let policy = RulesPolicy {
+        require_governs: false,
+        max_lines: 200,
+        max_scoped_lines: None,
+        always_loaded_slugs: vec!["always".into()],
+    };
+    let v = RuleValidator::new(&policy);
+    let cut = |frontmatter: &str, body: String, path: &str| -> Vec<Severity> {
+        v.validate_text(&format!("{frontmatter}{body}\n"), Path::new(path))
+            .into_iter()
+            .filter(|f| f.slug == "rule-cut-when-loaded")
+            .map(|f| f.severity)
+            .collect()
+    };
+    let scoped = "---\npaths: [\"x\"]\n---\n";
+    assert!(cut(scoped, "a".repeat(40_000), "rule.md").is_empty());
+    // A character beyond the BMP is two units, as the runtime counts it.
+    let emoji = format!("{}\u{1F600}", "a".repeat(39_999));
+    assert_eq!(cut(scoped, emoji, "rule.md"), [Severity::Minor]);
+    // A comment block the runtime strips is not delivered.
+    let commented = format!("<!-- {} -->\n\n{}", "c".repeat(10_000), "a".repeat(39_000));
+    assert!(cut(scoped, commented, "rule.md").is_empty());
+    // A rule loaded at launch is not cut.
+    assert!(cut("", "a".repeat(40_001), "always.md").is_empty());
+}
+
+#[test]
 fn skill_validator_flags_missing_frontmatter() {
     let policy = SkillsPolicy {
         max_skill_md_lines: 500,

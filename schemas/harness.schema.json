@@ -433,7 +433,7 @@
           "default": 200
         },
         "max_scoped_lines": {
-          "description": "Opt-in line budget for path-scoped rules, which load only when a\nmatching file is read. `None` (the default) leaves them unbounded:\na cohesive long rule that costs context only on its own paths is not\na defect, and a fixed ceiling over that set blocks more than it\nprotects. Set it when the project wants a review-for-domain-mixing\nprompt; the finding is advisory either way.",
+          "description": "Opt-in line budget for path-scoped rules, which load only when a\nmatching file is read. `None` (the default) leaves their line count\nunbounded: a cohesive long rule that costs context only on its own\npaths is not a defect, and a fixed ceiling over that set blocks more\nthan it protects. The runtime's own cut is reported whatever this\nsays (`rule-cut-when-loaded`). Set it when the project wants a\nreview-for-domain-mixing prompt; the finding is advisory either way.",
           "type": [
             "integer",
             "null"
