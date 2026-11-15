@@ -128,7 +128,7 @@ fi
 # every tool call or commit would be noise, so a machine missing it hears so
 # here, as a session starts, resumes or compacts. The probes are the floor
 # arm's own.
-install='curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash -s -- --version <the release [meta] harnex_version in harness.toml admits>'
+install='curl -fsSL https://github.com/junyeong-ai/harnex/raw/main/scripts/install.sh | bash -s -- --version <tag>, with <tag> the newest release that [meta] harnex_version in harness.toml admits'
 if ! command -v harnex >/dev/null 2>&1; then
   printf 'harnex is not installed on this machine, so the hooks that call it pass without checking. It installs with: %s\n' "$install"
 elif ! harnex guard floor --help >/dev/null 2>&1; then

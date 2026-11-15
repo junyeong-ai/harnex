@@ -182,7 +182,9 @@ fn a_machine_without_the_oracle_hears_its_hooks_pass_unchecked() {
     );
     assert!(
         said.contains("harnex is not installed on this machine")
-            && said.contains("/scripts/install.sh | bash -s -- --version"),
+            && said.contains(
+                "/scripts/install.sh | bash -s -- --version <tag>, with <tag> the newest release"
+            ),
         "{said}"
     );
 }
