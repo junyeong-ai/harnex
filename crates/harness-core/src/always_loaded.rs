@@ -19,8 +19,8 @@
 //!   levels is the nearest one's, and a skill's name hides a command's
 //!   wherever either is defined, unless the skill waits on `paths:` (2.1.284).
 //! - `CLAUDE.md` and `.claude/CLAUDE.md` both load; `AGENTS.md` and
-//!   `.claude/AGENTS.md` load in their place when neither exists
-//!   ([`memory_files`]).
+//!   `.claude/AGENTS.md` load in their place at every level when no level
+//!   holds either ([`reads_agents_md`], 2.1.325).
 //! - A file loads only as a regular file within its kind's size limit
 //!   ([`MEMORY_FILE_LIMIT`], [`SKILL_FILE_LIMIT`], [`DEFINITION_FILE_LIMIT`]),
 //!   decoded as UTF-8 with invalid bytes replaced.
@@ -69,7 +69,9 @@
 //! - Never counts what the repository does not own. `CLAUDE.local.md`, a
 //!   user-level memory file, a memory file or rule above the repository, auto
 //!   memory and `settings.local.json` are each developer's own, and reading
-//!   the last would pass a tree locally that CI fails. Text whose file lies
+//!   the last would pass a tree locally that CI fails. A `CLAUDE.local.md`
+//!   keeps `AGENTS.md` out of its developer's sessions, and does not decide
+//!   the set here either. Text whose file lies
 //!   outside the repository — an import reaching out, a link pointing out —
 //!   and an output style it does not ship are [`Unmeasured`], named rather
 //!   than guessed.
@@ -343,8 +345,9 @@ fn resolve_under(project: &Path, home: Option<&Path>) -> Result<AlwaysLoaded> {
     // another level — goes by the first that reads it, and reading a rule
     // marks it read even where its `paths:` then holds it back.
     let own = |path: &PathBuf| user_dir.as_ref().is_none_or(|dir| !path.starts_with(dir));
+    let names = memory_names(reads_agents_md(&levels, CLAUDE_MEMORY_NAMES));
     for level in levels.iter().rev() {
-        for path in memory_files(level).into_iter().filter(own) {
+        for path in present(level, names).into_iter().filter(own) {
             walk.memory_file(&path, MemberKind::Memory, 0, Tree::Memory);
         }
         for path in discover(level, <RuleValidator as SurfaceValidator>::GLOB)?
@@ -404,7 +407,7 @@ fn resolve_under(project: &Path, home: Option<&Path>) -> Result<AlwaysLoaded> {
 /// linked worktree whose top has no `.claude/` skills, commands, agents or
 /// output styles is given the main checkout's by the runtime (2.1.284, read
 /// from the loader); that is another checkout's tree, and is not counted.
-fn levels(project: &Path) -> Vec<&Path> {
+pub(crate) fn levels(project: &Path) -> Vec<&Path> {
     let Some(top) = project.ancestors().find(|dir| dir.join(".git").exists()) else {
         return vec![project];
     };
@@ -414,16 +417,43 @@ fn levels(project: &Path) -> Vec<&Path> {
         .collect()
 }
 
-/// The project memory files the runtime reads at launch: `CLAUDE.md` and
-/// `.claude/CLAUDE.md`, or `AGENTS.md` and `.claude/AGENTS.md` where neither
-/// exists.
-pub(crate) fn memory_files(root: &Path) -> Vec<PathBuf> {
-    let claude_md = present(root, &["CLAUDE.md", ".claude/CLAUDE.md"]);
-    if claude_md.is_empty() {
-        present(root, &["AGENTS.md", ".claude/AGENTS.md"])
+/// The memory files a repository commits that keep every `AGENTS.md` out of
+/// a session started at or below them.
+pub(crate) const CLAUDE_MEMORY_NAMES: &[&str] = &["CLAUDE.md", ".claude/CLAUDE.md"];
+
+/// [`CLAUDE_MEMORY_NAMES`] and a developer's `CLAUDE.local.md`, which does
+/// the same for that developer's sessions.
+pub(crate) const SESSION_CLAUDE_NAMES: &[&str] =
+    &["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md"];
+
+/// The memory files read in place of [`CLAUDE_MEMORY_NAMES`].
+pub(crate) const AGENTS_MEMORY_NAMES: &[&str] = &["AGENTS.md", ".claude/AGENTS.md"];
+
+/// Whether a session started at the first of `levels` reads `AGENTS.md` in
+/// place of `CLAUDE.md`, as the default Project instructions decide it: no
+/// level holds a file of `deciding`. The value a user or managed setting
+/// chooses instead is not the repository's.
+pub(crate) fn reads_agents_md(levels: &[&Path], deciding: &[&str]) -> bool {
+    levels
+        .iter()
+        .all(|level| present(level, deciding).is_empty())
+}
+
+fn memory_names(reads_agents_md: bool) -> &'static [&'static str] {
+    if reads_agents_md {
+        AGENTS_MEMORY_NAMES
     } else {
-        claude_md
+        CLAUDE_MEMORY_NAMES
     }
+}
+
+/// The memory files a session started at `project` reads from that
+/// directory at launch.
+pub(crate) fn memory_files(project: &Path) -> Vec<PathBuf> {
+    present(
+        project,
+        memory_names(reads_agents_md(&levels(project), CLAUDE_MEMORY_NAMES)),
+    )
 }
 
 /// The finding a set over `max_chars` is, located at its largest member.
@@ -1755,6 +1785,29 @@ mod tests {
         assert_eq!(paths(&with), [".claude/CLAUDE.md", "CLAUDE.md"]);
         let without = loaded(&[("AGENTS.md", "agents\n"), (".claude/AGENTS.md", "dot\n")]);
         assert_eq!(paths(&without), [".claude/AGENTS.md", "AGENTS.md"]);
+    }
+
+    #[test]
+    fn agents_md_loads_only_where_no_level_holds_a_committed_claude_md() {
+        let cases = [
+            (
+                vec![("CLAUDE.md", "root\n"), ("pkg/AGENTS.md", "pkg\n")],
+                vec!["../CLAUDE.md"],
+            ),
+            (
+                vec![("AGENTS.md", "root\n"), ("pkg/AGENTS.md", "pkg\n")],
+                vec!["../AGENTS.md", "AGENTS.md"],
+            ),
+            (
+                vec![("CLAUDE.local.md", "mine\n"), ("pkg/AGENTS.md", "pkg\n")],
+                vec!["AGENTS.md"],
+            ),
+        ];
+        for (files, expected) in cases {
+            let dir = project(&files);
+            let loaded = resolve(&dir.path().join("pkg")).unwrap();
+            assert_eq!(paths(&loaded), expected, "{files:?}");
+        }
     }
 
     // What Claude Code 2.1.284 sent from a session started in a package: every

@@ -408,9 +408,8 @@ already contradicted both a page and the binary's own schema.
   Code does not change. The last glob a path matches decides, so a `!` glob
   narrows only the globs before it, and a file under a matched directory stays
   matched whatever a later `!` glob says. A glob whose only `/` is a trailing
-  one matches at every depth — `*.md` is `**/*.md`, though the memory page's
-  table lists it as the root's files; a leading or inner `/` anchors at the
-  root (`/*.toml`). `[...]` is one character, so a route directory such as
+  one matches at every depth — `*.md` is `**/*.md` — and a leading or inner
+  `/` anchors at the root (`/*.toml`). `[...]` is one character, so a route directory such as
   `app/[id]` is written `app/\[id\]`. `src/**`, read as `src`, is a `src`
   directory or file at every depth, and no `!` glob re-includes a file under
   it: write `src/**/*`, the memory page's own form, for the root `src`, and
@@ -471,9 +470,12 @@ already contradicted both a page and the binary's own schema.
 - **What loads every session from a repository** (2.1.283, from the request
   the CLI sends; `harnex validate always-loaded` measures this set):
   - `CLAUDE.md` and `.claude/CLAUDE.md` both. `AGENTS.md` and
-    `.claude/AGENTS.md` load only when neither exists, nor a developer's
-    `CLAUDE.local.md`; the `claude-md-and-agents-md` setting that loads both
-    is ignored in project settings.
+    `.claude/AGENTS.md` load in their place, at every level, only when no
+    level from the session's directory up holds a `CLAUDE.md`,
+    `.claude/CLAUDE.md` or a developer's `CLAUDE.local.md` (2.1.325, the
+    built-in plugin `cc-plugin-agents-md`); the measured set leaves the
+    developer's file out. Another Project instructions value is chosen under
+    `pluginConfigs`, which only user and managed settings carry.
   - Their imports, whatever those say in `paths:`, and the rules that scope
     nothing. Each file a rule's imports reach loads on its own `paths:` alone.
   - Each file without frontmatter and trimmed; one holding `<!--` has its line
