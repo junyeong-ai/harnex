@@ -1031,9 +1031,18 @@ fn an_agents_md_is_read_where_the_runtime_reads_it() {
         &tmp.path().join("AGENTS.md"),
         "Owner: [file: no/such/agents.rs:1].\n",
     );
+    write(
+        &tmp.path().join("pkg/AGENTS.md"),
+        "Owner: [file: no/such/nested.rs:1].\n",
+    );
     let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
-    assert_eq!(cited(&outcome), ["agents.rs"], "{:#?}", outcome.findings);
+    assert_eq!(
+        cited(&outcome),
+        ["agents.rs", "nested.rs"],
+        "{:#?}",
+        outcome.findings
+    );
 
     write(
         &tmp.path().join("CLAUDE.md"),

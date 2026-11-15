@@ -8,6 +8,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::always_loaded;
 use crate::error::{Error, Result};
 use crate::validate::{frontmatter, path_globs, rules};
 
@@ -149,18 +150,21 @@ pub fn resolve(root: &Path, inputs: &[String]) -> Result<Resolution> {
         .iter()
         .flat_map(|(logical, real)| [logical, real])
         .collect();
+    // This machine's answer: its own `CLAUDE.local.md` keeps `AGENTS.md` out
+    // of its sessions as a committed `CLAUDE.md` would.
+    let reads_agents_md = always_loaded::reads_agents_md(
+        &always_loaded::levels(&root),
+        always_loaded::SESSION_CLAUDE_NAMES,
+    );
     let mut required_instructions = Vec::new();
-    memory(&root, Path::new("CLAUDE.md"), &mut required_instructions)?;
-    memory(
-        &root,
-        Path::new(".claude/CLAUDE.md"),
-        &mut required_instructions,
-    )?;
-    memory(
-        &root,
-        Path::new("CLAUDE.local.md"),
-        &mut required_instructions,
-    )?;
+    for name in always_loaded::SESSION_CLAUDE_NAMES {
+        memory(&root, Path::new(name), &mut required_instructions)?;
+    }
+    if reads_agents_md {
+        for name in always_loaded::AGENTS_MEMORY_NAMES {
+            memory(&root, Path::new(name), &mut required_instructions)?;
+        }
+    }
 
     let mut rule_paths = Vec::new();
     let directory = root.join(rules::RULE_DIRECTORY);
@@ -239,6 +243,16 @@ pub fn resolve(root: &Path, inputs: &[String]) -> Result<Resolution> {
             &directory.join("CLAUDE.local.md"),
             &mut required_instructions,
         )?;
+        // A directory's `AGENTS.md` loads with a file under it unless the
+        // directory holds a CLAUDE file of its own.
+        let claude_here = always_loaded::SESSION_CLAUDE_NAMES
+            .iter()
+            .any(|name| root.join(&directory).join(name).is_file());
+        if reads_agents_md && !claude_here {
+            for name in always_loaded::AGENTS_MEMORY_NAMES {
+                memory(&root, &directory.join(name), &mut required_instructions)?;
+            }
+        }
     }
     Ok(Resolution {
         targets,
@@ -390,6 +404,32 @@ mod tests {
                 "apps/CLAUDE.md",
                 "apps/web/CLAUDE.md"
             ]
+        );
+    }
+
+    #[test]
+    fn agents_md_is_required_where_this_machine_reads_it() {
+        let temp = tempfile::tempdir().unwrap();
+        for path in [
+            "AGENTS.md",
+            "apps/AGENTS.md",
+            "apps/web/CLAUDE.md",
+            "apps/web/AGENTS.md",
+        ] {
+            put(temp.path(), path, "# Memory\n");
+        }
+        let target = ["apps/web/page.tsx".to_string()];
+        let out = resolve(temp.path(), &target).unwrap();
+        assert_eq!(
+            out.required_instructions,
+            ["AGENTS.md", "apps/AGENTS.md", "apps/web/CLAUDE.md"]
+        );
+
+        put(temp.path(), "CLAUDE.local.md", "# Mine\n");
+        let out = resolve(temp.path(), &target).unwrap();
+        assert_eq!(
+            out.required_instructions,
+            ["CLAUDE.local.md", "apps/web/CLAUDE.md"]
         );
     }
 

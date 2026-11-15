@@ -206,16 +206,26 @@ impl<'a> ProjectChecker<'a> {
         Ok(Some(listed.into_iter().collect()))
     }
 
-    /// Every nested `CLAUDE.md` the project owns.
+    /// Every nested memory file the project owns: each `CLAUDE.md`, and each
+    /// `AGENTS.md` where the project reads `AGENTS.md` at all.
     ///
-    /// Claude Code loads a nested `CLAUDE.md` when work happens under its
+    /// Claude Code loads a nested memory file when work happens under its
     /// directory, so its claims are as live as the root's — but a walk over
     /// the tree would also read the one a vendored package ships under
     /// `node_modules`, and resolve its paths against this project: a Blocker
     /// about a file nobody here wrote. Which files are the project's own is
     /// `git::owned_files`' answer.
-    fn nested_claude_md_files(&self) -> Result<Vec<PathBuf>> {
-        git::owned_files(self.working_dir, &[":(glob)**/CLAUDE.md"])
+    fn nested_memory_files(&self) -> Result<Vec<PathBuf>> {
+        let reads_agents_md = crate::always_loaded::reads_agents_md(
+            &crate::always_loaded::levels(self.working_dir),
+            crate::always_loaded::CLAUDE_MEMORY_NAMES,
+        );
+        let patterns: &[&str] = if reads_agents_md {
+            &[":(glob)**/CLAUDE.md", ":(glob)**/AGENTS.md"]
+        } else {
+            &[":(glob)**/CLAUDE.md"]
+        };
+        git::owned_files(self.working_dir, patterns)
             .map_err(|git::Failure(message)| Error::CheckGitFailure { message })
     }
 
@@ -349,7 +359,7 @@ impl<'a> ProjectChecker<'a> {
         // cannot answer — no repository, dubious ownership — leaves that set
         // declared unmeasured rather than the gate unrun.
         let mut memory = crate::always_loaded::memory_files(self.working_dir);
-        match self.nested_claude_md_files() {
+        match self.nested_memory_files() {
             Ok(nested) => memory.extend(nested),
             Err(Error::CheckGitFailure { message }) => skipped.push(SkippedRule {
                 slug: "evidence.nested-memory".into(),

@@ -256,7 +256,10 @@ without the binary having to claim they measured the same work.
 `context resolve` returns normalized `targets` and `required_instructions` to
 read: root `CLAUDE.md` and `.claude/CLAUDE.md`, unconditional or matching rules,
 and ancestor `CLAUDE.md` files; `CLAUDE.local.md` follows memory in each
-directory. Paths are relative to the directory containing `harness.toml`, even
+directory. Where no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`
+stands at the root or above it, `AGENTS.md` and `.claude/AGENTS.md` are read
+as Claude Code's default Project instructions read them: at the root, and in
+each ancestor directory that holds no CLAUDE file. Paths are relative to the directory containing `harness.toml`, even
 from a nested working directory; future files are accepted.
 No targets asks for the foundation only. Internal target symlinks resolve rules
 and memories for both the logical path and its real target. Instruction paths
@@ -277,9 +280,9 @@ characters and ascending ranges within one kind, fails resolution, and
 `paths:` covers other project files once Claude Code drops a trailing `/**`
 than as written. The result describes declared
 scope, not Claude's runtime loading limits. This is not Claude's memory
-runtime: imports, memory exclusions, user memory, output styles, native
-`AGENTS.md`, hooks and lifecycle orchestration remain the caller's
-responsibility.
+runtime: imports, memory exclusions, user memory, output styles, a Project
+instructions value other than the default, hooks and lifecycle orchestration
+remain the caller's responsibility.
 
 `baseline save` records what the window was measured under as well as what it
 measured: the build, the paragraph floor, and — where the window was scoped to
