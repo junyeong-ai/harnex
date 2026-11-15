@@ -1525,6 +1525,7 @@ fn settings_validator_accepts_valid_default_modes() {
         "plan",
         "dontAsk",
         "bypassPermissions",
+        "manual",
     ] {
         let json = format!(
             r#"{{ "permissions": {{ "defaultMode": "{mode}", "deny": ["Bash(sudo *)"] }} }}"#

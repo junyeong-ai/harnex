@@ -29,10 +29,11 @@ use crate::envelope::{Finding, Location, Severity};
 use crate::policy::{PermissionRule, RuleDirection, RuleEffect};
 use crate::wire_enum::wire_enum;
 
-/// Valid values for `skillOverrides` per Claude Code spec.
+/// `skillOverrides` values, per /en/settings-reference.
 pub const KNOWN_SKILL_OVERRIDE_VALUES: &[&str] = &["on", "name-only", "user-invocable-only", "off"];
 
-/// Closed enum of `permissions.defaultMode` values per /en/settings.
+/// `permissions.defaultMode` values, per /en/settings-reference. `manual` is an
+/// alias for `default`.
 pub const KNOWN_DEFAULT_MODE_VALUES: &[&str] = &[
     "default",
     "acceptEdits",
@@ -40,6 +41,7 @@ pub const KNOWN_DEFAULT_MODE_VALUES: &[&str] = &[
     "auto",
     "dontAsk",
     "bypassPermissions",
+    "manual",
 ];
 
 /// Keys the settings reference scopes to managed settings.
@@ -200,8 +202,13 @@ pub const REPOSITORY_OFF_SWITCHES: &[&str] = &[
     "sandbox.allowNestedUserNamespaces",
 ];
 
-/// Every closed set read from the settings reference, labelled.
-pub const SCOPE_SPEC_SETS: &[(&str, &[&str])] = &[
+/// Every closed set this validator reads from the settings reference,
+/// labelled. The measurement stamp digests exactly this list, so a value moved
+/// from one set to another changes the digest rather than hiding in a
+/// concatenation.
+pub const SPEC_SETS: &[(&str, &[&str])] = &[
+    ("default-mode-values", KNOWN_DEFAULT_MODE_VALUES),
+    ("skill-override-values", KNOWN_SKILL_OVERRIDE_VALUES),
     ("scope-managed", MANAGED_SCOPE_KEYS),
     ("scope-user-or-managed", USER_OR_MANAGED_SCOPE_KEYS),
     (
@@ -550,14 +557,6 @@ pub(crate) fn exact_matcher_tokens<'a>(event: &str, matcher: &'a str) -> Option<
     )
 }
 
-/// Every closed set this validator reads from the settings page, labelled.
-/// The measurement stamp digests exactly this list, so a value moved from one
-/// set to another changes the digest rather than hiding in a concatenation.
-pub const SPEC_SETS: &[(&str, &[&str])] = &[
-    ("default-mode-values", KNOWN_DEFAULT_MODE_VALUES),
-    ("skill-override-values", KNOWN_SKILL_OVERRIDE_VALUES),
-];
-
 #[derive(Default)]
 pub struct SettingsValidator;
 
@@ -887,7 +886,7 @@ impl SettingsValidator {
 
 #[cfg(test)]
 mod tests {
-    use super::{PERMISSION_TOPIC_KEYS, SANDBOX_TOPIC_KEYS, SCOPE_SPEC_SETS, ScopeClass};
+    use super::{PERMISSION_TOPIC_KEYS, SANDBOX_TOPIC_KEYS, SPEC_SETS, ScopeClass};
 
     /// A misspelled entry in either measured set would silently take the
     /// wrong arm — the narrow charset, or no MCP judgment at all — so both
@@ -917,7 +916,7 @@ mod tests {
         for class in ScopeClass::ALL {
             let label = format!("scope-{}", class.as_str());
             assert!(
-                SCOPE_SPEC_SETS
+                SPEC_SETS
                     .iter()
                     .any(|(set, keys)| *set == label && *keys == class.keys()),
                 "{label} is not stamped"

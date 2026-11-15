@@ -56,6 +56,25 @@ pub struct SpecSurface {
     pub name: &'static str,
     /// Documentation page the surface was read from.
     pub doc: &'static str,
+    /// Every closed set harnex mirrors from the page, labelled, as the owning
+    /// module declares them beside its constants. Empty for a page that lists
+    /// nothing harnex mirrors, whose date then speaks for its prose alone.
+    ///
+    /// That a *new* constant reaches its module's `SPEC_SETS` is
+    /// discipline-held. Two mechanisms could bind it and neither is worth its
+    /// price. A scan of this crate's own source is forbidden outright by
+    /// `keep-soften-cut` — a pattern match over source has a false-positive
+    /// floor, and `DANGEROUS_ALLOW_BASES` is a live instance of what it would
+    /// misread. Deriving each constant from its `SPEC_SETS` row instead works
+    /// and costs nothing at runtime, but it puts every vocabulary one hop from
+    /// its values — and the activity these constants exist for is a person
+    /// comparing them line by line against a documentation page. Taxing the
+    /// reading to defend the registration is the wrong trade, the more so
+    /// because an author can still write a bare constant and bypass it.
+    ///
+    /// So the declaration buys visibility, not enforcement: an omission shows
+    /// up in one place per module instead of only by reading every check.
+    pub vocabulary: &'static [(&'static str, &'static [&'static str])],
     /// ISO date this surface was last read whole — every fact harnex carries
     /// from it, the mirrored sets and the prose bullets in `spec-facts.md`
     /// alike. The digest can only vouch for what it hashes, so this date is
@@ -79,95 +98,71 @@ impl SpecSurface {
         Self {
             name: "hooks",
             doc: "/en/hooks",
+            vocabulary: settings::HOOK_SPEC_SETS,
             measured: "2026-08-30",
             digest: 0xb915_fac0_3e31_6d08,
         },
         Self {
             name: "skills",
             doc: "/en/skills",
+            vocabulary: skills::SPEC_SETS,
             measured: "2026-10-17",
             digest: 0x7eef_4d1d_783a_4980,
         },
         Self {
             name: "sub-agents",
             doc: "/en/sub-agents",
+            vocabulary: agents::SPEC_SETS,
             measured: "2026-10-17",
             digest: 0xf1ba7f17d41acf68,
         },
         Self {
             name: "output-styles",
             doc: "/en/output-styles",
+            vocabulary: output_styles::SPEC_SETS,
             measured: "2026-10-29",
             digest: 0x87fa_1462_4b13_6476,
         },
         Self {
             name: "settings",
             doc: "/en/settings",
-            measured: "2026-08-17",
-            digest: 0x4231_c059_baab_533a,
+            vocabulary: &[],
+            measured: "2026-11-15",
+            digest: 0xcbf2_9ce4_8422_2325,
         },
         Self {
             name: "settings-reference",
             doc: "/en/settings-reference",
+            vocabulary: settings::SPEC_SETS,
             measured: "2026-11-15",
-            digest: 0x2465_ddc5_5650_8847,
+            digest: 0x5980_7f55_d614_a895,
         },
         Self {
             name: "permissions",
             doc: "/en/permissions",
+            vocabulary: rule::SPEC_SETS,
             measured: "2026-08-26",
             digest: 0x64e6_167e_a93b_6289,
         },
         Self {
             name: "memory",
             doc: "/en/memory",
+            vocabulary: crate::always_loaded::SPEC_SETS,
             measured: "2026-09-28",
             digest: 0x0c8e_247a_dd0f_303f,
         },
         Self {
             name: "sandboxing",
             doc: "/en/sandboxing",
+            vocabulary: crate::guard::floor::sandbox::SPEC_SETS,
             measured: "2026-09-28",
             digest: 0x6978_6b65_76ee_ad2b,
         },
     ];
 
-    /// Every closed set this surface stamps, labelled, as the owning validator
-    /// declares them beside its constants.
-    ///
-    /// That a *new* constant reaches its module's `SPEC_SETS` is
-    /// discipline-held. Two mechanisms could bind it and neither is worth its
-    /// price. A scan of this crate's own source is forbidden outright by
-    /// `keep-soften-cut` — a pattern match over source has a false-positive
-    /// floor, and `DANGEROUS_ALLOW_BASES` is a live instance of what it would
-    /// misread. Deriving each constant from its `SPEC_SETS` row instead works
-    /// and costs nothing at runtime, but it puts every vocabulary one hop from
-    /// its values — and the activity these constants exist for is a person
-    /// comparing them line by line against a documentation page. Taxing the
-    /// reading to defend the registration is the wrong trade, the more so
-    /// because an author can still write a bare constant and bypass it.
-    ///
-    /// So the declaration buys visibility, not enforcement: an omission shows
-    /// up in one place per module instead of only by reading every check.
-    pub fn vocabulary(&self) -> &'static [(&'static str, &'static [&'static str])] {
-        const NONE: &[(&str, &[&str])] = &[];
-        match self.name {
-            "hooks" => settings::HOOK_SPEC_SETS,
-            "skills" => skills::SPEC_SETS,
-            "sub-agents" => agents::SPEC_SETS,
-            "output-styles" => output_styles::SPEC_SETS,
-            "settings" => settings::SPEC_SETS,
-            "settings-reference" => settings::SCOPE_SPEC_SETS,
-            "permissions" => rule::SPEC_SETS,
-            "memory" => crate::always_loaded::SPEC_SETS,
-            "sandboxing" => crate::guard::floor::sandbox::SPEC_SETS,
-            _ => NONE,
-        }
-    }
-
     /// Digest of the live vocabulary, for comparison against [`Self::digest`].
     pub fn live_digest(&self) -> u64 {
-        digest(self.vocabulary())
+        digest(self.vocabulary)
     }
 
     /// Whole days between the measurement and `today`. Negative when the
@@ -343,15 +338,9 @@ mod tests {
     }
 
     #[test]
-    fn every_surface_names_a_non_empty_vocabulary() {
+    fn no_stamped_set_is_empty() {
         for surface in SpecSurface::ALL {
-            assert!(
-                !surface.vocabulary().is_empty(),
-                "surface '{}' stamps nothing — its match arm is missing, and a digest over an \
-                 empty set would report fresh forever",
-                surface.name
-            );
-            for (label, values) in surface.vocabulary() {
+            for (label, values) in surface.vocabulary {
                 assert!(
                     !values.is_empty(),
                     "surface '{}' stamps an empty set '{label}'",
