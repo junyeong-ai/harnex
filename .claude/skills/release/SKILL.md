@@ -90,6 +90,13 @@ version (`shipped_pin_sync`). This repository's own
 `harnex check` reads it, which is what the audit job runs. Run both; neither
 alone covers every pin.
 
+The spec stamps ship too. A binary dates each one against the clock of the
+machine running it, so a stamp that passes `spec::MAX_AGE_DAYS` while this
+release is the newest puts `spec-stamp-stale` in every envelope of every
+project that installed it. Before the bump, re-read each surface in
+`SpecSurface::ALL` due to pass the window before the next release is likely,
+by `.claude/rules/spec.md`'s steps — the page whole, not its sets alone.
+
 Then: bump, commit, tag, push, and watch CI to completion. `gh run watch
 --exit-status` is the form that fails when the run does.
 
