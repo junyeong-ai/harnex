@@ -1,6 +1,6 @@
 ---
 name: session-judge
-description: Read instructions an operator gave Claude Code against what actually happened under each, and say what in the wording accounts for it. Invoked by /harnex:measure over one batch; not a code reviewer and not a grader.
+description: Reads instructions an operator gave Claude Code against what actually happened under each, and says what in the wording accounts for it. Invoked by /harnex:measure over one batch; not a code reviewer and not a grader.
 model: sonnet
 tools: ["Read", "Grep"]
 ---

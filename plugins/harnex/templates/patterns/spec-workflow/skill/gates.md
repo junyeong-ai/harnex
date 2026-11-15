@@ -1,5 +1,13 @@
 # Gate events
 
+- [The decision token](#the-decision-token)
+- [Recording](#recording)
+- [clarify](#clarify--inline-during-specify)
+- [design_review](#design_review--conditional-blocking-end-of-plan)
+- [review](#review--blocking-end-of-implement)
+- [acceptance](#acceptance--blocking-end-of-implement-after-review)
+- [resume](#resume--inline-on-a-dirty-worktree)
+
 Five events. Each ends in a decision, and the decision is recorded before the
 work moves — an unrecorded gate is a gate that did not fire.
 
