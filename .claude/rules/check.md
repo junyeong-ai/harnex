@@ -94,9 +94,11 @@ own tools resolve in.
 
 The memory set is the project memory files the runtime reads at launch
 (`always_loaded::memory_files` owns which), unconditionally, plus every
-nested `CLAUDE.md` the project owns — `harness-core::git` owns that set and
-why it is the project's ignore files and not the developer's. A walk would
-read the one a vendored package ships and resolve its paths here.
+nested `CLAUDE.md` the project owns, and each nested `AGENTS.md` where the
+project reads `AGENTS.md` and its directory holds no `CLAUDE.md` of its own —
+`harness-core::git` owns that set and why it is the project's ignore files
+and not the developer's. A walk would read the one a vendored package ships
+and resolve its paths here.
 `claudeMdExcludes` in `.claude/settings.json` is honored for every memory
 file — a `CLAUDE.md` and a rule — because one the runtime never loads makes no
 claim; it is read through `always_loaded::Excludes`, which matches the

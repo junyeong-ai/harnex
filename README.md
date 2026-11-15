@@ -380,7 +380,7 @@ patterns covered out of the box:
   selected output style, each skill, command and agent listing entry — read
   the way Claude Code loads them (`[validate.always_loaded] max_chars`)
 - A path-scoped rule longer, as Claude Code counts the text it loads, than
-  the 40,000 characters a 200K-token session delivers whole
+  a 200K-token session delivers whole
 - Hook wiring integrity (`harnex audit --plugin-root`) — every
   `${CLAUDE_PROJECT_DIR}` path a hook names that is a scaffold destination
   resolves and the script it spawns directly is executable, so a generated
