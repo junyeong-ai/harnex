@@ -21,7 +21,10 @@
 //! Claude Code reads its own: a linked worktree's `.git` is a pointer, and
 //! following it to `commondir` is what keeps the hook and the engine looking
 //! at one file. A worktree-local copy would otherwise honour a grant the
-//! canonical file had already revoked.
+//! canonical file had already revoked. Where /en/settings keeps the file
+//! beside `.claude/settings.json` instead — Windows, a root that is the home
+//! directory, a root or `.git` or `.claude` not the user's — a session
+//! started below the root reads another file, and this one stays authoritative.
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};

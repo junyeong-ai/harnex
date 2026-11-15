@@ -147,8 +147,10 @@ already contradicted both a page and the binary's own schema.
 
 ## Settings (/en/settings)
 
-- **Precedence (high→low):** managed → CLI args → local (.claude/settings.local.json)
-  → project (.claude/settings.json) → user (~/.claude/settings.json).
+- **Precedence (high→low):** managed → `--settings` → local
+  (.claude/settings.local.json) → project (.claude/settings.json) → user
+  (~/.claude/settings.json). Other flags and environment variables are not
+  levels; each key's reference entry says which of them overrides it.
 - **A settings `env` block hot-reloads into the running session** — a value
   added mid-session reaches the spawned process's environment on the next
   tool call (measured at 2.1.220). A gate that treats a settings entry as an
@@ -164,11 +166,16 @@ already contradicted both a page and the binary's own schema.
   remotely served value, so an operator who has not written the entry has no
   bound they can name. Prose asking an agent to delegate sparingly is not one
   either; it is the advisory tier, and this is the enforced one.
-- **A session whose cwd is a linked git worktree resolves project/local
-  settings from the MAIN checkout**, following `.git` → `commondir`
+- **`.claude/settings.local.json` is read at the repository root, and a
+  linked worktree's at the MAIN checkout's**, following `.git` → `commondir`
   (measured at 2.1.220: a worktree session applied the main checkout's `env`
-  marker, not the worktree's own). `guard::floor`'s canonical-root resolution
-  mirrors this so hook and engine read the same file.
+  marker, not the worktree's own); `.claude/settings.json` is read from the
+  session's primary working directory. The local file stays beside
+  `.claude/settings.json` instead on Windows, at a root that is the home
+  directory, and where the root or its `.git` or `.claude` is not the user's.
+  `guard::floor`'s canonical-root resolution mirrors the root rule and not
+  those cases, so in them a session started below the root or in a linked
+  worktree has hook and engine reading different files.
 - **The Bash sandbox is the only layer that bounds what a shell command
   writes** (/en/sandboxing). `sandbox.filesystem.denyWrite` is enforced by the
   OS on every process a sandboxed Bash, PowerShell or Monitor command starts;
@@ -218,8 +225,9 @@ already contradicted both a page and the binary's own schema.
   an invalid Edit to `.claude/settings.json` is rejected by the schema layer
   with no PreToolUse hook consulted; a schema-valid one reaches the hooks
   (measured at 2.1.220).
-- **Permissions evaluate deny > ask > allow, first-match-wins. Arrays MERGE
-  (concat + dedupe) across scopes — they do not override.** An `allow` cannot
+- **Permissions evaluate deny > ask > allow, first-match-wins. Lists MERGE
+  across files — they do not override** (`fallbackModel`, `modelPicker`,
+  `availableModels` and `modelSettings` follow their own rules). An `allow` cannot
   loosen a higher-scope `deny`. With no matching rule, `default` mode PROMPTS
   (asks) — it is not a hard-deny; hard-deny is the opt-in `dontAsk` mode.
 - **Which settings file a key takes effect from** is the Scope column of
@@ -302,15 +310,17 @@ already contradicted both a page and the binary's own schema.
   cwd-relative; `/path` = project-root; `//path` = filesystem-absolute; `~/path`
   = home. A bare filename matches at any depth — `Read(.env)` ≡ `Read(**/.env)`,
   so the `**/` mirror is redundant. `*` = one path segment, `**` = recursive.
-- **`skillOverrides` values:** `on` | `name-only` | `user-invocable-only` |
-  `off` (absent = `on`). `autoMemoryEnabled`: bool, default true.
+- **`skillOverrides` values** are `validate::KNOWN_SKILL_OVERRIDE_VALUES`, and
+  an absent entry is `on` (/en/settings-reference). `autoMemoryEnabled`: bool,
+  default true.
 - Managed-scope enforcement: two distinct tiers, do not conflate.
-  *Managed-ONLY floors* (only the managed value is honored):
-  `allowManagedPermissionRulesOnly`, `allowManagedHooksOnly`,
-  `strictPluginOnlyCustomization`. *Strongest-from-managed* (settable at other
-  scopes too, but managed wins / cannot be overridden there):
-  `disableAllHooks`, `disableSkillShellExecution`, `sandbox` (per-subkey).
-  `claudeMd` is managed-only memory content, not an enforcement floor.
+  *Managed-ONLY floors* are the Scope column's `Managed` class
+  (`validate::ScopeClass::Managed`), `allowManagedPermissionRulesOnly`,
+  `allowManagedHooksOnly` and `strictPluginOnlyCustomization` among them.
+  *Strongest-from-managed* keys are `Any file`, such as `disableAllHooks` and
+  `disableSkillShellExecution`: settable at every scope, and a managed value
+  wins by precedence. `claudeMd` is managed-only memory content, not an
+  enforcement floor.
 
 ## Skills (/en/skills)
 
