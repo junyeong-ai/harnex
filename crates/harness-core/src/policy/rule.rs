@@ -34,11 +34,9 @@
 /// because `Edit(path)` already covers every built-in tool that edits files.
 pub const COVERED_BY_EDIT_RULES: &[&str] = &["MultiEdit", "NotebookEdit", "Write"];
 
-/// File-reading tools whose path rules the permission checks never consult,
-/// because `Read(path)` already covers them. A `Glob` rule passed in
-/// `--allowedTools` is the documented exception and never reaches a settings
-/// file, which is the only surface this crate reads.
-pub const COVERED_BY_READ_RULES: &[&str] = &["Glob"];
+/// File-searching tools whose path rules the permission checks never consult,
+/// because `Read(path)` already covers them.
+pub const COVERED_BY_READ_RULES: &[&str] = &["Glob", "Grep"];
 
 /// Each tool's primary content field, `Tool:field`. `Tool(param:value)`
 /// matching refuses exactly these — a content match is bypassable by a
@@ -291,16 +289,20 @@ impl<'a> PermissionRule<'a> {
         let Some(specifier) = self.specifier else {
             return RuleEffect::Consulted;
         };
-        if let Some(consulted) = self.consulted_file_tool() {
-            return RuleEffect::Inert(InertRule {
-                reason: InertReason::UnconsultedFileTool { consulted },
-                rewrite_as: Some(format!("{consulted}({specifier})")),
-            });
-        }
         if let Some(field) = self.primary_content_field(specifier) {
             return RuleEffect::Inert(InertRule {
                 reason: InertReason::PrimaryContentField { field },
                 rewrite_as: None,
+            });
+        }
+        // A deny or an ask rule on another of the tool's parameters is read
+        // on any built-in tool, a file tool too; only a path is not.
+        if let Some(consulted) = self.consulted_file_tool()
+            && parameter(specifier).is_none()
+        {
+            return RuleEffect::Inert(InertRule {
+                reason: InertReason::UnconsultedFileTool { consulted },
+                rewrite_as: Some(format!("{consulted}({specifier})")),
             });
         }
         RuleEffect::Consulted
@@ -369,7 +371,7 @@ impl<'a> PermissionRule<'a> {
     }
 
     fn primary_content_field(&self, specifier: &str) -> Option<&'static str> {
-        let named = specifier.split_once(':')?.0.trim();
+        let named = parameter(specifier)?;
         PRIMARY_CONTENT_FIELDS
             .iter()
             .copied()
@@ -377,6 +379,20 @@ impl<'a> PermissionRule<'a> {
             .find(|(tool, field)| *tool == self.tool && *field == named)
             .map(|(_, field)| field)
     }
+}
+
+/// The input parameter a `Tool(param:value)` specifier names: the text before
+/// its first `:`, trimmed, where that reads as a field name — letters, digits,
+/// `_` and `-`, as in Grep's `-i`. A path names none. A path that happens to
+/// read as one is taken for a parameter, which can only leave an inert rule
+/// unreported.
+fn parameter(specifier: &str) -> Option<&str> {
+    let name = specifier.split_once(':')?.0.trim();
+    (!name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')))
+    .then_some(name)
 }
 
 #[cfg(test)]
@@ -429,6 +445,11 @@ mod tests {
 
     #[test]
     fn a_path_rule_for_an_unconsulted_file_tool_is_inert() {
+        // The page's own example: a `Grep(docs/**)` deny does not stop Grep.
+        assert_eq!(
+            inert("Grep(docs/**)").rewrite_as.as_deref(),
+            Some("Read(docs/**)")
+        );
         for tool in COVERED_BY_EDIT_RULES {
             let rule = format!("{tool}(/secrets/**)");
             assert_eq!(
@@ -469,6 +490,9 @@ mod tests {
             "Read(file_path:.env)",
             "Edit(file_path:.env)",
             "Grep(path:src)",
+            "Write(file_path:.env)",
+            "Glob(path:src)",
+            "NotebookEdit(notebook_path:a.ipynb)",
             "PowerShell(command:Remove-Item *)",
             "WebFetch(url:https://example.com)",
         ] {
@@ -492,6 +516,10 @@ mod tests {
             "Agent(isolation:worktree)",
             "Bash(run_in_background:true)",
             "WebFetch(domain:github.com)",
+            "Write(content:*PRIVATE KEY*)",
+            "Grep(pattern:password)",
+            "Glob(pattern:*.pem)",
+            "Grep(-i:true)",
         ] {
             assert_eq!(effect(rule), RuleEffect::Consulted, "{rule}");
         }

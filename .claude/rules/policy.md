@@ -49,8 +49,8 @@ whether a permission check reads a rule, and `PermissionRule::misleading`
 whether its reach differs from its reading (the legacy `:*` suffix; a tail
 after a wildcard on the allow side) — never match on the rule string.
 Bash uses space-then-`*` (`Bash(cmd *)`); never grant built-in read-only
-commands (no-op); a Read deny already covers `cat`/`head`/`tail`/`sed`, so
-emit no `Bash(cat …)` mirror.
+commands (their plain forms already run unprompted); a Read deny already
+covers `cat`/`head`/`tail`/`sed`, so emit no `Bash(cat …)` mirror.
 
 A rule Claude Code accepts and never consults is refused at every boundary
 one can be written: `every_profile_rule_is_consulted` for a profile,
