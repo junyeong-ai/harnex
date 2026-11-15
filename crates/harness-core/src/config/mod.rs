@@ -1597,6 +1597,7 @@ mod tests {
             [policy.permissions]
             profiles = ["baseline"]
             extra_deny = ["Edit(/vault/**)", "Bash(terraform apply *)", "Agent(model:opus)", "Bash(find * -delete)", "Glob(pattern:*.pem)"]
+            extra_ask = ["Grep(pattern:password)"]
             extra_allow = ["Bash(pnpm gate *)", "Write"]
         "#;
         parse(src).unwrap();
