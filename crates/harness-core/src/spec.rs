@@ -141,8 +141,8 @@ impl SpecSurface {
             name: "permissions",
             doc: "/en/permissions",
             vocabulary: rule::SPEC_SETS,
-            measured: "2026-08-26",
-            digest: 0x64e6_167e_a93b_6289,
+            measured: "2026-11-15",
+            digest: 0x18f8_5df8_6f02_6eba,
         },
         Self {
             name: "memory",

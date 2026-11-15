@@ -269,14 +269,20 @@ already contradicted both a page and the binary's own schema.
   the tool and has no PowerShell arm, so widening the matcher alone would
   print a skip notice on every PowerShell call rather than judge it — the
   mirror is the command-line reader, not the matcher.
-- **Read-only built-ins never prompt** (`ls cat echo pwd head tail grep find wc
-  which diff stat du cd` + read-only `git`): an allow rule for them is a no-op —
-  never emit one. To force a prompt, add an `ask`/`deny` rule.
+- **Read-only built-ins run without a prompt in every mode** (`ls cat echo pwd
+  head tail grep find wc which diff stat du cd` + read-only `git`), the set
+  fixed. In Manual mode some forms still prompt — an unquoted glob on a command
+  with write-capable flags such as `find` or `sed` among them — and
+  `permissions.blockReadsOutsideWorkingDirectories` changes paths outside the
+  working directories. An allow rule adds nothing to the plain forms — never
+  emit one. To force a prompt, add an `ask`/`deny` rule.
 - **File permission checks consult `Read(path)` and `Edit(path)` only**, and
   `Edit` covers every built-in tool that edits files. A path rule written for
   any tool below is accepted, merges across scopes, and is never read — it
-  reads as a floor and enforces nothing, and Claude Code warns at startup
-  (`… is not matched by file permission checks`). Canonical SSoT is
+  reads as a floor and enforces nothing. Claude Code warns at startup
+  (`… is not matched by file permission checks`) for each but `Grep` (2.1.325,
+  read from the CLI). A deny or ask `Tool(param:value)` rule on one of them
+  names a parameter, not a path, and is read. Canonical SSoT is
   `crates/harness-core/src/policy/rule.rs`; the mirrors below are held in sync
   by the `spec_facts_*` integration tests, and both `harnex validate settings`
   and `harness.toml` load reject such a rule where it is written.
@@ -286,10 +292,10 @@ already contradicted both a page and the binary's own schema.
   <!-- harnex-managed:end spec-facts-covered-by-edit-rules -->
   Path rules `Read(...)` owns:
   <!-- harnex-managed:start spec-facts-covered-by-read-rules -->
-  Glob.
+  Glob, Grep.
   <!-- harnex-managed:end spec-facts-covered-by-read-rules -->
   A bare tool-name rule with no path (`"Write"`) is a tool-level rule, matches
-  everywhere, and is never warned about — `Tool(*)` is the same rule. A `Read`
+  everywhere, and is never warned about (2.1.325) — `Tool(*)` is the same rule. A `Read`
   deny also blocks Edit and Write on that path, but NOT NotebookEdit, so a
   path no tool may change needs the `Edit` deny in its own right.
 - **`Tool(param:value)` matches one top-level input parameter** on a deny/ask
@@ -303,12 +309,14 @@ already contradicted both a page and the binary's own schema.
   NotebookEdit:notebook_path, PowerShell:command, Read:file_path,
   WebFetch:url, Write:file_path.
   <!-- harnex-managed:end spec-facts-primary-content-fields -->
-- **Read/Edit denies extend to Bash file commands** `cat`/`head`/`tail`/`sed`,
-  so `Read(.env)` deny already blocks `cat .env` — no `Bash(cat …)` mirror
-  needed. They do NOT reach arbitrary subprocesses (a Python/Node script).
+- **Read/Edit denies extend to Bash file commands** `cat`/`head`/`tail`/`sed`/`tee`
+  and to redirection targets, so `Read(.env)` deny already blocks `cat .env` —
+  no `Bash(cat …)` mirror needed. They do NOT reach arbitrary subprocesses (a Python/Node script).
 - **Read/Edit path anchors (gitignore semantics):** bare `path` or `./path` =
-  cwd-relative; `/path` = project-root; `//path` = filesystem-absolute; `~/path`
-  = home. A bare filename matches at any depth — `Read(.env)` ≡ `Read(**/.env)`,
+  cwd-relative; `/path` = the settings source's directory — the primary working
+  directory for project and local settings, `~/.claude` for user settings, the
+  file's own directory for `--settings`; `//path` = filesystem-absolute;
+  `~/path` = home. A bare filename matches at any depth — `Read(.env)` ≡ `Read(**/.env)`,
   so the `**/` mirror is redundant. `*` = one path segment, `**` = recursive.
 - **`skillOverrides` values** are `validate::KNOWN_SKILL_OVERRIDE_VALUES`, and
   an absent entry is `on` (/en/settings-reference). `autoMemoryEnabled`: bool,
