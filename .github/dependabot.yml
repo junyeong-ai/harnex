@@ -2,12 +2,16 @@ version: 2
 
 # Grouped into one pull request per ecosystem per week. CI is the gate that
 # says whether an update is safe, and it runs `--locked`, so a grouped bump
-# either passes as a set or is rejected as one.
+# either passes as a set or is rejected as one. Each ecosystem waits one day
+# after a release before proposing it; zizmor.yml records how far its audit
+# holds that day.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
     groups:
       actions:
         patterns: ["*"]
@@ -16,6 +20,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
     groups:
       cargo:
         patterns: ["*"]
@@ -24,6 +30,8 @@ updates:
     directory: /crates/harness-cli/tests/ask-page
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
     groups:
       browser-tests:
         patterns: ["*"]

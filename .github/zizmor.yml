@@ -1,5 +1,10 @@
 rules:
-  # Updates are taken as soon as they are released; CI is the gate each one
-  # passes, so a cooldown would only delay fixes.
+  # dependabot.yml holds every ecosystem one day after a release, so a version
+  # withdrawn within hours of publishing never reaches a pull request while a
+  # fix still lands the next day. The audit's own floor is seven days; this
+  # sets it to that one day. At this floor zizmor 1.32.0 reports neither a
+  # missing cooldown nor a zero-day one, so the day itself is held by review
+  # of dependabot.yml, not by this audit.
   dependabot-cooldown:
-    disable: true
+    config:
+      days: 1
