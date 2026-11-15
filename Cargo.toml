@@ -8,7 +8,7 @@ edition = "2024"
 # The floor is the toolchain `rust-toolchain.toml` pins. The binary ships
 # prebuilt, so a lower floor would only promise source builds a compiler no
 # gate runs; `release_install_sync` holds the two to one version.
-rust-version = "1.99.1"
+rust-version = "1.100.0"
 license = "MIT"
 repository = "https://github.com/junyeong-ai/harnex"
 
