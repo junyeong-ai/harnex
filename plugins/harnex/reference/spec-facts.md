@@ -72,9 +72,10 @@ already contradicted both a page and the binary's own schema.
   exit = non-blocking error whose notice carries the first line of stderr —
   but schema-valid JSON on stdout makes it a success the fields alone decide,
   and a handler with `onFailure: "block"` does what exit 2 does instead. Some
-  events keep rules of their own (WorktreeCreate and WorktreeRemove fail on
-  any non-zero exit; Elicitation applies its output only on exit 0); the page's
-  per-event table, not this summary, says what an exit does on an event.
+  events keep rules of their own (WorktreeCreate fails on any non-zero exit,
+  and WorktreeRemove does where the directory still exists afterward;
+  Elicitation and ElicitationResult apply their output only on exit 0); the
+  page's per-event rules, not this summary, say what an exit does on an event.
 - **Stop / SubagentStop exit 2 FORCES continuation** (prevents stopping → a
   re-stop loop), except with stdout empty and a stderr saying a file is
   missing, which is a non-blocking error. A Stop-class wrapper that only wants to surface findings must
@@ -135,7 +136,7 @@ already contradicted both a page and the binary's own schema.
   `onFailure` (2.1.295+) — `"block"` makes a hook that fails or times out do
   what exit 2 does on its event (deny, on PermissionRequest) instead of
   letting the action through, and does nothing on Stop, SubagentStop,
-  TaskCompleted, TeammateIdle or an `async` hook.
+  TaskCompleted, TeammateIdle or an `async` or `asyncRewake` hook.
 - **stdin** carries session_id, prompt_id (2.1.196+), transcript_path,
   scratchpad_dir (2.1.257+), cwd, permission_mode, hook_event_name, effort
   (PreToolUse adds tool_name, tool_input, tool_use_id). Inside subagents: also

@@ -1227,7 +1227,7 @@ fn settings_validator_flags_a_rule_no_permission_check_consults() {
     let json = r#"{
         "permissions": {
             "allow": ["Glob(src/**)", "Write(content:*)"],
-            "ask": ["NotebookEdit(notebooks/**)"],
+            "ask": ["NotebookEdit(notebooks/**)", "Grep(pattern:password)"],
             "deny": ["Write(*.pem)", "Edit(*.pem)", "Bash(command:rm -rf *)", "Write(content:*KEY*)"]
         }
     }"#;
