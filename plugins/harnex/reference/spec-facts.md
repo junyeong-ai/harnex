@@ -246,9 +246,9 @@ already contradicted both a page and the binary's own schema.
   /en/settings-reference. A key scoped to managed or user settings, or to
   `~/.claude.json`, is ignored in `.claude/settings.json`, apart from the few a
   repository file can still switch off, whose Scope line says so; so are
-  `permissions.defaultMode` `auto` and `bypassPermissions` and a
-  `sandbox.credentials` `mask` entry, which take effect only from user or
-  managed settings. `harnex validate settings` holds the column
+  `permissions.defaultMode` `auto` and `bypassPermissions`, a
+  `sandbox.credentials` `mask` entry and a `remoteControlAtStartup` `true`,
+  which take effect only from user or managed settings. `harnex validate settings` holds the column
   (`validate::ScopeClass`), and a generated `.claude/settings.json` passes it.
 - **Pattern syntax:** `Bash(npm run *)`, `Read(.env)`, `Read(./secrets/**)`,
   `Edit(...)`, `PowerShell(Get-ChildItem *)`, `WebFetch(domain:github.com)`,

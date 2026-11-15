@@ -195,12 +195,18 @@ pub const USER_OR_MANAGED_MASK_ENTRIES: &[&str] =
     &["sandbox.credentials.files", "sandbox.credentials.envVars"];
 
 /// Scoped keys a project or local file still switches off: the reference's
-/// Scope line for each says a `false` there applies, and no other value does.
+/// Scope line for each says a repository file can turn the feature off and
+/// never on — a `false` there applies, and for `autoContinueAtUsageLimit` any
+/// value does, as off.
 pub const REPOSITORY_OFF_SWITCHES: &[&str] = &[
     "autoContinueAtUsageLimit",
     "bashEditDiffEnabled",
     "sandbox.allowNestedUserNamespaces",
 ];
+
+/// Keys read from any file whose `true` takes effect only from user or managed
+/// settings: a repository can turn the feature off and never on.
+pub const USER_OR_MANAGED_TRUE_KEYS: &[&str] = &["remoteControlAtStartup"];
 
 /// Every closed set this validator reads from the settings reference,
 /// labelled. The measurement stamp digests exactly this list, so a value moved
@@ -225,6 +231,7 @@ pub const SPEC_SETS: &[(&str, &[&str])] = &[
     ),
     ("mask-entries-user-or-managed", USER_OR_MANAGED_MASK_ENTRIES),
     ("repository-off-switches", REPOSITORY_OFF_SWITCHES),
+    ("true-user-or-managed", USER_OR_MANAGED_TRUE_KEYS),
 ];
 
 wire_enum! {
@@ -358,7 +365,7 @@ fn ignored_keys(parsed: &Value, path: &Path, scope: SettingsScope) -> Vec<Findin
         }
         reported.push(key);
         let effect = if off_switch {
-            "only a `false` applies"
+            "it can only turn the feature off"
         } else {
             "it is ignored"
         };
@@ -382,12 +389,18 @@ fn ignored_keys(parsed: &Value, path: &Path, scope: SettingsScope) -> Vec<Findin
 }
 
 /// A finding for a value that takes effect only from user or managed
-/// settings. Each value the reference restricts so — a permission mode, a
-/// masked credential — decides what a session may do, so each gates.
-fn ignored_value(path: &Path, scope: SettingsScope, what: &str, hint: &str) -> Finding {
+/// settings, at `severity`: Major for a permission mode or a masked
+/// credential, which decide what a session may do, and Minor for a preference.
+fn ignored_value(
+    path: &Path,
+    scope: SettingsScope,
+    what: &str,
+    hint: &str,
+    severity: Severity,
+) -> Finding {
     Finding {
         slug: "settings-ignored-value".into(),
-        severity: Severity::Major,
+        severity,
         location: Location::file(path.to_path_buf()),
         message: format!(
             "{what} takes effect only from {}; in this {} settings file it is ignored",
@@ -728,6 +741,7 @@ impl SettingsValidator {
                             &format!("permissions.defaultMode \"{s}\""),
                             "set it in ~/.claude/settings.json or managed settings, or pass \
                              --permission-mode for one session",
+                            Severity::Major,
                         ));
                     }
                 }
@@ -776,6 +790,19 @@ impl SettingsValidator {
                         &format!("a \"mask\" entry in {array}"),
                         "move the entry to ~/.claude/settings.json or managed settings; from \
                          this file only a \"deny\" entry protects the credential",
+                        Severity::Major,
+                    ));
+                }
+            }
+            for key in USER_OR_MANAGED_TRUE_KEYS {
+                if lookup(&parsed, key) == Some(&Value::Bool(true)) {
+                    findings.push(ignored_value(
+                        path,
+                        scope,
+                        &format!("'{key}': true"),
+                        "set it in ~/.claude/settings.json or managed settings; from this file \
+                         only a `false` takes effect",
+                        Severity::Minor,
                     ));
                 }
             }

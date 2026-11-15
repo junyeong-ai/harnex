@@ -135,7 +135,7 @@ impl SpecSurface {
             doc: "/en/settings-reference",
             vocabulary: settings::SPEC_SETS,
             measured: "2026-11-15",
-            digest: 0x5980_7f55_d614_a895,
+            digest: 0x6f13_f706_9da8_5342,
         },
         Self {
             name: "permissions",
