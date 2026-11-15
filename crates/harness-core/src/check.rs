@@ -207,7 +207,8 @@ impl<'a> ProjectChecker<'a> {
     }
 
     /// Every nested memory file the project owns: each `CLAUDE.md`, and each
-    /// `AGENTS.md` where the project reads `AGENTS.md` at all.
+    /// `AGENTS.md` where the project reads `AGENTS.md` at all and its
+    /// directory holds no `CLAUDE.md` of its own, which loads in its place.
     ///
     /// Claude Code loads a nested memory file when work happens under its
     /// directory, so its claims are as live as the root's — but a walk over
@@ -216,17 +217,39 @@ impl<'a> ProjectChecker<'a> {
     /// about a file nobody here wrote. Which files are the project's own is
     /// `git::owned_files`' answer.
     fn nested_memory_files(&self) -> Result<Vec<PathBuf>> {
+        use crate::always_loaded::{AGENTS_MEMORY_NAMES, CLAUDE_MEMORY_NAMES};
         let reads_agents_md = crate::always_loaded::reads_agents_md(
             &crate::always_loaded::levels(self.working_dir),
-            crate::always_loaded::CLAUDE_MEMORY_NAMES,
+            CLAUDE_MEMORY_NAMES,
         );
         let patterns: &[&str] = if reads_agents_md {
             &[":(glob)**/CLAUDE.md", ":(glob)**/AGENTS.md"]
         } else {
             &[":(glob)**/CLAUDE.md"]
         };
-        git::owned_files(self.working_dir, patterns)
-            .map_err(|git::Failure(message)| Error::CheckGitFailure { message })
+        let owned = git::owned_files(self.working_dir, patterns)
+            .map_err(|git::Failure(message)| Error::CheckGitFailure { message })?;
+        let listed: HashSet<&Path> = owned.iter().map(PathBuf::as_path).collect();
+        let shadowed = |path: &Path| {
+            AGENTS_MEMORY_NAMES.iter().any(|name| {
+                let name = Path::new(name);
+                path.ends_with(name)
+                    && path
+                        .ancestors()
+                        .nth(name.components().count())
+                        .is_some_and(|dir| {
+                            CLAUDE_MEMORY_NAMES
+                                .iter()
+                                .any(|claude| listed.contains(dir.join(claude).as_path()))
+                        })
+            })
+        };
+        let kept = owned
+            .iter()
+            .filter(|path| !shadowed(path))
+            .cloned()
+            .collect();
+        Ok(kept)
     }
 
     fn passes_filter(&self, path: &Path, changed: &Option<HashSet<PathBuf>>) -> bool {

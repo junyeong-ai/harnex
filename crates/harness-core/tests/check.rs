@@ -1035,11 +1035,25 @@ fn an_agents_md_is_read_where_the_runtime_reads_it() {
         &tmp.path().join("pkg/AGENTS.md"),
         "Owner: [file: no/such/nested.rs:1].\n",
     );
+    // A directory holding a CLAUDE file of its own loads that in place of
+    // its `AGENTS.md`, under either name.
+    for (dir, claude) in [("lib", "CLAUDE.md"), ("tool", ".claude/CLAUDE.md")] {
+        write(
+            &tmp.path().join(dir).join(claude),
+            &format!("Owner: [file: no/such/{dir}.rs:1].\n"),
+        );
+        for agents in ["AGENTS.md", ".claude/AGENTS.md"] {
+            write(
+                &tmp.path().join(dir).join(agents),
+                "Owner: [file: no/such/shadowed.rs:1].\n",
+            );
+        }
+    }
     let cfg = Config::load_from(&tmp.path().join("harness.toml")).unwrap();
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
     assert_eq!(
         cited(&outcome),
-        ["agents.rs", "nested.rs"],
+        ["agents.rs", "lib.rs", "nested.rs", "tool.rs"],
         "{:#?}",
         outcome.findings
     );
@@ -1049,7 +1063,12 @@ fn an_agents_md_is_read_where_the_runtime_reads_it() {
         "Owner: [file: no/such/root.rs:1].\n",
     );
     let outcome = ProjectChecker::new(&cfg, tmp.path()).run().unwrap();
-    assert_eq!(cited(&outcome), ["root.rs"], "{:#?}", outcome.findings);
+    assert_eq!(
+        cited(&outcome),
+        ["lib.rs", "root.rs", "tool.rs"],
+        "{:#?}",
+        outcome.findings
+    );
 }
 
 #[test]

@@ -377,7 +377,9 @@ already contradicted both a page and the binary's own schema.
   (`CLAUDE.local.md`). Within the project tree it walks ancestors from cwd
   upward and orders them root→cwd (so the deepest, closest file is read last);
   within each directory `CLAUDE.local.md` is appended after `CLAUDE.md`.
-  Subdir CLAUDE.md (below cwd) loads lazily when Claude reads files there.
+  Subdir CLAUDE.md (below cwd) loads lazily when Claude reads files there,
+  and so does its `AGENTS.md` where the session reads `AGENTS.md` and that
+  directory holds no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`.
 - **The rest of the harness walks up too** (2.1.284, from the request sent): a
   session in a subdirectory reads the rules, skills, commands, agents and
   output styles of each directory above it up to the repository root — rules,
@@ -398,7 +400,8 @@ already contradicted both a page and the binary's own schema.
   `max(40000, window × 0.05 × characters per token)` UTF-16 units of trimmed
   text — 40,000 at a 200K-token window, 150,000 at 1M on current models —
   Claude gets the start and a note to Read the rest. Files loaded at launch
-  are not cut. `harnex validate rules` reports a path-scoped rule past 40,000.
+  are not cut. `harnex validate rules` reports a path-scoped rule past the
+  200K cut, `validate::rules::ON_DEMAND_CUT`.
 - **Path-scoped rules:** `.claude/rules/**/*.md`; with `paths:` frontmatter (glob,
   brace expansion) they load only on matching files; without `paths:` they load
   every session. So does a `paths:` whose globs, each with a trailing `/**`
