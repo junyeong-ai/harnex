@@ -110,7 +110,7 @@ impl SpecSurface {
             name: "settings-reference",
             doc: "/en/settings-reference",
             measured: "2026-11-15",
-            digest: 0x5dd4_bb1d_eb42_d42f,
+            digest: 0x2465_ddc5_5650_8847,
         },
         Self {
             name: "permissions",

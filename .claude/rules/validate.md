@@ -169,10 +169,12 @@ Settings validator:
   (Major).
 - A key or value the file's scope does not take effect from raises
   `settings-ignored-key` or `settings-ignored-value`. `ScopeClass` owns the
-  Scope column of /en/settings-reference, one stamped set per class. The key
-  gates (Major) where it withholds a protection — a managed policy, or a key
-  the reference files under Permission or Sandbox settings — and is Minor where
-  it sets a preference. Judge only a restriction the reference states
+  Scope column of /en/settings-reference, one stamped set per class, and a
+  `false` in a `REPOSITORY_OFF_SWITCHES` key applies from any file, as that
+  key's Scope line says. The key gates (Major) where it decides what a session
+  may do — a managed policy, or a key the reference files under Permission or
+  Sandbox settings, read as a protection or a permission alike — and is Minor
+  where it sets a preference. Judge only a restriction the reference states
   unconditionally: a limit that holds under an admin-required sandbox turns on
   managed state no repository shows.
 - `skillOverrides` values must be in `KNOWN_SKILL_OVERRIDE_VALUES` (Major).

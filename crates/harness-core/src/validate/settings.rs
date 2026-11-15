@@ -192,6 +192,14 @@ pub const USER_OR_MANAGED_DEFAULT_MODES: &[&str] = &["auto", "bypassPermissions"
 pub const USER_OR_MANAGED_MASK_ENTRIES: &[&str] =
     &["sandbox.credentials.files", "sandbox.credentials.envVars"];
 
+/// Scoped keys a project or local file still switches off: the reference's
+/// Scope line for each says a `false` there applies, and no other value does.
+pub const REPOSITORY_OFF_SWITCHES: &[&str] = &[
+    "autoContinueAtUsageLimit",
+    "bashEditDiffEnabled",
+    "sandbox.allowNestedUserNamespaces",
+];
+
 /// Every closed set read from the settings reference, labelled.
 pub const SCOPE_SPEC_SETS: &[(&str, &[&str])] = &[
     ("scope-managed", MANAGED_SCOPE_KEYS),
@@ -209,6 +217,7 @@ pub const SCOPE_SPEC_SETS: &[(&str, &[&str])] = &[
         USER_OR_MANAGED_DEFAULT_MODES,
     ),
     ("mask-entries-user-or-managed", USER_OR_MANAGED_MASK_ENTRIES),
+    ("repository-off-switches", REPOSITORY_OFF_SWITCHES),
 ];
 
 wire_enum! {
@@ -295,12 +304,12 @@ impl ScopeClass {
     }
 }
 
-/// Whether a key that takes effect elsewhere costs the file a protection it
-/// appears to hold: an organization policy, or a key the reference files
-/// under Permission or Sandbox settings. Any other such key sets a
-/// preference, and its absence changes how a session looks, not what it may
-/// do.
-fn withholds_protection(key: &str, class: ScopeClass) -> bool {
+/// Whether a key that takes effect elsewhere leaves the file stating what a
+/// session may do that it does not: an organization policy, or a key the
+/// reference files under Permission or Sandbox settings, whether it reads as a
+/// protection or as a permission. Any other such key sets a preference, and
+/// its absence changes how a session looks, not what it may do.
+fn governs_access(key: &str, class: ScopeClass) -> bool {
     class == ScopeClass::Managed
         || PERMISSION_TOPIC_KEYS.contains(&key)
         || SANDBOX_TOPIC_KEYS.contains(&key)
@@ -314,7 +323,8 @@ fn lookup<'a>(value: &'a Value, dotted: &str) -> Option<&'a Value> {
 }
 
 /// A finding for each key the file sets that takes effect only from other
-/// files. A key under one already reported is not reported again.
+/// files, unless it switches off a [`REPOSITORY_OFF_SWITCHES`] key. A key
+/// under one already reported is not reported again.
 fn ignored_keys(parsed: &Value, path: &Path, scope: SettingsScope) -> Vec<Finding> {
     let mut scoped: Vec<(&str, ScopeClass)> = ScopeClass::ALL
         .iter()
@@ -329,20 +339,32 @@ fn ignored_keys(parsed: &Value, path: &Path, scope: SettingsScope) -> Vec<Findin
             key.strip_prefix(parent)
                 .is_some_and(|rest| rest.starts_with('.'))
         });
-        if under_reported || lookup(parsed, key).is_none() {
+        if under_reported {
+            continue;
+        }
+        let Some(value) = lookup(parsed, key) else {
+            continue;
+        };
+        let off_switch = REPOSITORY_OFF_SWITCHES.contains(&key);
+        if off_switch && *value == Value::Bool(false) {
             continue;
         }
         reported.push(key);
+        let effect = if off_switch {
+            "only a `false` applies"
+        } else {
+            "it is ignored"
+        };
         findings.push(Finding {
             slug: "settings-ignored-key".into(),
-            severity: if withholds_protection(key, class) {
+            severity: if governs_access(key, class) {
                 Severity::Major
             } else {
                 Severity::Minor
             },
             location: Location::file(path.to_path_buf()),
             message: format!(
-                "'{key}' takes effect only from {}; in this {} settings file it is ignored",
+                "'{key}' takes effect only from {}; in this {} settings file {effect}",
                 class.files(),
                 scope.as_str()
             ),
@@ -354,7 +376,7 @@ fn ignored_keys(parsed: &Value, path: &Path, scope: SettingsScope) -> Vec<Findin
 
 /// A finding for a value that takes effect only from user or managed
 /// settings. Each value the reference restricts so — a permission mode, a
-/// masked credential — is a protection, so each gates.
+/// masked credential — decides what a session may do, so each gates.
 fn ignored_value(path: &Path, scope: SettingsScope, what: &str, hint: &str) -> Finding {
     Finding {
         slug: "settings-ignored-value".into(),
