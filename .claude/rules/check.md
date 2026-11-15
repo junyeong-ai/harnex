@@ -94,7 +94,8 @@ own tools resolve in.
 
 The memory set is the project memory files the runtime reads at launch
 (`always_loaded::memory_files` owns which), unconditionally, plus every
-nested `CLAUDE.md` the project owns, and each nested `AGENTS.md` where the
+nested `CLAUDE.md` the project owns, under either name, since a session started
+in its directory reads it at launch, and each nested `AGENTS.md` where the
 project reads `AGENTS.md` and its directory holds no `CLAUDE.md` of its own —
 `harness-core::git` owns that set and why it is the project's ignore files
 and not the developer's. A walk would read the one a vendored package ships
