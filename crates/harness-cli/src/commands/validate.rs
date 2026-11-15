@@ -66,8 +66,8 @@ pub enum ValidateCommand {
     Settings {
         #[arg(default_value = ".claude/settings.json")]
         path: PathBuf,
-        /// Scope of the settings file. Affects scope-restricted checks
-        /// (`auto` defaultMode, `autoMemoryDirectory`, …). Default: project.
+        /// Which settings file this is, which decides the keys and values
+        /// that take effect from it.
         #[arg(long, value_parser = settings_scope_values(), default_value = "project")]
         scope: String,
     },

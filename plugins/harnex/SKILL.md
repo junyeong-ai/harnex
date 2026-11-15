@@ -50,7 +50,7 @@ past its thresholds as ready for an `extend` the operator decides on.
      `mcp__server` matches NOTHING (that form is permission-rule syntax only).
    - Permission wildcards: `Bash(cmd *)` with space-then-`*`.
    - Evaluation order: `deny > ask > allow`, first-match-wins.
-   - Never emit project-scope no-op keys into `.claude/settings.json`.
+   - Never emit a key `.claude/settings.json` does not take effect from.
    When in doubt, re-read the live doc — freezing the spec is the failure.
 5. **Every language present, and a floor without one.** Detect from
    lockfile+manifest and match *every* row whose signal is there — the answer

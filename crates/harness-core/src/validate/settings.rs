@@ -10,10 +10,9 @@
 //!   may legitimately have no denies, but the absence is worth surfacing).
 //! - `permissions.defaultMode` is in the closed enum
 //!   `KNOWN_DEFAULT_MODE_VALUES` if present.
-//! - Settings keys that silently no-op outside user/managed scope
-//!   (`KNOWN_PROJECT_SCOPE_NOOP_KEYS`) appearing in a project / local
-//!   `settings.json` — per the live `/en/settings` doc, these look
-//!   effective but become no-ops.
+//! - A key or value the file's scope does not take effect from, per the
+//!   Scope column of the settings reference ([`ScopeClass`]): it reads as
+//!   configured and changes nothing.
 //! - `skillOverrides` values are valid trigger modes.
 //! - `claudeMdExcludes` patterns in the committed file that harnex does not
 //!   read as the runtime does (`always_loaded`), so what their glob excludes
@@ -34,8 +33,6 @@ use crate::wire_enum::wire_enum;
 pub const KNOWN_SKILL_OVERRIDE_VALUES: &[&str] = &["on", "name-only", "user-invocable-only", "off"];
 
 /// Closed enum of `permissions.defaultMode` values per /en/settings.
-/// `auto` is technically a valid wire value but silently no-ops outside
-/// user/managed scope — see [`KNOWN_PROJECT_SCOPE_NOOP_KEYS`] handling.
 pub const KNOWN_DEFAULT_MODE_VALUES: &[&str] = &[
     "default",
     "acceptEdits",
@@ -45,41 +42,180 @@ pub const KNOWN_DEFAULT_MODE_VALUES: &[&str] = &[
     "bypassPermissions",
 ];
 
-/// Keys that the live /en/settings doc documents as silently ignored in
-/// project / local `settings.json`. Per Claude Code, they are honored only
-/// in user / managed scopes. Emitting them into a project/local file looks
-/// effective but does nothing — a generated harness must never contain them.
-///
-/// The `defaultMode: "auto"` entry is special: the key itself is valid, only
-/// the `auto` value no-ops at project/local scope. See `validate_text` for the
-/// value-aware branch.
-pub const KNOWN_PROJECT_SCOPE_NOOP_KEYS: &[&str] = &[
-    "autoMemoryDirectory",
-    "autoMode",
-    "useAutoModeDuringPlan",
-    "skipDangerousModePermissionPrompt",
+/// Keys the settings reference scopes to managed settings.
+pub const MANAGED_SCOPE_KEYS: &[&str] = &[
+    "allowAllClaudeAiMcps",
+    "allowClaudeInChromeWithManagedMcp",
+    "allowManagedHooksOnly",
+    "allowManagedMcpServersOnly",
+    "allowManagedPermissionRulesOnly",
+    "allowedChannelPlugins",
+    "allowedProviders",
+    "availableModelsMatch",
+    "blockedMarketplaces",
+    "browserExternalPageTools",
+    "channelsEnabled",
     "claudeMd",
+    "deniedModels",
+    "disableBrowserExternalNavigation",
+    "disableCommandPluginSources",
+    "disableDesktopLocalSessions",
+    "disableMobileSimulatorTools",
+    "disableRemotePreviewScripts",
+    "disableSideloadFlags",
+    "forceRemoteSettingsRefresh",
+    "gatewayInternalNetworks",
+    "managedMcpServers",
+    "managedSourcesBehavior",
+    "modelPricing",
+    "parentSettingsBehavior",
+    "pluginSuggestionMarketplaces",
+    "pluginTrustMessage",
+    "policyHelper",
+    "policyHelper.path",
+    "policyHelper.refreshIntervalMs",
+    "policyHelper.timeoutMs",
+    "requiredMaximumVersion",
+    "requiredMinimumVersion",
+    "sandbox.bwrapPath",
+    "sandbox.filesystem.allowManagedReadPathsOnly",
+    "sandbox.network.allowManagedDomainsOnly",
+    "sandbox.socatPath",
+    "sshHostAllowlist",
+    "strictKnownMarketplaces",
+    "strictPluginOnlyCustomization",
+    "strictPluginOnlyCustomization.agents",
+    "strictPluginOnlyCustomization.hooks",
+    "strictPluginOnlyCustomization.mcp",
+    "strictPluginOnlyCustomization.skills",
+    "wslInheritsWindowsSettings",
+];
+
+/// Keys the settings reference scopes to user or managed settings.
+pub const USER_OR_MANAGED_SCOPE_KEYS: &[&str] = &[
+    "appendPlugins",
+    "askUserQuestionTimeout",
+    "autoContinueAtUsageLimit",
+    "autoMode",
+    "autoMode.classifyAllShell",
+    "axScreenReader",
+    "bashEditDiffEnabled",
+    "desktopSessionCleanupPeriodDays",
+    "dialogExpiry",
+    "feedbackDrafts",
+    "footerLinksRegexes",
+    "forceLoginGatewayUrl",
+    "modelPicker",
+    "permissions.denyInsteadOfPrompting",
+    "pluginConfigs",
+    "prependPlugins",
+    "processWrapper",
+    "sandbox.allowAppleEvents",
+    "sandbox.allowNestedUserNamespaces",
+    "sandbox.credentials.allowPlaintextInject",
+    "sandbox.credentials.awsPairs",
+    "sandbox.credentials.sigv4",
+    "sandbox.filesystem.disabled",
+    "sandbox.network.strictAllowlist",
+    "sandbox.network.tlsTerminate",
+    "sandbox.ripgrep",
+    "skipAutoPermissionPrompt",
+    "spellcheck",
+    "sshConfigs",
+    "sshHostCommands",
+    "vimInsertModeRemaps",
+];
+
+/// Keys the settings reference scopes to user, local or managed settings.
+pub const USER_LOCAL_OR_MANAGED_SCOPE_KEYS: &[&str] = &[
+    "skipDangerousModePermissionPrompt",
+    "syncClaudeAiPlugins",
+    "syncClaudeAiSkills",
+    "useAutoModeDuringPlan",
+];
+
+/// Keys the settings reference scopes to user settings.
+pub const USER_SCOPE_KEYS: &[&str] = &["worktree.location"];
+
+/// Keys the settings reference places in `~/.claude.json`, which no
+/// `settings.json` sets.
+pub const GLOBAL_CONFIG_SCOPE_KEYS: &[&str] = &[
+    "autoConnectIde",
+    "autoInstallIdeExtension",
+    "claudeInChromeDefaultEnabled",
+    "copyFullResponse",
+    "copyOnSelect",
+    "defaultToAgentsView",
+    "diffTool",
+    "externalEditorContext",
+    "leftArrowOpensAgents",
+    "permissionExplainerEnabled",
+    "prStatusFooterEnabled",
+    "teammateDefaultModel",
+];
+
+/// The scoped keys the settings reference files under Permission settings.
+pub const PERMISSION_TOPIC_KEYS: &[&str] = &[
+    "allowManagedPermissionRulesOnly",
+    "autoMode",
+    "autoMode.classifyAllShell",
+    "permissions.denyInsteadOfPrompting",
+    "skipAutoPermissionPrompt",
+    "skipDangerousModePermissionPrompt",
+    "useAutoModeDuringPlan",
+];
+
+/// The scoped keys the settings reference files under Sandbox settings.
+pub const SANDBOX_TOPIC_KEYS: &[&str] = &[
+    "sandbox.allowAppleEvents",
+    "sandbox.allowNestedUserNamespaces",
+    "sandbox.bwrapPath",
+    "sandbox.credentials.allowPlaintextInject",
+    "sandbox.credentials.awsPairs",
+    "sandbox.credentials.sigv4",
+    "sandbox.filesystem.allowManagedReadPathsOnly",
+    "sandbox.filesystem.disabled",
+    "sandbox.network.allowManagedDomainsOnly",
+    "sandbox.network.strictAllowlist",
+    "sandbox.network.tlsTerminate",
+    "sandbox.ripgrep",
+    "sandbox.socatPath",
+];
+
+/// `permissions.defaultMode` values that take effect only from user or
+/// managed settings, though the key itself is read from any file.
+pub const USER_OR_MANAGED_DEFAULT_MODES: &[&str] = &["auto", "bypassPermissions"];
+
+/// Arrays whose `"mode": "mask"` entries take effect only from user or
+/// managed settings; a project or local file's are dropped, leaving the
+/// credential unprotected.
+pub const USER_OR_MANAGED_MASK_ENTRIES: &[&str] =
+    &["sandbox.credentials.files", "sandbox.credentials.envVars"];
+
+/// Every closed set read from the settings reference, labelled.
+pub const SCOPE_SPEC_SETS: &[(&str, &[&str])] = &[
+    ("scope-managed", MANAGED_SCOPE_KEYS),
+    ("scope-user-or-managed", USER_OR_MANAGED_SCOPE_KEYS),
+    (
+        "scope-user-local-or-managed",
+        USER_LOCAL_OR_MANAGED_SCOPE_KEYS,
+    ),
+    ("scope-user", USER_SCOPE_KEYS),
+    ("scope-global-config", GLOBAL_CONFIG_SCOPE_KEYS),
+    ("topic-permission-settings", PERMISSION_TOPIC_KEYS),
+    ("topic-sandbox-settings", SANDBOX_TOPIC_KEYS),
+    (
+        "default-modes-user-or-managed",
+        USER_OR_MANAGED_DEFAULT_MODES,
+    ),
+    ("mask-entries-user-or-managed", USER_OR_MANAGED_MASK_ENTRIES),
 ];
 
 wire_enum! {
-    /// Closed-set of `settings.json` scopes per Claude Code spec /en/settings.
-    ///
-    /// Scope decides which keys / values are honored: certain settings
-    /// (`defaultMode: "auto"`, `autoMemoryDirectory`, `autoMode`,
-    /// `useAutoModeDuringPlan`, `skipDangerousModePermissionPrompt`) silently
-    /// no-op outside user / managed scope, so the validator must know its scope
-    /// to fire the right
-    /// findings. Caller-provided rather than path-inferred — path heuristics
-    /// (HOME env, filename) are platform-brittle and the caller already knows
-    /// which file it loaded.
-    ///
-    /// Four variants rather than a binary (`ProjectLocalOrNot`) because:
-    /// 1. Operator UX — the `--scope` CLI flag displays the full set; a binary
-    ///    would lose the labeling.
-    /// 2. Future scope-specific checks — managed-only keys
-    ///    (`allowManagedPermissionRulesOnly`, `strictPluginOnlyCustomization`,
-    ///    …) should eventually fire only at `Managed` scope. The variant is
-    ///    ready for that check without a shape change.
+    /// The settings file a validation reads, which decides the keys and
+    /// values that take effect there ([`ScopeClass::honors`]). The caller
+    /// names it: the path cannot, since a home directory or a file name is
+    /// no proof of which file the runtime read.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum SettingsScope {
         /// `<project>/.claude/settings.json` — committed, team-shared.
@@ -94,12 +230,142 @@ wire_enum! {
     }
 }
 
-impl SettingsScope {
-    /// True for the scopes where keys in [`KNOWN_PROJECT_SCOPE_NOOP_KEYS`]
-    /// (and the `defaultMode: "auto"` value) silently no-op. User and
-    /// managed scope honor those settings; project and local do not.
-    pub fn project_scope_noop_applies(self) -> bool {
-        matches!(self, Self::Project | Self::Local)
+wire_enum! {
+    /// The files a key takes effect from, as the Scope column of
+    /// `/en/settings-reference` names them. A key the reference lists as
+    /// `Any file` belongs to no class.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ScopeClass {
+        Managed => "managed",
+        UserOrManaged => "user-or-managed",
+        UserLocalOrManaged => "user-local-or-managed",
+        User => "user",
+        /// `~/.claude.json`, which `/config` writes: no settings file.
+        GlobalConfig => "global-config",
+    }
+}
+
+impl ScopeClass {
+    /// Whether a key of this class takes effect from a file of `scope`.
+    pub fn honors(self, scope: SettingsScope) -> bool {
+        use SettingsScope::{Local, Managed, User};
+        match self {
+            Self::Managed => scope == Managed,
+            Self::UserOrManaged => matches!(scope, User | Managed),
+            Self::UserLocalOrManaged => matches!(scope, User | Local | Managed),
+            Self::User => scope == User,
+            Self::GlobalConfig => false,
+        }
+    }
+
+    /// The keys the reference gives this class.
+    pub fn keys(self) -> &'static [&'static str] {
+        match self {
+            Self::Managed => MANAGED_SCOPE_KEYS,
+            Self::UserOrManaged => USER_OR_MANAGED_SCOPE_KEYS,
+            Self::UserLocalOrManaged => USER_LOCAL_OR_MANAGED_SCOPE_KEYS,
+            Self::User => USER_SCOPE_KEYS,
+            Self::GlobalConfig => GLOBAL_CONFIG_SCOPE_KEYS,
+        }
+    }
+
+    /// The files this class names, as a finding states them.
+    fn files(self) -> &'static str {
+        match self {
+            Self::Managed => "managed settings",
+            Self::UserOrManaged => "user or managed settings",
+            Self::UserLocalOrManaged => "user, local or managed settings",
+            Self::User => "user settings",
+            Self::GlobalConfig => "~/.claude.json",
+        }
+    }
+
+    /// Where to move a key of this class.
+    fn destination(self) -> &'static str {
+        match self {
+            Self::Managed => "deploy it in managed settings",
+            Self::UserOrManaged => "move it to ~/.claude/settings.json or managed settings",
+            Self::UserLocalOrManaged => {
+                "move it to .claude/settings.local.json, ~/.claude/settings.json or managed \
+                 settings"
+            }
+            Self::User => "move it to ~/.claude/settings.json",
+            Self::GlobalConfig => "set it with /config, which writes ~/.claude.json",
+        }
+    }
+}
+
+/// Whether a key that takes effect elsewhere costs the file a protection it
+/// appears to hold: an organization policy, or a key the reference files
+/// under Permission or Sandbox settings. Any other such key sets a
+/// preference, and its absence changes how a session looks, not what it may
+/// do.
+fn withholds_protection(key: &str, class: ScopeClass) -> bool {
+    class == ScopeClass::Managed
+        || PERMISSION_TOPIC_KEYS.contains(&key)
+        || SANDBOX_TOPIC_KEYS.contains(&key)
+}
+
+/// The value at a dotted key path, each segment an object key.
+fn lookup<'a>(value: &'a Value, dotted: &str) -> Option<&'a Value> {
+    dotted
+        .split('.')
+        .try_fold(value, |value, segment| value.as_object()?.get(segment))
+}
+
+/// A finding for each key the file sets that takes effect only from other
+/// files. A key under one already reported is not reported again.
+fn ignored_keys(parsed: &Value, path: &Path, scope: SettingsScope) -> Vec<Finding> {
+    let mut scoped: Vec<(&str, ScopeClass)> = ScopeClass::ALL
+        .iter()
+        .filter(|class| !class.honors(scope))
+        .flat_map(|&class| class.keys().iter().map(move |&key| (key, class)))
+        .collect();
+    scoped.sort_unstable_by_key(|&(key, _)| key);
+    let mut reported: Vec<&str> = Vec::new();
+    let mut findings = Vec::new();
+    for (key, class) in scoped {
+        let under_reported = reported.iter().any(|parent| {
+            key.strip_prefix(parent)
+                .is_some_and(|rest| rest.starts_with('.'))
+        });
+        if under_reported || lookup(parsed, key).is_none() {
+            continue;
+        }
+        reported.push(key);
+        findings.push(Finding {
+            slug: "settings-ignored-key".into(),
+            severity: if withholds_protection(key, class) {
+                Severity::Major
+            } else {
+                Severity::Minor
+            },
+            location: Location::file(path.to_path_buf()),
+            message: format!(
+                "'{key}' takes effect only from {}; in this {} settings file it is ignored",
+                class.files(),
+                scope.as_str()
+            ),
+            hint: Some(class.destination().into()),
+        });
+    }
+    findings
+}
+
+/// A finding for a value that takes effect only from user or managed
+/// settings. Each value the reference restricts so — a permission mode, a
+/// masked credential — is a protection, so each gates.
+fn ignored_value(path: &Path, scope: SettingsScope, what: &str, hint: &str) -> Finding {
+    Finding {
+        slug: "settings-ignored-value".into(),
+        severity: Severity::Major,
+        location: Location::file(path.to_path_buf()),
+        message: format!(
+            "{what} takes effect only from {}; in this {} settings file it is ignored",
+            ScopeClass::UserOrManaged.files(),
+            scope.as_str()
+        ),
+        hint: Some(hint.into()),
     }
 }
 
@@ -266,7 +532,6 @@ pub(crate) fn exact_matcher_tokens<'a>(event: &str, matcher: &'a str) -> Option<
 /// The measurement stamp digests exactly this list, so a value moved from one
 /// set to another changes the digest rather than hiding in a concatenation.
 pub const SPEC_SETS: &[(&str, &[&str])] = &[
-    ("project-scope-noop-keys", KNOWN_PROJECT_SCOPE_NOOP_KEYS),
     ("default-mode-values", KNOWN_DEFAULT_MODE_VALUES),
     ("skill-override-values", KNOWN_SKILL_OVERRIDE_VALUES),
 ];
@@ -433,18 +698,16 @@ impl SettingsValidator {
         if let Some(mode) = parsed.pointer("/permissions/defaultMode") {
             match mode.as_str() {
                 Some(s) if KNOWN_DEFAULT_MODE_VALUES.contains(&s) => {
-                    if s == "auto" && scope.project_scope_noop_applies() {
-                        findings.push(Finding {
-                            slug: "settings-project-scope-noop-value".into(),
-                            severity: Severity::Major,
-                            location: Location::file(path.to_path_buf()),
-                            message:
-                                "permissions.defaultMode = \"auto\" is silently ignored in project/local settings (honored only in user/managed scope)"
-                                    .into(),
-                            hint: Some(
-                                "remove the key or move it to ~/.claude/settings.json".into(),
-                            ),
-                        });
+                    if USER_OR_MANAGED_DEFAULT_MODES.contains(&s)
+                        && !ScopeClass::UserOrManaged.honors(scope)
+                    {
+                        findings.push(ignored_value(
+                            path,
+                            scope,
+                            &format!("permissions.defaultMode \"{s}\""),
+                            "set it in ~/.claude/settings.json or managed settings, or pass \
+                             --permission-mode for one session",
+                        ));
                     }
                 }
                 Some(s) => {
@@ -475,24 +738,24 @@ impl SettingsValidator {
             }
         }
 
-        // Keys silently ignored at project / local scope. A generated harness
-        // that emits them is a configuration bug because they look effective
-        // but no-op. Scope is caller-provided; user / managed scopes honor
-        // these keys and never reach this branch.
-        if scope.project_scope_noop_applies() {
-            for key in KNOWN_PROJECT_SCOPE_NOOP_KEYS {
-                if parsed.get(*key).is_some() {
-                    findings.push(Finding {
-                        slug: "settings-project-scope-noop-key".into(),
-                        severity: Severity::Major,
-                        location: Location::file(path.to_path_buf()),
-                        message: format!(
-                            "'{key}' is silently ignored in project/local settings (honored only in user/managed scope)"
-                        ),
-                        hint: Some(format!(
-                            "remove '{key}' or move it to ~/.claude/settings.json"
-                        )),
+        findings.extend(ignored_keys(&parsed, path, scope));
+        if !ScopeClass::UserOrManaged.honors(scope) {
+            for array in USER_OR_MANAGED_MASK_ENTRIES {
+                let masks = lookup(&parsed, array)
+                    .and_then(Value::as_array)
+                    .is_some_and(|entries| {
+                        entries
+                            .iter()
+                            .any(|entry| entry.get("mode").and_then(Value::as_str) == Some("mask"))
                     });
+                if masks {
+                    findings.push(ignored_value(
+                        path,
+                        scope,
+                        &format!("a \"mask\" entry in {array}"),
+                        "move the entry to ~/.claude/settings.json or managed settings; from \
+                         this file only a \"deny\" entry protects the credential",
+                    ));
                 }
             }
         }
@@ -602,7 +865,7 @@ impl SettingsValidator {
 
 #[cfg(test)]
 mod tests {
-    use super::SettingsScope;
+    use super::{PERMISSION_TOPIC_KEYS, SANDBOX_TOPIC_KEYS, SCOPE_SPEC_SETS, ScopeClass};
 
     /// A misspelled entry in either measured set would silently take the
     /// wrong arm — the narrow charset, or no MCP judgment at all — so both
@@ -623,11 +886,31 @@ mod tests {
         }
     }
 
+    /// The reference gives each key one Scope value and one Topic, so a key
+    /// copied into two classes, or a topic key copied from no class, is a
+    /// transcription slip — and each class is stamped as its own set.
     #[test]
-    fn project_scope_noop_applies_on_project_and_local() {
-        assert!(SettingsScope::Project.project_scope_noop_applies());
-        assert!(SettingsScope::Local.project_scope_noop_applies());
-        assert!(!SettingsScope::User.project_scope_noop_applies());
-        assert!(!SettingsScope::Managed.project_scope_noop_applies());
+    fn each_scoped_key_has_one_class_and_each_class_is_stamped() {
+        let mut seen = std::collections::BTreeMap::new();
+        for class in ScopeClass::ALL {
+            let label = format!("scope-{}", class.as_str());
+            assert!(
+                SCOPE_SPEC_SETS
+                    .iter()
+                    .any(|(set, keys)| *set == label && *keys == class.keys()),
+                "{label} is not stamped"
+            );
+            for key in class.keys() {
+                if let Some(other) = seen.insert(*key, class.as_str()) {
+                    panic!("'{key}' is in both {other} and {}", class.as_str());
+                }
+            }
+        }
+        for key in PERMISSION_TOPIC_KEYS.iter().chain(SANDBOX_TOPIC_KEYS) {
+            assert!(
+                seen.contains_key(key),
+                "topic key '{key}' has no scope class"
+            );
+        }
     }
 }

@@ -16,9 +16,7 @@ use std::path::PathBuf;
 
 use harness_core::policy::rule;
 use harness_core::sentinel;
-use harness_core::validate::{
-    KNOWN_HOOK_EVENTS, KNOWN_PROJECT_SCOPE_NOOP_KEYS, KNOWN_SESSION_START_SOURCES, KNOWN_SKILL_KEYS,
-};
+use harness_core::validate::{KNOWN_HOOK_EVENTS, KNOWN_SESSION_START_SOURCES, KNOWN_SKILL_KEYS};
 
 fn spec_facts_content() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -121,24 +119,6 @@ fn the_scaffolded_session_start_hook_matches_every_source() {
         declared, canonical,
         "the scaffolded SessionStart matcher '{matcher}' does not cover every source; \
          the session-state injection is silent for the ones it omits"
-    );
-}
-
-#[test]
-fn spec_facts_noop_keys_match_known_keys() {
-    let regions = sentinel::extract_regions(&spec_facts_content());
-    let block = regions
-        .get("spec-facts-project-scope-noop-keys")
-        .expect("missing managed region 'spec-facts-project-scope-noop-keys' in spec-facts.md");
-    let parsed = parse_identifier_csv(block);
-    let canonical: BTreeSet<String> = KNOWN_PROJECT_SCOPE_NOOP_KEYS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(
-        parsed, canonical,
-        "spec-facts.md noop-keys block drifted from KNOWN_PROJECT_SCOPE_NOOP_KEYS — \
-         update the sentinel block to match Rust SSoT"
     );
 }
 

@@ -190,7 +190,7 @@ harnex validate rules <files...>
 harnex validate skills <files...> [--scope project|user|plugin]
 harnex validate agents <files...>
 harnex validate output-styles <files...>
-harnex validate settings [<path>]
+harnex validate settings [<path>] [--scope project|local|user|managed]
 harnex validate commit-msg <path>                     # closed-enum trailer
 harnex validate always-loaded                         # what every session
                                                       # carries, per member

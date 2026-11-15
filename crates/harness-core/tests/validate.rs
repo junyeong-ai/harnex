@@ -1342,86 +1342,105 @@ fn settings_validator_no_finding_for_auto_memory() {
     );
 }
 
-// ---------- Project-scope no-op key detection (Phase 3) ----------
+// ---------- Keys and values a settings file's scope does not take effect from ----------
+
+const SCOPES: [SettingsScope; 4] = [
+    SettingsScope::Project,
+    SettingsScope::Local,
+    SettingsScope::User,
+    SettingsScope::Managed,
+];
+
+fn ignored(json: &str, scope: SettingsScope) -> Vec<harness_core::envelope::Finding> {
+    SettingsValidator::new()
+        .validate_text(json, Path::new("settings.json"), scope)
+        .into_iter()
+        .filter(|f| f.slug == "settings-ignored-key" || f.slug == "settings-ignored-value")
+        .collect()
+}
 
 #[test]
-fn settings_validator_flags_project_scope_noop_keys() {
-    // Each key the live /en/settings doc documents as silently ignored in
-    // project / local scope produces a Major finding when present.
-    let v = SettingsValidator::new();
-    let json = r#"{
-        "autoMemoryDirectory": "~/somewhere",
-        "autoMode": {"environment": []},
-        "skipDangerousModePermissionPrompt": true,
-        "permissions": {"deny": ["Bash(sudo *)"]}
-    }"#;
-    let findings = v.validate_text(
-        json,
-        Path::new(".claude/settings.json"),
-        SettingsScope::Project,
-    );
-    let noop_keys: Vec<_> = findings
-        .iter()
-        .filter(|f| f.slug == "settings-project-scope-noop-key")
-        .collect();
-    assert_eq!(
-        noop_keys.len(),
-        3,
-        "expected 3 noop-key findings: {findings:?}"
-    );
-    let messages: Vec<&str> = noop_keys.iter().map(|f| f.message.as_str()).collect();
-    for key in [
-        "autoMemoryDirectory",
-        "autoMode",
-        "skipDangerousModePermissionPrompt",
-    ] {
-        assert!(
-            messages.iter().any(|m| m.contains(key)),
-            "missing finding for '{key}'"
-        );
+fn a_key_is_ignored_in_each_file_its_scope_column_leaves_out() {
+    // One key per Scope value of the settings reference, and the four files
+    // it is read from: project, local, user, managed.
+    let cases = [
+        (
+            r#"{"autoMemoryDirectory": "~/m"}"#,
+            [false, false, false, false],
+        ),
+        (
+            r#"{"strictKnownMarketplaces": []}"#,
+            [true, true, true, false],
+        ),
+        (r#"{"spellcheck": false}"#, [true, true, false, false]),
+        (
+            r#"{"useAutoModeDuringPlan": false}"#,
+            [true, false, false, false],
+        ),
+        (
+            r#"{"worktree": {"location": "../wt"}}"#,
+            [true, true, false, true],
+        ),
+        (r#"{"copyOnSelect": true}"#, [true, true, true, true]),
+    ];
+    for (json, expected) in cases {
+        for (scope, flagged) in SCOPES.into_iter().zip(expected) {
+            assert_eq!(
+                !ignored(json, scope).is_empty(),
+                flagged,
+                "{json} at {scope:?}"
+            );
+        }
     }
 }
 
 #[test]
-fn settings_validator_flags_default_mode_auto_in_project_scope() {
-    // defaultMode = "auto" is valid wire syntax but silently no-ops outside
-    // user/managed scope. The slug differs from the noop-key slug because the
-    // KEY (`defaultMode`) is valid at every scope; only the VALUE is scope-restricted.
-    let v = SettingsValidator::new();
-    let json = r#"{
-        "permissions": {"defaultMode": "auto", "deny": ["Bash(sudo *)"]}
-    }"#;
-    let findings = v.validate_text(
-        json,
-        Path::new(".claude/settings.json"),
-        SettingsScope::Project,
-    );
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.slug == "settings-project-scope-noop-value"
-                && f.message.contains("defaultMode")
-                && f.message.contains("\"auto\"")),
-        "expected defaultMode=auto noop value finding: {findings:?}"
-    );
+fn an_ignored_key_gates_only_where_it_withholds_a_protection() {
+    let cases = [
+        (r#"{"strictKnownMarketplaces": []}"#, Severity::Major),
+        (r#"{"autoMode": {"environment": []}}"#, Severity::Major),
+        (
+            r#"{"sandbox": {"network": {"strictAllowlist": true}}}"#,
+            Severity::Major,
+        ),
+        (r#"{"spellcheck": false}"#, Severity::Minor),
+        (r#"{"copyOnSelect": true}"#, Severity::Minor),
+    ];
+    for (json, severity) in cases {
+        let findings = ignored(json, SettingsScope::Project);
+        assert_eq!(findings.len(), 1, "{json}: {findings:?}");
+        assert_eq!(findings[0].severity, severity, "{json}");
+    }
 }
 
 #[test]
-fn settings_validator_accepts_default_mode_auto_at_user_scope() {
-    // defaultMode = "auto" is fully valid at user / managed scope — the
-    // scope-noop check must NOT fire there.
-    let v = SettingsValidator::new();
-    let json = r#"{
-        "permissions": {"defaultMode": "auto", "deny": ["Bash(sudo *)"]}
-    }"#;
-    for scope in [SettingsScope::User, SettingsScope::Managed] {
-        let findings = v.validate_text(json, Path::new("settings.json"), scope);
-        assert!(
-            !findings
-                .iter()
-                .any(|f| f.slug == "settings-project-scope-noop-value"),
-            "{scope:?}: defaultMode=auto must be accepted: {findings:?}"
-        );
+fn a_key_under_a_reported_one_is_not_reported_again() {
+    let json = r#"{"policyHelper": {"path": "/bin/p", "timeoutMs": 10}}"#;
+    let findings = ignored(json, SettingsScope::Project);
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(findings[0].message.contains("'policyHelper'"));
+}
+
+#[test]
+fn a_restricted_value_is_ignored_outside_user_and_managed_settings() {
+    let cases = [
+        r#"{"permissions": {"defaultMode": "auto"}}"#,
+        r#"{"permissions": {"defaultMode": "bypassPermissions"}}"#,
+        r#"{"sandbox": {"credentials": {"files": [{"path": "~/.netrc", "mode": "mask"}]}}}"#,
+        r#"{"sandbox": {"credentials": {"envVars": [{"name": "TOKEN", "mode": "mask"}]}}}"#,
+    ];
+    for json in cases {
+        for (scope, flagged) in SCOPES.into_iter().zip([true, true, false, false]) {
+            let findings = ignored(json, scope);
+            assert_eq!(!findings.is_empty(), flagged, "{json} at {scope:?}");
+            assert!(findings.iter().all(|f| f.severity == Severity::Major));
+        }
+    }
+    for json in [
+        r#"{"permissions": {"defaultMode": "plan"}}"#,
+        r#"{"sandbox": {"credentials": {"files": [{"path": "~/.netrc", "mode": "deny"}]}}}"#,
+    ] {
+        assert!(ignored(json, SettingsScope::Project).is_empty(), "{json}");
     }
 }
 
@@ -1467,28 +1486,6 @@ fn settings_validator_accepts_valid_default_modes() {
                 .iter()
                 .any(|f| f.slug == "settings-default-mode-invalid"),
             "defaultMode = {mode} should be accepted: {findings:?}"
-        );
-    }
-}
-
-#[test]
-fn settings_validator_excuses_noop_keys_at_user_and_managed_scope() {
-    // User and managed scopes honor the otherwise-no-op keys; the validator
-    // must remain silent on those scopes regardless of file path.
-    let v = SettingsValidator::new();
-    let json = r#"{
-        "autoMemoryDirectory": "~/somewhere",
-        "autoMode": {"environment": []},
-        "skipDangerousModePermissionPrompt": true,
-        "permissions": {"deny": ["Bash(sudo *)"]}
-    }"#;
-    for scope in [SettingsScope::User, SettingsScope::Managed] {
-        let findings = v.validate_text(json, Path::new("settings.json"), scope);
-        assert!(
-            !findings
-                .iter()
-                .any(|f| f.slug == "settings-project-scope-noop-key"),
-            "{scope:?}: noop keys must be honored, not flagged: {findings:?}"
         );
     }
 }
