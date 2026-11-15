@@ -309,7 +309,7 @@ pub struct AlwaysLoaded {
 /// Read the set a session started in `project`, the directory `harness.toml`
 /// lives in, loads from the repository it lies in.
 pub fn resolve(project: &Path) -> Result<AlwaysLoaded> {
-    let home = std::env::home_dir().and_then(|home| std::fs::canonicalize(home).ok());
+    let home = home();
     resolve_under(project, home.as_deref())
 }
 
@@ -345,7 +345,7 @@ fn resolve_under(project: &Path, home: Option<&Path>) -> Result<AlwaysLoaded> {
     // another level — goes by the first that reads it, and reading a rule
     // marks it read even where its `paths:` then holds it back.
     let own = |path: &PathBuf| user_dir.as_ref().is_none_or(|dir| !path.starts_with(dir));
-    let names = memory_names(reads_agents_md(&levels, CLAUDE_MEMORY_NAMES));
+    let names = memory_names(reads_agents_md(&levels, CLAUDE_MEMORY_NAMES, home));
     for level in levels.iter().rev() {
         for path in present(level, names).into_iter().filter(own) {
             walk.memory_file(&path, MemberKind::Memory, 0, Tree::Memory);
@@ -429,28 +429,33 @@ pub(crate) const SESSION_CLAUDE_NAMES: &[&str] =
 /// The memory files read in place of [`CLAUDE_MEMORY_NAMES`].
 pub(crate) const AGENTS_MEMORY_NAMES: &[&str] = &["AGENTS.md", ".claude/AGENTS.md"];
 
-/// Whether a session started at the first of `levels` reads `AGENTS.md` in
-/// place of `CLAUDE.md`, as the default Project instructions decide it: no
-/// level holds a file of `deciding`. The value a user or managed setting
-/// chooses instead is not the repository's.
-pub(crate) fn reads_agents_md(levels: &[&Path], deciding: &[&str]) -> bool {
-    levels
-        .iter()
-        .all(|level| present(level, deciding).is_empty())
+/// The user's home directory, canonical, as every reader of the user's files
+/// under it takes it.
+pub(crate) fn home() -> Option<PathBuf> {
+    std::env::home_dir().and_then(|home| std::fs::canonicalize(home).ok())
 }
 
-/// Whether a session this machine starts at `project` reads `AGENTS.md`:
-/// [`reads_agents_md`] over [`SESSION_CLAUDE_NAMES`] in every directory from
-/// `project` up, since the runtime's memory walk does not stop where the
-/// repository does. `.claude/CLAUDE.md` under `home` is the user's memory
-/// and does not count.
-pub(crate) fn machine_reads_agents_md(project: &Path, home: Option<&Path>) -> bool {
+/// Whether a session started at the first of `levels` reads `AGENTS.md` in
+/// place of `CLAUDE.md`, as the default Project instructions decide it: no
+/// level holds a file of `deciding`. `.claude/CLAUDE.md` under `home` is the
+/// user's memory and does not count, a repository rooted at `home` included.
+/// The value a user or managed setting chooses instead is not the
+/// repository's.
+pub(crate) fn reads_agents_md(levels: &[&Path], deciding: &[&str], home: Option<&Path>) -> bool {
     let user_memory = home.map(|home| home.join(".claude/CLAUDE.md"));
-    project.ancestors().all(|dir| {
-        present(dir, SESSION_CLAUDE_NAMES)
+    levels.iter().all(|level| {
+        present(level, deciding)
             .iter()
             .all(|path| Some(path) == user_memory.as_ref())
     })
+}
+
+/// [`reads_agents_md`] for a session this machine starts at `project`: over
+/// [`SESSION_CLAUDE_NAMES`] in every directory from `project` up, since the
+/// runtime's memory walk does not stop where the repository does.
+pub(crate) fn machine_reads_agents_md(project: &Path, home: Option<&Path>) -> bool {
+    let levels: Vec<&Path> = project.ancestors().collect();
+    reads_agents_md(&levels, SESSION_CLAUDE_NAMES, home)
 }
 
 fn memory_names(reads_agents_md: bool) -> &'static [&'static str] {
@@ -461,13 +466,16 @@ fn memory_names(reads_agents_md: bool) -> &'static [&'static str] {
     }
 }
 
+/// Whether a session started at `project` reads `AGENTS.md`, as far as the
+/// repository decides it: over its own levels, by the files it commits.
+pub(crate) fn project_reads_agents_md(project: &Path) -> bool {
+    reads_agents_md(&levels(project), CLAUDE_MEMORY_NAMES, home().as_deref())
+}
+
 /// The memory files a session started at `project` reads from that
 /// directory at launch.
 pub(crate) fn memory_files(project: &Path) -> Vec<PathBuf> {
-    present(
-        project,
-        memory_names(reads_agents_md(&levels(project), CLAUDE_MEMORY_NAMES)),
-    )
+    present(project, memory_names(project_reads_agents_md(project)))
 }
 
 /// The finding a set over `max_chars` is, located at its largest member.
@@ -1927,6 +1935,21 @@ mod tests {
         assert_eq!(
             paths(&set),
             [".claude/commands/deploy.md", ".claude/skills/dup/SKILL.md"]
+        );
+    }
+
+    #[test]
+    fn a_repository_rooted_at_home_reads_agents_md_beside_the_user_s_memory() {
+        let dir = project(&[("AGENTS.md", "agents\n"), (".claude/CLAUDE.md", "user\n")]);
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        assert_eq!(
+            paths(&resolve_under(&home, Some(&home)).unwrap()),
+            ["AGENTS.md"]
+        );
+        let elsewhere = home.join("elsewhere");
+        assert_eq!(
+            paths(&resolve_under(&home, Some(&elsewhere)).unwrap()),
+            [".claude/CLAUDE.md"]
         );
     }
 

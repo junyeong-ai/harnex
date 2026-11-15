@@ -218,11 +218,7 @@ impl<'a> ProjectChecker<'a> {
     /// `git::owned_files`' answer.
     fn nested_memory_files(&self) -> Result<Vec<PathBuf>> {
         use crate::always_loaded::{AGENTS_MEMORY_NAMES, CLAUDE_MEMORY_NAMES};
-        let reads_agents_md = crate::always_loaded::reads_agents_md(
-            &crate::always_loaded::levels(self.working_dir),
-            CLAUDE_MEMORY_NAMES,
-        );
-        let patterns: &[&str] = if reads_agents_md {
+        let patterns: &[&str] = if crate::always_loaded::project_reads_agents_md(self.working_dir) {
             &[":(glob)**/CLAUDE.md", ":(glob)**/AGENTS.md"]
         } else {
             &[":(glob)**/CLAUDE.md"]

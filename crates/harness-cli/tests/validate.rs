@@ -88,6 +88,43 @@ fn always_loaded_takes_the_home_directory_from_the_environment() {
 }
 
 #[test]
+fn check_reads_agents_md_in_a_repository_rooted_at_home() {
+    // The user's `~/.claude/CLAUDE.md` does not keep `AGENTS.md` out, even
+    // where the home directory is the repository.
+    let temp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(temp.path()).unwrap();
+    let config = format!(
+        "[meta]\nharnex_version = {:?}\n[evidence]\n",
+        env!("CARGO_PKG_VERSION")
+    );
+    for (path, text) in [
+        ("harness.toml", config.as_str()),
+        ("AGENTS.md", "Owner: [file: no/such/agents.rs:1].\n"),
+        (".claude/CLAUDE.md", "the user's memory\n"),
+    ] {
+        write_atomic(&root.join(path), text.as_bytes()).unwrap();
+    }
+    std::fs::create_dir(root.join(".git")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_harnex"))
+        .current_dir(&root)
+        .env("HOME", &root)
+        .arg("check")
+        .output()
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cited = json["data"]["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| {
+            f["location"]["path"]
+                .as_str()
+                .is_some_and(|p| p.ends_with("AGENTS.md"))
+        });
+    assert!(cited, "{json}");
+}
+
+#[test]
 fn always_loaded_measures_from_the_config_root_and_gates_only_on_a_declared_budget() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
