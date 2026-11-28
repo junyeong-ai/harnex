@@ -33,6 +33,10 @@ behind that second number was found at all — zero there, on a corpus this loop
 has run on before, means the pass is about to resurface everything the operator
 already settled.
 
+A sweep that carries the `retire-no-kinds` warning judged no artifact: the
+project declares no `[[kinds]]`, so report that the sweep did not run, never
+that nothing is ready to retire.
+
 No candidates over a written ledger is the exact-wording bar holding, not
 yet a finished pass. The thresholds count recurrence per wording, and one
 claim recorded in two wordings is two groups under the bar — so read the open

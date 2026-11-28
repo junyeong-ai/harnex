@@ -120,7 +120,9 @@ or one whose record the window does not hold, yields `Unmeasured` — never a
 fabricated `Silent`. A match the sweep cannot read, a link whose target is
 gone among them, is declared in `kinds_skipped` and the rest is swept; the
 explicit ask, `classify`, fails on it. `harnex lifecycle retire` covers the
-entire surface in one call.
+entire surface in one call. A config declaring no `[[kinds]]` gives it nothing
+to walk, and an empty verdict list cannot say so, so the command adds a
+`retire-no-kinds` warning.
 
 When a kind is `foundation: true`, the sweep adds it to `kinds_skipped`
 with a reason carrying how many paths its glob carved out — the exclusion

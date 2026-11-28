@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use clap::Subcommand;
 
-use harness_core::envelope::ListResponse;
+use harness_core::envelope::{ListResponse, Warning};
 use harness_core::error::{Error, Result};
 use harness_core::lifecycle::{
     ConsumerAsk, ConsumerDetector, DecisionLedger, LedgerReader, LifecycleDecisionRecorder,
@@ -13,7 +13,9 @@ use harness_core::lifecycle::{
 };
 use harness_core::telemetry::{JsonlStorage, TelemetryQuery};
 
-use super::{config_dir, load_config, write_envelope_success};
+use super::{config_dir, load_config, write_envelope_success, write_envelope_success_warned};
+
+const RETIRE_NO_KINDS_CODE: &str = "retire-no-kinds";
 
 #[derive(Subcommand)]
 pub enum LifecycleCommand {
@@ -188,7 +190,21 @@ pub fn run<W: Write>(cmd: LifecycleCommand, out: &mut W) -> Result<ExitCode> {
                 sweep = sweep.with_silence_window(w);
             }
             let outcome = sweep.run()?;
-            write_envelope_success(out, outcome)?;
+            // A sweep over no declared kind returns the same empty verdict
+            // list as one that walked every artifact and found nothing to
+            // retire; only the declaration tells the two apart.
+            let warnings = if config.kinds.is_empty() {
+                vec![Warning {
+                    code: RETIRE_NO_KINDS_CODE.into(),
+                    message: "harness.toml declares no [[kinds]], so the sweep had nothing \
+                              to walk: an empty verdict list here says nothing about what \
+                              could retire"
+                        .into(),
+                }]
+            } else {
+                Vec::new()
+            };
+            write_envelope_success_warned(out, outcome, warnings)?;
             Ok(ExitCode::SUCCESS)
         }
         LifecycleCommand::Decisions { tag, decision } => {
