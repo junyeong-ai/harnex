@@ -3,9 +3,9 @@
 
 [advisories]
 ignore = []
-# An unmaintained crate anywhere in the graph ships in the binary, so the scope
-# is the whole graph; cargo-deny 0.22 narrowed the default to direct
-# workspace dependencies.
+# The whole graph: a transitive crate runs in the binary, or in the build and
+# tests of every machine that builds this workspace. cargo-deny 0.22 narrowed
+# the default to the workspace's direct dependencies.
 unmaintained = "all"
 
 [licenses]
