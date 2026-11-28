@@ -49,7 +49,7 @@ const OWNER: [&str; 9] = [
 /// Files naming the same field for a reason of their own. A rename here would
 /// be this repository choosing a different channel for its own commands, and
 /// none of these follow that choice.
-const NOT_RESTATEMENTS: [(&str, &str); 5] = [
+const NOT_RESTATEMENTS: [(&str, &str); 4] = [
     (
         "plugins/harnex/reference/spec-facts.md",
         "Claude Code's vocabulary, measured from transcripts — the field is the runtime's to name",
@@ -65,10 +65,6 @@ const NOT_RESTATEMENTS: [(&str, &str); 5] = [
     (
         "plugins/harnex/templates/common/hook-template.sh",
         "the body a generated hook starts from, telling it which channel to write on",
-    ),
-    (
-        ".harness/harvest/2026-08-31-project-c.md",
-        "a measurement of another project, true at the date it was taken",
     ),
 ];
 
