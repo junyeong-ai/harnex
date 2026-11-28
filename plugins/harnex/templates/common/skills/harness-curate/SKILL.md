@@ -33,24 +33,28 @@ behind that second number was found at all — zero there, on a corpus this loop
 has run on before, means the pass is about to resurface everything the operator
 already settled.
 
-A sweep that carries the `retire-no-kinds` warning judged no artifact: the
-project declares no `[[kinds]]`, so report that the sweep did not run, never
-that nothing is ready to retire, and apply the retirement conditions in
-`.claude/rules/governance.md` by hand instead.
+The sweep judges only what it classifies. Apply the retirement conditions in
+`.claude/rules/governance.md` by hand to every other artifact: each one no
+glob of a kind in `kinds_processed` covers — all of them when the sweep
+carries the `retire-no-kinds` warning, which also means reporting that it did
+not run, never that nothing is ready to retire — and each one of a
+non-foundation kind in `kinds_skipped`, with that entry's reason stated as the
+limit of the judgment.
 
 No candidates over a written ledger is the exact-wording bar holding, not
 yet a finished pass. The thresholds count recurrence per wording, and one
 claim recorded in two wordings is two groups under the bar — so read the open
 wordings tag by tag, widest breadth first, and bring a cluster that makes one
 claim from independent `sources` to the rubric exactly as you would a
-candidate. Observations read, no candidate and no cluster IS a finished pass.
-Say so and stop; a sweep that always finds something is a sweep that has
-started inventing.
+candidate. Observations read, no candidate and no cluster IS a finished
+promotion pass. Say so and go on to retirement; a sweep that always finds
+something is a sweep that has started inventing.
 
 ## 2. Judge
 
 Read `.claude/rules/governance.md` and apply its promotion gate to each
-candidate, and its retirement section to each retirement verdict. Two failure modes to name out loud rather than resolve silently:
+candidate, and its retirement section to each retirement verdict and each
+artifact step 1 sent to be judged by hand. Two failure modes to name out loud rather than resolve silently:
 
 - **A candidate that only the model wants.** The rubric's bar is evidence
   across independent contexts, and `sources` is where a candidate says how many

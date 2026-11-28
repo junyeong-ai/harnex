@@ -27,8 +27,8 @@ scheduled, so a session opens knowing what the harness is owed.
 - **Overdue never gates.** Schedule state surfaces at session start and in
   the query; it is deliberately not a `check` finding, because a gate whose
   verdict moves with the clock alone fails a tree nothing changed.
-- **Retire in place.** `status: superseded` keeps the file as its own
-  record; deleting it deletes the history of why the cadence existed.
+- **Retire in place.** `status: superseded` keeps the file, which is its own
+  record, and `harnex lifecycle routines` lists it in the `superseded` state.
 - **`unscheduled` is loud on purpose.** A routine missing `when:` or
   `produces:` was installed and never given its first tick — schedule it or
   supersede it, and never leave it silently idle.

@@ -54,6 +54,20 @@ fn a_sweep_with_no_declared_kind_says_it_walked_nothing() {
         warning_codes(&json).contains(&"retire-no-kinds".to_string()),
         "{json}"
     );
+    // The curate skill is the reader this warning exists for, and it matches
+    // the code as text: a renamed code leaves it waiting for one that never
+    // comes.
+    let curate = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/harnex/templates/common/skills/harness-curate/SKILL.md");
+    let curate = std::fs::read_to_string(&curate).unwrap();
+    for code in warning_codes(&json) {
+        if code.starts_with("retire-") {
+            assert!(
+                curate.contains(&format!("`{code}`")),
+                "the curate skill does not name `{code}`, the warning the sweep emits"
+            );
+        }
+    }
 
     let declared = format!(
         "{seed}\n[[kinds]]\nname = \"rule\"\nglob = \".claude/rules/*.md\"\nfoundation = false\n"

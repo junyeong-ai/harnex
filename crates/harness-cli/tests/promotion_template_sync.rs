@@ -30,10 +30,10 @@ const WRAPUP_VERBS: [&str; 2] = ["observations", "observe"];
 /// that repeats one or drops one fails on the set rather than on a count.
 const EMIT_FLAGS: [&str; 3] = ["tag", "text", "source"];
 
-/// The fields the curate skill reads by name, off the survey and the live
-/// layout. Both directions are checked against this list: a field the
-/// envelope drops while the prose still names it, and one the prose starts
-/// naming unwatched.
+/// The fields the curate skill reads by name, off the survey, the live layout
+/// and the retirement sweep. Both directions are checked against this list: a
+/// field the envelope drops while the prose still names it, and one the prose
+/// starts naming unwatched.
 const DRAIN_READS: &[&str] = &[
     "observations_read",
     "decisions_read",
@@ -41,6 +41,8 @@ const DRAIN_READS: &[&str] = &[
     "groups_resolved",
     "instance_count",
     "sources",
+    "kinds_processed",
+    "kinds_skipped",
 ];
 
 fn template(relative: &str) -> String {
@@ -386,6 +388,15 @@ fn the_drain_prose_is_written_against_fields_the_envelopes_carry() {
         .expect("into an object")
         .keys()
         .cloned(),
+    );
+    // The retirement sweep, whose coverage the skill reads to decide what it
+    // judges by hand.
+    carried.extend(
+        data(project.path(), &["lifecycle", "retire"])
+            .as_object()
+            .expect("the sweep answers with an object")
+            .keys()
+            .cloned(),
     );
 
     let watched: BTreeSet<String> = DRAIN_READS.iter().map(|f| (*f).to_string()).collect();

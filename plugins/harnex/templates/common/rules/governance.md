@@ -160,9 +160,9 @@ record is indistinguishable from a defect.
 ## Retirement
 
 An artifact — rule, skill, lens, hook verifier — is a retirement candidate when
-all of these hold. `harnex lifecycle retire` computes them over the
-`[[kinds]]` `harness.toml` declares; verify them by hand for every artifact no
-declared kind covers.
+all of these hold. `harnex lifecycle retire` computes them for the artifacts it
+classifies; verify them by hand for every other one — an artifact no declared
+`[[kinds]]` glob covers, and the artifacts of a kind the sweep reports skipped.
 
 - Nothing attributed to it — no finding, decision or reference — and no change
   to it in 90+ days (Silent / Stale).
@@ -179,5 +179,10 @@ records the retirement and its reason. Keep no archive in the tree — the
 runtime reads `.claude/rules/` recursively, so a rule moved under it keeps
 loading, and a copy anywhere else is one nobody reads. In the same commit,
 remove the references to it from `CLAUDE.md`, the settings and other
-artifacts, and the enforcer written only for it — a test or hook that checks
-nothing else; a lint the project runs for its own reasons stays.
+artifacts, and any check of the artifact itself — a test that reads its file,
+a hook that exists to quote it. A check of the behaviour it described stays:
+a rule retired because a test already holds its invariant leaves that test as
+the only protection.
+
+A routine is the exception: it retires in place with `status: superseded`, as
+`.claude/rules/routines.md` says, because its file is its own record.
