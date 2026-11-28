@@ -73,7 +73,9 @@ an instruction is one that stopped reading.
 `agent_turns`, `questions`, `edits`, `written`, `committed`, `interrupts`,
 `denials`,
 `steered_away`. `text` alone is a complete ground; an outcome field alone is
-not, and one that did not inform the reading does not belong there.
+not, and one that did not inform the reading does not belong there. The other
+fields — `chars`, `turns`, `commits`, `agent_chars`, `tokens`, `models`,
+`tools`, `elapsed_ms` — are context for reading the run, never a ground.
 
 Write `carried`, `gap` and `addition` in the language the person wrote in.
 
@@ -144,6 +146,7 @@ did not already mean.
 - **Never score, rank, or grade.** No numbers, no ratings, no "good"/"poor".
 - **Never call an instruction vague, lazy, or careless.** Name the missing
   constraint, or return `null`.
+
 Each figure below was measured on the corpus this agent was written against —
 one operator, one Rust repository, instructions in Korean. They are why the
 rule exists, not a claim about how people work; the rule holds whether or not
