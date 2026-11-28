@@ -101,8 +101,8 @@ convention fix whose authority already re-runs is its own pin and needs no
 new one.
 
 A fix the project's own gate then rejects is undone, and the finding keeps
-its row unchanged — the vanish audit keys on the row's joined text, and an
-indented plain line beneath a bullet continues that text, so the attempt is
+its row unchanged — an indented plain line beneath a bullet continues the
+row's text and so rewrites the finding, so the attempt is
 recorded as its own bullet on the line beneath the row,
 `- attempted: <what was tried> — broke <gate>`, never by editing the row or
 hanging prose under it. The loop never re-attempts a recorded fix: without
@@ -123,7 +123,8 @@ it: another case-by-case fix is the same fix again.
 
 A Critical or Blocker the terminal pass files enters the fix path unless ground
 truth refutes it. One the loop refutes goes on the record with its refutation,
-and once the rest of the batch is fixed and verified the loop ends disputed,
+and once the batch's fixable Critical and Blocker findings are fixed and
+verified the loop ends disputed,
 handing the operator each refuted finding with its refutation beside it: the
 loop and a fresh context disagree, and a second terminal pass would be another
 draw on the same disagreement, not its settlement.
@@ -155,7 +156,7 @@ the operator on what its passes find:
 | stalled | the self passes end with a fixable Critical or Blocker standing — its fix undone by the gate, or not applied (§ Stalled) |
 | diverged | a finding in the last fix that no simpler form removes (§ A finding in the last fix) |
 | returned | a class an earlier fix claimed to close comes back with no shared seam (§ A class that comes back) |
-| disputed | the terminal pass filed a Critical or Blocker the loop refutes, once the rest of its batch is fixed and verified (§ A dispute) |
+| disputed | the terminal pass filed a Critical or Blocker the loop refutes, once its fixable Critical and Blocker findings are fixed and verified (§ A dispute) |
 
 At every exit but converged, report the reason, the findings that remain and
 the scope covered; the operator decides between another pass, a narrower

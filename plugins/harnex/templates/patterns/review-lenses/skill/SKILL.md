@@ -120,7 +120,8 @@ its own verdict. Give it the scope, the lenses, and nothing about what the
 loop concluded. Its value is a fresh context, not a different model.
 
 Skip it only for a trivial, one-line, reversible diff — a fresh pass there
-costs more than it catches. Every convergence report carries a
+costs more than it catches — and never when a spec gate invoked the loop,
+since that gate is decided by a fresh-context verdict. Every convergence report carries a
 `Terminal verify:` line — the reviewer's verdict, or the skip with its
 reason. The state is never implicit.
 
@@ -142,8 +143,8 @@ per its conservative boundary. A judgment-cited Critical or Blocker
 escalates its whole batch to the operator immediately — it cannot be
 auto-fixed, and a re-walk would drop it; judgment findings at Major and
 below ride the report as signal. A finding the loop refutes goes on the record
-with its refutation; once the rest of the batch is fixed and verified, the loop
-ends disputed and hands it to the operator
+with its refutation; once the batch's fixable Critical and Blocker findings are
+fixed and verified, the loop ends disputed and hands it to the operator
 ([file: .claude/skills/review/convergence.md § A dispute]).
 
 ## Report

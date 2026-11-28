@@ -42,9 +42,9 @@ in order — the history of a decision is the interesting part, and overwriting
 keeps only the last one. `git log specs/<slug>/` is the timeline this rides on.
 
 No count of rounds bounds a gate: a review still finding new defects is doing
-what it is for. `review` returns on the exits of what it delegates to — the
-review loop's own, where that loop is installed. `design_review` goes back to
-the operator on what its rounds find:
+what it is for. `review` returns on the review loop's exits where that loop is
+installed. `design_review`, and `review` under any other delegate, go back to
+the operator on what their rounds find:
 
 - **diverged** — a Critical or Blocker sits in what the previous revision
   wrote, and no smaller revision removes it (`design_review` below);
@@ -100,17 +100,18 @@ re-fire rather than approve.
 Delegate to <!-- harnex-fill: what this project reviews a diff with — the
 `.claude/skills/review/` loop when the review-lenses pattern is installed,
 otherwise the project's own review command or a fresh-context reviewer --> over
-the spec's diff. It converges or reports why it stopped. An exit other than
-converged goes to the operator before this gate decides, and the gate records
-their decision: a Blocker the loop refuted carries a terminal disposition, but
-a disagreement with a fresh reviewer is the operator's to settle, not the
-loop's.
+the spec's diff. It converges or reports why it stopped.
 
 Write what it found to `plan.md ## Outstanding issues`, one row per finding in
-the form `specs/_template/plan.md` gives. Zero Critical and zero Blocker rows
-without a terminal disposition passes the gate: record `approved`, and Major
-and Minor stay as follow-up signal. Otherwise record `needs_revision`, and the
-work goes back. The gate reads the rows, never their absence — a deleted row
+the form `specs/_template/plan.md` gives. Two outcomes go to the operator before
+this gate decides, whatever the delegate: an exit other than converged, and a
+Critical or Blocker the session refuted against a fresh reviewer — that row
+carries a terminal disposition, but the disagreement is the operator's to
+settle. Record the operator's decision; the count below never overrides it.
+When neither arose, zero Critical and zero Blocker rows without a terminal
+disposition passes the gate — record `approved`, and Major and Minor stay as
+follow-up signal — and any other count records `needs_revision`, sending the
+work back. The gate reads the rows, never their absence — a deleted row
 reads exactly like a finding no review filed.
 
 ## acceptance — blocking, end of implement, after review
