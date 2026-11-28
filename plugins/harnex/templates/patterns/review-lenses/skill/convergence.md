@@ -75,9 +75,13 @@ a fresh pass to re-litigate.
 ## A fix is pinned or it is surfaced
 
 The next fresh reviewer's opinion is not a regression gate; a check is. An
-auto-fix for a behavioural finding lands together with what pins it — a test,
-an extended assertion, a lint the project already runs — or the finding is
-surfaced instead of fixed. Measured without this, one mirror file took six
+auto-fix for a behavioural finding lands together with what pins it, or the
+finding is surfaced instead of fixed. Reach for the pin in this order: an
+assertion added to the test that already exercises the contract, a lint the
+project already runs, and a new test only where nothing covers the contract
+yet. Pin the contract the finding broke, not the edit that repaired it — a
+test of the edit fails on the next refactor and leaves with it, taking the
+protection along. Measured without this, one mirror file took six
 consecutive fix-commits, one arm per round, because nothing pinned "the two
 sides agree over all inputs" and every fresh pass found the next case. A
 convention fix whose authority already re-runs is its own pin and needs no
