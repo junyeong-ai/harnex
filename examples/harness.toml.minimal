@@ -2,7 +2,7 @@
 # (1MB rotation).
 
 [meta]
-harnex_version = ">=0.39.0, <0.40"
+harnex_version = ">=0.40.0, <0.41"
 
 [evidence]
 
