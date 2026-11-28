@@ -1,9 +1,9 @@
 ---
-description: "Periodic harness hygiene pass: surface what the oracle's ledgers have accumulated, judge each candidate against the governance rubric, land the promotions and retirements, and record every decision. Reads `harnex lifecycle candidates`, `harnex lifecycle observations`, `harnex telemetry report` and `harnex lifecycle retire`; writes rules, archives artifacts, and appends decisions."
-when_to_use: "Run on the team's own cadence — a retro, a release, the end of a spec — or when the corpus has visibly drifted: a rule cites a symbol that no longer exists, two rules state the same contract, the same retirement candidate keeps reappearing. Manual only, because it edits rules and archives artifacts and an unintended pass is not undone by re-running it. Distinct from `harnex check` (the gate, run every commit) and `harnex audit` (spec drift in generated wiring, read-only) — this is the corpus, and it writes."
+description: "Periodic harness hygiene pass: surface what the oracle's ledgers have accumulated, judge each candidate against the governance rubric, land the promotions and retirements, and record every decision. Reads `harnex lifecycle candidates`, `harnex lifecycle observations`, `harnex telemetry report` and `harnex lifecycle retire`; writes rules, deletes retired artifacts, and appends decisions."
+when_to_use: "Run on the team's own cadence — a retro, a release, the end of a spec — or when the corpus has visibly drifted: a rule cites a symbol that no longer exists, two rules state the same contract, the same retirement candidate keeps reappearing. Manual only, because it edits rules and deletes artifacts and an unintended pass is not undone by re-running it. Distinct from `harnex check` (the gate, run every commit) and `harnex audit` (spec drift in generated wiring, read-only) — this is the corpus, and it writes."
 argument-hint: "[--tag <topic>]  — omit to sweep every tag"
 disable-model-invocation: true
-allowed-tools: Read Edit Write Glob Grep AskUserQuestion Bash(harnex *) Bash(git log *) Bash(git show *) Bash(git diff *) Bash(git status *) Bash(git add *) Bash(git commit *) Bash(git mv *)
+allowed-tools: Read Edit Write Glob Grep AskUserQuestion Bash(harnex *) Bash(git log *) Bash(git show *) Bash(git diff *) Bash(git status *) Bash(git add *) Bash(git commit *) Bash(git rm *)
 ---
 
 # harness-curate
@@ -70,10 +70,11 @@ path-scoped rule. A promotion that lands in the wrong tier is worse than none:
 guidance in a blocking gate produces false positives, and an invariant in prose
 produces nothing.
 
-**Retiring**: move the artifact to the archive, then remove every reference to
-it — `CLAUDE.md`, `.claude/settings.json`, other rules, hook wiring. Grep the
-slug before you claim it is gone. An artifact that is archived but still cited
-is worse than one that was left alone, because the citation now leads nowhere.
+**Retiring**: delete the artifact as the retirement section of
+`.claude/rules/governance.md` says, then remove every reference to it —
+`CLAUDE.md`, `.claude/settings.json`, other rules, hook wiring. Grep the slug
+before you claim it is gone. An artifact that is deleted but still cited is
+worse than one that was left alone, because the citation now leads nowhere.
 
 ## 4. Record
 

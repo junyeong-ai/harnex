@@ -173,7 +173,10 @@ adopted; verify them by hand otherwise.
   agent-conduct) and this one, which defines the loop. Removing one is the
   operator's explicit decision.
 
-To retire one, move it to a `demoted/` archive, or delete it when it holds no
-history worth keeping; remove the references to it from `CLAUDE.md`, the
-settings and other artifacts; and record the retirement and its reason in the
-commit body.
+To retire one, delete it: git history keeps its text, and the commit body
+records the retirement and its reason. Keep no archive in the tree — the
+runtime reads `.claude/rules/` recursively, so a rule moved under it keeps
+loading, and a copy anywhere else is one nobody reads. In the same commit,
+remove the references to it from `CLAUDE.md`, the settings and other
+artifacts, and the enforcer written only for it — a test or hook that checks
+nothing else; a lint the project runs for its own reasons stays.
