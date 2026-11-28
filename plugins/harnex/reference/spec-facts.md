@@ -25,8 +25,9 @@ already contradicted both a page and the binary's own schema.
   known-event list as a typo-catcher, never assert an exact number — the
   surface adds events upstream. Canonical SSoT is
   `crates/harness-core/src/validate/settings.rs::KNOWN_HOOK_EVENTS`; the
-  mirror below is held in sync by the `spec_facts_hook_events_match`
-  integration test (drift fails the build).
+  mirror below is held in sync by the
+  `spec_facts_hook_events_match_known_events` integration test (drift fails
+  the build).
   <!-- harnex-managed:start spec-facts-hook-events -->
   SessionStart, SessionEnd, Setup, UserPromptSubmit, UserPromptExpansion,
   PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch,
@@ -353,8 +354,9 @@ already contradicted both a page and the binary's own schema.
 
 - **Frontmatter (all optional, only `description` recommended).** Canonical
   SSoT is `crates/harness-core/src/validate/skills.rs::KNOWN_SKILL_KEYS`;
-  the mirror below is held in sync by the `spec_facts_skill_keys_match`
-  integration test (drift fails the build).
+  the mirror below is held in sync by the
+  `spec_facts_skill_keys_match_known_keys` integration test (drift fails the
+  build).
   <!-- harnex-managed:start spec-facts-skill-keys -->
   name, description, when_to_use, argument-hint, arguments,
   disable-model-invocation, user-invocable, allowed-tools, disallowed-tools,

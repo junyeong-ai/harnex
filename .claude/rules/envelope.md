@@ -17,8 +17,10 @@ Success: `{"ok": true, "data": T, "warnings": [...]}`
 Error:   `{"ok": false, "error": {"code", "message", "hint?", "location?"}}`
 List:    `data = {"items": [...], "total": N}`
 
-Construct via `envelope::write_success(out, data, warnings)` or
-`envelope::write_error(out, &error)`. Never write prose to stdout.
+A CLI handler writes success through `commands::write_envelope_success` or
+`write_envelope_success_warned`, which attach the spec-stamp warnings before
+calling `envelope::write_success`; calling that directly drops them. An error
+goes through `envelope::write_error(out, &error)`. Never write prose to stdout.
 Stderr carries no contract but one line: `ask serve` writes `serving <url> for
 <n> minutes` the moment it serves, since its envelope arrives only when the
 wait ends and a `--no-open` caller reads the address there;

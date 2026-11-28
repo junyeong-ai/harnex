@@ -7,7 +7,7 @@ wrapper over these types.
 
 ### Closed-set discriminator enum (single source of truth)
 
-Every closed vocabulary is declared with `wire_enum!` ([file: crates/harness-core/src/wire_enum.rs]),
+Every discriminator vocabulary harnex owns is declared with `wire_enum!` ([file: crates/harness-core/src/wire_enum.rs]),
 which generates the variants, `ALL`, `as_str` and `from_str` from one list:
 
 ```rust
@@ -22,8 +22,11 @@ wire_enum! {
 
 Config validation parses the string into the enum, and every consumer
 matches on it. Adding a variant forces every consuming site to update via
-the compiler's exhaustive-match check. No parallel `KNOWN_*` const — that
-pattern is forbidden because it drifts.
+the compiler's exhaustive-match check. No `KNOWN_*` const restating a
+`wire_enum!`'s values — that pattern is forbidden because it drifts. The
+`KNOWN_*` slices under `validate` are a different owner: they mirror Claude
+Code's own vocabularies, and `SpecSurface` stamps each against its page
+(`.claude/rules/spec.md`).
 
 `ALL` is the one part the compiler does not force, which is why it is
 generated rather than written: a variant left out of it still serialises,
