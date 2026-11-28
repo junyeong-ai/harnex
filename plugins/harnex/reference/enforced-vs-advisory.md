@@ -45,8 +45,9 @@ thing that survives a confused, careless, or adversarial agent turn.
    computes it — a hook, a test, a validator, or a recorded count the next
    step must read before proceeding. State the computer beside the control;
    one with no computer is an observation for the lifecycle ledger, not a
-   rule. The spec-workflow's gates name theirs: `review` passes on the verdict
-   a fresh-context reviewer delivered, `acceptance` on what was run or read for
+   rule. The spec-workflow's gates name theirs: `review` passes on a
+   fresh-context reviewer's verdict, each Blocker it filed fixed, pinned and
+   re-read or settled by the operator, `acceptance` on what was run or read for
    each criterion, and wrapup reads the decision log before it starts. And the
    computer decides what a control can be: a count of passes bounds nothing a
    reviewer finds, so a review loop returns to the operator on where its

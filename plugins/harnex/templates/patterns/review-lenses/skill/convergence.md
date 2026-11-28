@@ -31,13 +31,18 @@ catch them.
 
 ## Stalled
 
-The self passes end stalled when a pass leaves a fixable Critical or Blocker
-standing and changed no file — every fix it tried was undone by the gate, or
-none applied. Stop there: a loop with nothing left to try is done, and another
-pass would read nothing new.
+A finding whose fix the gate undid, or whose fix did not apply, stays standing
+with the attempt recorded beneath it (§ A fix is pinned or it is surfaced), and
+the loop never re-attempts it. When the self passes end, read what stands: a
+fixable Critical or Blocker left standing by any pass ends the loop stalled,
+before the terminal pass. The loop has nothing left to try on it, so report it
+with its attempt. Judged from the last pass alone, an unrelated fix that pass
+also made would carry the standing Blocker past the check into a converged
+report.
 
-A pass that changed files is not stalled even if it repeats a finding: the fix
-moved something the finding did not cover, and the next pass reads what moved.
+A pass that changed files keeps the loop going even if it repeats a finding:
+the fix moved something the finding did not cover, and the next pass reads what
+moved.
 
 ## A finding in the last fix
 
@@ -117,9 +122,11 @@ it: another case-by-case fix is the same fix again.
 ## A dispute
 
 A Critical or Blocker the terminal pass files enters the fix path unless ground
-truth refutes it. One the loop refutes escalates at once, with the refutation
-beside it: the loop and a fresh context disagree, and a second terminal pass
-would be another draw on the same disagreement, not its settlement.
+truth refutes it. One the loop refutes goes on the record with its refutation,
+and once the rest of the batch is fixed and verified the loop ends disputed,
+handing the operator each refuted finding with its refutation beside it: the
+loop and a fresh context disagree, and a second terminal pass would be another
+draw on the same disagreement, not its settlement.
 
 ## One whole read at the end
 
@@ -144,11 +151,11 @@ the operator on what its passes find:
 
 | Exit | When |
 |---|---|
-| converged | the terminal pass filed no fixable Critical or Blocker, or every one it filed is fixed and the pass over those fixes read clean |
-| stalled | a pass leaves a fixable Critical or Blocker standing and changed no file (§ Stalled) |
+| converged | no fixable Critical or Blocker stands from any pass, and the terminal pass filed none or every one it filed is fixed and the self passes over those fixes ended with one that fixed nothing |
+| stalled | the self passes end with a fixable Critical or Blocker standing — its fix undone by the gate, or not applied (§ Stalled) |
 | diverged | a finding in the last fix that no simpler form removes (§ A finding in the last fix) |
 | returned | a class an earlier fix claimed to close comes back with no shared seam (§ A class that comes back) |
-| disputed | the terminal pass files a Critical or Blocker the loop refutes (§ A dispute) |
+| disputed | the terminal pass filed a Critical or Blocker the loop refutes, once the rest of its batch is fixed and verified (§ A dispute) |
 
 At every exit but converged, report the reason, the findings that remain and
 the scope covered; the operator decides between another pass, a narrower

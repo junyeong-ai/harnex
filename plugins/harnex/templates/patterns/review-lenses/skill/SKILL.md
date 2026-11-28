@@ -88,10 +88,13 @@ no lens can reach if the file is not open.
 
 ## Termination
 
-The self passes end when a pass fixes nothing. The terminal pass below then
-reads the whole change, and converged means it filed no Critical or Blocker
-the loop may fix, or every one it filed was fixed and the pass over those fixes
-read clean — however the request phrased it. A
+The self passes end when a pass fixes nothing. A fixable Critical or Blocker
+any pass left standing — its fix undone by the gate, or not applied — then ends
+the loop stalled ([file: .claude/skills/review/convergence.md § Stalled]).
+Otherwise the terminal pass below reads the whole change, and converged means
+it filed no Critical or Blocker the loop may fix, or every one it filed was
+fixed and the self passes over those fixes ended with one that fixed nothing —
+however the request phrased it. A
 Critical or Blocker the loop may not fix — judgment-cited, or citing an
 authority the `review-lenses` column does not know — is resolved by escalation rather
 than edit: surface it with the convergence report for the operator's
@@ -130,8 +133,8 @@ errors, or is unavailable, escalate with the degradation named
 and never a quietly substituted reviewer.
 
 **What comes back branches on its citation.** Critical or Blocker findings
-citing an authority the `review-lenses` column knows enter the fix path, and a
-self pass over what those fixes touched verifies them, as step 6 points every
+citing an authority the `review-lenses` column knows enter the fix path, and
+self passes over what those fixes touched verify them, as step 6 points every
 pass. The loop then ends without a second terminal pass
 ([file: .claude/skills/review/convergence.md § One whole read at the end]). A
 citation naming an authority the column does not know degrades to surfaced,
@@ -139,7 +142,8 @@ per its conservative boundary. A judgment-cited Critical or Blocker
 escalates its whole batch to the operator immediately — it cannot be
 auto-fixed, and a re-walk would drop it; judgment findings at Major and
 below ride the report as signal. A finding the loop refutes goes on the record
-with its refutation and escalates as a dispute
+with its refutation; once the rest of the batch is fixed and verified, the loop
+ends disputed and hands it to the operator
 ([file: .claude/skills/review/convergence.md § A dispute]).
 
 ## Report

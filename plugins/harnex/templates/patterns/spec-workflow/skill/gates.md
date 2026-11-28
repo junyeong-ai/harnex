@@ -42,7 +42,9 @@ in order — the history of a decision is the interesting part, and overwriting
 keeps only the last one. `git log specs/<slug>/` is the timeline this rides on.
 
 No count of rounds bounds a gate: a review still finding new defects is doing
-what it is for. The gate goes back to the operator on what its rounds find:
+what it is for. `review` returns on the exits of what it delegates to — the
+review loop's own, where that loop is installed. `design_review` goes back to
+the operator on what its rounds find:
 
 - **diverged** — a Critical or Blocker sits in what the previous revision
   wrote, and no smaller revision removes it (`design_review` below);
@@ -98,7 +100,11 @@ re-fire rather than approve.
 Delegate to <!-- harnex-fill: what this project reviews a diff with — the
 `.claude/skills/review/` loop when the review-lenses pattern is installed,
 otherwise the project's own review command or a fresh-context reviewer --> over
-the spec's diff. It converges or reports why it stopped.
+the spec's diff. It converges or reports why it stopped. An exit other than
+converged goes to the operator before this gate decides, and the gate records
+their decision: a Blocker the loop refuted carries a terminal disposition, but
+a disagreement with a fresh reviewer is the operator's to settle, not the
+loop's.
 
 Write what it found to `plan.md ## Outstanding issues`, one row per finding in
 the form `specs/_template/plan.md` gives. Zero Critical and zero Blocker rows

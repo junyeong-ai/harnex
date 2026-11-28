@@ -113,7 +113,8 @@ what the last one found.
 ## Enforcement
 
 Each gate is decided by something other than the session's say-so: `review`
-by the verdict a fresh-context reviewer delivered, `acceptance` by what was run
+by a fresh-context reviewer's verdict, each Blocker it filed fixed, pinned and
+re-read or settled by the operator, `acceptance` by what was run
 or read for each criterion. The decision log is what the next phase reads
 before it moves — wrapup starts only once it records `approved` for both — so
 record a decision before the work moves past it.
