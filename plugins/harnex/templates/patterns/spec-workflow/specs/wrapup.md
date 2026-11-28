@@ -21,6 +21,14 @@ for a reader who will not open the log — what each criterion got.>
 expected, what the codebase turned out to be. This is the raw material the
 promotion gate reads; write what happened, not what should have.>
 
+## Left open
+
+<Every row of `plan.md ## Outstanding issues` that still has no terminal
+disposition, one line each: carried, naming where it went — an issue, a later
+spec — or dropped, with why. Retiring deletes `plan.md`, so a row this section
+does not name leaves with the directory unread. Carry what someone will act
+on; a list kept for its own sake grows at the rate reviews file findings.>
+
 ## Harness proposals
 
 <Candidate rules, hooks, or skills this spec argues for, and what each would
@@ -40,7 +48,13 @@ one the promotion pass never sees. `.claude/rules/governance.md` has why the
 wording is reused verbatim, and owns the bar each proposal is judged against.
 Do not write the rule from here.
 
-If those commands cannot run — no `harnex` on the path, or no `[lifecycle]` in
-`harness.toml` — this spec is not ready to retire. Name what is missing and
-leave the directory standing: a proposal deleted because its destination was
-never installed is the loss this step exists to prevent.
+If those commands cannot run, why decides the next step:
+
+- **No `[lifecycle]` in `harness.toml`** — the project keeps no ledger, and
+  the commit body is the home governance names for an observation. Write each
+  proposal into the body of the commit that retires this directory, and retire.
+- **`[lifecycle]` declared, no `harnex` on this machine** — the ledger exists
+  and only this machine cannot reach it. Install the release
+  `[meta] harnex_version` admits — the session-start line names the command —
+  and record; the directory stands only until then. A proposal written where
+  the project's survey never reads is lost as surely as a deleted one.

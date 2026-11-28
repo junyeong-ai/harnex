@@ -86,11 +86,12 @@ superseded_by:          # slug of replacement spec, if superseded
 | `active` | Work in progress. The directory is live state. |
 | `completed` | Implemented, wrapup captured, **directory retired** |
 | `abandoned` | Decided not to proceed, **directory retired** |
-| `superseded` | Replaced by another spec; the directory stays, because it is now a pointer and a pointer with no target is worse than the file |
+| `superseded` | Replaced by another spec, **directory retired**; references and open findings move to the replacement |
 
-`completed` and `abandoned` both retire the directory: the durable half moves
-to wherever this project keeps learnings, references retarget onto it, and the
-spec directory is removed. The two differ only in what the record says. A spec
+Every terminal state retires the directory: the durable half moves to wherever
+this project keeps learnings, references retarget onto it — onto the
+replacement, for `superseded` — and the spec directory is removed. The states
+differ only in what the record says. A spec
 directory is state for work in flight, and `.claude/rules/governance.md`
 retires every other artifact that stopped earning its context cost — a finished
 spec is not an exception to that, it is the clearest case of it.

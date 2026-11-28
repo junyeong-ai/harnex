@@ -84,7 +84,7 @@ diff, then `acceptance` on the criteria — and both are gate events, not
 phases.
 
 **wrapup** — write `wrapup.md`: what the acceptance criteria actually got,
-what was observed on the way, and what is left. The `acceptance` gate has
+what was observed on the way, and where each open finding goes. The `acceptance` gate has
 already answered the first of those; wrapup records the durable half rather
 than re-deciding it. Then retire the spec.
 
@@ -98,8 +98,11 @@ On wrapup or abandonment: write the durable half — what was learned, what a
 later reader needs — to <!-- harnex-fill: where this project keeps learnings —
 a docs directory, an ADR folder, the commit body if it keeps none -->, retarget
 any reference to the spec onto it, and remove the directory. The two differ
-only in what the record says. `superseded` keeps the directory:
-it is now a pointer, and a pointer with no target is worse than the file.
+only in what the record says. `superseded` retires the same way, with two
+differences: references retarget onto the spec that replaced it, and its open
+`## Outstanding issues` rows carry to that spec's plan, since they were filed
+against the work it now does. git history keeps the old directory for anyone
+following an old link.
 
 A terminal spec is never edited again, and never re-enters a terminal state.
 
