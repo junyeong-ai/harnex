@@ -160,8 +160,9 @@ record is indistinguishable from a defect.
 ## Retirement
 
 An artifact — rule, skill, lens, hook verifier — is a retirement candidate when
-all of these hold. `harnex lifecycle retire` computes them where the oracle is
-adopted; verify them by hand otherwise.
+all of these hold. `harnex lifecycle retire` computes them over the
+`[[kinds]]` `harness.toml` declares; verify them by hand for every artifact no
+declared kind covers.
 
 - Nothing attributed to it — no finding, decision or reference — and no change
   to it in 90+ days (Silent / Stale).

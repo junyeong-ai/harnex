@@ -35,7 +35,8 @@ already settled.
 
 A sweep that carries the `retire-no-kinds` warning judged no artifact: the
 project declares no `[[kinds]]`, so report that the sweep did not run, never
-that nothing is ready to retire.
+that nothing is ready to retire, and apply the retirement conditions in
+`.claude/rules/governance.md` by hand instead.
 
 No candidates over a written ledger is the exact-wording bar holding, not
 yet a finished pass. The thresholds count recurrence per wording, and one
