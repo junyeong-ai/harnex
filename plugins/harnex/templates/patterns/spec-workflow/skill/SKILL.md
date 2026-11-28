@@ -99,16 +99,18 @@ later reader needs — to <!-- harnex-fill: where this project keeps learnings �
 a docs directory, an ADR folder, the commit body if it keeps none -->, retarget
 any reference to the spec onto it, and remove the directory. The two differ
 only in what the record says. `superseded` retires the same way, with
-references retargeted onto the spec that replaced it. git history keeps the old
-directory for anyone following an old link.
+references retargeted onto the spec that replaced it. Commit the terminal
+state — the status, `superseded_by:` where it applies, the last decision-log
+bullets, `wrapup.md` — before the commit that removes the directory, so git
+history holds the spec as it ended for anyone following an old link.
 
 Abandonment and supersession write no `wrapup.md`, so give each open
 `## Outstanding issues` row and each pre-existing defect `## Risks` records the
 carried-or-dropped line `wrapup.md ## Left open` describes, in the body of the
-retiring commit. A superseded spec's rows carry to the replacement's `plan.md`
-when it has one, since they were filed against the work it now does; a
-`plan.md` written only to hold them would report a phase the replacement has
-not reached.
+retiring commit. A superseded spec's rows that still apply to the work the
+replacement does carry to its `plan.md` when it has one; a row the replacement
+made moot takes the dropped line with why, and a `plan.md` written only to hold
+rows would report a phase the replacement has not reached.
 
 A terminal spec is never edited again, and never re-enters a terminal state.
 

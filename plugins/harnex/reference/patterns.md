@@ -51,11 +51,10 @@ blank-page problem in disguise.
   that pattern is installed, otherwise this project's own review command).
   Resolve every marker the pattern ships, not a count stated here. The `<...>`
   placeholders inside the template files are filled per spec by whoever
-  starts one and are not install-time fill markers. Verify a brownfield `harness.toml`
-  carries `[lifecycle]`, and add it if not: wrapup records each harness
-  proposal to the observation ledger in the commit that retires the spec
-  directory, so a pattern installed without it reaches the one step whose
-  failure loses the proposals.
+  starts one and are not install-time fill markers. Wrapup records each harness
+  proposal to the observation ledger where `harness.toml` carries `[lifecycle]`,
+  and into the retiring commit's body where it does not; offer `[lifecycle]` to
+  a brownfield project that wants its proposals counted rather than only kept.
 - `telemetry-kinds` — the closed-schema ledger the harness measures its own
   use with: a hook recording each Skill, Task and Agent invocation, and the
   rule on what may cross into it. Add the `harness_invocation` Kind to

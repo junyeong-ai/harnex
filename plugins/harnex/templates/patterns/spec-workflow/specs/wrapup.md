@@ -2,7 +2,9 @@
 
 Written at the wrapup phase, once `review` and `acceptance` have both recorded
 `approved`. Set the `spec.md` frontmatter `status` to `completed` in the same
-commit.
+commit, and land that commit before the one that retires the directory: git
+history is the record a retired spec leaves, and a directory written and
+removed in one commit leaves none.
 
 `completed` means the spec's promise was kept and observed, so an `acceptance`
 that ended `deferred` does not reach here: the spec stays in flight until the
@@ -53,9 +55,10 @@ If those commands cannot run, why decides the next step:
 - **No `[lifecycle]` in `harness.toml`** — the project keeps no ledger, and
   the commit body is the home governance names for an observation. Write each
   proposal into the body of the commit that retires this directory, and retire.
-- **`[lifecycle]` declared, and no `harnex` on this machine or one the pin
-  does not admit** — the ledger exists and only this machine cannot reach it.
-  Install the release `[meta] harnex_version` admits — the session-start line
-  or the refusal's hint names the command — and record; the directory stands
+- **`[lifecycle]` declared, and the commands fail here** — no `harnex` on this
+  machine, one the pin does not admit, or a ledger that refuses the write. The
+  ledger exists and only this machine cannot reach it: resolve what the failure
+  names — for a missing or out-of-range binary, the session-start line or the
+  refusal's hint gives the install command — and record; the directory stands
   only until then. A proposal written where
   the project's survey never reads is lost as surely as a deleted one.
