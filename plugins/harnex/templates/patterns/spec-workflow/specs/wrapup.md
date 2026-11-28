@@ -24,8 +24,8 @@ promotion gate reads; write what happened, not what should have.>
 ## Left open
 
 <Every row of `plan.md ## Outstanding issues` that still has no terminal
-disposition, one line each: carried, naming where it went — an issue, a later
-spec — or dropped, with why. Retiring deletes `plan.md`, so a row this section
+disposition, and every pre-existing defect `## Risks` records, one line each:
+carried, naming where it went — an issue, a later spec — or dropped, with why. Retiring deletes `plan.md`, so a row this section
 does not name leaves with the directory unread. Carry what someone will act
 on; a list kept for its own sake grows at the rate reviews file findings.>
 
@@ -53,8 +53,9 @@ If those commands cannot run, why decides the next step:
 - **No `[lifecycle]` in `harness.toml`** — the project keeps no ledger, and
   the commit body is the home governance names for an observation. Write each
   proposal into the body of the commit that retires this directory, and retire.
-- **`[lifecycle]` declared, no `harnex` on this machine** — the ledger exists
-  and only this machine cannot reach it. Install the release
-  `[meta] harnex_version` admits — the session-start line names the command —
-  and record; the directory stands only until then. A proposal written where
+- **`[lifecycle]` declared, and no `harnex` on this machine or one the pin
+  does not admit** — the ledger exists and only this machine cannot reach it.
+  Install the release `[meta] harnex_version` admits — the session-start line
+  or the refusal's hint names the command — and record; the directory stands
+  only until then. A proposal written where
   the project's survey never reads is lost as surely as a deleted one.

@@ -86,7 +86,7 @@ superseded_by:          # slug of replacement spec, if superseded
 | `active` | Work in progress. The directory is live state. |
 | `completed` | Implemented, wrapup captured, **directory retired** |
 | `abandoned` | Decided not to proceed, **directory retired** |
-| `superseded` | Replaced by another spec, **directory retired**; references and open findings move to the replacement |
+| `superseded` | Replaced by another spec, **directory retired**; references move to the replacement, open findings to its plan or the retiring commit |
 
 Every terminal state retires the directory: the durable half moves to wherever
 this project keeps learnings, references retarget onto it — onto the

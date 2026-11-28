@@ -98,11 +98,17 @@ On wrapup or abandonment: write the durable half — what was learned, what a
 later reader needs — to <!-- harnex-fill: where this project keeps learnings —
 a docs directory, an ADR folder, the commit body if it keeps none -->, retarget
 any reference to the spec onto it, and remove the directory. The two differ
-only in what the record says. `superseded` retires the same way, with two
-differences: references retarget onto the spec that replaced it, and its open
-`## Outstanding issues` rows carry to that spec's plan, since they were filed
-against the work it now does. git history keeps the old directory for anyone
-following an old link.
+only in what the record says. `superseded` retires the same way, with
+references retargeted onto the spec that replaced it. git history keeps the old
+directory for anyone following an old link.
+
+Abandonment and supersession write no `wrapup.md`, so give each open
+`## Outstanding issues` row and each pre-existing defect `## Risks` records the
+carried-or-dropped line `wrapup.md ## Left open` describes, in the body of the
+retiring commit. A superseded spec's rows carry to the replacement's `plan.md`
+when it has one, since they were filed against the work it now does; a
+`plan.md` written only to hold them would report a phase the replacement has
+not reached.
 
 A terminal spec is never edited again, and never re-enters a terminal state.
 
