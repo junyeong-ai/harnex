@@ -3,6 +3,10 @@
 
 [advisories]
 ignore = []
+# An unmaintained crate anywhere in the graph ships in the binary, so the scope
+# is the whole graph; cargo-deny 0.22 narrowed the default to direct
+# workspace dependencies.
+unmaintained = "all"
 
 [licenses]
 allow = [
