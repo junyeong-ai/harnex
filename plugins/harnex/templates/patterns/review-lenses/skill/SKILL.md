@@ -1,5 +1,5 @@
 ---
-description: "Convergent review loop. Walks every lens in .claude/lenses/ over a scope, fixes what a cited authority confirms, re-walks the scope the fixes grew, and stops when no fixable Critical or Blocker remains and one fresh-context reviewer that did not watch the loop form its opinion agrees. Modifies files — findings-only audits live in the critique skill."
+description: "Convergent review loop. Walks every lens in .claude/lenses/ over a scope, fixes what a cited authority confirms, re-walks only what the fixes touched until a pass fixes nothing, then has one fresh-context reviewer that did not watch the loop read the whole change and verifies its fixes the same way. Modifies files — findings-only audits live in the critique skill."
 when_to_use: "Invoke on fix-and-converge intent over a change set — \"review and fix\", \"converge the review\", \"리뷰 수렴해줘\", \"walk the lenses over <path>\" — or as the engine a spec review gate delegates to. Takes a path, a revision range (main..HEAD), or a glob. Read-only asks — findings without edits — route to the critique skill instead of entering the loop."
 argument-hint: "<path> | <commit-range> | <glob>"
 allowed-tools: Read Edit Grep Glob Agent Bash(git diff *) Bash(git log *) Bash(git rev-parse *) Bash(git status *)
@@ -7,15 +7,16 @@ allowed-tools: Read Edit Grep Glob Agent Bash(git diff *) Bash(git log *) Bash(g
 
 # Convergent review
 
-Walk the lenses, fix what is safe to fix, re-walk what the fixes touched, stop
-on a clean pass. The loop is the engine. Invoke the `review-lenses` skill
+Walk the lenses, fix what is safe to fix, re-walk what the fixes touched until
+a pass fixes nothing, then have one fresh context read the whole change. The
+loop is the engine. Invoke the `review-lenses` skill
 before the first pass: it owns the severity and citation vocabulary, the
 authorities and the refutation regimes, and is the reference for every
 judgment below.
 
 Read [convergence.md](convergence.md) when the loop needs a decision the
-sections here do not settle: scope growth, the exits that return the loop to
-the operator, failed fixes, and how the terminal pass scales.
+sections here do not settle: what the next pass reads, the exits that return
+the loop to the operator, failed fixes, and how the terminal pass scales.
 
 ## Resolve the scope
 
@@ -75,15 +76,22 @@ no lens can reach if the file is not open.
    — a later fix overlapped it — escalates that fix as judgment rather than
    improvising a wider undo. A transient flake retries once; a second flake
    escalates that fix as judgment.
-6. **Grow the scope by what the fixes touched**, never shrink it.
+6. **Point the next pass at what this pass's fixes touched** — the files they
+   edited, the callers of any declaration whose signature or behaviour they
+   changed, and those files' prose siblings
+   ([file: .claude/skills/review/convergence.md § The next pass reads what the fixes touched]).
+   A pass that fixed nothing leaves the next one nothing to read, and the self
+   passes end there.
 
 <!-- harnex-fill: the fast gate command step 5 runs — name it here and grant
      it in allowed-tools above -->
 
 ## Termination
 
-Stop when a full pass leaves no Critical and no Blocker the loop may fix —
-that is what converged means, however the request phrased it. A
+The self passes end when a pass fixes nothing. The terminal pass below then
+reads the whole change, and converged means it filed no Critical or Blocker
+the loop may fix, or every one it filed was fixed and the pass over those fixes
+read clean — however the request phrased it. A
 Critical or Blocker the loop may not fix — judgment-cited, or citing an
 authority the `review-lenses` column does not know — is resolved by escalation rather
 than edit: surface it with the convergence report for the operator's
@@ -103,7 +111,8 @@ A loop that reviews its own fixes is grading its own work with the context
 that produced them, and that failure mode is measured, not hypothetical: a
 self-confirming loop declares done while a fresh context still finds a
 load-bearing defect. Before reporting convergence, dispatch **one** reviewer
-subagent (`.claude/agents/reviewer.md`) over the final scope and let it reach
+subagent (`.claude/agents/reviewer.md`) over the whole change — every file the
+resolved scope named and every file a fix touched — and let it reach
 its own verdict. Give it the scope, the lenses, and nothing about what the
 loop concluded. Its value is a fresh context, not a different model.
 
@@ -121,20 +130,23 @@ errors, or is unavailable, escalate with the degradation named
 and never a quietly substituted reviewer.
 
 **What comes back branches on its citation.** Critical or Blocker findings
-citing an authority the `review-lenses` column knows enter the fix path as a new
-iteration — not a blind re-walk, which already missed them once. A
+citing an authority the `review-lenses` column knows enter the fix path, and a
+self pass over what those fixes touched verifies them, as step 6 points every
+pass. The loop then ends without a second terminal pass
+([file: .claude/skills/review/convergence.md § One whole read at the end]). A
 citation naming an authority the column does not know degrades to surfaced,
 per its conservative boundary. A judgment-cited Critical or Blocker
 escalates its whole batch to the operator immediately — it cannot be
 auto-fixed, and a re-walk would drop it; judgment findings at Major and
-below ride the report as signal. A finding the loop refutes instead goes on
-the record with its refutation, and two terminal passes in a row refuted that
-way are a dispute ([file: .claude/skills/review/convergence.md § A dispute]).
+below ride the report as signal. A finding the loop refutes goes on the record
+with its refutation and escalates as a dispute
+([file: .claude/skills/review/convergence.md § A dispute]).
 
 ## Report
 
 Per iteration: the coverage, the findings by severity, what was fixed, and what
-the scope grew to. At the end: converged or why not, the `Terminal verify:`
-line, and every finding still open. Write nothing outside the files the fixes
+the next pass reads. At the end: converged or why not, the `Terminal verify:`
+line, the fixes made after the terminal read and the pass that verified them,
+and every finding still open. Write nothing outside the files the fixes
 touch — persistence of residual findings belongs to whatever invoked this, not
 to the loop.

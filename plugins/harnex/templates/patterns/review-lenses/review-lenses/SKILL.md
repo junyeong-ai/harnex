@@ -7,8 +7,8 @@ user-invocable: false
 # Review lens framework
 
 A convergent review loop walks every registered lens over a change set, ranks
-findings by severity, fixes what a cited authority confirms, and re-walks the
-grown scope until convergence. Around it, forked passes restore the one thing
+findings by severity, fixes what a cited authority confirms, and re-walks what
+the fixes touched until they stop. Around it, forked passes restore the one thing
 an in-session loop structurally lacks: a context that did not watch the work
 form its opinion.
 
@@ -40,8 +40,8 @@ A finding blocks the change under review only where that change introduced it
 or set out to fix it. A defect the change did not touch is pre-existing:
 report it after the change's own findings under a `Pre-existing` heading, at
 its severity, as follow-up. The loop never fixes it and never counts it
-toward convergence — folding it in widens the change, and the wider change is
-the next round's larger scope. Spec-bound, it lands in the plan's `## Risks`
+toward convergence — folding it in widens the change, and every file it adds is
+one more the passes and the terminal read must cover. Spec-bound, it lands in the plan's `## Risks`
 in prose rather than as a finding row, so the next session reads it where the
 plan keeps what it is leaving standing.
 

@@ -1,35 +1,43 @@
 # Convergence mechanics
 
-- [Scope grows, never shrinks](#scope-grows-never-shrinks)
+- [The next pass reads what the fixes touched](#the-next-pass-reads-what-the-fixes-touched)
 - [Stalled](#stalled)
 - [A finding in the last fix](#a-finding-in-the-last-fix)
 - [The record outlives the context](#the-record-outlives-the-context)
 - [A fix is pinned or it is surfaced](#a-fix-is-pinned-or-it-is-surfaced)
 - [A class that comes back](#a-class-that-comes-back)
 - [A dispute](#a-dispute)
+- [One whole read at the end](#one-whole-read-at-the-end)
 - [No count stops the loop](#no-count-stops-the-loop)
 - [What the loop never does](#what-the-loop-never-does)
 - [Scaling the terminal pass](#scaling-the-terminal-pass)
 
 Read when the loop needs a decision the SKILL body does not settle.
 
-## Scope grows, never shrinks
+## The next pass reads what the fixes touched
 
-Each iteration re-walks the previous scope plus every file a fix touched, plus
-those files' prose siblings. Monotonic growth is what makes termination mean
-something: a loop that dropped files could converge by forgetting them.
+A pass after the first reads what the previous pass's fixes touched: the files
+they edited, the callers of any declaration whose signature or behaviour they
+changed, and those files' prose siblings. Re-walking the files the loop already
+walked, unchanged, asks the context that already answered the same question
+again, and what it finds there is its own reading a second time.
 
-The set is bounded in practice because a fix that keeps widening the scope is a
-fix that is not converging, and the exits below catch it.
+Narrowing loses no file, because the terminal pass reads the whole change —
+every file the resolved scope named and every file a fix touched — so a file
+leaves a self pass without leaving the review. The self passes end when a pass
+fixes nothing, since its successor would read nothing. Fixes that keep widening
+what the next pass reads are fixes that are not converging, and the exits below
+catch them.
 
 ## Stalled
 
-A pass is stalled when it produces the same findings as the previous pass and
-changed no file. Stop there — a loop with nothing left to try is done, and
-another pass only delays the report.
+The self passes end stalled when a pass leaves a fixable Critical or Blocker
+standing and changed no file — every fix it tried was undone by the gate, or
+none applied. Stop there: a loop with nothing left to try is done, and another
+pass would read nothing new.
 
-Two passes producing the same finding while files DID change is not stalled: the
-fix moved something the finding did not cover. Let it run.
+A pass that changed files is not stalled even if it repeats a finding: the fix
+moved something the finding did not cover, and the next pass reads what moved.
 
 ## A finding in the last fix
 
@@ -109,10 +117,25 @@ it: another case-by-case fix is the same fix again.
 ## A dispute
 
 A Critical or Blocker the terminal pass files enters the fix path unless ground
-truth refutes it. When two terminal passes in a row each file one and the loop
-refutes every one, escalate with both passes' findings and the refutations
-beside them: the loop and a fresh context disagree, and a further pass is the
-same disagreement again.
+truth refutes it. One the loop refutes escalates at once, with the refutation
+beside it: the loop and a fresh context disagree, and a second terminal pass
+would be another draw on the same disagreement, not its settlement.
+
+## One whole read at the end
+
+The terminal pass is the one read of the whole change by a context that did not
+watch it form, and the loop asks for it once. Its fixes are verified the way
+every fix is — a self pass over what they touched — and the loop ends there.
+
+A second whole read does not confirm the first. Over more than a thousand
+recorded review passes, Critical and Blocker findings per pass held between
+about 0.2 and 0.4 from the first pass through the ninth: each whole read is
+another draw at much the same rate, and a loop that repeats it until one comes
+back clean stops by chance, after paying for every draw before it. Where a
+change's failure would be expensive, widen the one terminal round along the
+axes in § Scaling the terminal pass rather than repeating it. Where the fixes
+made after it are large enough that the operator wants another whole read,
+that is the operator's decision, recorded as one.
 
 ## No count stops the loop
 
@@ -121,16 +144,18 @@ the operator on what its passes find:
 
 | Exit | When |
 |---|---|
-| converged | a full pass leaves no fixable Critical or Blocker, and the terminal pass agrees |
-| stalled | a pass repeats the previous pass's findings and changed no file |
+| converged | the terminal pass filed no fixable Critical or Blocker, or every one it filed is fixed and the pass over those fixes read clean |
+| stalled | a pass leaves a fixable Critical or Blocker standing and changed no file (§ Stalled) |
 | diverged | a finding in the last fix that no simpler form removes (§ A finding in the last fix) |
 | returned | a class an earlier fix claimed to close comes back with no shared seam (§ A class that comes back) |
-| disputed | two terminal passes in a row file Critical or Blocker findings the loop refutes (§ A dispute) |
+| disputed | the terminal pass files a Critical or Blocker the loop refutes (§ A dispute) |
 
 At every exit but converged, report the reason, the findings that remain and
 the scope covered; the operator decides between another pass, a narrower
-scope, and stopping. A count of passes is not an exit: a loop still fixing
-confirmed defects is doing what it is for.
+scope, and stopping. The self passes carry no count: each reads only what the
+last one changed, so they end when the fixes do, and a loop still fixing
+confirmed defects is doing what it is for. The terminal read is one by what it
+is (§ One whole read at the end), not a cap a count could raise.
 
 ## What the loop never does
 
